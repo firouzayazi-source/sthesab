@@ -13,8 +13,8 @@
 
 set -uo pipefail
 
-APP_DIR="${APP_DIR:-/var/www/hesab}"
-DB_NAME="${DB_NAME:-hesab}"
+APP_DIR="${APP_DIR:-/opt/hesab/app}"
+DB_NAME="${DB_NAME:-hesab_db}"
 SITE_NAME="${SITE_NAME:-hesab}"
 
 bold() { printf '\n\033[1m== %s\033[0m\n' "$1"; }

@@ -6,11 +6,11 @@
 # روی این سرور سرویس‌های دیگری (از جمله دو ربات) در حال کار هستند.
 # این اسکریپت فقط اجازه دارد به این مسیرها بنویسد:
 #
-#     /var/www/hesab                       ← فایل‌های پروژه
+#     /opt/hesab/app                       ← فایل‌های پروژه
 #     /etc/nginx/sites-available/hesab     ← فقط همین یک فایل
 #     /etc/nginx/sites-enabled/hesab       ← فقط همین یک لینک
 #     /etc/php/<v>/fpm/pool.d/hesab.conf   ← pool اختصاصی
-#     دیتابیس hesab و کاربر 'hesab'@'localhost'
+#     دیتابیس hesab_db و کاربر 'hesab_user'@'localhost'
 #     کاربر سیستمی hesab
 #
 # هر تلاش برای نوشتن خارج از این فهرست، اسکریپت را متوقف می‌کند.
@@ -20,17 +20,17 @@
 # ──────────────────────────────────────────────────────────────────────
 #
 # اجرا:
-#     bash deploy/vps-setup.sh --domain hesab.example.com            # فقط نشان می‌دهد چه می‌کند
-#     sudo bash deploy/vps-setup.sh --domain hesab.example.com --apply   # واقعاً اجرا می‌کند
+#     bash deploy/vps-setup.sh --domain hesab.stland.ir            # فقط نشان می‌دهد چه می‌کند
+#     sudo bash deploy/vps-setup.sh --domain hesab.stland.ir --apply   # واقعاً اجرا می‌کند
 #
 # پیش از --apply حتماً یک بار بدون آن اجرا کنید و خروجی را بخوانید.
 
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/var/www/hesab}"
+APP_DIR="${APP_DIR:-/opt/hesab/app}"
 APP_USER="${APP_USER:-hesab}"
-DB_NAME="${DB_NAME:-hesab}"
-DB_USER="${DB_USER:-hesab}"
+DB_NAME="${DB_NAME:-hesab_db}"
+DB_USER="${DB_USER:-hesab_user}"
 SITE_NAME="${SITE_NAME:-hesab}"
 REPO_URL="${REPO_URL:-}"
 DOMAIN=""
@@ -46,7 +46,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-[[ -z "$DOMAIN" ]] && { echo "دامنه را بدهید:  --domain hesab.example.com"; exit 1; }
+[[ -z "$DOMAIN" ]] && { echo "دامنه را بدهید:  --domain hesab.stland.ir"; exit 1; }
 
 green() { printf '\033[0;32m%s\033[0m\n' "$1"; }
 red()   { printf '\033[0;31m%s\033[0m\n' "$1"; }
@@ -259,6 +259,9 @@ server {
         expires 30d;
         add_header Cache-Control "private";
     }
+
+    # deploy.php فقط برای هاست اشتراکی بود؛ روی VPS جای git pull را نمی‌گیرد.
+    location = /deploy.php { deny all; return 404; }
 
     location ~ ^/(config|\.git)/ { deny all; return 404; }
     location ~ /\.(?!well-known)  { deny all; return 404; }

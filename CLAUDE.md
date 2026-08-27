@@ -75,7 +75,10 @@ $userId = Auth::userId();   // همیشه از اینجا، هرگز از ورو
 
 - `schema.sql` جداول پایه را می‌سازد: `users`, `categories`, `transactions`, `debts`, `app_settings`.
 - بقیه‌ی جداول و ستون‌ها با فایل‌های `migration_*.sql` اضافه شده‌اند (کیف‌پول، بودجه، چک، دارایی، پس‌انداز، تکرارشونده، آیکون دسته‌ها، ایندکس‌ها).
-- **ترتیب اجرا الفبایی نیست و در فایل‌ها ثبت نشده.** برای دیتابیس تازه، `schema.sql` و سپس migrationها به ترتیب `p1 → p2 → p3 → p4` و بعد بقیه اجرا شوند. **هیچ جدول ردیابی migration وجود ندارد** — این نخستین بدهی فنی است که برای ارتقاء باید حل شود.
+- **ترتیب اجرا الفبایی نیست.** ترتیب درست (با خواندن خود فایل‌ها بررسی شده) در `deploy/db-init.sh` ثبت شده است؛ برای دیتابیس تازه همان را اجرا کنید.
+- `migration_repair.sql` **جایگزین کامل** `migration_wallets.sql` و `migration_p1.sql` است (همان جدول‌ها را می‌سازد، ولی idempotent). آن دو فایل برای نصب تازه اجرا نشوند.
+- `migration_indexes.sql` باید **بعد از** `migration_cheques_assets.sql` بیاید، چون روی جدول `cheques` ایندکس می‌زند. این فایل idempotent نیست (`ADD INDEX` بدون `IF NOT EXISTS`) و اجرای دوباره‌اش خطای «ایندکس تکراری» می‌دهد — `db-init.sh` این خطا را می‌شناسد و رد می‌کند.
+- **هیچ جدول ردیابی migration وجود ندارد** — این نخستین بدهی فنی است که برای ارتقاء باید حل شود.
 - تغییر ساختار جدید = یک فایل `migration_*.sql` تازه (idempotent بنویسید: `IF NOT EXISTS` / بررسی ستون)، به‌علاوه به‌روزرسانی `schema.sql` برای نصب‌های تازه.
 
 ---
@@ -109,17 +112,17 @@ $userId = Auth::userId();   // همیشه از اینجا، هرگز از ورو
 
 | منبع | مقدار |
 |---|---|
-| پوشه | `/var/www/hesab` |
+| پوشه | `/opt/hesab/app` |
 | کاربر سیستمی | `hesab` |
 | سایت nginx | `/etc/nginx/sites-{available,enabled}/hesab` |
 | pool مربوط به PHP | `/etc/php/<نسخه>/fpm/pool.d/hesab.conf` |
 | سوکت | `/run/php/php-hesab.sock` |
-| دیتابیس / کاربر | `hesab` / `'hesab'@'localhost'` با `GRANT ... ON hesab.*` |
+| دیتابیس / کاربر | `hesab_db` / `'hesab_user'@'localhost'` با `GRANT ... ON hesab_db.*` |
 
 سه لایه‌ای که این قانون را عملاً تضمین می‌کنند:
 
 1. `deploy/vps-setup.sh` تابع `assert_allowed()` دارد؛ هر نوشتن خارج از فهرست بالا اسکریپت را متوقف می‌کند.
-2. pool اختصاصی PHP با `open_basedir=/var/www/hesab:/tmp:/usr/share/php` و `disable_functions` شامل `exec,shell_exec,system,proc_open,popen`.
+2. pool اختصاصی PHP با `open_basedir=/opt/hesab/app:/tmp:/usr/share/php` و `disable_functions` شامل `exec,shell_exec,system,proc_open,popen`.
 3. PHP این اپ با کاربر `hesab` اجرا می‌شود، نه `www-data`.
 
 هنگام افزودن هر اسکریپت یا قابلیت مربوط به سرور، همین قانون رعایت شود.
@@ -131,6 +134,7 @@ $userId = Auth::userId();   // همیشه از اینجا، هرگز از ورو
 - نصب روی هاست اشتراکی: `README.md`
 - راه‌اندازی روی VPS: `DEPLOY.md` — شامل قانون جداسازی و انتقال داده از هاست اشتراکی
 - گزارش وضعیت سرور پیش از نصب (فقط خواندنی): `deploy/vps-preflight.sh`
+- ساخت ساختار دیتابیس با ترتیب درست: `deploy/db-init.sh`
 - نصب روی VPS (پیش‌فرض نمایشی؛ با `--apply` اجرا می‌شود): `deploy/vps-setup.sh`
 - به‌روزرسانی روی سرور: `./deploy.sh`
 - `deploy.php` فقط برای هاست اشتراکی بود؛ روی VPS `DEPLOY_TOKEN` تعریف نشود تا غیرفعال بماند.

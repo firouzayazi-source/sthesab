@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-APP_DIR="${APP_DIR:-/var/www/hesab}"
+APP_DIR="${APP_DIR:-/opt/hesab/app}"
 APP_USER="${APP_USER:-hesab}"   # کاربر اختصاصی این اپ — نه www-data، نه کاربر سرویس‌های دیگر
 
 green() { printf '\033[0;32m%s\033[0m\n' "$1"; }

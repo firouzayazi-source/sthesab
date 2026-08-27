@@ -13,13 +13,13 @@
 
 | منبع | مقدار |
 |---|---|
-| پوشه | `/var/www/hesab` |
+| پوشه | `/opt/hesab/app` |
 | کاربر سیستمی | `hesab` (بدون shell) |
 | سایت nginx | `/etc/nginx/sites-{available,enabled}/hesab` |
 | pool مربوط به PHP | `/etc/php/<نسخه>/fpm/pool.d/hesab.conf` |
 | سوکت PHP | `/run/php/php-hesab.sock` |
-| دیتابیس | `hesab` |
-| کاربر دیتابیس | `'hesab'@'localhost'` — فقط با دسترسی روی `hesab.*` |
+| دیتابیس | `hesab_db` |
+| کاربر دیتابیس | `'hesab_user'@'localhost'` — فقط با دسترسی روی `hesab_db.*` |
 
 و اجازه‌ی این‌ها را **ندارد**:
 
@@ -33,7 +33,7 @@
 سه لایه این قانون را عملاً تضمین می‌کنند:
 
 1. **`deploy/vps-setup.sh`** یک نگهبان مسیر دارد؛ هر نوشتن خارج از فهرست بالا اسکریپت را کامل متوقف می‌کند.
-2. **pool اختصاصی PHP** با `open_basedir` محدود به `/var/www/hesab` است — کد PHP این اپ حتی اگر بخواهد هم نمی‌تواند فایل‌های ربات‌ها را بخواند. `exec`, `shell_exec`, `system` و مشابه‌ها هم غیرفعال‌اند.
+2. **pool اختصاصی PHP** با `open_basedir` محدود به `/opt/hesab/app` است — کد PHP این اپ حتی اگر بخواهد هم نمی‌تواند فایل‌های ربات‌ها را بخواند. `exec`, `shell_exec`, `system` و مشابه‌ها هم غیرفعال‌اند.
 3. **کاربر جدا** — PHP این اپ با کاربر `hesab` اجرا می‌شود، نه `www-data` و نه کاربر ربات‌ها.
 
 هیچ‌جای این راهنما `systemctl restart` روی سرویس مشترک نیست؛ فقط `reload` آن هم بعد از `nginx -t` موفق.
@@ -76,9 +76,9 @@ sudo apt install -y nginx mariadb-server git \
 `firouzayazi-source/sthesab` هست.
 
 ```bash
-sudo mkdir -p /var/www/hesab
-sudo chown "$USER":"$USER" /var/www/hesab
-git clone https://github.com/firouzayazi-source/sthesab.git /var/www/hesab
+sudo mkdir -p /opt/hesab/app
+sudo chown "$USER":"$USER" /opt/hesab/app
+git clone https://github.com/firouzayazi-source/sthesab.git /opt/hesab/app
 ```
 
 > `config/config.php` و `uploads/` به‌خاطر `.gitignore` وارد گیت نمی‌شوند — عمدی است.
@@ -90,13 +90,13 @@ git clone https://github.com/firouzayazi-source/sthesab.git /var/www/hesab
 اول در حالت نمایشی، تا ببینید دقیقاً چه می‌خواهد بکند:
 
 ```bash
-bash deploy/vps-setup.sh --domain hesab.example.com
+bash deploy/vps-setup.sh --domain hesab.stland.ir
 ```
 
 خروجی را کامل بخوانید. هر خط خاکستری یعنی «این دستور اجرا می‌شود». وقتی راضی بودید:
 
 ```bash
-sudo bash deploy/vps-setup.sh --domain hesab.example.com --apply
+sudo bash deploy/vps-setup.sh --domain hesab.stland.ir --apply
 ```
 
 اسکریپت این‌ها را انجام می‌دهد: کاربر `hesab`، دسترسی فایل‌ها، pool اختصاصی PHP، سایت nginx، و `reload`. دیتابیس را عمداً خودش نمی‌سازد — دستورهایش را چاپ می‌کند تا خودتان با رمز دلخواه اجرا کنید.
@@ -104,25 +104,25 @@ sudo bash deploy/vps-setup.sh --domain hesab.example.com --apply
 ### دیتابیس
 
 ```bash
-sudo mysql -e "CREATE DATABASE IF NOT EXISTS \`hesab\` CHARACTER SET utf8mb4 COLLATE utf8mb4_persian_ci;"
-sudo mysql -e "CREATE USER IF NOT EXISTS 'hesab'@'localhost' IDENTIFIED BY 'یک-رمز-قوی';"
-sudo mysql -e "GRANT ALL PRIVILEGES ON \`hesab\`.* TO 'hesab'@'localhost';"
+sudo mysql -e "CREATE DATABASE IF NOT EXISTS \`hesab_db\` CHARACTER SET utf8mb4 COLLATE utf8mb4_persian_ci;"
+sudo mysql -e "CREATE USER IF NOT EXISTS 'hesab_user'@'localhost' IDENTIFIED BY 'یک-رمز-قوی';"
+sudo mysql -e "GRANT ALL PRIVILEGES ON \`hesab_db\`.* TO 'hesab_user'@'localhost';"
 sudo mysql -e "FLUSH PRIVILEGES;"
 ```
 
-`GRANT` روی `hesab.*` است و نه `*.*` — یعنی این کاربر حتی اگر لو برود، به دیتابیس ربات‌ها دسترسی ندارد.
+`GRANT` روی `hesab_db.*` است و نه `*.*` — یعنی این کاربر حتی اگر لو برود، به دیتابیس ربات‌ها دسترسی ندارد.
 
 ### تنظیمات
 
 ```bash
-sudo cp /var/www/hesab/config/config.example.php /var/www/hesab/config/config.php
-sudo nano /var/www/hesab/config/config.php
+sudo cp /opt/hesab/app/config/config.example.php /opt/hesab/app/config/config.php
+sudo nano /opt/hesab/app/config/config.php
 ```
 
 ```php
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'hesab');
-define('DB_USER', 'hesab');
+define('DB_NAME', 'hesab_db');
+define('DB_USER', 'hesab_user');
 define('DB_PASSWORD', 'همان رمز قوی');
 define('APP_BASE_PATH', '');        // روی ریشه‌ی دامنه است، پس خالی
 define('APP_FORCE_HTTPS', true);
@@ -130,8 +130,8 @@ define('APP_SECRET_KEY', '...');    // با openssl rand -hex 32 بسازید
 ```
 
 ```bash
-sudo chown hesab:hesab /var/www/hesab/config/config.php
-sudo chmod 640 /var/www/hesab/config/config.php
+sudo chown hesab:hesab /opt/hesab/app/config/config.php
+sudo chmod 640 /opt/hesab/app/config/config.php
 ```
 
 > **`DEPLOY_TOKEN` را روی VPS تعریف نکنید.** `deploy.php` (به‌روزرسان تحت وب) برای هاست اشتراکی بود. اینجا `deploy.sh` را دارید که امن‌تر است. بدون `DEPLOY_TOKEN`، فایل `deploy.php` خودش خطای ۵۰۰ می‌دهد و کاری نمی‌کند.
@@ -147,13 +147,13 @@ sudo chmod 640 /var/www/hesab/config/config.php
 از phpMyAdmin هاست فعلی: `Export` → فرمت `SQL` → کل دیتابیس. سپس روی سرور:
 
 ```bash
-mysql -u hesab -p hesab < backup.sql
+mysql -u hesab_user -p hesab_db < backup.sql
 ```
 
 بعد بررسی کنید همه‌چیز آمده:
 
 ```bash
-mysql -u hesab -p hesab -e "SELECT COUNT(*) AS tx FROM transactions; SELECT COUNT(*) AS users FROM users;"
+mysql -u hesab_user -p hesab_db -e "SELECT COUNT(*) AS tx FROM transactions; SELECT COUNT(*) AS users FROM users;"
 ```
 
 عدد تراکنش‌ها باید با چیزی که در هاست فعلی می‌بینید یکی باشد.
@@ -164,10 +164,10 @@ mysql -u hesab -p hesab -e "SELECT COUNT(*) AS tx FROM transactions; SELECT COUN
 از هاست دانلودش کنید (FTP یا File Manager → فشرده کنید و بگیرید)، بعد:
 
 ```bash
-sudo -u hesab mkdir -p /var/www/hesab/uploads/avatars
-sudo unzip uploads.zip -d /var/www/hesab/
-sudo chown -R hesab:hesab /var/www/hesab/uploads
-sudo chmod -R 755 /var/www/hesab/uploads
+sudo -u hesab mkdir -p /opt/hesab/app/uploads/avatars
+sudo unzip uploads.zip -d /opt/hesab/app/
+sudo chown -R hesab:hesab /opt/hesab/app/uploads
+sudo chmod -R 755 /opt/hesab/app/uploads
 ```
 
 ### ۴.۳ migration ها
@@ -176,26 +176,22 @@ sudo chmod -R 755 /var/www/hesab/uploads
 export شامل ساختار کامل است. اگر دیتابیس تازه می‌سازید:
 
 ```bash
-cd /var/www/hesab
-mysql -u hesab -p hesab < schema.sql
-for f in migration_p1.sql migration_p2.sql migration_p3.sql migration_p4.sql; do
-    echo "→ $f"; mysql -u hesab -p hesab < "$f"
-done
-for f in migration_wallets.sql migration_debts.sql migration_cheques_assets.sql \
-         migration_category_icons.sql migration_settings.sql migration_indexes.sql \
-         migration_repair.sql; do
-    echo "→ $f"; mysql -u hesab -p hesab < "$f"
-done
+cd /opt/hesab/app
+bash deploy/db-init.sh            # فقط ترتیب را نشان می‌دهد
+bash deploy/db-init.sh --apply    # اجرا
 ```
 
-> ترتیب مهم است: `p1 → p2 → p3 → p4` و بعد بقیه. جدول ردیابی migration وجود ندارد، پس ترتیب را خودتان رعایت کنید.
+ترتیب داخل اسکریپت ثبت شده و روی خطا متوقف می‌شود. دو نکته که در آن رعایت شده:
+
+- `migration_repair.sql` جایگزین کامل `migration_wallets.sql` و `migration_p1.sql` است؛ آن دو نباید اجرا شوند.
+- `migration_indexes.sql` باید بعد از `migration_cheques_assets.sql` بیاید (روی جدول `cheques` ایندکس می‌زند).
 
 ### ۴.۴ تست پیش از سوییچ DNS
 
 روی کامپیوتر خودتان (نه سرور) در فایل hosts یک خط اضافه کنید تا فقط برای خودتان دامنه به سرور جدید اشاره کند:
 
 ```
-IP_SERVER    hesab.example.com
+IP_SERVER    hesab.stland.ir
 ```
 
 سایت را باز کنید، وارد شوید، چند تراکنش و گزارش را چک کنید. وقتی مطمئن شدید، خط را بردارید و DNS واقعی را عوض کنید.
@@ -205,7 +201,7 @@ IP_SERVER    hesab.example.com
 بعد از اینکه DNS به سرور جدید اشاره کرد:
 
 ```bash
-sudo certbot --nginx -d hesab.example.com
+sudo certbot --nginx -d hesab.stland.ir
 ```
 
 certbot فقط سایت `hesab` را تغییر می‌دهد؛ به سایت‌های دیگر کاری ندارد.
@@ -225,7 +221,7 @@ git push
 **روی سرور:**
 
 ```bash
-cd /var/www/hesab && ./deploy.sh
+cd /opt/hesab/app && ./deploy.sh
 ```
 
 `deploy.sh` آخرین نسخه را می‌گیرد، دسترسی‌ها را درست می‌کند، pool مربوط به PHP را reload می‌کند و اگر migration جدیدی بود هشدار می‌دهد. `config/config.php` و `uploads/` را دست نمی‌زند.
