@@ -201,8 +201,10 @@ listen.owner = www-data
 listen.group = www-data
 listen.mode  = 0660
 
+; سرور ۳.۸ گیگ RAM دارد و postgres، docker و uvicorn هم رویش هستند.
+; ondemand یعنی تا وقتی کسی سایت را باز نکند، هیچ پروسه‌ای زنده نیست.
 pm = ondemand
-pm.max_children = 10
+pm.max_children = 5
 pm.process_idle_timeout = 30s
 pm.max_requests = 500
 
@@ -213,7 +215,7 @@ php_admin_value[upload_tmp_dir] = /tmp
 php_admin_value[disable_functions] = exec,passthru,shell_exec,system,proc_open,popen
 php_admin_value[upload_max_filesize] = 12M
 php_admin_value[post_max_size] = 14M
-php_admin_value[memory_limit] = 256M
+php_admin_value[memory_limit] = 192M
 php_admin_flag[expose_php] = off
 php_admin_value[date.timezone] = Asia/Tehran
 POOL
