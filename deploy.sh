@@ -15,7 +15,7 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/var/www/hesab}"
-WEB_USER="${WEB_USER:-www-data}"
+APP_USER="${APP_USER:-hesab}"   # کاربر اختصاصی این اپ — نه www-data، نه کاربر سرویس‌های دیگر
 
 green() { printf '\033[0;32m%s\033[0m\n' "$1"; }
 red()   { printf '\033[0;31m%s\033[0m\n' "$1"; }
@@ -67,8 +67,10 @@ HTACCESS
 
 # ---------- ۴. دسترسی‌ها ----------
 info "تنظیم دسترسی‌ها..."
-if id -u "$WEB_USER" >/dev/null 2>&1; then
-    chown -R "$WEB_USER":"$WEB_USER" uploads
+if id -u "$APP_USER" >/dev/null 2>&1; then
+    chown -R "$APP_USER":"$APP_USER" uploads
+else
+    red "کاربر $APP_USER وجود ندارد — اول deploy/vps-setup.sh را اجرا کنید."
 fi
 find . -type d -not -path './.git/*' -exec chmod 755 {} \;
 find . -type f -not -path './.git/*' -exec chmod 644 {} \;
@@ -79,9 +81,9 @@ chmod +x deploy.sh 2>/dev/null || true
 
 # ---------- ۵. پاک کردن کش PHP ----------
 if command -v systemctl >/dev/null 2>&1; then
-    for svc in php8.3-fpm php8.2-fpm php8.1-fpm php-fpm; do
+    for svc in php8.4-fpm php8.3-fpm php8.2-fpm php8.1-fpm php-fpm; do
         if systemctl list-units --type=service --all 2>/dev/null | grep -q "$svc"; then
-            systemctl reload "$svc" >/dev/null 2>&1 && info "کش $svc پاک شد." && break
+            systemctl reload "$svc" >/dev/null 2>&1 && info "کش $svc پاک شد (reload، نه restart)." && break
         fi
     done
 fi
