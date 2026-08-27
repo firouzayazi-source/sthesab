@@ -90,6 +90,60 @@ dig +short hesab.stland.ir
 
 ---
 
+## اتصال دائمی به مخزن خصوصی (Deploy Key)
+
+مخزن خصوصی است، پس سرور باید بتواند بدون پرسیدن رمز `git pull` بزند.
+
+**چرا Deploy Key و نه Personal Access Token:** کلید فقط به همین یک مخزن دسترسی دارد (نه به کل حساب گیت‌هاب و نه به مخزن ربات‌ها)، فقط‌خواندنی است، و منقضی نمی‌شود.
+
+### رعایت جداسازی
+
+`~/.ssh/config` و `~/.ssh/known_hosts` فایل‌های مشترک سرورند و سرویس‌های دیگر هم از آن‌ها استفاده می‌کنند، پس به هیچ‌کدام دست نمی‌زنیم:
+
+| چه چیزی | کجا |
+|---|---|
+| کلید خصوصی | `/root/.ssh/hesab_deploy` |
+| کلید میزبان گیت‌هاب | `/root/.ssh/hesab_known_hosts` |
+| تنظیم گیت | `core.sshCommand` داخل `.git/config` خودِ مخزن |
+
+چون تنظیم داخل `.git/config` خود پروژه می‌نشیند، `git pull` و `deploy.sh` بدون هیچ پرسشی کار می‌کنند و گیتِ بقیه‌ی سرویس‌ها اصلاً خبردار نمی‌شود.
+
+### مرحله ۱ — ساخت کلید
+
+```bash
+ssh-keygen -t ed25519 -N '' -C "hesab-deploy@$(hostname)" -f /root/.ssh/hesab_deploy
+ssh-keyscan -t rsa,ecdsa,ed25519 github.com > /root/.ssh/hesab_known_hosts
+cat /root/.ssh/hesab_deploy.pub
+```
+
+اثر انگشت کلید میزبان را با [فهرست رسمی گیت‌هاب](https://docs.github.com/authentication/keeping-your-account-secure/githubs-ssh-key-fingerprints) مقایسه کنید:
+
+```bash
+ssh-keygen -lf /root/.ssh/hesab_known_hosts
+```
+
+### مرحله ۲ — ثبت در گیت‌هاب
+
+خروجی `cat` را کامل کپی کنید و در `Settings → Deploy keys → Add deploy key` مخزن ثبت کنید.
+
+**تیک `Allow write access` را نزنید.** سرور فقط باید بخواند.
+
+### مرحله ۳ — کلون
+
+```bash
+export GIT_SSH_COMMAND="ssh -i /root/.ssh/hesab_deploy -o IdentitiesOnly=yes -o UserKnownHostsFile=/root/.ssh/hesab_known_hosts"
+git clone git@github.com:firouzayazi-source/sthesab.git /opt/hesab/app
+git -C /opt/hesab/app config core.sshCommand "$GIT_SSH_COMMAND"
+```
+
+خط آخر مهم است: بدون آن، `git pull` های بعدی کلید را پیدا نمی‌کنند.
+
+از این به بعد در `/opt/hesab/app` فقط `git pull` کافی است.
+
+اگر بعداً خواستید همین کار را دوباره انجام دهید (مثلاً سرور تازه)، اسکریپت `deploy/setup-deploy-key.sh` همه‌ی این مراحل را با هم انجام می‌دهد.
+
+---
+
 ## مرحله ۰ — گزارش وضعیت سرور (اجباری، فقط خواندنی)
 
 پیش از هر کاری:
@@ -122,18 +176,9 @@ sudo apt install -y nginx mariadb-server git \
 
 ## مرحله ۲ — مخزن
 
-روی گیت‌هاب مخزن **خصوصی** بسازید (داده‌ی مالی است). این پروژه از قبل در
-`firouzayazi-source/sthesab` هست.
-
-```bash
-sudo mkdir -p /opt/hesab/app
-sudo chown "$USER":"$USER" /opt/hesab/app
-git clone https://github.com/firouzayazi-source/sthesab.git /opt/hesab/app
-```
+بخش «اتصال دائمی به مخزن خصوصی» بالا را انجام دهید. نتیجه‌اش این است که کد در `/opt/hesab/app` نشسته و `git pull` بدون رمز کار می‌کند.
 
 > `config/config.php` و `uploads/` به‌خاطر `.gitignore` وارد گیت نمی‌شوند — عمدی است.
-
----
 
 ## مرحله ۳ — نصب
 
