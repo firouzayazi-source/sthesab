@@ -71,11 +71,11 @@ read -r -s -p "رمز کاربر $DB_USER: " DB_PASS; echo
 
 for f in "${FILES[@]}"; do
     printf '  → %-32s' "$f"
-    if err=$(mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$f" 2>&1); then
+    if err=$(mysql --default-character-set=utf8mb4 -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$f" 2>&1); then
         green "OK"
     else
         # migration_indexes ایدمپوتنت نیست: اجرای دوباره «ایندکس تکراری» می‌دهد
-        if grep -qi "Duplicate key name\|already exists" <<<"$err"; then
+        if grep -qiE "Duplicate key name|Duplicate column name|already exists" <<<"$err"; then
             info "از قبل اعمال شده — رد شد"
         else
             echo
@@ -90,4 +90,4 @@ done
 echo
 green "✅ ساختار دیتابیس کامل شد."
 info "بررسی:"
-mysql -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "SHOW TABLES;" 2>/dev/null | sed 's/^/    /'
+mysql --default-character-set=utf8mb4 -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "SHOW TABLES;" 2>/dev/null | sed 's/^/    /'

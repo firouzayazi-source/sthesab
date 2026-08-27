@@ -53,18 +53,24 @@ CREATE TABLE IF NOT EXISTS `transactions` (
         ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_persian_ci;
 
-INSERT INTO `categories` (`name`, `type`) VALUES
-('فروش گوشی', 'income'),
-('خدمات', 'income'),
-('فروش لوازم جانبی', 'income'),
-('سایر درآمدها', 'income'),
-('خرید کالا', 'expense'),
-('اجاره', 'expense'),
-('حقوق', 'expense'),
-('تبلیغات', 'expense'),
-('حمل‌ونقل', 'expense'),
-('قبوض', 'expense'),
-('سایر هزینه‌ها', 'expense');
+-- دسته‌بندی‌های پیش‌فرض — فقط وقتی جدول خالی است.
+-- بدون این شرط، اجرای دوباره‌ی schema.sql روی دیتابیسی که داده دارد
+-- (مثلاً بعد از ایمپورت بکاپ هاست) همه‌ی این‌ها را تکراری اضافه می‌کند.
+INSERT INTO `categories` (`name`, `type`)
+SELECT n, t FROM (
+    SELECT 'فروش گوشی' AS n, 'income' AS t
+    UNION ALL SELECT 'خدمات', 'income'
+    UNION ALL SELECT 'فروش لوازم جانبی', 'income'
+    UNION ALL SELECT 'سایر درآمدها', 'income'
+    UNION ALL SELECT 'خرید کالا', 'expense'
+    UNION ALL SELECT 'اجاره', 'expense'
+    UNION ALL SELECT 'حقوق', 'expense'
+    UNION ALL SELECT 'تبلیغات', 'expense'
+    UNION ALL SELECT 'حمل‌ونقل', 'expense'
+    UNION ALL SELECT 'قبوض', 'expense'
+    UNION ALL SELECT 'سایر هزینه‌ها', 'expense'
+) AS seed
+WHERE NOT EXISTS (SELECT 1 FROM `categories` LIMIT 1);
 
 CREATE TABLE IF NOT EXISTS `debts` (
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
