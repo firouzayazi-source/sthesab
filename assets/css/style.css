@@ -1,0 +1,1958 @@
+@charset "UTF-8";
+/* ============================================================
+   دفتر مالی — سیستم طراحی
+   جهت هنری: «دفتر فلز گران‌بها» — زغالی و طلایی، برگرفته از
+   خود آیکن اپ. مبلغ قهرمان صفحه است؛ بقیه چیزها آرام می‌مانند.
+   ============================================================ */
+
+/* ---------- فونت (محلی؛ اگر نبود، فونت سیستم) ---------- */
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('../fonts/Vazirmatn-Regular.woff2') format('woff2');
+    font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('../fonts/Vazirmatn-Medium.woff2') format('woff2');
+    font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('../fonts/Vazirmatn-Bold.woff2') format('woff2');
+    font-weight: 700; font-style: normal; font-display: swap;
+}
+
+/* ============================================================
+   ۱. توکن‌ها
+   ============================================================ */
+:root {
+    /* جوهر */
+    --ink:        #15171c;
+    --ink-soft:   #2a2e36;
+    --muted:      #6f7580;
+    --muted-2:    #9aa0ab;
+    --line:       #e6e7ea;
+    --line-soft:  #f0f1f3;
+    --surface:    #ffffff;
+    --paper:      #f5f5f3;
+
+    /* برند — این‌ها هرگز در حالت شب معکوس نمی‌شوند */
+    --brand:      #15171c;   /* سطح زغالی (کارت مانده، دکمه اصلی، چیپ فعال) */
+    --brand-on:   #ffffff;   /* متن روی سطح زغالی */
+
+    /* طلا — از آیکن خود اپ */
+    --gold:       #b8862f;
+    --gold-lift:  #d9a441;
+    --gold-wash:  #fbf3e2;
+
+    /* معنایی */
+    --in:         #16794f;
+    --in-wash:    #e8f6ef;
+    --out:        #c33c3c;
+    --out-wash:   #fdeded;
+    --warn-wash:  #fef4e2;
+    --warn-ink:   #94620d;
+
+    /* شکل */
+    --r-sm: 10px;
+    --r:    14px;
+    --r-lg: 18px;
+    --r-pill: 999px;
+
+    --sh:    0 1px 2px rgba(21,23,28,.05), 0 1px 8px rgba(21,23,28,.04);
+    --sh-lg: 0 8px 28px rgba(21,23,28,.12);
+
+    --sidebar-w: 250px;
+
+    /* سازگاری با نام‌های قدیمی که هنوز در قالب‌ها هستند */
+    --color-black: var(--ink);
+    --color-dark: var(--ink-soft);
+    --color-gray-900: var(--ink-soft);
+    --color-gray-700: #4d525c;
+    --color-gray-500: var(--muted);
+    --color-gray-300: var(--line);
+    --color-gray-100: var(--line-soft);
+    --color-white: var(--surface);
+    --color-accent: var(--gold);
+    --color-accent-dark: var(--gold);
+    --color-income: var(--in);
+    --color-income-bg: var(--in-wash);
+    --color-expense: var(--out);
+    --color-expense-bg: var(--out-wash);
+    --radius: var(--r);
+    --radius-sm: var(--r-sm);
+    --shadow-sm: var(--sh);
+    --shadow-md: var(--sh-lg);
+}
+
+/* ---------- حالت شب ---------- */
+html[data-theme="dark"] {
+    --ink:        #eceef1;
+    --ink-soft:   #cdd1d8;
+    --muted:      #8d939e;
+    --muted-2:    #6d737e;
+    --line:       #2b3037;
+    --line-soft:  #23272d;
+    --surface:    #191c21;
+    --paper:      #101216;
+
+    /* در حالت شب سطح برند کمی روشن‌تر از پس‌زمینه تا دیده شود */
+    --brand:      #23272e;
+    --brand-on:   #f3f4f6;
+
+    --gold:       #dcab52;
+    --gold-lift:  #eec777;
+    --gold-wash:  #2a2317;
+
+    --in:         #4ec98a;
+    --in-wash:    #16301f;
+    --out:        #f07070;
+    --out-wash:   #34191b;
+    --warn-wash:  #322715;
+    --warn-ink:   #e0b45f;
+
+    --sh:    none;
+    --sh-lg: 0 10px 30px rgba(0,0,0,.5);
+}
+
+/* ============================================================
+   ۲. پایه
+   ============================================================ */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+    font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', Tahoma, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 15px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    -webkit-text-size-adjust: 100%;
+}
+
+button, input, select, textarea { font-family: inherit; }
+button { cursor: pointer; }
+a { color: inherit; }
+
+/* هر عددی: هم‌عرض، تا ستون مبلغ‌ها تکان نخورد */
+.tx-row-amount, .mc-value, .stats-value, .debt-amount, .tx-day-total,
+.cat-breakdown-amount, .cat-detail-amount, .summary-box .value, .amount-cell {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+    direction: ltr;
+}
+
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+    * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* ============================================================
+   ۳. چیدمان
+   ============================================================ */
+.app-shell { display: flex; min-height: 100vh; }
+.main-content { flex: 1; min-width: 0; }
+
+.topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line-soft);
+}
+.page-title { font-size: 17px; font-weight: 700; letter-spacing: -.2px; flex: 1; }
+.topbar-user { display: flex; align-items: center; gap: 9px; }
+.user-name { font-size: 13px; color: var(--muted); }
+
+.user-role-badge {
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: var(--r-pill);
+}
+.badge-admin { background: var(--gold-wash); color: var(--gold); }
+.badge-user  { background: var(--line-soft); color: var(--muted); }
+
+.menu-toggle {
+    background: none; border: none; color: var(--ink);
+    display: none; padding: 4px; line-height: 0;
+}
+
+.page-content { padding: 16px; max-width: 720px; margin: 0 auto; }
+
+.theme-toggle {
+    background: none; border: none; padding: 7px;
+    color: var(--muted); border-radius: var(--r-sm); line-height: 0;
+}
+.theme-icon-sun { display: none; }
+html[data-theme="dark"] .theme-icon-moon { display: none; }
+html[data-theme="dark"] .theme-icon-sun  { display: block; }
+
+/* ============================================================
+   ۴. منوی کناری (فقط دسکتاپ)
+   ============================================================ */
+.sidebar {
+    width: var(--sidebar-w);
+    flex-shrink: 0;
+    background: #15171c;
+    color: #e9eaed;
+    display: flex;
+    flex-direction: column;
+    padding: 20px 12px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+}
+.sidebar-brand {
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 8px 20px;
+    font-weight: 700; font-size: 16px;
+}
+.brand-icon { font-size: 20px; }
+.sidebar-nav { list-style: none; flex: 1; }
+.sidebar-nav li { margin-bottom: 2px; }
+.sidebar-nav a {
+    display: flex; align-items: center; gap: 11px;
+    padding: 11px 12px;
+    border-radius: var(--r-sm);
+    color: #a9aeb8;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+}
+.sidebar-nav a:hover { background: rgba(255,255,255,.06); color: #fff; }
+.sidebar-nav a.active { background: var(--gold); color: #15171c; font-weight: 700; }
+.nav-divider {
+    font-size: 10.5px; color: #6a707a;
+    padding: 16px 12px 6px; letter-spacing: .4px;
+}
+.nav-badge {
+    background: var(--out); color: #fff;
+    font-size: 10.5px; font-weight: 700;
+    border-radius: var(--r-pill);
+    padding: 1px 7px; margin-inline-start: auto;
+}
+.sidebar-footer { padding-top: 12px; border-top: 1px solid rgba(255,255,255,.08); }
+.logout-link {
+    display: flex; align-items: center; gap: 11px;
+    padding: 11px 12px; color: #a9aeb8;
+    text-decoration: none; font-size: 14px;
+}
+.logout-link:hover { color: var(--out); }
+.sidebar-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.45); z-index: 150;
+}
+
+/* ============================================================
+   ۵. کارت
+   ============================================================ */
+.card {
+    background: var(--surface);
+    border-radius: var(--r-lg);
+    padding: 16px;
+    margin-bottom: 14px;
+    box-shadow: var(--sh);
+}
+html[data-theme="dark"] .card { border: 1px solid var(--line); }
+
+.card-title { font-size: 15px; font-weight: 700; margin-bottom: 14px; letter-spacing: -.2px; }
+.card-header-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.card-header-row .card-title { margin-bottom: 0; }
+.link-more { font-size: 12.5px; color: var(--gold); text-decoration: none; font-weight: 600; }
+
+/* ============================================================
+   ۶. عنصر امضا — نوار مانده (زغالی و طلایی، مثل آیکن اپ)
+   ============================================================ */
+.balance-ribbon {
+    background: var(--brand);
+    border-radius: var(--r-lg);
+    padding: 20px;
+    margin-bottom: 12px;
+}
+/* بدون تزئین اضافه. عدد طلایی روی زغالی، خودش امضای کارت است. */
+.balance-label {
+    font-size: 11.5px;
+    color: #8d939e;
+    letter-spacing: .4px;
+    margin-bottom: 7px;
+}
+/* عدد و واحد جدا نگه داشته می‌شوند تا در چیدمان راست‌به‌چپ به‌هم نریزند */
+.balance-value {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    flex-direction: row-reverse;   /* عدد سمت راست، واحد بلافاصله چپِ آن */
+    justify-content: flex-start;   /* در RTL یعنی چسبیده به راست */
+    margin-top: 2px;
+}
+.bv-num {
+    font-size: 30px;
+    font-weight: 700;
+    color: var(--gold-lift);
+    letter-spacing: -.5px;
+    line-height: 1.2;
+    direction: ltr;
+    font-variant-numeric: tabular-nums;
+}
+.bv-unit { font-size: 13px; color: #8d939e; }
+.balance-split {
+    display: flex;
+    gap: 22px;
+    margin-top: 15px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255,255,255,.10);
+}
+.balance-split div { flex: 1; }
+.balance-split .bs-label { font-size: 11px; color: #8d939e; margin-bottom: 3px; }
+.balance-split .bs-value {
+    font-size: 14.5px; font-weight: 700;
+    direction: ltr; text-align: left;
+    font-variant-numeric: tabular-nums;
+}
+.bs-in  { color: #4ec98a; }
+.bs-out { color: #f07070; }
+
+.money-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; margin-bottom: 14px; }
+
+.money-card {
+    border-radius: var(--r-lg);
+    padding: 17px 18px;
+    box-shadow: var(--sh);
+}
+.money-card .mc-label { font-size: 12px; margin-bottom: 6px; color: var(--muted); }
+.money-card .mc-value { font-size: 19px; font-weight: 700; text-align: left; }
+.money-card .mc-value small { font-size: 11px; font-weight: 400; opacity: .75; }
+
+/* دو کارت آرام: درآمد و هزینه */
+.money-card-income  { background: var(--in-wash); }
+.money-card-income .mc-value  { color: var(--in); }
+.money-card-expense { background: var(--out-wash); }
+.money-card-expense .mc-value { color: var(--out); }
+
+/* ============================================================
+   ۷. آمار
+   ============================================================ */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.stats-card {
+    background: var(--surface);
+    border-radius: var(--r-lg);
+    padding: 16px;
+    box-shadow: var(--sh);
+}
+html[data-theme="dark"] .stats-card { border: 1px solid var(--line); }
+.stats-card-title {
+    font-size: 11.5px; font-weight: 700; color: var(--muted);
+    margin-bottom: 10px; letter-spacing: .3px;
+}
+.stats-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 5px 0;
+}
+.stats-label { font-size: 13px; color: var(--muted); }
+.stats-value { font-size: 14px; font-weight: 700; }
+.stats-value small { font-size: 10.5px; font-weight: 400; color: var(--muted); }
+.stats-net-row { margin-top: 5px; padding-top: 9px; border-top: 1px dashed var(--line); }
+.stats-income { color: var(--in); }
+.stats-expense { color: var(--out); }
+.stats-net-positive { color: var(--in); }
+.stats-net-negative { color: var(--out); }
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 11px;
+    margin-bottom: 14px;
+}
+.summary-box {
+    background: var(--surface);
+    border-radius: var(--r);
+    padding: 13px;
+    box-shadow: var(--sh);
+}
+html[data-theme="dark"] .summary-box { border: 1px solid var(--line); }
+.summary-box .label { font-size: 11.5px; color: var(--muted); margin-bottom: 5px; }
+.summary-box .value { font-size: 15.5px; font-weight: 700; }
+
+/* ============================================================
+   ۸. فرم
+   ============================================================ */
+.form-group { margin-bottom: 13px; }
+.form-group label {
+    display: block; font-size: 12.5px; font-weight: 600;
+    color: var(--muted); margin-bottom: 6px;
+}
+.form-row { display: flex; gap: 11px; }
+.form-row .form-group { flex: 1; min-width: 0; }
+
+input[type="text"], input[type="password"], input[type="email"],
+input[type="number"], input[type="date"], input[type="color"],
+select, textarea {
+    width: 100%;
+    padding: 11px 13px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    color: var(--ink);
+    font-size: 14px;
+    transition: border-color .15s;
+}
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--gold);
+}
+input::placeholder, textarea::placeholder { color: var(--muted-2); }
+textarea { resize: vertical; }
+.req { color: var(--out); }
+
+.btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 7px;
+    padding: 11px 18px;
+    border: 1px solid transparent;
+    border-radius: var(--r-sm);
+    font-size: 14px; font-weight: 700;
+    text-decoration: none;
+    transition: opacity .15s, transform .1s;
+}
+.btn:active { transform: scale(.985); }
+.btn-primary { background: var(--brand); color: var(--brand-on); }
+.btn-secondary { background: var(--line-soft); color: var(--ink); border-color: var(--line); }
+.btn-block { width: 100%; }
+.btn-large { padding: 15px; font-size: 15px; border-radius: var(--r); }
+.btn-sm { padding: 8px 13px; font-size: 12.5px; }
+.btn:disabled { opacity: .55; }
+
+.delete-btn {
+    background: none; border: none;
+    color: var(--out); font-size: 12.5px; font-weight: 600;
+    padding: 8px 10px; border-radius: var(--r-sm);
+}
+.delete-btn:hover { background: var(--out-wash); }
+
+.form-message {
+    margin-top: 11px; padding: 10px 13px;
+    border-radius: var(--r-sm); font-size: 13px;
+}
+.form-message.success { background: var(--in-wash); color: var(--in); }
+.form-message.error   { background: var(--out-wash); color: var(--out); }
+
+.alert {
+    padding: 11px 14px; border-radius: var(--r-sm);
+    font-size: 13.5px; margin-bottom: 14px;
+}
+.alert-success { background: var(--in-wash); color: var(--in); }
+.alert-error   { background: var(--out-wash); color: var(--out); }
+.alert-info    { background: var(--warn-wash); color: var(--warn-ink); }
+
+/* ---------- تاگل درآمد/هزینه ---------- */
+.type-toggle {
+    display: flex; gap: 4px;
+    background: var(--line-soft);
+    border-radius: var(--r);
+    padding: 4px;
+    margin-bottom: 15px;
+}
+.type-btn {
+    flex: 1; padding: 11px;
+    border: none; background: transparent;
+    border-radius: var(--r-sm);
+    font-weight: 700; font-size: 14px;
+    color: var(--muted);
+    transition: background .15s, color .15s;
+}
+.type-btn.active.type-btn-income,
+.type-btn.active.type-btn-receivable { background: var(--in); color: #fff; }
+.type-btn.active.type-btn-expense,
+.type-btn.active.type-btn-payable   { background: var(--out); color: #fff; }
+
+/* ============================================================
+   ۹. ردیف تراکنش
+   ============================================================ */
+.tx-day-group { margin-bottom: 4px; }
+.tx-day-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 2px 6px;
+}
+.tx-day-date { font-size: 11.5px; font-weight: 700; color: var(--muted); letter-spacing: .2px; }
+.tx-day-total { font-size: 12.5px; font-weight: 700; }
+
+.tx-row { padding: 3px 0; }
+.tx-row-summary {
+    display: flex; align-items: center; gap: 11px;
+    min-height: 56px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.tx-row-summary:active { opacity: .65; }
+.tx-row-icon-wrap { display: flex; align-items: center; gap: 11px; flex: 1; min-width: 0; }
+.tx-row-texts { flex: 1; min-width: 0; }
+.tx-row-title {
+    display: block;
+    font-size: 14.5px; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tx-row-cat { display: block; font-size: 11.5px; color: var(--muted-2); margin-top: 1px; }
+.tx-row-amount { font-size: 15px; font-weight: 700; white-space: nowrap; letter-spacing: -.2px; }
+.tx-row-chevron { display: none; }
+.tx-row.expanded .tx-row-chevron { transform: rotate(180deg); }
+
+.tx-row-details {
+    display: none;
+    margin: 4px 0 10px;
+    padding: 11px 13px;
+    background: var(--line-soft);
+    border-radius: var(--r);
+    font-size: 13px;
+}
+.tx-row.expanded .tx-row-details { display: block; }
+.tx-row-details-line {
+    display: flex; justify-content: space-between; gap: 10px;
+    padding: 4px 0; color: var(--muted);
+}
+.tx-row-details-line span:last-child { color: var(--ink); font-weight: 500; text-align: left; }
+.tx-row-actions { display: flex; gap: 7px; margin-top: 10px; flex-wrap: wrap; }
+
+/* انضباط رنگ: رنگ فقط در سطرهای جمع‌بندی معنا دارد.
+   در تک‌تک ردیف‌ها، علامت + و − جهت پول را می‌گوید و آیکن رنگی دسته را. */
+.tx-row-amount.amount-income,
+.tx-row-amount.amount-expense { color: var(--ink); }
+.amount-income  { color: var(--in); }
+.amount-expense { color: var(--out); }
+.amount-cell { font-weight: 700; text-align: left; }
+
+/* آیکن دسته‌بندی */
+.cat-icon {
+    width: 40px; height: 40px;
+    border-radius: 12px;
+    display: inline-flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.cat-icon svg { display: block; }
+.cat-icon-sm { width: 28px; height: 28px; border-radius: 8px; }
+
+.type-tag {
+    display: inline-block;
+    font-size: 11px; font-weight: 700;
+    padding: 3px 9px; border-radius: var(--r-pill);
+}
+.type-tag-income  { background: var(--in-wash); color: var(--in); }
+.type-tag-expense { background: var(--out-wash); color: var(--out); }
+
+.status-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: var(--r-pill); }
+.status-active   { background: var(--in-wash); color: var(--in); }
+.status-inactive { background: var(--line-soft); color: var(--muted); }
+.debt-badge-overdue { background: var(--out-wash); color: var(--out); }
+.debt-badge-pending { background: var(--warn-wash); color: var(--warn-ink); }
+
+.empty-row {
+    text-align: center; color: var(--muted-2);
+    padding: 28px 12px; font-size: 13.5px;
+}
+
+/* ============================================================
+   ۱۰. فیلترها
+   ============================================================ */
+/* یک نوار افقی که کشیده می‌شود — به‌جای شکستن به چند ردیف و بلعیدن صفحه */
+.filter-bar {
+    display: flex;
+    gap: 7px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: 0 -14px 9px;
+    padding: 0 14px 2px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+}
+.filter-bar::-webkit-scrollbar { display: none; }
+.filter-chip {
+    padding: 8px 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-pill);
+    background: var(--surface);
+    font-size: 12.5px; font-weight: 600;
+    color: var(--muted);
+    cursor: pointer; text-decoration: none;
+    white-space: nowrap;
+}
+.filter-chip.active { background: var(--brand); color: var(--brand-on); border-color: var(--brand); }
+.filter-search { flex: 1; min-width: 150px; }
+.report-form { display: flex; gap: 11px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
+.report-form .form-group { flex: 1; min-width: 130px; margin-bottom: 0; }
+
+.chart-range-tabs { display: flex; gap: 7px; margin: 4px 0 15px; }
+.chart-range-tab {
+    flex: 1; padding: 9px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    border-radius: var(--r-sm);
+    font-size: 13px; font-weight: 600; color: var(--muted);
+}
+.chart-range-tab.active { background: var(--brand); color: var(--brand-on); border-color: var(--brand); }
+
+.chart-container { position: relative; height: 270px; margin: 0 auto; }
+
+/* ============================================================
+   ۱۱. جدول (فقط صفحات مدیریت)
+   ============================================================ */
+/* روی موبایل جدول‌ها کارتی می‌شوند، پس اسکرول افقی لازم نیست.
+   نبودِ ظرف اسکرول، اسکرول عمودی صفحه را محسوس روان‌تر می‌کند. */
+.table-wrapper { }
+.data-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.data-table th {
+    text-align: right; padding: 10px;
+    background: var(--line-soft);
+    color: var(--muted);
+    font-size: 12px; font-weight: 700;
+    white-space: nowrap;
+}
+.data-table th:first-child { border-radius: 0 var(--r-sm) var(--r-sm) 0; }
+.data-table th:last-child  { border-radius: var(--r-sm) 0 0 var(--r-sm); }
+.data-table td { padding: 11px 10px; border-bottom: 1px solid var(--line-soft); }
+.data-table tr:last-child td { border-bottom: none; }
+
+/* ============================================================
+   ۱۲. مودال
+   ============================================================ */
+.modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(21,23,28,.5);
+    z-index: 300;
+    display: none;
+    align-items: center; justify-content: center;
+    padding: 16px;
+}
+.modal-overlay.show { display: flex; }
+.modal-box {
+    background: var(--surface);
+    border-radius: var(--r-lg);
+    padding: 18px;
+    width: 100%; max-width: 430px;
+    max-height: 88vh; overflow-y: auto;
+    box-shadow: var(--sh-lg);
+}
+.modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 15px;
+}
+.modal-header h3 { font-size: 16px; font-weight: 700; }
+.modal-close {
+    background: none; border: none;
+    font-size: 25px; line-height: 1;
+    color: var(--muted); padding: 0 4px;
+}
+.modal-actions { display: flex; gap: 9px; margin-top: 17px; }
+.modal-actions .btn { flex: 1; }
+
+/* ============================================================
+   ۱۳. ناوبری پایین (موبایل)
+   ============================================================ */
+.bottom-nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    height: 60px;
+    background: var(--surface);
+    border-top: 1px solid var(--line);
+    display: flex; align-items: center;
+    z-index: 200;
+    padding-bottom: env(safe-area-inset-bottom);
+}
+.bottom-nav-item {
+    flex: 1;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 3px;
+    height: 100%;
+    background: none; border: none;
+    font-size: 10px; font-weight: 600;
+    color: var(--muted-2);
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.bottom-nav-item.active { color: var(--gold); }
+.bottom-nav-item:active { opacity: .6; }
+.bottom-nav-center {
+    flex: 1; display: flex;
+    align-items: center; justify-content: center;
+    height: 100%; text-decoration: none;
+    background: none;          /* بدون این، مرورگر مربع خاکستری دکمه را می‌کشد */
+    border: none;
+    padding: 0;
+    -webkit-appearance: none;
+    appearance: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.bottom-nav-fab {
+    width: 50px; height: 50px;
+    border-radius: 50%;
+    background: var(--brand);
+    color: var(--gold-lift);
+    display: flex; align-items: center; justify-content: center;
+    margin-top: -20px;
+    border: 4px solid var(--surface);
+    box-shadow: 0 4px 14px rgba(21,23,28,.28);
+}
+.bottom-nav-center:active .bottom-nav-fab { transform: scale(.93); }
+
+/* ---------- شیت ثبت تراکنش ---------- */
+.sheet-overlay {
+    position: fixed; inset: 0;
+    background: rgba(21,23,28,.45);
+    z-index: 260;
+    display: none;
+    align-items: flex-end;
+}
+.sheet-overlay.show { display: flex; }
+.sheet {
+    background: var(--surface);
+    width: 100%;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    padding: 9px 16px calc(20px + env(safe-area-inset-bottom));
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: sheetUp .2s ease-out;
+}
+.sheet-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+}
+/* مبلغ، قهرمانِ فرم ثبت است */
+.amount-input {
+    font-size: 24px !important;
+    font-weight: 700;
+    letter-spacing: -.4px;
+    text-align: center;
+    padding: 14px 13px !important;
+    font-variant-numeric: tabular-nums;
+}
+@media (min-width: 901px) {
+    .sheet-overlay { align-items: center; padding: 20px; }
+    .sheet { max-width: 430px; border-radius: var(--r-lg); }
+}
+
+/* ---------- شیت ابزارها ---------- */
+.more-sheet-overlay {
+    position: fixed; inset: 0;
+    background: rgba(21,23,28,.45);
+    z-index: 250; display: none; align-items: flex-end;
+}
+.more-sheet-overlay.show { display: flex; }
+.more-sheet {
+    background: var(--surface);
+    width: 100%;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    padding: 9px 16px calc(22px + env(safe-area-inset-bottom));
+    max-height: 82vh; overflow-y: auto;
+    animation: sheetUp .2s ease-out;
+}
+@keyframes sheetUp { from { transform: translateY(18px); opacity: 0; } to { transform: none; opacity: 1; } }
+.more-sheet-handle {
+    width: 38px; height: 4px;
+    background: var(--line);
+    border-radius: 3px; margin: 4px auto 14px;
+}
+.more-sheet-title { font-size: 14px; font-weight: 700; margin-bottom: 13px; }
+
+.tools-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.tool-card {
+    display: flex; flex-direction: column;
+    align-items: flex-start; justify-content: space-between;
+    gap: 13px; min-height: 88px;
+    padding: 14px;
+    border-radius: var(--r);
+    background: var(--line-soft);
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 13px; font-weight: 700;
+}
+.tool-card svg { color: var(--tc1, var(--gold)); }
+.tool-card:active { transform: scale(.975); }
+
+/* ============================================================
+   ۱۴. طلب و بدهی / چک
+   ============================================================ */
+.debt-card {
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    padding: 14px;
+    margin-bottom: 11px;
+}
+.debt-card-main { display: flex; align-items: flex-start; gap: 11px; }
+.debt-check { flex-shrink: 0; cursor: pointer; padding-top: 2px; }
+.debt-check input { display: none; }
+.debt-check-mark {
+    display: block; width: 25px; height: 25px;
+    border-radius: 50%;
+    border: 2px solid var(--line);
+    background: var(--surface);
+    position: relative;
+}
+.debt-check input:checked + .debt-check-mark { background: var(--in); border-color: var(--in); }
+.debt-check input:checked + .debt-check-mark::after {
+    content: ''; position: absolute;
+    top: 50%; left: 50%;
+    width: 6px; height: 11px;
+    border: solid #fff; border-width: 0 2px 2px 0;
+    transform: translate(-50%,-60%) rotate(45deg);
+}
+.debt-info { flex: 1; min-width: 0; }
+.debt-name { font-weight: 700; font-size: 14.5px; margin-bottom: 3px; }
+.debt-dates { font-size: 11.5px; color: var(--muted); }
+.debt-note { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.debt-amount { font-weight: 700; font-size: 14.5px; white-space: nowrap; }
+.debt-amount small { font-size: 10.5px; font-weight: 400; color: var(--muted); }
+.debt-card-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 9px; flex-wrap: wrap;
+    margin-top: 12px; padding-top: 11px;
+    border-top: 1px dashed var(--line);
+}
+.debt-actions { display: flex; gap: 7px; }
+.debt-overdue { border-color: var(--out); }
+.debt-settled { opacity: .58; }
+.debt-settled .debt-name { text-decoration: line-through; }
+.debt-search-bar input { width: 100%; }
+
+/* ============================================================
+   ۱۵. گزارش دسته‌بندی
+   ============================================================ */
+.category-breakdown-list { display: flex; flex-direction: column; gap: 15px; }
+.cat-breakdown-summary { display: flex; align-items: center; gap: 9px; }
+.cat-breakdown-summary.js-cat-toggle { cursor: pointer; }
+.cat-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.cat-breakdown-name {
+    flex: 1; font-size: 13.5px; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cat-breakdown-pct { font-size: 11.5px; color: var(--muted); flex-shrink: 0; }
+.cat-breakdown-amount { font-size: 13.5px; font-weight: 700; white-space: nowrap; flex-shrink: 0; }
+.cat-breakdown-bar-track {
+    height: 5px; background: var(--line-soft);
+    border-radius: 3px; overflow: hidden; margin-top: 7px;
+}
+.cat-breakdown-bar { height: 100%; border-radius: 3px; }
+.cat-breakdown-detail {
+    margin-top: 10px; padding: 10px 12px;
+    background: var(--line-soft); border-radius: var(--r-sm);
+}
+.cat-detail-row { display: flex; align-items: center; gap: 9px; padding: 6px 0; font-size: 12.5px; }
+.cat-detail-row + .cat-detail-row { border-top: 1px solid var(--line); }
+.cat-detail-date { color: var(--muted); flex-shrink: 0; }
+.cat-detail-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-detail-amount { font-weight: 700; flex-shrink: 0; }
+.cat-detail-note { font-size: 11.5px; color: var(--muted); margin-top: -3px; padding-bottom: 5px; }
+
+/* ============================================================
+   ۱۶. لیست‌های مرجع (بانک‌ها / انواع دارایی)
+   ============================================================ */
+.ref-manager { margin-bottom: 20px; }
+.ref-manager:last-child { margin-bottom: 0; }
+.ref-manager-title { font-size: 13px; font-weight: 700; margin-bottom: 9px; color: var(--muted); }
+.ref-add-row { display: flex; gap: 7px; margin-bottom: 11px; flex-wrap: wrap; }
+.ref-add-row input { flex: 1; min-width: 110px; }
+.ref-chip-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.ref-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--line-soft);
+    border: 1px solid var(--line);
+    border-radius: var(--r-pill);
+    padding: 5px 6px 5px 12px;
+    font-size: 12.5px;
+}
+.ref-chip-x {
+    background: none; border: none;
+    color: var(--muted); font-size: 16px; line-height: 1;
+    padding: 0 4px; border-radius: 50%;
+}
+.ref-chip-x:hover { color: var(--out); }
+.ref-empty { font-size: 12.5px; color: var(--muted-2); }
+
+/* ============================================================
+   ۱۷. کارت جمع‌شونده
+   ============================================================ */
+.collapsible-header {
+    display: flex; align-items: center; justify-content: space-between;
+    cursor: pointer; user-select: none;
+}
+.collapse-chevron { color: var(--muted-2); font-size: 12px; transition: transform .18s; }
+.collapsible-card.collapsed .collapse-chevron { transform: rotate(-90deg); }
+.collapsible-body { margin-top: 14px; }
+.collapsible-card.collapsed .collapsible-body { display: none; }
+
+/* ============================================================
+   ۱۸. تقویم شمسی
+   ============================================================ */
+.jdp-field { position: relative; cursor: pointer; }
+.jdp-display { cursor: pointer; padding-left: 34px !important; pointer-events: none; }
+.jdp-icon {
+    position: absolute; left: 11px; top: 50%;
+    transform: translateY(-50%);
+    font-size: 14px; opacity: .5; pointer-events: none;
+}
+.jdp-overlay {
+    position: fixed; inset: 0;
+    background: rgba(21,23,28,.5);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 400; padding: 16px;
+}
+.jdp-box {
+    background: var(--surface);
+    border-radius: var(--r-lg);
+    padding: 15px;
+    width: 100%; max-width: 320px;
+    box-shadow: var(--sh-lg);
+}
+.jdp-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px; }
+.jdp-nav {
+    background: var(--line-soft); border: none;
+    width: 33px; height: 33px; border-radius: 50%;
+    font-size: 17px; font-weight: 700; color: var(--ink);
+}
+.jdp-title { font-size: 14px; font-weight: 700; }
+.jdp-weekdays { display: grid; grid-template-columns: repeat(7,1fr); text-align: center; margin-bottom: 5px; }
+.jdp-weekdays span { font-size: 10.5px; color: var(--muted); font-weight: 600; padding: 4px 0; }
+.jdp-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 2px; }
+.jdp-day {
+    aspect-ratio: 1; min-height: 38px;
+    border: none; background: transparent;
+    border-radius: var(--r-sm);
+    font-size: 13px; color: var(--ink);
+}
+.jdp-day:hover { background: var(--line-soft); }
+.jdp-day-empty { pointer-events: none; }
+.jdp-today { border: 1px solid var(--gold); font-weight: 700; }
+.jdp-selected { background: var(--brand); color: var(--brand-on); font-weight: 700; }
+.jdp-footer { margin-top: 9px; text-align: center; }
+.jdp-today-btn {
+    background: none; border: none;
+    color: var(--gold); font-size: 12.5px; font-weight: 600; padding: 8px;
+}
+
+/* ============================================================
+   ۱۹. صفحات ورود
+   ============================================================ */
+.auth-body {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 20px;
+    background: var(--paper);
+}
+.auth-box {
+    background: var(--surface);
+    border-radius: var(--r-lg);
+    padding: 30px 24px;
+    width: 100%; max-width: 380px;
+    box-shadow: var(--sh-lg);
+}
+.auth-box-wide { max-width: 440px; }
+.auth-logo { text-align: center; margin-bottom: 22px; }
+.auth-logo .brand-icon { font-size: 34px; display: block; margin-bottom: 9px; }
+.auth-logo h1 { font-size: 21px; font-weight: 700; }
+.auth-subtitle { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+.auth-form { margin-top: 6px; }
+.link-back {
+    background: none; border: none;
+    color: var(--gold); font-size: 12.5px;
+    padding: 0 0 13px; display: block;
+    text-align: right; width: 100%; text-decoration: none;
+}
+
+/* ============================================================
+   ۲۰. واکنش‌گرایی
+   ============================================================ */
+@media (max-width: 900px) {
+    /* منوی کناری کنار می‌رود؛ ناوبری پایین جایگزین آن است */
+    .sidebar, .sidebar-overlay, .menu-toggle { display: none !important; }
+    .page-content { padding: 14px 14px 84px; }
+    .topbar { padding: 12px 14px; }
+
+    /* جلوگیری از زوم خودکار iOS: فونت ورودی حداقل ۱۶px */
+    input[type="text"], input[type="password"], input[type="email"],
+    input[type="number"], input[type="date"], select, textarea {
+        font-size: 16px; padding: 12px 13px;
+    }
+
+    .btn { min-height: 44px; }
+    .btn-sm { min-height: 36px; }
+    .stats-grid { grid-template-columns: 1fr; }
+    .report-form { flex-direction: column; align-items: stretch; }
+    .report-form .form-group { min-width: 0; }
+    .chart-container { height: 230px; }
+    .modal-box { max-width: 100%; }
+    .jdp-day { min-height: 42px; font-size: 14px; }
+
+    /* جدول‌های مدیریت روی موبایل کارتی می‌شوند */
+    .data-table, .data-table tbody, .data-table tr, .data-table td { display: block; width: 100%; }
+    .data-table thead { display: none; }
+    .data-table tr {
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        padding: 11px; margin-bottom: 10px;
+    }
+    .data-table td {
+        display: flex; justify-content: space-between; gap: 12px;
+        padding: 6px 0; border: none; text-align: left;
+    }
+    .data-table td::before {
+        content: attr(data-label);
+        font-weight: 600; color: var(--muted);
+        font-size: 12px; text-align: right;
+    }
+    .data-table td.empty-row { display: block; text-align: center; }
+    .data-table td.empty-row::before { content: none; }
+}
+
+@media (min-width: 901px) {
+    .bottom-nav, .more-sheet-overlay { display: none !important; }
+    /* روی دسکتاپ چسبندگی هزینه‌ای ندارد */
+    .topbar { position: sticky; top: 0; z-index: 100; }
+    .table-wrapper { overflow-x: auto; }
+}
+
+@media (max-width: 420px) {
+    .tools-grid { gap: 9px; }
+    .tool-card { min-height: 80px; font-size: 12.5px; }
+}
+
+/* ============================================================
+   ۲۱. پرداخت نهایی
+   ============================================================ */
+
+/* نوار مانده: عمق واقعی، نه سایه‌ی تخت */
+.balance-ribbon {
+    box-shadow: 0 10px 24px -12px rgba(21,23,28,.45);
+}
+
+/* ردیف تراکنش: خط جداکننده‌ی مویی بین ردیف‌ها، نه دور تا دور */
+.tx-row + .tx-row .tx-row-summary { border-top: 1px solid var(--line-soft); }
+.tx-day-group + .tx-day-group { margin-top: 2px; }
+
+/* سربرگ روز: خط کوچک قبل از تاریخ، مثل دفترهای حسابداری */
+.tx-day-date::before {
+    content: '';
+    display: inline-block;
+    width: 14px; height: 1px;
+    background: var(--line);
+    vertical-align: middle;
+    margin-left: 7px;
+}
+
+/* آیکن دسته: فقط زمینه‌ی کم‌رنگ. حلقه‌ی پررنگ ردیف را شبیه هشدار می‌کرد. */
+.cat-icon svg { opacity: .9; }
+
+/* دکمه‌ی اصلی: بازخورد لمسی محسوس */
+.btn-primary:active { opacity: .88; }
+
+/* دکمه‌ی شناور: حلقه‌ی طلایی نازک، امضای برند */
+.bottom-nav-fab { box-shadow: 0 0 0 1px rgba(217,164,65,.35), 0 6px 16px -6px rgba(21,23,28,.55); }
+
+/* ناوبری پایین: تاکید فعال با یک نقطه، نه فقط رنگ */
+.bottom-nav-item { position: relative; }
+.bottom-nav-item.active::before {
+    content: '';
+    position: absolute;
+    top: 7px;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: var(--gold);
+}
+
+/* تراز اعداد در سطرهای جمع‌بندی */
+.tx-day-total, .bs-value { letter-spacing: -.2px; }
+
+/* حالت شب: کارت‌ها با کنتراست ملایم‌تر از هم جدا شوند */
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .stats-card,
+html[data-theme="dark"] .summary-box { background: #1b1e24; }
+html[data-theme="dark"] .balance-ribbon { box-shadow: none; }
+
+/* اسکرول روان‌تر و بدون کشسانی مزاحم داخل شیت‌ها */
+.sheet, .more-sheet { overscroll-behavior: contain; }
+
+/* جلوگیری از پرش چیدمان وقتی نوار اسکرول ظاهر می‌شود */
+html { scrollbar-gutter: stable; }
+
+/* ============================================================
+   ۲۲. تنظیم ریتم و کنتراست
+   ============================================================ */
+
+/* مبلغ و عنوان به هم نزدیک‌تر؛ فاصله‌ی بی‌مورد وسط ردیف حذف شد */
+.tx-row-summary { gap: 12px; min-height: 58px; }
+.tx-row-amount { min-width: 0; }
+
+/* عنوان کمی درشت‌تر، نام دسته کم‌رنگ‌تر — سلسله‌مراتب روشن‌تر */
+.tx-row-title { font-size: 15px; }
+.tx-row-cat { font-size: 11px; opacity: .85; }
+
+/* حالت شب: کارت‌ها باید از پس‌زمینه جدا شوند */
+html[data-theme="dark"] {
+    --paper: #0d0f12;
+    --surface: #16191e;
+}
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .stats-card,
+html[data-theme="dark"] .summary-box { background: #16191e; border-color: #22262c; }
+html[data-theme="dark"] .balance-ribbon { background: #0a0b0d; }
+
+/* حالت روز: کارت مانده کمی نرم‌تر از سیاه مطلق */
+.balance-ribbon { background: #16181d; }
+
+/* نوار پایین: جدایی تمیزتر از محتوا */
+.bottom-nav { box-shadow: 0 -1px 0 var(--line); border-top: none; }
+
+/* لبه‌ی کارت‌ها در حالت روز: خط مویی به‌جای سایه‌ی پخش */
+.card, .stats-card, .summary-box {
+    box-shadow: 0 1px 2px rgba(21,23,28,.04);
+    border: 1px solid rgba(21,23,28,.06);
+}
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .stats-card,
+html[data-theme="dark"] .summary-box { box-shadow: none; }
+
+
+/* ============================================================
+   ۲۳. اصلاح ایرادهای دیده‌شده در تست واقعی
+   ============================================================ */
+
+/* دکمه + : در هر دو حالت طلایی — همیشه دیده می‌شود و امضای برند است */
+.bottom-nav-fab {
+    background: linear-gradient(160deg, var(--gold-lift), var(--gold));
+    color: #15171c;
+    border: none;
+    box-shadow: 0 0 0 4px var(--surface), 0 5px 14px -5px rgba(184,134,47,.6);
+}
+html[data-theme="dark"] .bottom-nav-fab {
+    box-shadow: 0 0 0 4px var(--surface);
+}
+
+/* عدد مانده کمی کوچک‌تر تا در عرض موبایل جا شود و «تومان» له نشود */
+.bv-num { font-size: 27px; }
+@media (max-width: 380px) { .bv-num { font-size: 23px; } }
+
+/* خط جداکننده‌ی داخل کارت مانده کم‌رنگ‌تر */
+.balance-split { border-top-color: rgba(255,255,255,.07); }
+
+
+/* ============================================================
+   ۲۴. فیلتر فشرده (نوع + جستجو در یک ردیف)
+   ============================================================ */
+.filter-row { display: flex; gap: 8px; align-items: stretch; }
+
+/* کنترل بخش‌بندی‌شده — سه حالت در یک قاب، کم‌جا و واضح */
+.seg {
+    display: flex;
+    background: var(--line-soft);
+    border-radius: var(--r-sm);
+    padding: 3px;
+    flex-shrink: 0;
+}
+.seg-item {
+    padding: 6px 11px;
+    border-radius: 7px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+}
+.seg-item.active { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgba(21,23,28,.08); }
+html[data-theme="dark"] .seg-item.active { background: #2b3037; color: var(--ink); box-shadow: none; }
+
+/* جستجو با آیکن داخل کادر — دکمه‌ی جداگانه لازم نیست، Enter کافی است */
+.search-inline {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--line-soft);
+    border-radius: var(--r-sm);
+    padding: 0 11px;
+}
+.search-inline svg { color: var(--muted-2); flex-shrink: 0; }
+.search-inline input {
+    border: none;
+    background: none;
+    padding: 9px 0;
+    font-size: 13.5px;
+    min-width: 0;
+}
+.search-inline input:focus { outline: none; }
+
+/* روی موبایل فیلتر نوع و جستجو زیر هم بهتر جا می‌شوند */
+@media (max-width: 400px) {
+    .filter-row { flex-direction: column; }
+    .seg { justify-content: space-between; }
+    .seg-item { flex: 1; text-align: center; }
+}
+
+/* ============================================================
+   ۲۵. حساب‌ها و انتقال
+   ============================================================ */
+.wallet-row {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 11px 0;
+}
+.wallet-row + .wallet-row { border-top: 1px solid var(--line-soft); }
+.wallet-off { opacity: .5; }
+
+.wallet-chip {
+    width: 40px; height: 40px;
+    border-radius: 12px;
+    display: inline-flex;
+    align-items: center; justify-content: center;
+    flex-shrink: 0;
+}
+.wallet-meta { flex: 1; min-width: 0; }
+.wallet-name {
+    font-size: 14.5px; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.wallet-sub { font-size: 11px; color: var(--muted-2); margin-top: 1px; }
+.wallet-bal {
+    font-size: 14.5px; font-weight: 700;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    direction: ltr;
+}
+.wallet-menu {
+    background: none; border: none;
+    color: var(--muted-2);
+    padding: 6px; border-radius: 8px;
+    flex-shrink: 0; line-height: 0;
+}
+.wallet-menu:active { background: var(--line-soft); }
+
+.transfer-row {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 11px 0;
+    flex-wrap: wrap;
+}
+.transfer-row + .transfer-row { border-top: 1px solid var(--line-soft); }
+.transfer-path {
+    display: flex; align-items: center; gap: 7px;
+    flex: 1; min-width: 140px;
+    font-size: 13.5px; font-weight: 600;
+}
+.transfer-path svg { color: var(--muted-2); flex-shrink: 0; }
+.tp-from, .tp-to { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.transfer-side { text-align: left; flex-shrink: 0; }
+.transfer-amount {
+    font-size: 14px; font-weight: 700;
+    font-variant-numeric: tabular-nums; direction: ltr;
+}
+.transfer-date { font-size: 11px; color: var(--muted-2); }
+.transfer-actions { display: flex; gap: 6px; }
+
+.inline-check {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; margin-bottom: 4px; cursor: pointer;
+}
+.inline-check input { width: auto; }
+
+.wallet-extra {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 9px; margin-top: 14px; padding-top: 13px;
+    border-top: 1px dashed var(--line);
+}
+
+.hint { font-size: 11.5px; color: var(--muted); line-height: 1.7; margin-top: 4px; }
+.ribbon-link {
+    display: inline-block;
+    margin-top: 13px;
+    font-size: 12px;
+    color: var(--gold-lift);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+/* ============================================================
+   ۲۶. بودجه‌بندی
+   ============================================================ */
+.budget-item { padding: 13px 0; }
+.budget-item + .budget-item { border-top: 1px solid var(--line-soft); }
+.budget-head { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.budget-meta { flex: 1; min-width: 0; }
+.budget-name { font-size: 14px; font-weight: 600; }
+.budget-period { font-size: 10.5px; color: var(--muted-2); }
+
+.budget-bar-track {
+    height: 7px;
+    background: var(--line-soft);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 7px;
+}
+.budget-bar { height: 100%; border-radius: 4px; transition: width .3s; }
+.budget-bar-good { background: var(--in); }
+.budget-bar-warn { background: #d97706; }
+.budget-bar-over { background: var(--out); }
+
+.budget-numbers { display: flex; align-items: baseline; justify-content: space-between; }
+.budget-spent { font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.budget-of { font-size: 11.5px; font-weight: 400; color: var(--muted-2); }
+.budget-pct { font-size: 12.5px; font-weight: 700; }
+.budget-pct-good { color: var(--in); }
+.budget-pct-warn { color: #d97706; }
+.budget-pct-over { color: var(--out); }
+.budget-note { font-size: 11px; color: var(--muted-2); margin-top: 4px; }
+.budget-note-over { color: var(--out); }
+
+/* ============================================================
+   ۲۷. اهداف پس‌انداز
+   ============================================================ */
+.goal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.goal-title { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.goal-done { font-size: 11px; font-weight: 600; color: var(--in); }
+.goal-date { font-size: 11.5px; color: var(--muted-2); margin-top: 2px; }
+.goal-actions { display: flex; gap: 7px; margin-top: 12px; flex-wrap: wrap; }
+.goal-history {
+    margin-top: 11px;
+    padding: 4px 12px;
+    background: var(--line-soft);
+    border-radius: var(--r-sm);
+}
+.debt-partial-note { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+
+/* ============================================================
+   ۲۸. تراکنش دوره‌ای
+   ============================================================ */
+.recur-row { display: flex; align-items: center; gap: 10px; padding: 12px 0; }
+.recur-row + .recur-row { border-top: 1px solid var(--line-soft); }
+.recur-info { flex: 1; min-width: 0; }
+.recur-title { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.recur-sub { font-size: 11px; color: var(--muted-2); margin-top: 2px; line-height: 1.6; }
+.recur-amount { font-size: 13.5px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; direction: ltr; }
+
+.recur-attention-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 11px 0; flex-wrap: wrap;
+}
+.recur-attention-row + .recur-attention-row { border-top: 1px solid var(--line-soft); }
+.recur-attention-title { font-size: 13.5px; font-weight: 600; }
+.recur-attention-sub { font-size: 11px; color: var(--muted-2); margin-top: 2px; }
+.recur-attention-actions { display: flex; gap: 7px; flex-wrap: wrap; }
+
+/* ============================================================
+   ۲۹. آینده مالی و تقویم
+   ============================================================ */
+.event-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 0; text-decoration: none; color: inherit;
+}
+.event-row + .event-row { border-top: 1px solid var(--line-soft); }
+.event-row:active { opacity: .6; }
+.event-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.event-dot-in { background: var(--in); }
+.event-dot-out { background: var(--out); }
+.event-body { flex: 1; min-width: 0; }
+.event-title {
+    display: block; font-size: 14px; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.event-meta { display: block; font-size: 11px; color: var(--muted-2); margin-top: 1px; }
+.event-amount {
+    font-size: 14px; font-weight: 700; white-space: nowrap;
+    font-variant-numeric: tabular-nums; direction: ltr;
+}
+.event-when {
+    font-size: 11px; font-weight: 700; flex-shrink: 0;
+    min-width: 62px;
+}
+.event-overdue { color: var(--out); }
+.event-daybreak {
+    font-size: 11.5px; font-weight: 700; color: var(--muted);
+    padding: 13px 0 4px;
+}
+.event-daybreak:first-child { padding-top: 2px; }
+
+/* ---------- تقویم ---------- */
+.cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.cal-nav {
+    background: var(--line-soft); border: none;
+    width: 34px; height: 34px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--ink); text-decoration: none; flex-shrink: 0;
+}
+.cal-title { font-size: 15px; font-weight: 700; text-align: center; }
+.cal-today-link {
+    display: block; font-size: 11px; font-weight: 500;
+    color: var(--gold); text-decoration: none; margin-top: 2px;
+}
+.cal-weekdays {
+    display: grid; grid-template-columns: repeat(7, 1fr);
+    text-align: center; margin-bottom: 5px;
+}
+.cal-weekdays span { font-size: 11px; color: var(--muted-2); font-weight: 700; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.cal-cell {
+    aspect-ratio: 1;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 3px;
+    border-radius: var(--r-sm);
+    font-size: 13px;
+    position: relative;
+}
+.cal-empty { visibility: hidden; }
+.cal-has { cursor: pointer; background: var(--line-soft); }
+.cal-has:active { opacity: .6; }
+.cal-today { box-shadow: inset 0 0 0 2px var(--gold); font-weight: 700; }
+.cal-selected { background: var(--brand); color: var(--brand-on); }
+.cal-num { line-height: 1; }
+.cal-dots { display: flex; gap: 2px; height: 5px; }
+.cal-dot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+.cal-dot-in { background: var(--in); }
+.cal-dot-out { background: var(--out); }
+.cal-dot-late { background: #d97706; }
+.cal-legend {
+    display: flex; gap: 14px; justify-content: center;
+    margin-top: 14px; font-size: 11px; color: var(--muted);
+    flex-wrap: wrap;
+}
+.cal-legend span { display: flex; align-items: center; gap: 5px; }
+.day-section-title {
+    font-size: 12.5px; font-weight: 700; color: var(--muted);
+    margin: 12px 0 6px;
+}
+.day-section-title:first-child { margin-top: 0; }
+
+/* ============================================================
+   ۳۰. جستجو و ورود اطلاعات
+   ============================================================ */
+.search-page-form { display: flex; gap: 8px; align-items: stretch; }
+
+.import-help { margin-top: 18px; padding-top: 15px; border-top: 1px dashed var(--line); }
+.map-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 11px;
+    margin-bottom: 14px;
+}
+.import-summary { margin: 16px 0 12px; }
+.import-errors {
+    background: var(--warn-wash); color: var(--warn-ink);
+    border-radius: var(--r-sm); padding: 10px 12px;
+    font-size: 12px; margin-bottom: 12px;
+}
+.import-errors summary { cursor: pointer; font-weight: 700; }
+.import-error-row { padding: 3px 0; }
+
+input[type="file"] {
+    width: 100%; padding: 11px;
+    border: 1px dashed var(--line);
+    border-radius: var(--r-sm);
+    background: var(--line-soft);
+    font-size: 13px;
+}
+
+/* ============================================================
+   ۳۱. پیوست رسید
+   ============================================================ */
+.attach-box {
+    margin-top: 10px; padding: 10px 12px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+}
+.attach-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 6px 0; font-size: 12.5px;
+}
+.attach-row + .attach-row { border-top: 1px solid var(--line-soft); }
+.attach-link {
+    color: var(--ink); text-decoration: none; flex: 1;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.attach-link small { color: var(--muted-2); font-weight: 400; }
+.attach-add {
+    display: block; text-align: center;
+    margin-top: 8px; padding: 9px;
+    border: 1px dashed var(--line);
+    border-radius: var(--r-sm);
+    font-size: 12px; color: var(--gold);
+    cursor: pointer;
+}
+.attach-add:active { opacity: .6; }
+
+/* ---------- گزارش مقایسه‌ای ---------- */
+.compare-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 0;
+}
+.compare-row + .compare-row { border-top: 1px solid var(--line-soft); }
+.compare-label { font-size: 12.5px; font-weight: 700; color: var(--muted); min-width: 42px; }
+.compare-bars { flex: 1; min-width: 0; }
+.compare-line { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; padding: 2px 0; }
+.compare-name { color: var(--muted-2); }
+.compare-val { font-weight: 700; font-variant-numeric: tabular-nums; direction: ltr; }
+.compare-delta { font-size: 12px; font-weight: 700; flex-shrink: 0; }
+.delta-up { color: var(--in); }
+.delta-down { color: var(--out); }
+.insight-block { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+
+/* ============================================================
+   ۳۲. حساب کاربری من
+   ============================================================ */
+.profile-head { display: flex; align-items: center; gap: 13px; }
+.profile-avatar {
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    background: var(--brand);
+    color: var(--gold-lift);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; font-weight: 700;
+    flex-shrink: 0;
+}
+.profile-name { font-size: 16px; font-weight: 700; }
+.profile-sub { font-size: 12px; color: var(--muted-2); margin-top: 2px; }
+
+.devices-block { margin-top: 20px; padding-top: 16px; border-top: 1px dashed var(--line); }
+.device-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 10px 0;
+}
+.device-row + .device-row { border-top: 1px solid var(--line-soft); }
+.device-info { flex: 1; min-width: 0; }
+.device-name { font-size: 13.5px; font-weight: 600; }
+.device-meta { font-size: 11px; color: var(--muted-2); margin-top: 1px; }
+
+/* ---------- صفحه‌بندی ---------- */
+.pager {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-top: 16px; padding-top: 14px;
+    border-top: 1px solid var(--line-soft);
+}
+.pager-btn {
+    padding: 9px 16px;
+    border-radius: var(--r-sm);
+    background: var(--line-soft);
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 13px; font-weight: 600;
+    white-space: nowrap;
+}
+.pager-btn:active { opacity: .6; }
+.pager-off { opacity: .35; }
+.pager-info { font-size: 12px; color: var(--muted); text-align: center; }
+.pager-info small { display: block; font-size: 11px; color: var(--muted-2); }
+
+/* ============================================================
+   ۳۳. تم Finmori
+   برگرفته از طرح Finmori (Zoey Do) — سرمه‌ای عمیق، آبی روشن،
+   کارت‌های سفید با خط مویی، و ناوبری شناور قرص‌شکل.
+   ============================================================ */
+:root {
+    --ink:        #1b2559;   /* سرمه‌ای عمیق — متن و عنوان */
+    --ink-soft:   #2a3563;
+    --muted:      #6e7ba0;   /* متن ثانویه */
+    --muted-2:    #9aa3c0;
+    --line:       #e8ebf5;
+    --line-soft:  #f2f4fa;
+    --surface:    #ffffff;
+    --paper:      #f6f7fb;
+
+    --brand:      #2a3563;   /* دکمه اصلی و منوی پایین */
+    --brand-on:   #ffffff;
+
+    /* آبی = تعامل (لینک، حالت فعال) */
+    --gold:       #2563eb;
+    --gold-lift:  #3b82f6;
+    --gold-wash:  #eaf1fe;
+
+    --in:         #16a34a;
+    --in-wash:    #e9f8ef;
+    --out:        #e5484d;
+    --out-wash:   #fdeeee;
+    --warn-wash:  #fef6e7;
+    --warn-ink:   #b45309;
+
+    --r-sm: 12px;
+    --r:    16px;
+    --r-lg: 20px;
+
+    --sh:    0 1px 2px rgba(27,37,89,.04);
+    --sh-lg: 0 12px 32px rgba(27,37,89,.16);
+}
+
+html[data-theme="dark"] {
+    --ink:        #eef1fa;
+    --ink-soft:   #d5dbec;
+    --muted:      #8e98bb;
+    --muted-2:    #6c7699;
+    --line:       #262c47;
+    --line-soft:  #1e2338;
+    --surface:    #161a2c;
+    --paper:      #0e101b;   /* رنگ رسمی برند Finmori */
+
+    --brand:      #232a47;
+    --brand-on:   #ffffff;
+
+    --gold:       #6f9bff;
+    --gold-lift:  #8db2ff;
+    --gold-wash:  #1b2540;
+
+    --in:         #3ddc84;
+    --in-wash:    #12301f;
+    --out:        #ff6b70;
+    --out-wash:   #331b1d;
+    --warn-wash:  #33280f;
+    --warn-ink:   #e5b45f;
+}
+
+/* ---------- کارت‌ها: خط مویی به‌جای سایه ---------- */
+.card, .stats-card, .summary-box {
+    border: 1px solid var(--line);
+    box-shadow: none;
+    border-radius: var(--r-lg);
+}
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .stats-card,
+html[data-theme="dark"] .summary-box { border-color: var(--line); }
+
+/* ---------- عنوان بخش‌ها: ریز، کم‌رنگ، با فاصله‌ی حروف ---------- */
+.tx-day-date, .day-section-title, .ref-manager-title, .stats-card-title {
+    text-transform: none;
+    letter-spacing: .6px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+}
+.tx-day-date::before { display: none; }
+
+/* ---------- کارت مانده: روشن با عدد سرمه‌ای ---------- */
+.balance-ribbon {
+    background: linear-gradient(160deg, #eef2ff 0%, #f7f9ff 45%, var(--surface) 100%);
+    border: 1px solid var(--line);
+    box-shadow: none;
+    padding: 22px 20px;
+}
+html[data-theme="dark"] .balance-ribbon {
+    background: linear-gradient(160deg, #1c2340 0%, #171b2e 60%, var(--surface) 100%);
+}
+.balance-label { color: var(--muted); font-weight: 600; }
+.bv-num { color: var(--ink); font-weight: 800; letter-spacing: -1px; }
+.bv-unit { color: var(--muted); }
+.balance-split { border-top-color: var(--line); }
+.balance-split .bs-label { color: var(--muted); }
+.bs-in  { color: var(--in); }
+.bs-out { color: var(--out); }
+.ribbon-link { color: var(--gold); }
+
+/* ---------- کارت‌های آماری: پس‌زمینه‌ی خیلی کم‌رنگ ---------- */
+.money-card { border: none; }
+.money-card-income  { background: var(--in-wash); }
+.money-card-expense { background: var(--out-wash); }
+.summary-box { background: var(--surface); }
+
+/* ---------- ناوبری پایین: شناور و قرص‌شکل ---------- */
+.bottom-nav {
+    left: 14px; right: 14px; bottom: 14px;
+    max-width: 460px;
+    margin: 0 auto;
+    height: 62px;
+    background: var(--brand);
+    border: none;
+    border-radius: var(--r-pill);
+    box-shadow: 0 10px 28px -8px rgba(27,37,89,.5);
+    padding-bottom: 0;
+    margin-bottom: env(safe-area-inset-bottom);
+}
+.bottom-nav-item { color: rgba(255,255,255,.55); font-size: 10px; }
+.bottom-nav-item.active { color: #fff; }
+.bottom-nav-item.active::before { display: none; }
+.bottom-nav-fab {
+    width: 46px; height: 46px;
+    margin-top: 0;
+    border: none;
+    background: linear-gradient(160deg, #dfe6ff, #b9c6ff);
+    color: var(--brand);
+    box-shadow: 0 4px 12px -3px rgba(27,37,89,.45);
+}
+html[data-theme="dark"] .bottom-nav-fab {
+    background: linear-gradient(160deg, #8db2ff, #6f9bff);
+    color: #0e101b;
+}
+.page-content { padding-bottom: 96px; }
+
+/* ---------- چیپ فیلتر: فعال = آبی کم‌رنگ ---------- */
+.filter-chip {
+    border-radius: var(--r-pill);
+    border-color: var(--line);
+    color: var(--muted);
+    background: var(--surface);
+}
+.filter-chip.active {
+    background: var(--gold-wash);
+    border-color: var(--gold);
+    color: var(--gold);
+}
+
+/* ---------- کنترل بخش‌بندی‌شده ---------- */
+.seg { background: var(--line-soft); border-radius: var(--r-sm); }
+.seg-item.active {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: 0 1px 3px rgba(27,37,89,.10);
+}
+html[data-theme="dark"] .seg-item.active { background: var(--brand); color: #fff; }
+
+/* ---------- دکمه‌ها ---------- */
+.btn { border-radius: var(--r-sm); }
+.btn-primary { background: var(--brand); color: #fff; }
+.btn-large { border-radius: var(--r); padding: 16px; }
+.btn-secondary { background: var(--line-soft); border-color: var(--line); color: var(--ink); }
+.link-more, .cal-today-link, .attach-add { color: var(--gold); }
+
+/* ---------- آیکن دسته: دایره‌ی سفید با حلقه‌ی نازک ---------- */
+.cat-icon {
+    border-radius: 50%;
+    background: var(--surface) !important;
+    box-shadow: inset 0 0 0 1px var(--line);
+}
+.cat-icon-sm { border-radius: 50%; }
+.wallet-chip { border-radius: 50%; }
+
+/* ---------- ردیف تراکنش ---------- */
+.tx-row-summary { min-height: 62px; }
+.tx-row-title { font-weight: 600; color: var(--ink); }
+.tx-row-cat { color: var(--muted-2); }
+.tx-row-amount { font-weight: 700; }
+.tx-row-amount.amount-income  { color: var(--in); }
+.tx-row-amount.amount-expense { color: var(--out); }
+.tx-row + .tx-row .tx-row-summary { border-top-color: var(--line-soft); }
+
+/* ---------- نوار پیشرفت: سبز روشن با دستگیره ---------- */
+.budget-bar-track { background: var(--line-soft); height: 8px; border-radius: var(--r-pill); }
+.budget-bar { border-radius: var(--r-pill); }
+.budget-bar-good { background: #3ddc84; }
+.budget-bar-warn { background: #f5a524; }
+.budget-bar-over { background: var(--out); }
+
+/* ---------- ورودی‌ها ---------- */
+input[type="text"], input[type="password"], input[type="email"],
+input[type="number"], input[type="date"], select, textarea {
+    border-radius: var(--r-sm);
+    border-color: var(--line);
+    background: var(--surface);
+}
+input:focus, select:focus, textarea:focus {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px var(--gold-wash);
+}
+.search-inline { background: var(--line-soft); border-radius: var(--r-sm); }
+
+/* مبلغ در فرم ثبت: بزرگ و سرمه‌ای، مثل Finmori */
+.amount-input {
+    color: var(--ink);
+    font-size: 30px !important;
+    letter-spacing: -1px;
+    border: none;
+    background: none;
+}
+.amount-input:focus { box-shadow: none; }
+
+/* ---------- نوار بالا و منوی کناری ---------- */
+.topbar { border-bottom-color: var(--line-soft); }
+.page-title { color: var(--ink); font-weight: 700; }
+.sidebar { background: var(--brand); }
+.sidebar-nav a.active { background: var(--gold); color: #fff; }
+.badge-admin { background: var(--gold-wash); color: var(--gold); }
+
+/* ---------- تقویم ---------- */
+.cal-cell { border-radius: 50%; }
+.cal-has { background: var(--line-soft); }
+.cal-today { box-shadow: inset 0 0 0 2px var(--gold); }
+.cal-selected { background: var(--brand); color: #fff; }
+.jdp-selected { background: var(--gold); color: #fff; }
+.jdp-today { border-color: var(--gold); }
+
+/* ---------- مودال و شیت ---------- */
+.modal-box, .sheet, .more-sheet { border-radius: var(--r-lg); }
+.sheet, .more-sheet { border-radius: var(--r-lg) var(--r-lg) 0 0; }
+.tool-card { border-radius: var(--r); }
+
+/* ---------- کارت‌های طلب/بدهی و چک ---------- */
+.debt-card { border-radius: var(--r); border-color: var(--line); }
+.debt-check-mark { border-color: var(--line); }
+.debt-check input:checked + .debt-check-mark { background: var(--in); border-color: var(--in); }
+
+/* ---------- صفحه‌بندی ---------- */
+.pager-btn { background: var(--line-soft); border-radius: var(--r-pill); }
+
+/* ---------- رفع سرریز فیلد جستجو ----------
+   قانون عمومی input عرض ۱۰۰٪ می‌دهد؛ داخل ظرف flex این یعنی
+   «۱۰۰٪ ظرف + فضای آیکن» و فیلد از کادر بیرون می‌زند. */
+.search-inline {
+    overflow: hidden;
+    min-height: 42px;
+}
+.search-inline input {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    max-width: 100%;
+}
+.search-page-form { align-items: stretch; flex-wrap: nowrap; }
+.search-page-form .btn { flex-shrink: 0; white-space: nowrap; }
+
+/* نوار جستجوی صفحه‌ی چک و طلب/بدهی هم همین مشکل را داشت */
+.debt-search-bar { display: flex; gap: 8px; align-items: stretch; }
+.debt-search-bar input { flex: 1 1 auto; width: auto; min-width: 0; }
+.debt-search-bar .btn { flex-shrink: 0; white-space: nowrap; }
+
+/* نوار فیلتر: چیپ‌ها نباید فشرده شوند */
+.filter-bar .filter-chip { flex-shrink: 0; }
+
+/* ============================================================
+   ۳۴. رنگ‌های زنده — گرادیان‌های Finmori
+   ============================================================ */
+
+/* ---------- کارت مانده: گرادیان بنفش عمیق، مثل کارت بانکی طرح ---------- */
+.balance-ribbon {
+    background: linear-gradient(135deg, #3b2f8f 0%, #4a3fb5 38%, #2f2a6b 100%);
+    border: none;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 14px 30px -14px rgba(58,44,150,.65);
+}
+/* حلقه‌های محو گوشه — همان بافت کارت بانکی طرح */
+.balance-ribbon::after {
+    content: '';
+    position: absolute;
+    top: -30px; left: -30px;
+    width: 190px; height: 190px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.07);
+    pointer-events: none;
+}
+.balance-ribbon::before {
+    content: '';
+    position: absolute;
+    top: 24px; left: 60px;
+    width: 120px; height: 120px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.05);
+    pointer-events: none;
+}
+.balance-ribbon > * { position: relative; z-index: 1; }
+.balance-label { color: rgba(255,255,255,.72); }
+.bv-num  { color: #fff; }
+.bv-unit { color: rgba(255,255,255,.65); }
+.balance-split { border-top-color: rgba(255,255,255,.16); }
+.balance-split .bs-label { color: rgba(255,255,255,.6); }
+.bs-in  { color: #6ee7a8; }
+.bs-out { color: #ff9b9e; }
+.ribbon-link { color: #c9c2ff; }
+.balance-ribbon .hint { color: rgba(255,255,255,.6) !important; }
+
+html[data-theme="dark"] .balance-ribbon {
+    background: linear-gradient(135deg, #2b2270 0%, #3a318f 40%, #1e1a4d 100%);
+}
+
+/* ---------- هدر گرادیانتی: صورتی → یاسی → سفید ---------- */
+.profile-head {
+    position: relative;
+    margin: -16px -16px 4px;
+    padding: 26px 16px 18px;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    background: linear-gradient(170deg, #ffd9e8 0%, #e3dcff 45%, var(--surface) 100%);
+}
+html[data-theme="dark"] .profile-head {
+    background: linear-gradient(170deg, #3a2140 0%, #262452 48%, var(--surface) 100%);
+}
+.profile-avatar {
+    background: linear-gradient(150deg, #6d5ce7, #3b2f8f);
+    color: #fff;
+    box-shadow: 0 6px 16px -6px rgba(61,47,143,.55);
+    border: 3px solid rgba(255,255,255,.75);
+}
+
+/* ---------- کارت هدف: نوار رنگین بالای کارت ---------- */
+.goal-card { position: relative; overflow: hidden; }
+.goal-card::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0; left: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #ff9ec4, #a78bfa, #60a5fa, #34d399);
+}
+
+/* ---------- کارت‌های ابزار: گرادیان زنده به‌جای خاکستری ---------- */
+.tool-card {
+    background: linear-gradient(150deg, var(--tc1, #6d5ce7), var(--tc2, #3b2f8f));
+    color: #fff;
+    border: none;
+}
+.tool-card svg { color: rgba(255,255,255,.95); }
+.tool-card:active { opacity: .9; }
+
+/* ---------- کارت‌های آماری: تیره‌تر و خواناتر روی زمینه‌ی کم‌رنگ ---------- */
+.money-card-income  { background: linear-gradient(140deg, #e6f9ee, #d8f5e6); }
+.money-card-expense { background: linear-gradient(140deg, #ffeced, #ffe1e3); }
+html[data-theme="dark"] .money-card-income  { background: linear-gradient(140deg, #13301f, #10281a); }
+html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg, #331b1d, #2a1618); }
+
+/* ---------- دکمه شناور +: گرادیان یاسی روشن ---------- */
+.bottom-nav-fab {
+    background: linear-gradient(150deg, #e9e4ff, #bcb2ff);
+    color: #33297a;
+}
+
+/* ---------- نوار پیشرفت بودجه و هدف ---------- */
+.budget-bar-good { background: linear-gradient(90deg, #34d399, #6ee7a8); }
+.budget-bar-warn { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.budget-bar-over { background: linear-gradient(90deg, #ef4444, #fb7185); }
+
+/* ---------- بنر یادآوری: زنده‌تر ---------- */
+.card[style*="--color-expense"], .card[style*="#d97706"] { border-width: 1px; }
+
+/* اعداد داخل کارت بنفش باید سفید باشند، نه سرمه‌ای */
+.balance-ribbon .bs-value { color: #fff; }
+.balance-ribbon .bs-value.bs-in  { color: #6ee7a8; }
+.balance-ribbon .bs-value.bs-out { color: #ff9b9e; }
+
+/* ============================================================
+   ۳۵. عکس پروفایل
+   ============================================================ */
+.profile-head { text-align: center; display: block; }
+.avatar-wrap {
+    position: relative;
+    width: 96px; height: 96px;
+    margin: 0 auto 12px;
+}
+.profile-avatar {
+    width: 96px; height: 96px;
+    border-radius: 50%;
+    font-size: 36px;
+    display: flex; align-items: center; justify-content: center;
+}
+.profile-avatar-img { object-fit: cover; display: block; }
+.avatar-camera {
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--gold);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    border: 3px solid var(--surface);
+    box-shadow: 0 2px 8px -2px rgba(27,37,89,.4);
+}
+.avatar-camera:active { opacity: .8; }
+.profile-name { font-size: 17px; font-weight: 700; }
+.profile-sub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+.profile-head .form-message { text-align: center; margin-top: 10px; }

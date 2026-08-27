@@ -1,0 +1,85 @@
+# ============================================================
+# nginx.conf.example — پیکربندی nginx برای دفتر مالی
+#
+# محل نصب: /etc/nginx/sites-available/hesab
+# سپس:     ln -s /etc/nginx/sites-available/hesab /etc/nginx/sites-enabled/
+#          nginx -t && systemctl reload nginx
+#
+# جای DOMAIN و مسیر PHP-FPM را با مقادیر خودتان عوض کنید.
+# ============================================================
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name hesab.example.com;
+
+    # هدایت به HTTPS — بعد از گرفتن گواهی certbot این را نگه دارید
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name hesab.example.com;
+
+    root /var/www/hesab;
+    index index.php;
+
+    # ---------- گواهی SSL ----------
+    # با این دستور ساخته می‌شود:  certbot --nginx -d hesab.example.com
+    ssl_certificate     /etc/letsencrypt/live/hesab.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/hesab.example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    # ---------- فشرده‌سازی ----------
+    # این همان چیزی است که روی هاست اشتراکی نداشتیم
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 512;
+    gzip_comp_level 5;
+    gzip_types
+        text/plain text/css text/javascript
+        application/javascript application/json
+        application/manifest+json image/svg+xml;
+
+    # ---------- امنیت ----------
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+
+    client_max_body_size 12M;   # برای آپلود رسید و عکس پروفایل
+
+    # ---------- فایل‌های ثابت: کش طولانی ----------
+    # آدرس آن‌ها شامل شماره نسخه است، پس کش طولانی امن است
+    location ~* \.(css|js|woff2?|png|jpe?g|webp|svg|ico)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+        try_files $uri =404;
+    }
+
+    # ---------- جلوگیری از اجرای کد در پوشه آپلود ----------
+    location ^~ /uploads/ {
+        location ~ \.php$ { deny all; }
+        expires 30d;
+        add_header Cache-Control "private";
+    }
+
+    # ---------- پنهان کردن فایل‌های حساس ----------
+    location ~ ^/(config|\.git)/ { deny all; return 404; }
+    location ~ /\.(?!well-known) { deny all; return 404; }
+    location ~ \.(sql|md|sh)$   { deny all; return 404; }
+
+    # ---------- PHP ----------
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        # نسخه‌ی PHP خود را بگذارید
+        fastcgi_pass unix:/run/php/php8.3-fpm.sock;
+        fastcgi_read_timeout 60;
+    }
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}

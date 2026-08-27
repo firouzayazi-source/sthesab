@@ -1,0 +1,44 @@
+# ============================================
+# تنظیمات سرعت — فشرده‌سازی و کش مرورگر
+# ============================================
+
+# ---------- فشرده‌سازی (gzip) ----------
+# فایل‌های CSS و JS تا حدود یک‌پنجم حجم اصلی کوچک می‌شوند
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css
+    AddOutputFilterByType DEFLATE application/javascript application/x-javascript text/javascript
+    AddOutputFilterByType DEFLATE application/json application/manifest+json
+    AddOutputFilterByType DEFLATE image/svg+xml
+</IfModule>
+
+# ---------- کش مرورگر ----------
+# چون آدرس فایل‌های CSS/JS شامل ?v=<زمان تغییر فایل> است،
+# کش طولانی امن است: به‌محض تغییر فایل، آدرس هم عوض می‌شود.
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/css                "access plus 1 year"
+    ExpiresByType application/javascript  "access plus 1 year"
+    ExpiresByType text/javascript         "access plus 1 year"
+    ExpiresByType image/png               "access plus 1 year"
+    ExpiresByType image/jpeg              "access plus 1 year"
+    ExpiresByType image/svg+xml           "access plus 1 year"
+    ExpiresByType font/woff2              "access plus 1 year"
+    ExpiresByType font/woff               "access plus 1 year"
+
+    # صفحات PHP هرگز کش نشوند (داده‌ها باید تازه باشند)
+    ExpiresByType text/html               "access plus 0 seconds"
+</IfModule>
+
+<IfModule mod_headers.c>
+    <FilesMatch "\.(css|js|png|jpg|jpeg|svg|woff2?)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+    <FilesMatch "\.php$">
+        Header set Cache-Control "no-store, no-cache, must-revalidate"
+    </FilesMatch>
+</IfModule>
+
+# ---------- محافظت از فایل تنظیمات ----------
+<FilesMatch "^config\.php$">
+    Require all denied
+</FilesMatch>

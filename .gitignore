@@ -1,0 +1,19 @@
+# تنظیمات محرمانه — هرگز داخل گیت نرود
+config/config.php
+
+# داده‌های کاربر
+uploads/
+
+# ابزارهای تشخیصی موقت
+diag.php
+diag2.php
+speedtest.php
+profile_page.php
+verify.php
+
+# فایل‌های سیستمی
+.DS_Store
+Thumbs.db
+*.log
+.deploy_tmp/
+.deploy_download.zip

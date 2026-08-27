@@ -1,0 +1,2097 @@
+document.addEventListener('DOMContentLoaded', function () {
+
+    // پایه‌ی آدرس API — تا فراخوانی‌ها از داخل پوشه admin/ هم درست کار کند
+    function apiUrl(name) {
+        var base = (typeof window.APP_BASE === 'string') ? window.APP_BASE : '';
+        return base + '/api/' + name;
+    }
+
+    // ---------- منوی موبایل ----------
+    var menuToggle = document.getElementById('menuToggle');
+    var sidebar = document.getElementById('sidebar');
+    var overlay = document.getElementById('sidebarOverlay');
+
+    if (menuToggle && sidebar && overlay) {
+        menuToggle.addEventListener('click', function () {
+            sidebar.classList.add('open');
+            overlay.classList.add('show');
+        });
+        overlay.addEventListener('click', function () {
+            sidebar.classList.remove('open');
+            overlay.classList.remove('show');
+        });
+    }
+
+    // ---------- فرمت‌کننده مبلغ (جداکننده سه‌رقمی هنگام تایپ) ----------
+    function toLatinDigitsJs(str) {
+        var persian = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+        for (var i = 0; i < 10; i++) {
+            str = str.replace(new RegExp(persian[i], 'g'), i);
+        }
+        return str;
+    }
+
+    function toPersianDigitsJs(str) {
+        var persian = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+        return String(str).replace(/[0-9]/g, function (d) { return persian[d]; });
+    }
+
+    function setupAmountFormatter(inputId) {
+        var input = document.getElementById(inputId);
+        if (!input) return;
+        input.addEventListener('input', function () {
+            var raw = this.value.replace(/[^\d۰-۹]/g, '');
+            raw = toLatinDigitsJs(raw);
+            if (raw === '') {
+                this.value = '';
+                return;
+            }
+            this.value = toPersianDigitsJs(Number(raw).toLocaleString('en-US').replace(/,/g, '\u066C'));
+        });
+    }
+
+    setupAmountFormatter('amount');
+    setupAmountFormatter('edit_amount');
+
+    // ---------- تاگل نوع تراکنش (درآمد/هزینه) — قابل استفاده مجدد برای چند فرم مستقل ----------
+    function populateCategorySelect(selectEl, type) {
+        if (!selectEl || !window.CATEGORY_DATA) return;
+        while (selectEl.options.length > 1) {
+            selectEl.remove(1);
+        }
+        var list = window.CATEGORY_DATA[type] || [];
+        list.forEach(function (cat) {
+            var opt = document.createElement('option');
+            opt.value = cat.id;
+            opt.textContent = cat.name;
+            selectEl.appendChild(opt);
+        });
+    }
+
+    function setupTypeToggle(toggleId, hiddenInputId, categorySelectId) {
+        var toggle = document.getElementById(toggleId);
+        if (!toggle) return null;
+
+        var buttons = toggle.querySelectorAll('.type-btn');
+        var hiddenInput = document.getElementById(hiddenInputId);
+        var categorySelect = categorySelectId ? document.getElementById(categorySelectId) : null;
+
+        function activate(btn, resetCategory) {
+            buttons.forEach(function (b) { b.classList.remove('active'); });
+            btn.classList.add('active');
+            var type = btn.getAttribute('data-type');
+            hiddenInput.value = type;
+
+            if (categorySelect && (type === 'income' || type === 'expense')) {
+                populateCategorySelect(categorySelect, type);
+                if (resetCategory) categorySelect.value = '';
+            }
+        }
+
+        buttons.forEach(function (btn) {
+            btn.addEventListener('click', function () { activate(this, true); });
+        });
+
+        var initialBtn = toggle.querySelector('.type-btn.active') || buttons[0];
+        if (initialBtn) activate(initialBtn, false);
+
+        return {
+            setType: function (type) {
+                var btn = toggle.querySelector('.type-btn[data-type="' + type + '"]');
+                if (btn) activate(btn, false);
+            }
+        };
+    }
+
+    var quickAddToggle = setupTypeToggle('typeToggle', 'transactionType', 'category_id');
+    var editToggle = setupTypeToggle('editTypeToggle', 'edit_transaction_type', 'edit_category_id');
+
+    // ---------- ارسال فرم ثبت سریع تراکنش (AJAX) ----------
+    var quickAddForm = document.getElementById('quickAddForm');
+    if (quickAddForm) {
+        quickAddForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            var submitBtn = document.getElementById('submitBtn');
+            var submitBtnText = document.getElementById('submitBtnText');
+            var formMessage = document.getElementById('formMessage');
+            var amountInput = document.getElementById('amount');
+
+            var formData = new FormData(quickAddForm);
+            var rawAmount = amountInput.value.replace(/[,\u066C]/g, '');
+            formData.set('amount', rawAmount);
+
+            submitBtn.disabled = true;
+            submitBtnText.textContent = 'در حال ثبت...';
+
+            fetch(apiUrl('add_transaction.php'), {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                formMessage.hidden = false;
+                formMessage.classList.remove('success', 'error');
+
+                if (data.success) {
+                    formMessage.classList.add('show', 'success');
+                    formMessage.textContent = data.message || 'تراکنش با موفقیت ثبت شد.';
+                    window.location.reload();
+                } else {
+                    formMessage.classList.add('show', 'error');
+                    formMessage.textContent = data.message || 'خطایی رخ داد. دوباره تلاش کنید.';
+                }
+            })
+            .catch(function () {
+                formMessage.hidden = false;
+                formMessage.classList.add('show', 'error');
+                formMessage.textContent = 'خطا در ارتباط با سرور. اتصال اینترنت را بررسی کنید.';
+            })
+            .finally(function () {
+                submitBtn.disabled = false;
+                submitBtnText.textContent = 'ثبت تراکنش';
+            });
+        });
+    }
+
+    // ---------- حذف تراکنش (AJAX) — در صفحه اصلی و صفحه تراکنش‌ها ----------
+    document.querySelectorAll('.js-delete-tx').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var txId = this.getAttribute('data-id');
+            var csrfToken = document.querySelector('meta[name="csrf-token"]')
+                ? document.querySelector('meta[name="csrf-token"]').content
+                : '';
+
+            if (!confirm('آیا از حذف این تراکنش مطمئن هستید؟ این عملیات قابل بازگشت نیست.')) {
+                return;
+            }
+
+            var row = this.closest('tr');
+            var formData = new FormData();
+            formData.append('transaction_id', txId);
+            formData.append('csrf_token', csrfToken);
+
+            fetch(apiUrl('delete_transaction.php'), {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    if (row) row.remove();
+                } else {
+                    alert(data.message || 'خطا در حذف تراکنش.');
+                }
+            })
+            .catch(function () {
+                alert('خطا در ارتباط با سرور.');
+            });
+        });
+    });
+
+    // ---------- ویرایش تراکنش: پیش‌پر کردن مودال ----------
+    var monthNamesFa = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
+
+    document.querySelectorAll('.js-edit-tx').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (!editToggle || !window.JalaliDatePicker) return;
+
+            var id = this.getAttribute('data-id');
+            var type = this.getAttribute('data-type');
+            var amount = this.getAttribute('data-amount');
+            var title = this.getAttribute('data-title');
+            var note = this.getAttribute('data-note');
+            var date = this.getAttribute('data-date');
+            var categoryId = this.getAttribute('data-category-id');
+
+            document.getElementById('edit_transaction_id').value = id;
+            document.getElementById('edit_amount').value = amount ? toPersianDigitsJs(Number(amount).toLocaleString('en-US').replace(/,/g, '\u066C')) : '';
+            document.getElementById('edit_title').value = title || '';
+            document.getElementById('edit_note').value = note || '';
+
+            editToggle.setType(type);
+            document.getElementById('edit_category_id').value = (categoryId && categoryId !== '0') ? categoryId : '';
+
+            var parts = date.split('-').map(Number);
+            var j = window.JalaliDatePicker.gregorianToJalali(parts[0], parts[1], parts[2]);
+            document.getElementById('edit_date_display').value =
+                window.JalaliDatePicker.toFa(j[2]) + ' ' + monthNamesFa[j[1] - 1] + ' ' + window.JalaliDatePicker.toFa(j[0]);
+            document.getElementById('edit_transaction_date').value = date;
+
+            var msgEl = document.getElementById('editTxMessage');
+            if (msgEl) { msgEl.hidden = true; msgEl.classList.remove('show', 'success', 'error'); }
+
+            openModal('editTxModal');
+        });
+    });
+
+    var editTxForm = document.getElementById('editTxForm');
+    if (editTxForm) {
+        editTxForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+
+            var submitBtn = document.getElementById('editTxSubmitBtn');
+            var msgEl = document.getElementById('editTxMessage');
+            var amountInput = document.getElementById('edit_amount');
+
+            var formData = new FormData(editTxForm);
+            var rawAmount = amountInput.value.replace(/[,\u066C]/g, '');
+            formData.set('amount', rawAmount);
+
+            submitBtn.disabled = true;
+
+            fetch(apiUrl('update_transaction.php'), {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                msgEl.hidden = false;
+                msgEl.classList.remove('success', 'error');
+                if (data.success) {
+                    msgEl.classList.add('show', 'success');
+                    msgEl.textContent = data.message || 'با موفقیت ذخیره شد.';
+                    window.location.reload();
+                } else {
+                    msgEl.classList.add('show', 'error');
+                    msgEl.textContent = data.message || 'خطایی رخ داد.';
+                }
+            })
+            .catch(function () {
+                msgEl.hidden = false;
+                msgEl.classList.add('show', 'error');
+                msgEl.textContent = 'خطا در ارتباط با سرور.';
+            })
+            .finally(function () {
+                submitBtn.disabled = false;
+            });
+        });
+    }
+
+    // ---------- افزودن طلب/بدهی ----------
+    setupAmountFormatter('add_debt_amount');
+    setupAmountFormatter('edit_debt_amount');
+
+    var addDebtToggle = setupTypeToggle('addDebtToggle', 'add_debt_direction', null);
+
+    function setJdpValue(displayId, hiddenId, gDateStr) {
+        if (!window.JalaliDatePicker || !gDateStr) return;
+        var parts = gDateStr.split('-').map(Number);
+        var j = window.JalaliDatePicker.gregorianToJalali(parts[0], parts[1], parts[2]);
+        function pad2(n) { return (n < 10 ? '0' : '') + n; }
+        document.getElementById(displayId).value =
+            window.JalaliDatePicker.toFa(j[0]) + '/' + window.JalaliDatePicker.toFa(pad2(j[1])) + '/' + window.JalaliDatePicker.toFa(pad2(j[2]));
+        document.getElementById(hiddenId).value = gDateStr;
+    }
+
+    document.querySelectorAll('.js-add-debt').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var direction = this.getAttribute('data-direction');
+            if (addDebtToggle) addDebtToggle.setType(direction);
+
+            document.getElementById('add_counterparty').value = '';
+            document.getElementById('add_debt_amount').value = '';
+            document.getElementById('add_debt_note').value = '';
+
+            var dueHidden = document.getElementById('add_due_date');
+            dueHidden.value = '';
+            dueHidden.closest('.jdp-field').querySelector('.jdp-display').value = '';
+
+            var msgEl = document.getElementById('addDebtMessage');
+            if (msgEl) { msgEl.hidden = true; msgEl.classList.remove('show', 'success', 'error'); }
+
+            openModal('addDebtModal');
+        });
+    });
+
+    var addDebtForm = document.getElementById('addDebtForm');
+    if (addDebtForm) {
+        addDebtForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var submitBtn = document.getElementById('addDebtSubmitBtn');
+            var msgEl = document.getElementById('addDebtMessage');
+            var amountInput = document.getElementById('add_debt_amount');
+
+            if (!document.getElementById('add_due_date').value) {
+                msgEl.hidden = false;
+                msgEl.classList.remove('success');
+                msgEl.classList.add('show', 'error');
+                msgEl.textContent = 'تاریخ سررسید را انتخاب کنید.';
+                return;
+            }
+
+            var formData = new FormData(addDebtForm);
+            formData.set('amount', amountInput.value.replace(/[,\u066C]/g, ''));
+
+            submitBtn.disabled = true;
+
+            fetch(apiUrl('add_debt.php'), {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                msgEl.hidden = false;
+                msgEl.classList.remove('success', 'error');
+                if (data.success) {
+                    msgEl.classList.add('show', 'success');
+                    msgEl.textContent = data.message || 'با موفقیت ثبت شد.';
+                    window.location.reload();
+                } else {
+                    msgEl.classList.add('show', 'error');
+                    msgEl.textContent = data.message || 'خطایی رخ داد.';
+                }
+            })
+            .catch(function () {
+                msgEl.hidden = false;
+                msgEl.classList.add('show', 'error');
+                msgEl.textContent = 'خطا در ارتباط با سرور.';
+            })
+            .finally(function () {
+                submitBtn.disabled = false;
+            });
+        });
+    }
+
+    // ---------- ویرایش طلب/بدهی ----------
+    document.querySelectorAll('.js-edit-debt').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('edit_debt_id').value = this.getAttribute('data-id');
+            document.getElementById('edit_counterparty').value = this.getAttribute('data-counterparty');
+            document.getElementById('edit_debt_amount').value = toPersianDigitsJs(Number(this.getAttribute('data-amount')).toLocaleString('en-US').replace(/,/g, '\u066C'));
+            document.getElementById('edit_debt_note').value = this.getAttribute('data-note') || '';
+
+            setJdpValue('edit_entry_date_display', 'edit_entry_date', this.getAttribute('data-entry-date'));
+            setJdpValue('edit_due_date_display', 'edit_due_date', this.getAttribute('data-due-date'));
+
+            var msgEl = document.getElementById('editDebtMessage');
+            if (msgEl) { msgEl.hidden = true; msgEl.classList.remove('show', 'success', 'error'); }
+
+            openModal('editDebtModal');
+        });
+    });
+
+    var editDebtForm = document.getElementById('editDebtForm');
+    if (editDebtForm) {
+        editDebtForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var submitBtn = document.getElementById('editDebtSubmitBtn');
+            var msgEl = document.getElementById('editDebtMessage');
+            var amountInput = document.getElementById('edit_debt_amount');
+
+            var formData = new FormData(editDebtForm);
+            formData.set('amount', amountInput.value.replace(/[,\u066C]/g, ''));
+
+            submitBtn.disabled = true;
+
+            fetch(apiUrl('update_debt.php'), {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                msgEl.hidden = false;
+                msgEl.classList.remove('success', 'error');
+                if (data.success) {
+                    msgEl.classList.add('show', 'success');
+                    msgEl.textContent = data.message || 'با موفقیت ذخیره شد.';
+                    window.location.reload();
+                } else {
+                    msgEl.classList.add('show', 'error');
+                    msgEl.textContent = data.message || 'خطایی رخ داد.';
+                }
+            })
+            .catch(function () {
+                msgEl.hidden = false;
+                msgEl.classList.add('show', 'error');
+                msgEl.textContent = 'خطا در ارتباط با سرور.';
+            })
+            .finally(function () {
+                submitBtn.disabled = false;
+            });
+        });
+    }
+
+    // ---------- تیک تسویه طلب/بدهی ----------
+    document.querySelectorAll('.js-toggle-debt').forEach(function (checkbox) {
+        checkbox.addEventListener('change', function () {
+            var debtId = this.getAttribute('data-id');
+            var csrfToken = document.querySelector('meta[name="csrf-token"]')
+                ? document.querySelector('meta[name="csrf-token"]').content
+                : '';
+            var checkboxEl = this;
+
+            var formData = new FormData();
+            formData.append('debt_id', debtId);
+            formData.append('csrf_token', csrfToken);
+
+            checkboxEl.disabled = true;
+
+            fetch(apiUrl('toggle_debt_settled.php'), {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    window.location.reload();
+                } else {
+                    alert(data.message || 'خطایی رخ داد.');
+                    checkboxEl.checked = !checkboxEl.checked;
+                    checkboxEl.disabled = false;
+                }
+            })
+            .catch(function () {
+                alert('خطا در ارتباط با سرور.');
+                checkboxEl.checked = !checkboxEl.checked;
+                checkboxEl.disabled = false;
+            });
+        });
+    });
+
+    // ---------- حذف طلب/بدهی ----------
+    document.querySelectorAll('.js-delete-debt').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var debtId = this.getAttribute('data-id');
+            var csrfToken = document.querySelector('meta[name="csrf-token"]')
+                ? document.querySelector('meta[name="csrf-token"]').content
+                : '';
+
+            if (!confirm('آیا از حذف این مورد مطمئن هستید؟')) return;
+
+            var card = this.closest('.debt-card');
+            var formData = new FormData();
+            formData.append('debt_id', debtId);
+            formData.append('csrf_token', csrfToken);
+
+            fetch(apiUrl('delete_debt.php'), {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data.success) {
+                    if (card) card.remove();
+                } else {
+                    alert(data.message || 'خطا در حذف.');
+                }
+            })
+            .catch(function () {
+                alert('خطا در ارتباط با سرور.');
+            });
+        });
+    });
+
+    // ---------- گزارش دسته‌بندی: نمایش تراکنش‌های هر دسته با کلیک ----------
+    document.querySelectorAll('.js-cat-toggle').forEach(function (el) {
+        el.addEventListener('click', function () {
+            var catId = this.getAttribute('data-cat-id');
+            var detailEl = document.getElementById('catDetail' + catId);
+            if (!detailEl) return;
+
+            if (!detailEl.hidden) {
+                detailEl.hidden = true;
+                return;
+            }
+
+            if (detailEl.dataset.loaded === '1') {
+                detailEl.hidden = false;
+                return;
+            }
+
+            var typeEl = document.getElementById('reportType');
+            var fromEl = document.getElementById('reportFromDate');
+            var toEl = document.getElementById('reportToDate');
+            if (!typeEl || !fromEl || !toEl) return;
+
+            detailEl.innerHTML = '<p style="text-align:center; color:var(--color-gray-500); padding:8px 0;">در حال بارگذاری...</p>';
+            detailEl.hidden = false;
+
+            var url = apiUrl('category_transactions.php') + '?category_id=' + encodeURIComponent(catId)
+                + '&type=' + encodeURIComponent(typeEl.value)
+                + '&from_date=' + encodeURIComponent(fromEl.value)
+                + '&to_date=' + encodeURIComponent(toEl.value);
+
+            fetch(url)
+                .then(function (res) { return res.text(); })
+                .then(function (html) {
+                    detailEl.innerHTML = html;
+                    detailEl.dataset.loaded = '1';
+                })
+                .catch(function () {
+                    detailEl.innerHTML = '<p style="text-align:center; color:var(--color-expense); padding:8px 0;">خطا در بارگذاری.</p>';
+                });
+        });
+    });
+
+    // ---------- شیت ثبت تراکنش (دکمه + در ناوبری پایین) ----------
+    var addTxBtn = document.getElementById('addTxBtn');
+    var addTxSheet = document.getElementById('addTxSheet');
+    if (addTxBtn && addTxSheet) {
+        addTxBtn.addEventListener('click', function () {
+            addTxSheet.classList.add('show');
+            var amt = document.getElementById('amount');
+            if (amt) setTimeout(function () { amt.focus(); }, 120);
+        });
+    }
+
+    // بستن شیت‌ها: کلیک روی پس‌زمینه، دکمه ضربدر، یا کلید Escape
+    document.querySelectorAll('.sheet-overlay, .more-sheet-overlay').forEach(function (ov) {
+        ov.addEventListener('click', function (e) {
+            if (e.target === ov) ov.classList.remove('show');
+        });
+    });
+    document.querySelectorAll('[data-sheet-close]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var ov = btn.closest('.sheet-overlay, .more-sheet-overlay');
+            if (ov) ov.classList.remove('show');
+        });
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        document.querySelectorAll('.sheet-overlay.show, .more-sheet-overlay.show').forEach(function (ov) {
+            ov.classList.remove('show');
+        });
+    });
+
+    // ---------- حساب‌ها و انتقال ----------
+    setupAmountFormatter('wallet_init');
+    setupAmountFormatter('transfer_amount');
+    setupAmountFormatter('transfer_fee');
+
+    var walletModal = document.getElementById('walletModal');
+
+    function walletKindFields() {
+        var kind = document.getElementById('wallet_kind');
+        var box  = document.getElementById('walletBankFields');
+        if (!kind || !box) return;
+        box.hidden = (kind.value === 'cash');
+    }
+    var kindSel = document.getElementById('wallet_kind');
+    if (kindSel) kindSel.addEventListener('change', walletKindFields);
+
+    document.querySelectorAll('.js-add-wallet').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('walletModalTitle').textContent = 'حساب جدید';
+            document.getElementById('wallet_id').value = '';
+            document.getElementById('wallet_name').value = '';
+            document.getElementById('wallet_kind').value = 'cash';
+            document.getElementById('wallet_bank').value = '';
+            document.getElementById('wallet_last4').value = '';
+            document.getElementById('wallet_init').value = '';
+            document.getElementById('wallet_color').value = '#16794f';
+            document.getElementById('wallet_init_neg').checked = false;
+            document.getElementById('walletExtraActions').hidden = true;
+            var m = document.getElementById('walletMessage');
+            if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
+            walletKindFields();
+            openModal('walletModal');
+        });
+    });
+
+    document.querySelectorAll('.js-edit-wallet').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('walletModalTitle').textContent = 'ویرایش حساب';
+            document.getElementById('wallet_id').value = this.getAttribute('data-id');
+            document.getElementById('wallet_name').value = this.getAttribute('data-name');
+            document.getElementById('wallet_kind').value = this.getAttribute('data-kind');
+            document.getElementById('wallet_bank').value = this.getAttribute('data-bank') || '';
+            document.getElementById('wallet_last4').value = this.getAttribute('data-last4') || '';
+            document.getElementById('wallet_color').value = this.getAttribute('data-color') || '#64748b';
+
+            var init = parseInt(this.getAttribute('data-init') || '0', 10);
+            document.getElementById('wallet_init').value = init ? toPersianDigitsJs(Math.abs(init).toLocaleString('en-US').replace(/,/g,'\u066C')) : '';
+            document.getElementById('wallet_init_neg').checked = init < 0;
+
+            var extra = document.getElementById('walletExtraActions');
+            extra.hidden = false;
+            var isActive = this.getAttribute('data-active') === '1';
+            var tgl = document.getElementById('walletToggleBtn');
+            tgl.textContent = isActive ? 'غیرفعال کردن' : 'فعال کردن';
+            tgl.setAttribute('data-id', this.getAttribute('data-id'));
+            document.getElementById('walletDeleteBtn').setAttribute('data-id', this.getAttribute('data-id'));
+
+            var m = document.getElementById('walletMessage');
+            if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
+            walletKindFields();
+            openModal('walletModal');
+        });
+    });
+
+    var walletForm = document.getElementById('walletForm');
+    if (walletForm) {
+        walletForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var fd = new FormData(walletForm);
+            fd.set('initial_balance', toLatinDigitsJs(document.getElementById('wallet_init').value).replace(/[,\u066C]/g, ''));
+            submitJson(walletForm, apiUrl('save_wallet.php'),
+                document.getElementById('walletMessage'),
+                document.getElementById('walletSubmitBtn'), null, fd);
+        });
+    }
+
+    var walletToggleBtn = document.getElementById('walletToggleBtn');
+    if (walletToggleBtn) {
+        walletToggleBtn.addEventListener('click', function () {
+            var fd = new FormData();
+            fd.append('wallet_id', this.getAttribute('data-id'));
+            fd.append('csrf_token', csrf());
+            fetch(apiUrl('toggle_wallet.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
+                .then(function(r){return r.json();})
+                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+        });
+    }
+
+    var walletDeleteBtn = document.getElementById('walletDeleteBtn');
+    if (walletDeleteBtn) {
+        walletDeleteBtn.addEventListener('click', function () {
+            if (!confirm('این حساب حذف شود؟')) return;
+            var fd = new FormData();
+            fd.append('wallet_id', this.getAttribute('data-id'));
+            fd.append('csrf_token', csrf());
+            fetch(apiUrl('delete_wallet.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
+                .then(function(r){return r.json();})
+                .then(function(d){
+                    if (d.success) { window.location.reload(); }
+                    else {
+                        var m = document.getElementById('walletMessage');
+                        m.hidden = false; m.classList.remove('success');
+                        m.classList.add('show','error');
+                        m.textContent = d.message || 'قابل حذف نیست.';
+                    }
+                })
+                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+        });
+    }
+
+    // ---------- انتقال ----------
+    document.querySelectorAll('.js-add-transfer').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('transferModalTitle').textContent = 'انتقال بین حساب‌ها';
+            document.getElementById('transfer_id').value = '';
+            document.getElementById('transfer_amount').value = '';
+            document.getElementById('transfer_fee').value = '';
+            document.getElementById('transfer_note').value = '';
+            var m = document.getElementById('transferMessage');
+            if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
+            openModal('transferModal');
+        });
+    });
+
+    document.querySelectorAll('.js-edit-transfer').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('transferModalTitle').textContent = 'ویرایش انتقال';
+            document.getElementById('transfer_id').value = this.getAttribute('data-id');
+            document.getElementById('transfer_from').value = this.getAttribute('data-from');
+            document.getElementById('transfer_to').value = this.getAttribute('data-to');
+            document.getElementById('transfer_amount').value =
+                toPersianDigitsJs(Number(this.getAttribute('data-amount')).toLocaleString('en-US').replace(/,/g,'\u066C'));
+            var fee = parseInt(this.getAttribute('data-fee') || '0', 10);
+            document.getElementById('transfer_fee').value = fee ? toPersianDigitsJs(fee.toLocaleString('en-US').replace(/,/g,'\u066C')) : '';
+            document.getElementById('transfer_note').value = this.getAttribute('data-note') || '';
+            setJdpValue('transfer_date_display', 'transfer_date', this.getAttribute('data-date'));
+            var m = document.getElementById('transferMessage');
+            if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
+            openModal('transferModal');
+        });
+    });
+
+    var transferForm = document.getElementById('transferForm');
+    if (transferForm) {
+        transferForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var from = document.getElementById('transfer_from').value;
+            var to   = document.getElementById('transfer_to').value;
+            var msg  = document.getElementById('transferMessage');
+            if (from === to) {
+                msg.hidden = false; msg.classList.remove('success');
+                msg.classList.add('show','error');
+                msg.textContent = 'حساب مبدأ و مقصد نمی‌توانند یکی باشند.';
+                return;
+            }
+            var fd = new FormData(transferForm);
+            fd.set('amount', toLatinDigitsJs(document.getElementById('transfer_amount').value).replace(/[,\u066C]/g, ''));
+            fd.set('fee',    toLatinDigitsJs(document.getElementById('transfer_fee').value).replace(/[,\u066C]/g, ''));
+            submitJson(transferForm, apiUrl('save_transfer.php'), msg,
+                document.getElementById('transferSubmitBtn'), null, fd);
+        });
+    }
+
+    document.querySelectorAll('.js-delete-transfer').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (!confirm('این انتقال حذف شود؟ موجودی هر دو حساب اصلاح می‌شود.')) return;
+            var fd = new FormData();
+            fd.append('transfer_id', this.getAttribute('data-id'));
+            fd.append('csrf_token', csrf());
+            fetch(apiUrl('delete_transfer.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
+                .then(function(r){return r.json();})
+                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+        });
+    });
+
+    // ---------- بودجه‌بندی ----------
+    setupAmountFormatter('budget_amount');
+
+    var budgetPeriodSel = document.getElementById('budget_period');
+    function budgetCustomToggle() {
+        var box = document.getElementById('budgetCustomDates');
+        if (box) box.hidden = (budgetPeriodSel.value !== 'custom');
+    }
+    if (budgetPeriodSel) budgetPeriodSel.addEventListener('change', budgetCustomToggle);
+
+    document.querySelectorAll('.js-add-budget').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('budgetModalTitle').textContent = 'بودجه جدید';
+            document.getElementById('budget_id').value = '';
+            document.getElementById('budget_category').selectedIndex = 0;
+            document.getElementById('budget_period').value = 'monthly';
+            document.getElementById('budget_amount').value = '';
+            document.getElementById('budgetExtraActions').hidden = true;
+            var m = document.getElementById('budgetMessage');
+            if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
+            budgetCustomToggle();
+            openModal('budgetModal');
+        });
+    });
+
+    document.querySelectorAll('.js-edit-budget').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('budgetModalTitle').textContent = 'ویرایش بودجه';
+            document.getElementById('budget_id').value = this.getAttribute('data-id');
+            document.getElementById('budget_category').value = this.getAttribute('data-category');
+            document.getElementById('budget_period').value = this.getAttribute('data-period');
+            document.getElementById('budget_amount').value =
+                toPersianDigitsJs(Number(this.getAttribute('data-amount')).toLocaleString('en-US').replace(/,/g,'\u066C'));
+
+            var start = this.getAttribute('data-start');
+            var end = this.getAttribute('data-end');
+            if (start) setJdpValue('budget_start_display', 'budget_start', start);
+            if (end) setJdpValue('budget_end_display', 'budget_end', end);
+
+            var extra = document.getElementById('budgetExtraActions');
+            extra.hidden = false;
+            var isActive = this.getAttribute('data-active') === '1';
+            var tgl = document.getElementById('budgetToggleBtn');
+            tgl.textContent = isActive ? 'غیرفعال کردن' : 'فعال کردن';
+            tgl.setAttribute('data-id', this.getAttribute('data-id'));
+            document.getElementById('budgetDeleteBtn').setAttribute('data-id', this.getAttribute('data-id'));
+
+            var m = document.getElementById('budgetMessage');
+            if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
+            budgetCustomToggle();
+            openModal('budgetModal');
+        });
+    });
+
+    var budgetForm = document.getElementById('budgetForm');
+    if (budgetForm) {
+        budgetForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var fd = new FormData(budgetForm);
+            fd.set('amount', toLatinDigitsJs(document.getElementById('budget_amount').value).replace(/[,\u066C]/g, ''));
+            submitJson(budgetForm, apiUrl('save_budget.php'),
+                document.getElementById('budgetMessage'),
+                document.getElementById('budgetSubmitBtn'), null, fd);
+        });
+    }
+
+    var budgetToggleBtn = document.getElementById('budgetToggleBtn');
+    if (budgetToggleBtn) {
+        budgetToggleBtn.addEventListener('click', function () {
+            var fd = new FormData();
+            fd.append('budget_id', this.getAttribute('data-id'));
+            fd.append('csrf_token', csrf());
+            fetch(apiUrl('toggle_budget.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
+                .then(function(r){return r.json();})
+                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+        });
+    }
+
+    var budgetDeleteBtn = document.getElementById('budgetDeleteBtn');
+    if (budgetDeleteBtn) {
+        budgetDeleteBtn.addEventListener('click', function () {
+            if (!confirm('این بودجه حذف شود؟')) return;
+            var fd = new FormData();
+            fd.append('budget_id', this.getAttribute('data-id'));
+            fd.append('csrf_token', csrf());
+            fetch(apiUrl('delete_budget.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
+                .then(function(r){return r.json();})
+                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+        });
+    }
+
+    // ---------- اهداف پس‌انداز ----------
+    setupAmountFormatter('goal_target');
+    setupAmountFormatter('entry_amount');
+
+    document.querySelectorAll('.js-add-goal').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('goalModalTitle').textContent = 'هدف جدید';
+            document.getElementById('goal_id').value = '';
+            document.getElementById('goal_title').value = '';
+            document.getElementById('goal_target').value = '';
+            document.getElementById('goal_color').value = '#16794f';
+            document.getElementById('goal_date').value = '';
+            document.getElementById('goal_date_display').value = '';
+            document.getElementById('goalExtraActions').hidden = true;
+            var m = document.getElementById('goalMessage');
+            if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
+            openModal('goalModal');
+        });
+    });
+
+    document.querySelectorAll('.js-edit-goal').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('goalModalTitle').textContent = 'ویرایش هدف';
+            document.getElementById('goal_id').value = this.getAttribute('data-id');
+            document.getElementById('goal_title').value = this.getAttribute('data-title');
+            document.getElementById('goal_target').value =
+                toPersianDigitsJs(Number(this.getAttribute('data-target')).toLocaleString('en-US').replace(/,/g,'\u066C'));
+            document.getElementById('goal_color').value = this.getAttribute('data-color') || '#16794f';
+
+            var d = this.getAttribute('data-date');
+            if (d) { setJdpValue('goal_date_display', 'goal_date', d); }
+            else { document.getElementById('goal_date').value = ''; document.getElementById('goal_date_display').value = ''; }
+
+            var extra = document.getElementById('goalExtraActions');
+            extra.hidden = false;
+            var isArchived = this.getAttribute('data-archived') === '1';
+            var ab = document.getElementById('goalArchiveBtn');
+            ab.textContent = isArchived ? 'خارج از بایگانی' : 'بایگانی کردن';
+            ab.setAttribute('data-id', this.getAttribute('data-id'));
+            document.getElementById('goalDeleteBtn').setAttribute('data-id', this.getAttribute('data-id'));
+
+            var m = document.getElementById('goalMessage');
+            if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
+            openModal('goalModal');
+        });
+    });
+
+    var goalForm = document.getElementById('goalForm');
+    if (goalForm) {
+        goalForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var fd = new FormData(goalForm);
+            fd.set('target_amount', toLatinDigitsJs(document.getElementById('goal_target').value).replace(/[,\u066C]/g, ''));
+            submitJson(goalForm, apiUrl('save_goal.php'),
+                document.getElementById('goalMessage'),
+                document.getElementById('goalSubmitBtn'), null, fd);
+        });
+    }
+
+    var goalArchiveBtn = document.getElementById('goalArchiveBtn');
+    if (goalArchiveBtn) {
+        goalArchiveBtn.addEventListener('click', function () {
+            var fd = new FormData();
+            fd.append('goal_id', this.getAttribute('data-id'));
+            fd.append('csrf_token', csrf());
+            fetch(apiUrl('archive_goal.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
+                .then(function(r){return r.json();})
+                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+        });
+    }
+
+    var goalDeleteBtn = document.getElementById('goalDeleteBtn');
+    if (goalDeleteBtn) {
+        goalDeleteBtn.addEventListener('click', function () {
+            if (!confirm('این هدف و کل تاریخچه‌اش حذف شود؟')) return;
+            var fd = new FormData();
+            fd.append('goal_id', this.getAttribute('data-id'));
+            fd.append('csrf_token', csrf());
+            fetch(apiUrl('delete_goal.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
+                .then(function(r){return r.json();})
+                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+        });
+    }
+
+    document.querySelectorAll('.js-goal-deposit, .js-goal-withdraw').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var isDeposit = this.classList.contains('js-goal-deposit');
+            document.getElementById('goalEntryTitle').textContent =
+                (isDeposit ? 'واریز به «' : 'برداشت از «') + this.getAttribute('data-title') + '»';
+            document.getElementById('entry_goal_id').value = this.getAttribute('data-id');
+            document.getElementById('entry_direction').value = isDeposit ? 'deposit' : 'withdraw';
+            document.getElementById('entry_amount').value = '';
+            document.getElementById('entry_note').value = '';
+            var m = document.getElementById('goalEntryMessage');
+            if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
+            openModal('goalEntryModal');
+        });
+    });
+
+    var goalEntryForm = document.getElementById('goalEntryForm');
+    if (goalEntryForm) {
+        goalEntryForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var fd = new FormData(goalEntryForm);
+            fd.set('amount', toLatinDigitsJs(document.getElementById('entry_amount').value).replace(/[,\u066C]/g, ''));
+            submitJson(goalEntryForm, apiUrl('add_savings_entry.php'),
+                document.getElementById('goalEntryMessage'),
+                document.getElementById('goalEntrySubmitBtn'), null, fd);
+        });
+    }
+
+    document.querySelectorAll('.js-goal-history').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var goalId = this.getAttribute('data-id');
+            var box = document.getElementById('goalHistory' + goalId);
+            if (!box) return;
+
+            if (!box.hidden) { box.hidden = true; return; }
+
+            box.innerHTML = '<p style="text-align:center; color:var(--muted); padding:10px 0;">در حال بارگذاری...</p>';
+            box.hidden = false;
+
+            fetch(apiUrl('savings_history.php') + '?goal_id=' + encodeURIComponent(goalId))
+                .then(function (r) { return r.text(); })
+                .then(function (html) {
+                    box.innerHTML = html;
+                    box.dataset.loaded = '1';
+                    box.querySelectorAll('.js-delete-savings-entry').forEach(function (delBtn) {
+                        delBtn.addEventListener('click', function () {
+                            if (!confirm('این رکورد حذف شود؟')) return;
+                            var fd = new FormData();
+                            fd.append('entry_id', this.getAttribute('data-id'));
+                            fd.append('csrf_token', csrf());
+                            fetch(apiUrl('delete_savings_entry.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
+                                .then(function (r) { return r.json(); })
+                                .then(function (d) { if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+                        });
+                    });
+                })
+                .catch(function () {
+                    box.innerHTML = '<p style="text-align:center; color:var(--out); padding:10px 0;">خطا در بارگذاری.</p>';
+                });
+        });
+    });
+
+    // ---------- پرداخت جزئی طلب/بدهی ----------
+    setupAmountFormatter('payment_amount');
+
+    document.querySelectorAll('.js-debt-payment').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var remaining = parseInt(this.getAttribute('data-remaining'), 10);
+            document.getElementById('debtPaymentTitle').textContent = 'ثبت پرداخت — ' + this.getAttribute('data-name');
+            document.getElementById('payment_debt_id').value = this.getAttribute('data-id');
+            document.getElementById('payment_amount').value = '';
+            document.getElementById('payment_note').value = '';
+            document.getElementById('paymentRemainingHint').textContent =
+                'باقیمانده: ' + toPersianDigitsJs(remaining.toLocaleString('en-US').replace(/,/g,'\u066C')) + ' تومان';
+            var m = document.getElementById('debtPaymentMessage');
+            if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
+            openModal('debtPaymentModal');
+        });
+    });
+
+    var debtPaymentForm = document.getElementById('debtPaymentForm');
+    if (debtPaymentForm) {
+        debtPaymentForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var fd = new FormData(debtPaymentForm);
+            fd.set('amount', toLatinDigitsJs(document.getElementById('payment_amount').value).replace(/[,\u066C]/g, ''));
+            var msgEl = document.getElementById('debtPaymentMessage');
+            var btnEl = document.getElementById('debtPaymentSubmitBtn');
+            btnEl.disabled = true;
+            fetch(apiUrl('add_debt_payment.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    msgEl.hidden = false; msgEl.classList.remove('success', 'error');
+                    if (d.success) {
+                        msgEl.classList.add('show', 'success');
+                        msgEl.textContent = d.message || 'ثبت شد.';
+                        window.location.reload();
+                    } else {
+                        msgEl.classList.add('show', 'error');
+                        msgEl.textContent = d.message || 'خطایی رخ داد.';
+                    }
+                })
+                .catch(function () {
+                    msgEl.hidden = false; msgEl.classList.add('show', 'error');
+                    msgEl.textContent = 'خطا در ارتباط با سرور.';
+                })
+                .finally(function () { btnEl.disabled = false; });
+        });
+    }
+
+    // ---------- تراکنش دوره‌ای ----------
+    setupAmountFormatter('recurring_amount');
+    setupAmountFormatter('confirm_amount');
+
+    var recurringToggle = setupTypeToggle('recurringTypeToggle', 'recurring_type', 'recurring_category');
+
+    var recurModeHints = {
+        remind:  'فقط یادآوری می‌دهد؛ خودتان تراکنش را ثبت می‌کنید.',
+        confirm: 'سررسید که برسد، از شما می‌خواهد تأیید کنید تا ثبت شود.',
+        auto:    'سررسید که برسد، خودش بدون نیاز به تأیید ثبت می‌کند.'
+    };
+    document.querySelectorAll('.recurring-mode-item').forEach(function (item) {
+        item.addEventListener('click', function () {
+            document.querySelectorAll('.recurring-mode-item').forEach(function (i) { i.classList.remove('active'); });
+            this.classList.add('active');
+            var mode = this.getAttribute('data-mode');
+            document.getElementById('recurring_mode').value = mode;
+            document.getElementById('recurringModeHint').textContent = recurModeHints[mode] || '';
+        });
+    });
+    function setRecurringMode(mode) {
+        document.querySelectorAll('.recurring-mode-item').forEach(function (i) {
+            i.classList.toggle('active', i.getAttribute('data-mode') === mode);
+        });
+        document.getElementById('recurring_mode').value = mode;
+        document.getElementById('recurringModeHint').textContent = recurModeHints[mode] || '';
+    }
+
+    document.querySelectorAll('.js-add-recurring').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('recurringModalTitle').textContent = 'قانون جدید';
+            document.getElementById('recurring_id').value = '';
+            document.getElementById('recurring_title').value = '';
+            document.getElementById('recurring_amount').value = '';
+            document.getElementById('recurring_wallet').selectedIndex = 0;
+            document.getElementById('recurring_frequency').value = 'monthly';
+            document.getElementById('recurring_interval').value = '1';
+            document.getElementById('recurring_note').value = '';
+            setJdpValue('recurring_end_display', 'recurring_end', '');
+            document.getElementById('recurring_end_display').value = '';
+            document.getElementById('recurringExtraActions').hidden = true;
+            if (recurringToggle) recurringToggle.setType('income');
+            setRecurringMode('remind');
+            var m = document.getElementById('recurringMessage');
+            if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
+            openModal('recurringModal');
+        });
+    });
+
+    document.querySelectorAll('.js-edit-recurring').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('recurringModalTitle').textContent = 'ویرایش قانون';
+            document.getElementById('recurring_id').value = this.getAttribute('data-id');
+            document.getElementById('recurring_title').value = this.getAttribute('data-title');
+            document.getElementById('recurring_amount').value =
+                toPersianDigitsJs(Number(this.getAttribute('data-amount')).toLocaleString('en-US').replace(/,/g,'\u066C'));
+            document.getElementById('recurring_wallet').value = this.getAttribute('data-wallet');
+            document.getElementById('recurring_frequency').value = this.getAttribute('data-frequency');
+            document.getElementById('recurring_interval').value = toPersianDigitsJs(this.getAttribute('data-interval'));
+            document.getElementById('recurring_note').value = this.getAttribute('data-note') || '';
+
+            if (recurringToggle) recurringToggle.setType(this.getAttribute('data-type'));
+            document.getElementById('recurring_category').value = this.getAttribute('data-category') || '';
+
+            setJdpValue('recurring_start_display', 'recurring_start', this.getAttribute('data-start'));
+            var end = this.getAttribute('data-end');
+            if (end) { setJdpValue('recurring_end_display', 'recurring_end', end); }
+            else { document.getElementById('recurring_end').value = ''; document.getElementById('recurring_end_display').value = ''; }
+
+            setRecurringMode(this.getAttribute('data-mode'));
+
+            var extra = document.getElementById('recurringExtraActions');
+            extra.hidden = false;
+            var isActive = this.getAttribute('data-active') === '1';
+            var tgl = document.getElementById('recurringToggleBtn');
+            tgl.textContent = isActive ? 'غیرفعال کردن' : 'فعال کردن';
+            tgl.setAttribute('data-id', this.getAttribute('data-id'));
+            document.getElementById('recurringDeleteBtn').setAttribute('data-id', this.getAttribute('data-id'));
+
+            var m = document.getElementById('recurringMessage');
+            if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
+            openModal('recurringModal');
+        });
+    });
+
+    var recurringForm = document.getElementById('recurringForm');
+    if (recurringForm) {
+        recurringForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var fd = new FormData(recurringForm);
+            fd.set('amount', toLatinDigitsJs(document.getElementById('recurring_amount').value).replace(/[,\u066C]/g, ''));
+            fd.set('interval_count', toLatinDigitsJs(document.getElementById('recurring_interval').value).replace(/[,\u066C]/g, ''));
+            submitJson(recurringForm, apiUrl('save_recurring.php'),
+                document.getElementById('recurringMessage'),
+                document.getElementById('recurringSubmitBtn'), null, fd);
+        });
+    }
+
+    var recurringToggleBtn = document.getElementById('recurringToggleBtn');
+    if (recurringToggleBtn) {
+        recurringToggleBtn.addEventListener('click', function () {
+            var fd = new FormData();
+            fd.append('recurring_id', this.getAttribute('data-id'));
+            fd.append('csrf_token', csrf());
+            fetch(apiUrl('toggle_recurring.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
+                .then(function(r){return r.json();})
+                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+        });
+    }
+
+    var recurringDeleteBtn = document.getElementById('recurringDeleteBtn');
+    if (recurringDeleteBtn) {
+        recurringDeleteBtn.addEventListener('click', function () {
+            if (!confirm('این قانون حذف شود؟ تراکنش‌های قبلی حذف نمی‌شوند.')) return;
+            var fd = new FormData();
+            fd.append('recurring_id', this.getAttribute('data-id'));
+            fd.append('csrf_token', csrf());
+            fetch(apiUrl('delete_recurring.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
+                .then(function(r){return r.json();})
+                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+        });
+    }
+
+    // ---------- تأیید / رد سررسید ----------
+    document.querySelectorAll('.js-confirm-recurring').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('confirmRecurringTitle').textContent = 'تأیید — ' + this.getAttribute('data-title');
+            document.getElementById('confirm_recurring_id').value = this.getAttribute('data-id');
+            document.getElementById('confirm_amount').value =
+                toPersianDigitsJs(Number(this.getAttribute('data-amount')).toLocaleString('en-US').replace(/,/g,'\u066C'));
+            var m = document.getElementById('confirmRecurringMessage');
+            if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
+            openModal('confirmRecurringModal');
+        });
+    });
+
+    var confirmRecurringForm = document.getElementById('confirmRecurringForm');
+    if (confirmRecurringForm) {
+        confirmRecurringForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var fd = new FormData(confirmRecurringForm);
+            fd.set('amount', toLatinDigitsJs(document.getElementById('confirm_amount').value).replace(/[,\u066C]/g, ''));
+            submitJson(confirmRecurringForm, apiUrl('confirm_recurring.php'),
+                document.getElementById('confirmRecurringMessage'),
+                document.getElementById('confirmRecurringSubmitBtn'), null, fd);
+        });
+    }
+
+    document.querySelectorAll('.js-skip-recurring').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (!confirm('این دوره بدون ثبت تراکنش رد شود؟')) return;
+            var fd = new FormData();
+            fd.append('recurring_id', this.getAttribute('data-id'));
+            fd.append('csrf_token', csrf());
+            fetch(apiUrl('skip_recurring.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
+                .then(function(r){return r.json();})
+                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+        });
+    });
+
+    // ---------- تقویم مالی: نمایش جزئیات روز ----------
+    document.querySelectorAll('.js-cal-day').forEach(function (cell) {
+        cell.addEventListener('click', function () {
+            var date = this.getAttribute('data-date');
+            var card = document.getElementById('calDayCard');
+            var body = document.getElementById('calDayBody');
+            var title = document.getElementById('calDayTitle');
+            if (!card || !body) return;
+
+            document.querySelectorAll('.cal-cell').forEach(function (c) { c.classList.remove('cal-selected'); });
+            this.classList.add('cal-selected');
+
+            card.hidden = false;
+            body.innerHTML = '<p style="text-align:center; color:var(--muted); padding:12px 0;">در حال بارگذاری…</p>';
+
+            fetch(apiUrl('day_detail.php') + '?date=' + encodeURIComponent(date))
+                .then(function (r) { return r.text(); })
+                .then(function (html) {
+                    body.innerHTML = html;
+                    if (title) { title.textContent = 'جزئیات روز'; }
+                    body.querySelectorAll('.tx-row-summary').forEach(function (row) {
+                        row.addEventListener('click', function () {
+                            var parent = this.closest('.tx-row');
+                            if (parent) parent.classList.toggle('expanded');
+                        });
+                    });
+                    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                })
+                .catch(function () {
+                    body.innerHTML = '<p style="text-align:center; color:var(--out); padding:12px 0;">خطا در بارگذاری.</p>';
+                });
+        });
+    });
+
+    // ---------- ورود اطلاعات از CSV ----------
+    var previewBtn = document.getElementById('previewBtn');
+    if (previewBtn && window.IMPORT_ROWS) {
+        previewBtn.addEventListener('click', function () {
+            var map = {};
+            document.querySelectorAll('.map-select').forEach(function (sel) {
+                map[sel.getAttribute('data-field')] = parseInt(sel.value, 10);
+            });
+
+            if (map.date < 0 || map.amount < 0 || map.type < 0) {
+                alert('ستون‌های تاریخ، مبلغ و نوع الزامی هستند.');
+                return;
+            }
+
+            var valid = [], invalid = [];
+
+            window.IMPORT_ROWS.forEach(function (row, idx) {
+                var res = parseRow(row, map);
+                if (res.ok) { valid.push(res.data); }
+                else { invalid.push({ line: idx + 2, error: res.error }); }
+            });
+
+            renderPreview(valid, invalid);
+            document.getElementById('importPayload').value = JSON.stringify(valid);
+            document.getElementById('previewArea').hidden = false;
+            document.getElementById('commitBtn').disabled = (valid.length === 0);
+        });
+    }
+
+    function cell(row, idx) {
+        return (idx >= 0 && row[idx] !== undefined) ? String(row[idx]).trim() : '';
+    }
+
+    function parseRow(row, map) {
+        // ---- تاریخ ----
+        var rawDate = toLatinDigitsJs(cell(row, map.date)).replace(/[\/.]/g, '-');
+        var m = rawDate.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+        if (!m) { return { ok: false, error: 'تاریخ نامعتبر: ' + (rawDate || 'خالی') }; }
+
+        var y = parseInt(m[1], 10), mo = parseInt(m[2], 10), d = parseInt(m[3], 10);
+        var gDate;
+        if (y < 1900) {
+            if (mo < 1 || mo > 12 || d < 1 || d > 31) { return { ok: false, error: 'تاریخ شمسی نامعتبر' }; }
+            var g = jalaliToGregorianJs(y, mo, d);
+            gDate = pad4(g[0]) + '-' + pad2(g[1]) + '-' + pad2(g[2]);
+        } else {
+            gDate = pad4(y) + '-' + pad2(mo) + '-' + pad2(d);
+        }
+
+        // ---- مبلغ ----
+        var amount = parseInt(toLatinDigitsJs(cell(row, map.amount)).replace(/[^\d]/g, ''), 10);
+        if (!amount || amount <= 0) { return { ok: false, error: 'مبلغ نامعتبر' }; }
+
+        // ---- نوع ----
+        var rawType = cell(row, map.type).toLowerCase();
+        var type = null;
+        ['income', 'درآمد', 'دریافت', 'واریز', '+'].forEach(function (w) {
+            if (type === null && rawType.indexOf(w) !== -1) type = 'income';
+        });
+        if (type === null) {
+            ['expense', 'هزینه', 'پرداخت', 'برداشت', '-'].forEach(function (w) {
+                if (type === null && rawType.indexOf(w) !== -1) type = 'expense';
+            });
+        }
+        if (type === null) { return { ok: false, error: 'نوع نامشخص: ' + (rawType || 'خالی') }; }
+
+        // ---- عنوان ----
+        var title = cell(row, map.title);
+        if (!title) { title = (type === 'income' ? 'درآمد واردشده' : 'هزینه واردشده'); }
+
+        // ---- دسته‌بندی ----
+        var categoryId = null;
+        var catName = cell(row, map.category).toLowerCase();
+        if (catName && window.IMPORT_CATEGORIES) {
+            window.IMPORT_CATEGORIES.forEach(function (c) {
+                if (categoryId === null && c.name.toLowerCase() === catName && c.type === type) {
+                    categoryId = c.id;
+                }
+            });
+        }
+
+        // ---- حساب ----
+        var walletId = window.IMPORT_DEFAULT_WALLET;
+        var wName = cell(row, map.wallet).toLowerCase();
+        if (wName && window.IMPORT_WALLETS) {
+            window.IMPORT_WALLETS.forEach(function (w) {
+                if (w.name === wName) walletId = w.id;
+            });
+        }
+
+        return {
+            ok: true,
+            data: {
+                transaction_date: gDate,
+                amount: amount,
+                type: type,
+                title: title.substring(0, 255),
+                category_id: categoryId,
+                wallet_id: walletId,
+                note: cell(row, map.note).substring(0, 1000) || null
+            }
+        };
+    }
+
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
+    function pad4(n) { return ('000' + n).slice(-4); }
+
+    // تبدیل شمسی به میلادی — همان الگوریتم فایل تقویم
+    function jalaliToGregorianJs(jy, jm, jd) {
+        if (window.JalaliDatePicker && typeof window.JalaliDatePicker.toGregorian === 'function') {
+            return window.JalaliDatePicker.toGregorian(jy, jm, jd);
+        }
+        var sal_a, gy, gm, gd, days;
+        jy += 1595;
+        days = -355668 + (365 * jy) + (~~(jy / 33) * 8) + ~~(((jy % 33) + 3) / 4) + jd +
+               ((jm < 7) ? (jm - 1) * 31 : ((jm - 7) * 30) + 186);
+        gy = 400 * ~~(days / 146097);
+        days %= 146097;
+        if (days > 36524) {
+            gy += 100 * ~~(--days / 36524);
+            days %= 36524;
+            if (days >= 365) days++;
+        }
+        gy += 4 * ~~(days / 1461);
+        days %= 1461;
+        if (days > 365) {
+            gy += ~~((days - 1) / 365);
+            days = (days - 1) % 365;
+        }
+        gd = days + 1;
+        sal_a = [0, 31, ((gy % 4 === 0 && gy % 100 !== 0) || (gy % 400 === 0)) ? 29 : 28,
+                 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        for (gm = 0; gm < 13 && gd > sal_a[gm]; gm++) gd -= sal_a[gm];
+        return [gy, gm, gd];
+    }
+
+    function renderPreview(valid, invalid) {
+        var summary = document.getElementById('importSummary');
+        var table = document.getElementById('previewTable');
+        if (!summary || !table) return;
+
+        var html = '<div class="alert ' + (invalid.length ? 'alert-info' : 'alert-success') + '">';
+        html += toPersianDigitsJs(valid.length) + ' سطر آماده ثبت';
+        if (invalid.length) { html += ' · ' + toPersianDigitsJs(invalid.length) + ' سطر نامعتبر (نادیده گرفته می‌شود)'; }
+        html += '</div>';
+
+        if (invalid.length) {
+            html += '<details class="import-errors"><summary>مشاهده سطرهای نامعتبر</summary>';
+            invalid.slice(0, 30).forEach(function (e) {
+                html += '<div class="import-error-row">سطر ' + toPersianDigitsJs(e.line) + ': ' + e.error + '</div>';
+            });
+            html += '</details>';
+        }
+        summary.innerHTML = html;
+
+        var rows = '<thead><tr><th>تاریخ</th><th>عنوان</th><th>نوع</th><th>مبلغ</th></tr></thead><tbody>';
+        valid.slice(0, 25).forEach(function (v) {
+            rows += '<tr>';
+            rows += '<td data-label="تاریخ">' + toPersianDigitsJs(v.transaction_date) + '</td>';
+            rows += '<td data-label="عنوان">' + escapeHtml(v.title) + '</td>';
+            rows += '<td data-label="نوع">' + (v.type === 'income' ? 'درآمد' : 'هزینه') + '</td>';
+            rows += '<td data-label="مبلغ">' + toPersianDigitsJs(v.amount.toLocaleString('en-US').replace(/,/g, '\u066C')) + '</td>';
+            rows += '</tr>';
+        });
+        rows += '</tbody>';
+        table.innerHTML = rows;
+    }
+
+    function escapeHtml(str) {
+        return String(str).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    // ---------- پیوست رسید ----------
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.js-load-attachments');
+        if (!btn) return;
+
+        var txId = btn.getAttribute('data-tx-id');
+        var box = document.getElementById('attachBox' + txId);
+
+        // اولین بار: باکس را همین‌جا می‌سازیم تا HTML صفحه سبک بماند
+        if (!box) {
+            box = document.createElement('div');
+            box.className = 'attach-box';
+            box.id = 'attachBox' + txId;
+            box.setAttribute('data-tx-id', txId);
+            box.innerHTML =
+                '<div class="attach-list"></div>' +
+                '<label class="attach-add">' +
+                '<input type="file" class="js-attach-input" data-tx-id="' + txId + '" ' +
+                'accept="image/jpeg,image/png,image/webp,application/pdf" hidden>' +
+                '<span>+ افزودن رسید (عکس یا PDF، حداکثر ۳ مگابایت)</span></label>';
+            var host = btn.closest('.tx-row-details') || btn.parentNode;
+            host.appendChild(box);
+            loadAttachments(txId);
+            return;
+        }
+
+        if (!box.hidden) { box.hidden = true; return; }
+        box.hidden = false;
+        loadAttachments(txId);
+    });
+
+    function loadAttachments(txId) {
+        var box = document.getElementById('attachBox' + txId);
+        if (!box) return;
+        var list = box.querySelector('.attach-list');
+        if (!list) return;
+
+        list.innerHTML = '<p class="hint">در حال بارگذاری…</p>';
+        fetch(apiUrl('transaction_attachments.php') + '?transaction_id=' + encodeURIComponent(txId))
+            .then(function (r) { return r.text(); })
+            .then(function (html) { list.innerHTML = html; })
+            .catch(function () { list.innerHTML = '<p class="hint">خطا در بارگذاری.</p>'; });
+    }
+
+    document.addEventListener('change', function (e) {
+        var input = e.target.closest('.js-attach-input');
+        if (!input || !input.files || !input.files[0]) return;
+
+        var txId = input.getAttribute('data-tx-id');
+        var fd = new FormData();
+        fd.append('transaction_id', txId);
+        fd.append('csrf_token', csrf());
+        fd.append('file', input.files[0]);
+
+        var box = document.getElementById('attachBox' + txId);
+        var list = box ? box.querySelector('.attach-list') : null;
+        if (list) list.innerHTML = '<p class="hint">در حال آپلود…</p>';
+
+        fetch(apiUrl('upload_attachment.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                input.value = '';
+                if (d.success) { loadAttachments(txId); }
+                else {
+                    alert(d.message || 'خطا در آپلود.');
+                    loadAttachments(txId);
+                }
+            })
+            .catch(function () { alert('خطا در ارتباط با سرور.'); });
+    });
+
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.js-delete-attachment');
+        if (!btn) return;
+        if (!confirm('این پیوست حذف شود؟')) return;
+
+        var box = btn.closest('.attach-box');
+        var txId = box ? box.getAttribute('data-tx-id') : null;
+
+        var fd = new FormData();
+        fd.append('attachment_id', btn.getAttribute('data-id'));
+        fd.append('csrf_token', csrf());
+
+        fetch(apiUrl('delete_attachment.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.success && txId) { loadAttachments(txId); }
+                else if (!d.success) { alert(d.message || 'خطا'); }
+            })
+            .catch(function () { alert('خطا در ارتباط با سرور.'); });
+    });
+
+    // ---------- حساب کاربری من ----------
+    var profileForm = document.getElementById('profileForm');
+    if (profileForm) {
+        profileForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            submitJson(profileForm, apiUrl('update_profile.php'),
+                document.getElementById('profileMessage'),
+                document.getElementById('profileSubmitBtn'));
+        });
+    }
+
+    var passwordForm = document.getElementById('passwordForm');
+    if (passwordForm) {
+        passwordForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var np = document.getElementById('pf_new_pass').value;
+            var np2 = document.getElementById('pf_new_pass2').value;
+            var msg = document.getElementById('passwordMessage');
+            if (np !== np2) {
+                msg.hidden = false;
+                msg.classList.remove('success');
+                msg.classList.add('show', 'error');
+                msg.textContent = 'رمز جدید و تکرار آن یکسان نیستند.';
+                return;
+            }
+            submitJson(passwordForm, apiUrl('change_password.php'), msg,
+                document.getElementById('passwordSubmitBtn'));
+        });
+    }
+
+    var sessionForm = document.getElementById('sessionForm');
+    if (sessionForm) {
+        sessionForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            submitJson(sessionForm, apiUrl('update_session_pref.php'),
+                document.getElementById('sessionMessage'),
+                document.getElementById('sessionSubmitBtn'));
+        });
+    }
+
+    document.querySelectorAll('.js-revoke-device').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (!confirm('این دستگاه حذف شود؟ دفعه بعد باید رمز وارد کند.')) return;
+            var fd = new FormData();
+            fd.append('device_id', this.getAttribute('data-id'));
+            fd.append('csrf_token', csrf());
+            fetch(apiUrl('revoke_device.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) { if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+        });
+    });
+
+    var revokeAllBtn = document.getElementById('revokeAllBtn');
+    if (revokeAllBtn) {
+        revokeAllBtn.addEventListener('click', function () {
+            if (!confirm('همه دستگاه‌ها حذف شوند؟ از همه‌جا خارج می‌شوید.')) return;
+            var fd = new FormData();
+            fd.append('all', '1');
+            fd.append('csrf_token', csrf());
+            fetch(apiUrl('revoke_device.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) { if (d.success) { window.location.href = 'logout.php'; } else { alert(d.message || 'خطا'); } })
+                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+        });
+    }
+
+    // ---------- شیت «بیشتر» در ناوبری پایین ----------
+    var moreBtn = document.getElementById('moreTabBtn');
+    var moreSheet = document.getElementById('moreSheet');
+    if (moreBtn && moreSheet) {
+        moreBtn.addEventListener('click', function () {
+            moreSheet.classList.add('show');
+        });
+        moreSheet.addEventListener('click', function (e) {
+            if (e.target === moreSheet) moreSheet.classList.remove('show');
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') moreSheet.classList.remove('show');
+        });
+    }
+
+    // ---------- کلید حالت شب / روز ----------
+    var themeMedia = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+    function themeMode() {
+        try { return localStorage.getItem('daftar_theme') || 'auto'; }
+        catch (e) { return 'auto'; }
+    }
+
+    function applyTheme(mode) {
+        var sysDark = themeMedia ? themeMedia.matches : false;
+        var dark = (mode === 'dark') || (mode === 'auto' && sysDark);
+        if (dark) { document.documentElement.setAttribute('data-theme', 'dark'); }
+        else { document.documentElement.removeAttribute('data-theme'); }
+        document.documentElement.setAttribute('data-theme-mode', mode);
+        try { localStorage.setItem('daftar_theme', mode); } catch (e) {}
+
+        var autoBox = document.getElementById('themeAuto');
+        if (autoBox) { autoBox.checked = (mode === 'auto'); }
+    }
+
+    // وقتی گوشی بین حالت شب و روز جابه‌جا می‌شود، اپ هم زنده عوض شود
+    if (themeMedia) {
+        var onSysChange = function () {
+            if (themeMode() === 'auto') { applyTheme('auto'); }
+        };
+        if (themeMedia.addEventListener) { themeMedia.addEventListener('change', onSysChange); }
+        else if (themeMedia.addListener) { themeMedia.addListener(onSysChange); }
+    }
+
+    var themeToggle = document.getElementById('themeToggle');
+    if (themeToggle) {
+        themeToggle.addEventListener('click', function () {
+            // با زدن دکمه، از حالت خودکار خارج می‌شویم و صریح انتخاب می‌کنیم
+            var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            applyTheme(isDark ? 'light' : 'dark');
+        });
+    }
+
+    var themeAuto = document.getElementById('themeAuto');
+    if (themeAuto) {
+        themeAuto.checked = (themeMode() === 'auto');
+        themeAuto.addEventListener('change', function () {
+            if (this.checked) {
+                applyTheme('auto');
+            } else {
+                var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+                applyTheme(isDark ? 'dark' : 'light');
+            }
+        });
+    }
+
+    // ---------- عکس پروفایل ----------
+    var avatarInput = document.getElementById('avatarInput');
+    if (avatarInput) {
+        avatarInput.addEventListener('change', function () {
+            if (!this.files || !this.files[0]) return;
+
+            var msg = document.getElementById('avatarMessage');
+            var fd = new FormData();
+            fd.append('avatar', this.files[0]);
+            fd.append('csrf_token', csrf());
+
+            if (msg) {
+                msg.hidden = false;
+                msg.classList.remove('success', 'error');
+                msg.classList.add('show');
+                msg.textContent = 'در حال بارگذاری…';
+            }
+
+            fetch(apiUrl('upload_avatar.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.success) {
+                        window.location.reload();
+                    } else if (msg) {
+                        msg.classList.add('error');
+                        msg.textContent = d.message || 'خطا در بارگذاری.';
+                    }
+                })
+                .catch(function () {
+                    if (msg) { msg.classList.add('error'); msg.textContent = 'خطا در ارتباط با سرور.'; }
+                });
+        });
+    }
+
+    var avatarDeleteBtn = document.getElementById('avatarDeleteBtn');
+    if (avatarDeleteBtn) {
+        avatarDeleteBtn.addEventListener('click', function () {
+            if (!confirm('تصویر پروفایل حذف شود؟')) return;
+            var fd = new FormData();
+            fd.append('csrf_token', csrf());
+            fetch(apiUrl('delete_avatar.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) { if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+        });
+    }
+
+    // ---------- مدیریت لیست‌های مرجع (بانک‌ها / انواع دارایی) ----------
+    function csrf() {
+        var el = document.querySelector('meta[name="csrf-token"]');
+        return el ? el.content : '';
+    }
+
+    document.querySelectorAll('.js-ref-add').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var kind = this.getAttribute('data-kind');
+            var input = document.getElementById(this.getAttribute('data-input'));
+            if (!input) return;
+            var name = input.value.trim();
+            if (name === '') { alert('نام را وارد کنید.'); return; }
+
+            var fd = new FormData();
+            fd.append('csrf_token', csrf());
+            fd.append('kind', kind);
+            fd.append('action', 'add');
+            fd.append('name', name);
+
+            var unitInputId = this.getAttribute('data-unit-input');
+            if (unitInputId) {
+                var unitInput = document.getElementById(unitInputId);
+                if (unitInput && unitInput.value.trim() !== '') {
+                    fd.append('unit', unitInput.value.trim());
+                }
+            }
+
+            fetch(apiUrl('manage_reference.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.success) { window.location.reload(); }
+                    else { alert(d.message || 'خطایی رخ داد.'); }
+                })
+                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+        });
+    });
+
+    document.querySelectorAll('.js-ref-delete').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (!confirm('حذف شود؟')) return;
+
+            var fd = new FormData();
+            fd.append('csrf_token', csrf());
+            fd.append('kind', this.getAttribute('data-kind'));
+            fd.append('action', 'delete');
+            fd.append('id', this.getAttribute('data-id'));
+
+            var chip = this.closest('.ref-chip');
+
+            fetch(apiUrl('manage_reference.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.success) { if (chip) chip.remove(); }
+                    else { alert(d.message || 'قابل حذف نیست.'); }
+                })
+                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+        });
+    });
+
+    // ---------- چک‌ها ----------
+    setupAmountFormatter('add_cheque_amount');
+    setupAmountFormatter('edit_cheque_amount');
+
+    function fillBankSelect(selectEl, direction, selectedId) {
+        if (!selectEl || !window.BANK_DATA) return;
+        while (selectEl.options.length > 1) { selectEl.remove(1); }
+        var list = window.BANK_DATA[direction === 'issued' ? 'mine' : 'external'] || [];
+        list.forEach(function (b) {
+            var opt = document.createElement('option');
+            opt.value = b.id;
+            opt.textContent = b.name;
+            selectEl.appendChild(opt);
+        });
+        if (selectedId && String(selectedId) !== '0') { selectEl.value = String(selectedId); }
+    }
+
+    document.querySelectorAll('.js-add-cheque').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var direction = this.getAttribute('data-direction');
+            document.getElementById('add_cheque_direction').value = direction;
+            document.getElementById('addChequeTitle').textContent =
+                direction === 'received' ? 'ثبت چک دریافتی' : 'ثبت چک صادره';
+
+            document.getElementById('add_cheque_counterparty').value = '';
+            document.getElementById('add_cheque_amount').value = '';
+            document.getElementById('add_sayadi').value = '';
+            document.getElementById('add_cheque_number').value = '';
+            document.getElementById('add_cheque_note').value = '';
+
+            var due = document.getElementById('add_cheque_due');
+            due.value = '';
+            due.closest('.jdp-field').querySelector('.jdp-display').value = '';
+
+            fillBankSelect(document.getElementById('add_cheque_bank'), direction, null);
+
+            var msg = document.getElementById('addChequeMessage');
+            if (msg) { msg.hidden = true; msg.classList.remove('show', 'success', 'error'); }
+
+            openModal('addChequeModal');
+        });
+    });
+
+    function submitJson(form, url, msgEl, btnEl, amountFieldId, preparedFd) {
+        var fd = preparedFd || new FormData(form);
+        if (amountFieldId) {
+            var amtEl = document.getElementById(amountFieldId);
+            if (amtEl) fd.set('amount', toLatinDigitsJs(amtEl.value).replace(/[,\u066C]/g, ''));
+        }
+        if (btnEl) btnEl.disabled = true;
+
+        return fetch(url, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                msgEl.hidden = false;
+                msgEl.classList.remove('success', 'error');
+                if (d.success) {
+                    msgEl.classList.add('show', 'success');
+                    msgEl.textContent = d.message || 'انجام شد.';
+                    window.location.reload();
+                } else {
+                    msgEl.classList.add('show', 'error');
+                    msgEl.textContent = d.message || 'خطایی رخ داد.';
+                }
+            })
+            .catch(function () {
+                msgEl.hidden = false;
+                msgEl.classList.add('show', 'error');
+                msgEl.textContent = 'خطا در ارتباط با سرور.';
+            })
+            .finally(function () { if (btnEl) btnEl.disabled = false; });
+    }
+
+    var addChequeForm = document.getElementById('addChequeForm');
+    if (addChequeForm) {
+        addChequeForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            submitJson(addChequeForm, apiUrl('add_cheque.php'),
+                document.getElementById('addChequeMessage'),
+                document.getElementById('addChequeSubmitBtn'), 'add_cheque_amount');
+        });
+    }
+
+    document.querySelectorAll('.js-edit-cheque').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('edit_cheque_id').value = this.getAttribute('data-id');
+            document.getElementById('edit_cheque_counterparty').value = this.getAttribute('data-counterparty');
+            document.getElementById('edit_cheque_amount').value =
+                toPersianDigitsJs(Number(this.getAttribute('data-amount')).toLocaleString('en-US').replace(/,/g, '\u066C'));
+            document.getElementById('edit_sayadi').value = this.getAttribute('data-sayadi') || '';
+            document.getElementById('edit_cheque_number').value = this.getAttribute('data-cheque-number') || '';
+            document.getElementById('edit_cheque_note').value = this.getAttribute('data-note') || '';
+
+            fillBankSelect(document.getElementById('edit_cheque_bank'),
+                this.getAttribute('data-direction'), this.getAttribute('data-bank-id'));
+
+            var dueVal = this.getAttribute('data-due-date');
+            if (dueVal) {
+                setJdpValue('edit_cheque_due_display', 'edit_cheque_due', dueVal);
+            } else {
+                document.getElementById('edit_cheque_due').value = '';
+                document.getElementById('edit_cheque_due_display').value = '';
+            }
+
+            var msg = document.getElementById('editChequeMessage');
+            if (msg) { msg.hidden = true; msg.classList.remove('show', 'success', 'error'); }
+
+            openModal('editChequeModal');
+        });
+    });
+
+    var editChequeForm = document.getElementById('editChequeForm');
+    if (editChequeForm) {
+        editChequeForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            submitJson(editChequeForm, apiUrl('update_cheque.php'),
+                document.getElementById('editChequeMessage'),
+                document.getElementById('editChequeSubmitBtn'), 'edit_cheque_amount');
+        });
+    }
+
+    document.querySelectorAll('.js-toggle-cheque').forEach(function (cb) {
+        cb.addEventListener('change', function () {
+            var el = this;
+            var fd = new FormData();
+            fd.append('cheque_id', el.getAttribute('data-id'));
+            fd.append('csrf_token', csrf());
+            el.disabled = true;
+
+            fetch(apiUrl('toggle_cheque_settled.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.success) { window.location.reload(); }
+                    else { alert(d.message || 'خطایی رخ داد.'); el.checked = !el.checked; el.disabled = false; }
+                })
+                .catch(function () { alert('خطا در ارتباط با سرور.'); el.checked = !el.checked; el.disabled = false; });
+        });
+    });
+
+    document.querySelectorAll('.js-delete-cheque').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (!confirm('آیا از حذف این چک مطمئن هستید؟')) return;
+            var card = this.closest('.debt-card');
+            var fd = new FormData();
+            fd.append('cheque_id', this.getAttribute('data-id'));
+            fd.append('csrf_token', csrf());
+
+            fetch(apiUrl('delete_cheque.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.success) { if (card) card.remove(); }
+                    else { alert(d.message || 'خطا در حذف.'); }
+                })
+                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+        });
+    });
+
+    // ---------- دارایی‌ها ----------
+    setupAmountFormatter('add_asset_price');
+    setupAmountFormatter('edit_asset_price');
+
+    var addAssetForm = document.getElementById('addAssetForm');
+    if (addAssetForm) {
+        addAssetForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var fd = new FormData(addAssetForm);
+            fd.set('unit_price', toLatinDigitsJs(document.getElementById('add_asset_price').value).replace(/[,\u066C]/g, ''));
+            fd.set('quantity', toLatinDigitsJs(document.getElementById('add_asset_qty').value).replace(/[,\u066C]/g, '').replace('٫', '.'));
+
+            var msgEl = document.getElementById('addAssetMessage');
+            var btnEl = document.getElementById('addAssetSubmitBtn');
+            btnEl.disabled = true;
+
+            fetch(apiUrl('add_asset.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    msgEl.hidden = false;
+                    msgEl.classList.remove('success', 'error');
+                    if (d.success) {
+                        msgEl.classList.add('show', 'success');
+                        msgEl.textContent = d.message || 'ثبت شد.';
+                        window.location.reload();
+                    } else {
+                        msgEl.classList.add('show', 'error');
+                        msgEl.textContent = d.message || 'خطایی رخ داد.';
+                    }
+                })
+                .catch(function () {
+                    msgEl.hidden = false;
+                    msgEl.classList.add('show', 'error');
+                    msgEl.textContent = 'خطا در ارتباط با سرور.';
+                })
+                .finally(function () { btnEl.disabled = false; });
+        });
+    }
+
+    document.querySelectorAll('.js-edit-asset').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('edit_asset_id').value = this.getAttribute('data-id');
+            document.getElementById('edit_asset_qty').value = toPersianDigitsJs(this.getAttribute('data-quantity').replace(/\.?0+$/, '') || '0');
+            var price = this.getAttribute('data-unit-price');
+            document.getElementById('edit_asset_price').value =
+                (price && price !== '0') ? toPersianDigitsJs(Number(price).toLocaleString('en-US').replace(/,/g, '\u066C')) : '';
+            document.getElementById('edit_asset_note').value = this.getAttribute('data-note') || '';
+            setJdpValue('edit_asset_date_display', 'edit_asset_date', this.getAttribute('data-entry-date'));
+
+            var msg = document.getElementById('editAssetMessage');
+            if (msg) { msg.hidden = true; msg.classList.remove('show', 'success', 'error'); }
+
+            openModal('editAssetModal');
+        });
+    });
+
+    var editAssetForm = document.getElementById('editAssetForm');
+    if (editAssetForm) {
+        editAssetForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var fd = new FormData(editAssetForm);
+            fd.set('unit_price', toLatinDigitsJs(document.getElementById('edit_asset_price').value).replace(/[,\u066C]/g, ''));
+            fd.set('quantity', toLatinDigitsJs(document.getElementById('edit_asset_qty').value).replace(/[,\u066C]/g, '').replace('٫', '.'));
+
+            var msgEl = document.getElementById('editAssetMessage');
+            var btnEl = document.getElementById('editAssetSubmitBtn');
+            btnEl.disabled = true;
+
+            fetch(apiUrl('update_asset.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    msgEl.hidden = false;
+                    msgEl.classList.remove('success', 'error');
+                    if (d.success) {
+                        msgEl.classList.add('show', 'success');
+                        msgEl.textContent = d.message || 'ذخیره شد.';
+                        window.location.reload();
+                    } else {
+                        msgEl.classList.add('show', 'error');
+                        msgEl.textContent = d.message || 'خطایی رخ داد.';
+                    }
+                })
+                .catch(function () {
+                    msgEl.hidden = false;
+                    msgEl.classList.add('show', 'error');
+                    msgEl.textContent = 'خطا در ارتباط با سرور.';
+                })
+                .finally(function () { btnEl.disabled = false; });
+        });
+    }
+
+    document.querySelectorAll('.js-delete-asset').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (!confirm('آیا از حذف این مورد مطمئن هستید؟')) return;
+            var row = this.closest('.tx-row');
+            var fd = new FormData();
+            fd.append('asset_id', this.getAttribute('data-id'));
+            fd.append('csrf_token', csrf());
+
+            fetch(apiUrl('delete_asset.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.success) { if (row) row.remove(); }
+                    else { alert(d.message || 'خطا در حذف.'); }
+                })
+                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+        });
+    });
+
+    // ---------- فیلترهای صفحه تراکنش‌ها ----------
+    var filterChips = document.querySelectorAll('.filter-chip[data-filter], .seg-item[data-filter]');
+    if (filterChips.length > 0) {
+        filterChips.forEach(function (chip) {
+            chip.addEventListener('click', function () {
+                var group = this.getAttribute('data-group');
+                document.querySelectorAll('[data-group="' + group + '"]').forEach(function (c) {
+                    c.classList.remove('active');
+                });
+                this.classList.add('active');
+
+                var form = document.getElementById('filterForm');
+                var hiddenInput = form.querySelector('input[name="' + group + '"]');
+                if (hiddenInput) {
+                    hiddenInput.value = this.getAttribute('data-filter');
+                }
+                form.submit();
+            });
+        });
+    }
+
+    // ---------- مودال‌های عمومی (افزودن/ویرایش) در صفحات مدیریت و ویرایش تراکنش ----------
+    function openModal(id) {
+        var modal = document.getElementById(id);
+        if (modal) modal.classList.add('show');
+    }
+    function closeModal(id) {
+        var modal = document.getElementById(id);
+        if (modal) modal.classList.remove('show');
+    }
+    window.openModal = openModal;
+    window.closeModal = closeModal;
+
+    document.querySelectorAll('[data-modal-open]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            openModal(this.getAttribute('data-modal-open'));
+        });
+    });
+    document.querySelectorAll('[data-modal-close]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var modal = btn.closest('.modal-overlay');
+            if (modal) modal.classList.remove('show');
+        });
+    });
+    document.querySelectorAll('.modal-overlay').forEach(function (overlay2) {
+        overlay2.addEventListener('click', function (e) {
+            if (e.target === overlay2) overlay2.classList.remove('show');
+        });
+    });
+
+    // ---------- کارت‌های جمع‌شونده (داشبورد) ----------
+    document.querySelectorAll('.collapsible-header').forEach(function (header) {
+        header.addEventListener('click', function () {
+            var card = header.closest('.collapsible-card');
+            if (card) card.classList.toggle('collapsed');
+        });
+    });
+
+    // ---------- ردیف فشرده تراکنش (باز/بسته شدن با کلیک) ----------
+    document.querySelectorAll('.tx-row-summary').forEach(function (summary) {
+        summary.addEventListener('click', function (e) {
+            if (e.target.closest('button')) return;
+            var row = summary.closest('.tx-row');
+            if (row) row.classList.toggle('expanded');
+        });
+    });
+
+    // ---------- پیش‌پر کردن فرم ویرایش کاربر (مدیریت کاربران) ----------
+    document.querySelectorAll('.js-edit-user').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var form = document.getElementById('editUserForm');
+            if (!form) return;
+            form.querySelector('[name="user_id"]').value = this.getAttribute('data-id');
+            form.querySelector('[name="full_name"]').value = this.getAttribute('data-full-name');
+            form.querySelector('[name="username"]').value = this.getAttribute('data-username');
+            form.querySelector('[name="role"]').value = this.getAttribute('data-role');
+            form.querySelector('[name="password"]').value = '';
+            form.querySelector('[name="password_confirm"]').value = '';
+            openModal('editUserModal');
+        });
+    });
+
+    // ---------- پیش‌پر کردن فرم ویرایش دسته‌بندی (مدیریت دسته‌بندی‌ها) ----------
+    document.querySelectorAll('.js-edit-category').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var form = document.getElementById('editCategoryForm');
+            if (!form) return;
+            form.querySelector('[name="category_id"]').value = this.getAttribute('data-id');
+            form.querySelector('[name="name"]').value = this.getAttribute('data-name');
+            form.querySelector('[name="type"]').value = this.getAttribute('data-type');
+            var iconEl = form.querySelector('[name="icon"]');
+            var colorEl = form.querySelector('[name="color"]');
+            if (iconEl) iconEl.value = this.getAttribute('data-icon') || '📌';
+            if (colorEl) colorEl.value = this.getAttribute('data-color') || '#64748b';
+            openModal('editCategoryModal');
+        });
+    });
+
+});
