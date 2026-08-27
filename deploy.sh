@@ -67,17 +67,23 @@ HTACCESS
 
 # ---------- ۴. دسترسی‌ها ----------
 info "تنظیم دسترسی‌ها..."
+# کد متعلق به root می‌ماند تا نه PHP بتواند تغییرش دهد و نه git خطای
+# «مالکیت مشکوک» بدهد. فقط uploads متعلق به کاربر اپ است.
+chown -R root:root . 2>/dev/null || true
+find . -type d -not -path './.git/*' -exec chmod 755 {} \;
+find . -type f -not -path './.git/*' -exec chmod 644 {} \;
 if id -u "$APP_USER" >/dev/null 2>&1; then
     chown -R "$APP_USER":"$APP_USER" uploads
 else
     red "کاربر $APP_USER وجود ندارد — اول deploy/vps-setup.sh را اجرا کنید."
 fi
-find . -type d -not -path './.git/*' -exec chmod 755 {} \;
-find . -type f -not -path './.git/*' -exec chmod 644 {} \;
 chmod +x deploy.sh 2>/dev/null || true
 
 # تنظیمات فقط برای خود سرور خوانده شود
-[[ -f config/config.php ]] && chmod 640 config/config.php
+if [[ -f config/config.php ]]; then
+    chown root:"$APP_USER" config/config.php 2>/dev/null || true
+    chmod 640 config/config.php
+fi
 
 # ---------- ۵. پاک کردن کش PHP ----------
 if command -v systemctl >/dev/null 2>&1; then

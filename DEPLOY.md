@@ -14,7 +14,7 @@
 | منبع | مقدار |
 |---|---|
 | پوشه | `/opt/hesab/app` |
-| کاربر سیستمی | `hesab` (بدون shell) |
+| کاربر سیستمی | `hesab` (بدون shell) — فقط مالک `uploads/` |
 | سایت nginx | `/etc/nginx/sites-{available,enabled}/hesab` |
 | pool مربوط به PHP | `/etc/php/<نسخه>/fpm/pool.d/hesab.conf` |
 | سوکت PHP | `/run/php/php-hesab.sock` |

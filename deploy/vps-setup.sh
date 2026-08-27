@@ -166,10 +166,17 @@ elif [[ -n "$REPO_URL" ]]; then
 else
     info "آدرس مخزن را با --repo بدهید، یا فایل‌ها را دستی در $APP_DIR بگذارید."
 fi
+# مدل مالکیت:
+#   کد        → root، فقط‌خواندنی برای اپ. یعنی PHP نمی‌تواند کد خودش را
+#                عوض کند، و git هم بدون خطای «مالکیت مشکوک» کار می‌کند.
+#   uploads   → کاربر اپ، چون تنها جایی است که باید در آن بنویسد.
+#   config.php → root:hesab با 640؛ اپ می‌خواند، کاربران دیگر سرور نه.
 run "mkdir -p '$APP_DIR/uploads/avatars'"
-run "chown -R '$APP_USER':'$APP_USER' '$APP_DIR'"
+run "chown -R root:root '$APP_DIR'"
 run "find '$APP_DIR' -type d -not -path '*/.git/*' -exec chmod 755 {} +"
 run "find '$APP_DIR' -type f -not -path '*/.git/*' -exec chmod 644 {} +"
+run "chown -R '$APP_USER':'$APP_USER' '$APP_DIR/uploads'"
+run "chmod 755 '$APP_DIR/uploads' '$APP_DIR/uploads/avatars'"
 
 # ---------- ۴. دیتابیس ----------
 step "۴. دیتابیس"
@@ -299,8 +306,8 @@ cat <<NEXT
      مقادیر: DB_NAME=$DB_NAME  DB_USER=$DB_USER  DB_PASSWORD=…
              APP_BASE_PATH=''   APP_FORCE_HTTPS=true
              APP_SECRET_KEY را با این عوض کنید:  $(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' 2>/dev/null || echo 'openssl rand -hex 32')
+       sudo chown root:$APP_USER $APP_DIR/config/config.php
        sudo chmod 640 $APP_DIR/config/config.php
-       sudo chown $APP_USER:$APP_USER $APP_DIR/config/config.php
 
   ۲. انتقال داده از هاست فعلی — بخش «انتقال از هاست اشتراکی» در DEPLOY.md
 
