@@ -14,7 +14,7 @@ config/       تنظیمات (فقط config.example.php در گیت است؛ con
 includes/     لایه‌ی مشترک — همه‌ی صفحات از اینجا شروع می‌شوند
 api/          ۴۸ اندپوینت JSON برای فراخوانی‌های AJAX
 admin/        صفحات ویژه‌ی مدیر (کاربران، دسته‌بندی‌ها، تراکنش همه کاربران)
-assets/       style.css، app.js، jalali-datepicker.js، آیکون‌ها، (fonts خالی است — پایین را ببینید)
+assets/       style.css، app.js، jalali-datepicker.js، آیکون‌ها، فونت وزیرمتن
 *.php (ریشه)  صفحات کاربر
 *.sql         schema.sql + ۱۱ فایل migration
 ```
@@ -92,7 +92,7 @@ $userId = Auth::userId();   // همیشه از اینجا، هرگز از ورو
 - ✅ اسکن کلیدواژه‌های محرمانه — هیچ رمز، توکن یا کلیدی در سورس نیست؛ فقط `config.example.php`
 - ✅ هر ۴۸ اندپوینت `api/` بررسی ورود کاربر دارند
 - ✅ ۲۰۴ فراخوانی `prepare()` در برابر ۸ `query()` (بدون پارامتر ورودی) — تزریق SQL دیده نشد
-- ⚠️ **`assets/fonts/` خالی است.** `style.css` سه فایل `Vazirmatn-Regular/Medium/Bold.woff2` را صدا می‌زند که در خروجی zip نبودند. تا وقتی اضافه نشوند، فونت به قلم پیش‌فرض سیستم می‌افتد. فایل‌ها را در `assets/fonts/` بگذارید.
+- ✅ **فونت اضافه شد** — `assets/fonts/Vazirmatn.woff2`، نسخه‌ی variable و subset‌شده (۸۵ KB در یک درخواست، به‌جای ۱۵۳ KB در سه). جزئیات در `assets/fonts/README.md`.
 - ⚠️ **بدون ردیابی migration** (بالا توضیح داده شد).
 - ℹ️ `deploy.php` یک به‌روزرسان تحت وب است که با `DEPLOY_TOKEN` و `hash_equals` محافظت می‌شود. توکن باید طولانی و تصادفی باشد؛ روی VPS بهتر است به‌جای آن از `deploy.sh` استفاده شود.
 

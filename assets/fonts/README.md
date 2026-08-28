@@ -1,12 +1,47 @@
-# فونت‌ها
+# فونت
 
-`assets/css/style.css` این سه فایل را صدا می‌زند:
+`Vazirmatn.woff2` — نسخه‌ی **variable** و **subset‌شده**ی وزیرمتن (v33.003).
 
-- `Vazirmatn-Regular.woff2`
-- `Vazirmatn-Medium.woff2`
-- `Vazirmatn-Bold.woff2`
+## چرا این شکلی
 
-این فایل‌ها در خروجی اولیه‌ی پروژه نبودند و باید در همین پوشه قرار بگیرند.
-تا آن زمان مرورگر به قلم پیش‌فرض سیستم برمی‌گردد (`@font-face` بی‌اثر می‌ماند).
+| گزینه | حجم | درخواست |
+|---|---|---|
+| سه فایل ثابت (Regular/Medium/Bold) | ۱۵۳ KB | ۳ |
+| variable کامل | ۱۱۱ KB | ۱ |
+| **variable + subset (این فایل)** | **۸۵ KB** | **۱** |
 
-فونت وزیرمتن: https://github.com/rastikerdar/vazirmatn — نسخه‌ی `woff2` را بردارید.
+با `font-weight: 100 900` در `style.css`، همه‌ی وزن‌ها از همین یک فایل می‌آیند.
+
+## محدوده‌ی subset
+
+لاتین `U+0020-00FF`، بلوک عربی/فارسی `U+0600-06FF`، نیم‌فاصله و نشانه‌های جهت
+`U+200C-200F`، نشانه‌گذاری عمومی `U+2010-206F`، نمادهای پول `U+20A0-20BF`،
+و فرم‌های نمایشی عربی `U+FB50-FDFF` و `U+FE70-FEFF`.
+
+**همه‌ی ویژگی‌های OpenType نگه داشته شده‌اند** (`--layout-features='*'`). این
+عمدی است و دو دلیل دارد:
+
+- `tnum` در ۱۱ جای `style.css` برای هم‌ترازی ستون مبالغ صدا زده می‌شود. بدون
+  آن، ارقام هم‌عرض نمی‌شوند و جدول‌ها به هم می‌ریزند.
+- `kern` بدون آن فاصله‌ی حروف خراب می‌شود.
+
+ایموجی‌ها (`📅 💰 ✅` و…) عمداً در subset نیستند؛ وزیرمتن اصلاً آن‌ها را
+ندارد و از فونت سیستم می‌آیند. همین‌طور `← → ▲ ▼ ⚙` که در خود وزیرمتن هم
+وجود ندارند.
+
+## ساخت دوباره
+
+```bash
+pip install fonttools brotli
+curl -fsSL -o vaz.zip https://github.com/rastikerdar/vazirmatn/releases/download/v33.003/vazirmatn-v33.003.zip
+unzip -q vaz.zip "fonts/webfonts/*" -d ext
+pyftsubset "ext/fonts/webfonts/Vazirmatn[wght].woff2" \
+  --unicodes="U+0020-00FF,U+0600-06FF,U+200C-200F,U+2010-206F,U+20A0-20BF,U+FB50-FDFF,U+FE70-FEFF" \
+  --layout-features='*' --flavor=woff2 --output-file=Vazirmatn.woff2
+```
+
+## نکته‌ی مسیر
+
+در `style.css` آدرس فونت `url('fonts/Vazirmatn.woff2')` است، **نه**
+`'../fonts/…'`. چون CSS همیشه از `assets/serve.php` تحویل داده می‌شود،
+مبدأ آدرس‌های نسبی پوشه‌ی `assets/` است نه `assets/css/`.

@@ -5,21 +5,24 @@
    خود آیکن اپ. مبلغ قهرمان صفحه است؛ بقیه چیزها آرام می‌مانند.
    ============================================================ */
 
-/* ---------- فونت (محلی؛ اگر نبود، فونت سیستم) ---------- */
+/* ---------- فونت (محلی؛ اگر نبود، فونت سیستم) ----------
+   یک فایل variable به‌جای سه فایل ثابت:
+     سه فایل ثابت  → ۱۵۳ کیلوبایت در ۳ درخواست
+     variable subset → ۸۵ کیلوبایت در ۱ درخواست
+   subset شامل لاتین، بلوک عربی/فارسی، فرم‌های نمایشی، نیم‌فاصله و
+   نشانه‌گذاری است. همه‌ی ویژگی‌های OpenType نگه داشته شده‌اند —
+   به‌ویژه tnum که این فایل در ۱۱ جا برای هم‌ترازی مبالغ صدایش می‌زند،
+   و kern که نبودش فاصله‌ی حروف را خراب می‌کند.
+   با font-weight: 100 900 همه‌ی وزن‌ها از همین یک فایل می‌آیند.
+
+   ⚠️ مسیر عمداً 'fonts/…' است و نه '../fonts/…'.
+   این فایل همیشه از طریق assets/serve.php تحویل داده می‌شود (header.php
+   را ببینید)، پس مبدأ آدرس‌های نسبی پوشه‌ی assets/ است نه assets/css/.
+   با '../fonts/…' آدرس به /fonts/ می‌رسید و فونت ۴۰۴ می‌گرفت. */
 @font-face {
     font-family: 'Vazirmatn';
-    src: url('../fonts/Vazirmatn-Regular.woff2') format('woff2');
-    font-weight: 400; font-style: normal; font-display: swap;
-}
-@font-face {
-    font-family: 'Vazirmatn';
-    src: url('../fonts/Vazirmatn-Medium.woff2') format('woff2');
-    font-weight: 500; font-style: normal; font-display: swap;
-}
-@font-face {
-    font-family: 'Vazirmatn';
-    src: url('../fonts/Vazirmatn-Bold.woff2') format('woff2');
-    font-weight: 700; font-style: normal; font-display: swap;
+    src: url('fonts/Vazirmatn.woff2') format('woff2');
+    font-weight: 100 900; font-style: normal; font-display: swap;
 }
 
 /* ============================================================
