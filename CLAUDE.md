@@ -97,7 +97,8 @@ $userId = Auth::userId();   // همیشه از اینجا، هرگز از ورو
 - ✅ هر ۴۸ اندپوینت `api/` بررسی ورود کاربر دارند
 - ✅ ۲۰۴ فراخوانی `prepare()` در برابر ۸ `query()` (بدون پارامتر ورودی) — تزریق SQL دیده نشد
 - ✅ **فونت اضافه شد** — `assets/fonts/Vazirmatn.woff2`، نسخه‌ی variable و subset‌شده (۸۵ KB در یک درخواست، به‌جای ۱۵۳ KB در سه). جزئیات در `assets/fonts/README.md`.
-- ⚠️ **بدون ردیابی migration** (بالا توضیح داده شد).
+- ✅ **ردیابی migration اضافه شد** — جدول `schema_migrations` و `deploy/migrate.sh` (بالا توضیح داده شد).
+- ✅ **مجموعه تست اضافه شد** — `bash tests/run.sh` (پایین‌تر توضیح داده شد).
 - ℹ️ `deploy.php` یک به‌روزرسان تحت وب است که با `DEPLOY_TOKEN` و `hash_equals` محافظت می‌شود. توکن باید طولانی و تصادفی باشد؛ روی VPS بهتر است به‌جای آن از `deploy.sh` استفاده شود.
 
 ---
@@ -151,6 +152,6 @@ $userId = Auth::userId();   // همیشه از اینجا، هرگز از ورو
 ## پیش از هر push
 
 ```bash
-find . -name '*.php' -not -path './.git/*' -exec php -l {} \; | grep -v 'No syntax errors'
+bash tests/run.sh
 ```
-خروجی باید خالی باشد.
+کد خروج باید ۰ باشد. (بررسی نحو داخل همین مجموعه هست، پس `php -l` جدا لازم نیست.)
