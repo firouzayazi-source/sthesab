@@ -26,6 +26,7 @@ if (PHP_SAPI !== 'cli') {
 }
 
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/functions.php';
 
 $argvIn = $argv;
 array_shift($argvIn);
@@ -59,10 +60,7 @@ try {
     fail('اتصال به دیتابیس برقرار نشد: ' . $e->getMessage());
 }
 
-$hasEmailColumn = (bool)$pdo->query(
-    "SELECT COUNT(*) FROM information_schema.columns
-     WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email'"
-)->fetchColumn();
+$hasEmailColumn = usersHaveEmailColumn($pdo);
 
 $cmd = $argvIn[0];
 
@@ -72,7 +70,7 @@ $findUser = function (string $username) use ($pdo): array {
     $st->execute(['u' => $username]);
     $row = $st->fetch();
     if (!$row) {
-        fail("کاربری با نام «$username» پیدا نشد. با --list فهرست را ببینید.");
+        fail("کاربری با نام «{$username}» پیدا نشد. با --list فهرست را ببینید.");
     }
     return $row;
 };
@@ -165,9 +163,9 @@ if ($cmd === '--reset') {
 if ($cmd === '--activate') {
     $username = $argvIn[1] ?? fail('نام کاربری را بدهید. نمونه:  --activate ali');
     $user = $findUser($username);
-    if ($user['is_active']) { out("کاربر «$username» از قبل فعال است."); exit(0); }
+    if ($user['is_active']) { out("کاربر «{$username}» از قبل فعال است."); exit(0); }
     $pdo->prepare('UPDATE users SET is_active = 1 WHERE id = :id')->execute(['id' => $user['id']]);
-    ok("کاربر «$username» فعال شد.");
+    ok("کاربر «{$username}» فعال شد.");
     exit(0);
 }
 
@@ -178,18 +176,11 @@ if ($cmd === '--set-email') {
     }
     $username = $argvIn[1] ?? fail('استفاده — نمونه:  --set-email ali ali@gmail.com');
     $email    = $argvIn[2] ?? fail('استفاده — نمونه:  --set-email ali ali@gmail.com');
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) { fail("ایمیل معتبر نیست: $email"); }
     $user = $findUser($username);
 
-    $dup = $pdo->prepare('SELECT username FROM users WHERE email = :e AND id <> :id');
-    $dup->execute(['e' => $email, 'id' => $user['id']]);
-    if ($other = $dup->fetchColumn()) {
-        fail("این ایمیل برای کاربر «$other» ثبت شده است.");
-    }
-
-    $pdo->prepare('UPDATE users SET email = :e WHERE id = :id')
-        ->execute(['e' => $email, 'id' => $user['id']]);
-    ok("ایمیل «$email» برای کاربر «$username» ثبت شد.");
+    // همان تابعی که پنل مدیر و صفحه‌ی پروفایل استفاده می‌کنند — قاعده یکی است
+    if ($err = saveUserEmail($pdo, (int)$user['id'], $email)) { fail($err); }
+    ok("ایمیل «{$email}» برای کاربر «{$username}» ثبت شد.");
     out('حالا می‌تواند از صفحه‌ی ورود، «رمز را فراموش کرده‌ام» را بزند.');
     exit(0);
 }

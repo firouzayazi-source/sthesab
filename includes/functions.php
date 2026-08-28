@@ -1117,3 +1117,70 @@ function appBaseUrl(): string
     return ($https ? 'https://' : 'http://') . $host
         . (defined('APP_BASE_PATH') ? rtrim(APP_BASE_PATH, '/') : '');
 }
+
+/**
+ * آیا ستون email روی جدول users هست؟
+ *
+ * با migration_password_reset اضافه شده. نصب‌هایی که هنوز migration را
+ * اجرا نکرده‌اند باید بدون خطا کار کنند، پس همه جا قبل از دست زدن به
+ * ایمیل این را می‌پرسیم. نتیجه در همان درخواست کش می‌شود چون کوئری
+ * information_schema ارزان نیست و چند بار پرسیده می‌شود.
+ */
+function usersHaveEmailColumn(PDO $pdo): bool
+{
+    static $cached = null;
+    if ($cached !== null) { return $cached; }
+    try {
+        $cached = (bool)$pdo->query(
+            "SELECT COUNT(*) FROM information_schema.columns
+             WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email'"
+        )->fetchColumn();
+    } catch (PDOException $e) {
+        $cached = false;
+    }
+    return $cached;
+}
+
+/**
+ * تنها مسیر نوشتن ایمیل کاربر. برمی‌گرداند: '' یعنی موفق، وگرنه متن خطا.
+ *
+ * ⚠️ رشته‌ی خالی یعنی «دست نزن»، نه «پاک کن».
+ *
+ * چرا این‌قدر مهم است: ایمیل حالا هم راه ورود است هم تنها راه بازیابی
+ * رمز. یک بار پاک شدنش یعنی کاربر بی‌سروصدا از بازیابی محروم می‌شود و
+ * تا وقتی رمزش را فراموش نکرده، هیچ‌کس نمی‌فهمد. فرم ویرایش کاربر در
+ * پنل مدیر مقدار فعلی را با جاوااسکریپت پر می‌کند؛ اگر آن اسکریپت اجرا
+ * نشود فیلد خالی می‌ماند و ذخیره‌ی ساده، ایمیل ثبت‌شده را پاک می‌کرد.
+ * دقیقاً همین اتفاق افتاد. پاک کردن حالا باید صریح خواسته شود.
+ *
+ * این تابع سه قاعده را یک‌جا نگه می‌دارد تا در سه فایل تکرار نشوند:
+ * وجود ستون، معتبر بودن آدرس، و یکتا بودنش بین کاربران.
+ */
+function saveUserEmail(PDO $pdo, int $userId, string $email, bool $allowClear = false): string
+{
+    if (!usersHaveEmailColumn($pdo)) {
+        return 'ستون ایمیل هنوز ساخته نشده — migration را اجرا کنید (bash deploy/migrate.sh --apply).';
+    }
+
+    $email = trim($email);
+
+    if ($email === '') {
+        if (!$allowClear) { return ''; }   // دست‌نخورده می‌ماند
+        $pdo->prepare('UPDATE users SET email = NULL WHERE id = :id')->execute(['id' => $userId]);
+        return '';
+    }
+
+    if (mb_strlen($email) > 190 || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return 'ایمیل معتبر نیست.';
+    }
+
+    $dup = $pdo->prepare('SELECT username FROM users WHERE email = :e AND id <> :id');
+    $dup->execute(['e' => $email, 'id' => $userId]);
+    if ($other = $dup->fetchColumn()) {
+        return 'این ایمیل برای کاربر «' . $other . '» ثبت شده است.';
+    }
+
+    $pdo->prepare('UPDATE users SET email = :e WHERE id = :id')
+        ->execute(['e' => $email, 'id' => $userId]);
+    return '';
+}

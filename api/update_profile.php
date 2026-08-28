@@ -50,31 +50,22 @@ if ($dup->fetch()) {
 
 // ستون email با migration_password_reset اضافه شده؛ اگر هنوز اجرا نشده
 // باشد، بقیه‌ی صفحه باید کار کند و فقط ایمیل نادیده گرفته شود.
-$hasEmail = (bool)$pdo->query(
-    "SELECT COUNT(*) FROM information_schema.columns
-     WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email'"
-)->fetchColumn();
-
-if ($hasEmail && $email !== '') {
-    $dupE = $pdo->prepare('SELECT id FROM users WHERE email = :e AND id != :id');
-    $dupE->execute(['e' => $email, 'id' => $userId]);
-    if ($dupE->fetch()) {
-        jsonResponse(['success' => false, 'message' => 'این ایمیل قبلاً برای حساب دیگری ثبت شده است.'], 422);
-    }
-}
+$hasEmail = usersHaveEmailColumn($pdo);
 
 try {
+    // ایمیل اول نوشته می‌شود: اگر تکراری بود باید کل ذخیره رد شود، نه
+    // اینکه نام عوض شود و ایمیل بی‌سروصدا جا بماند.
+    // saveUserEmail هرگز ایمیل را پاک نمی‌کند؛ اینجا هم $email حتماً
+    // پر است چون بالاتر الزامی شده.
     if ($hasEmail) {
-        $upd = $pdo->prepare('UPDATE users SET full_name = :fn, username = :un, email = :em WHERE id = :id');
-        $upd->execute([
-            'fn' => $fullName, 'un' => $username,
-            'em' => ($email === '' ? null : $email),   // خالی یعنی NULL، نه رشته‌ی تهی
-            'id' => $userId,
-        ]);
-    } else {
-        $upd = $pdo->prepare('UPDATE users SET full_name = :fn, username = :un WHERE id = :id');
-        $upd->execute(['fn' => $fullName, 'un' => $username, 'id' => $userId]);
+        $emailErr = saveUserEmail($pdo, $userId, $email);
+        if ($emailErr !== '') {
+            jsonResponse(['success' => false, 'message' => $emailErr], 422);
+        }
     }
+
+    $upd = $pdo->prepare('UPDATE users SET full_name = :fn, username = :un WHERE id = :id');
+    $upd->execute(['fn' => $fullName, 'un' => $username, 'id' => $userId]);
 
     $_SESSION['full_name'] = $fullName;
     $_SESSION['username']  = $username;

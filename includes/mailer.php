@@ -180,7 +180,7 @@ class Mailer
             [$code, $msg] = $read();
             if (!in_array($code, $expect, true)) {
                 $shown = $c !== '' ? preg_replace('/^(AUTH|.*PASS).*/i', '$1 …', $c) : '(اتصال)';
-                throw new RuntimeException("SMTP: پاسخ $code به «$shown» — $msg");
+                throw new RuntimeException("SMTP: پاسخ $code به «{$shown}» — $msg");
             }
             return $msg;
         };

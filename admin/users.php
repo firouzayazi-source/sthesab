@@ -27,13 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // بدون ایمیل، کاربر نمی‌تواند رمزش را خودش بازیابی کند.
     $emailIn = trim(postParam('email'));
     $emailErr = '';
-    $emailCol = false;
-    try {
-        $emailCol = (bool)$pdo->query(
-            "SELECT COUNT(*) FROM information_schema.columns
-             WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email'"
-        )->fetchColumn();
-    } catch (PDOException $e) { $emailCol = false; }
+    $emailCol = usersHaveEmailColumn($pdo);
     if ($emailIn !== '' && (mb_strlen($emailIn) > 190 || !filter_var($emailIn, FILTER_VALIDATE_EMAIL))) {
         $emailErr = 'ایمیل معتبر نیست.';
     }
@@ -48,19 +42,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
      * ایمیل را جدا از کوئری اصلی می‌نویسیم تا کوئری‌های موجود دست‌نخورده
      * بمانند و اگر ستون هنوز با migration اضافه نشده باشد چیزی نشکند.
      * برمی‌گرداند: '' یعنی موفق، وگرنه متن خطا.
+     *
+     * ⚠️ ورودی خالی یعنی «دست نزن»، نه «پاک کن».
+     *
+     * چرا: فرم ویرایش یکی است و برای همه‌ی ردیف‌ها استفاده می‌شود؛
+     * مقدار فعلی ایمیل را جاوااسکریپت از data-email پر می‌کند. اگر آن
+     * جاوااسکریپت به هر دلیلی اجرا نشود (نسخه‌ی کش‌شده، خطای اسکریپت،
+     * مرورگر قدیمی)، فیلد خالی می‌ماند و ذخیره‌ی ساده‌ی همان فرم ایمیلِ
+     * ثبت‌شده را پاک می‌کرد. کاربر می‌دید «ایمیل نمی‌مونه». حالا حذف
+     * ایمیل از این مسیر ممکن نیست — ایمیل فقط با ایمیل تازه عوض می‌شود.
      */
     $saveEmail = function (int $uid) use ($pdo, $emailIn, $emailCol): string {
         if (!$emailCol) { return ''; }
-        if ($emailIn !== '') {
-            $d = $pdo->prepare('SELECT username FROM users WHERE email = :e AND id <> :id');
-            $d->execute(['e' => $emailIn, 'id' => $uid]);
-            if ($other = $d->fetchColumn()) {
-                return 'این ایمیل برای کاربر «' . $other . '» ثبت شده است.';
-            }
-        }
-        $pdo->prepare('UPDATE users SET email = :e WHERE id = :id')
-            ->execute(['e' => ($emailIn === '' ? null : $emailIn), 'id' => $uid]);
-        return '';
+        return saveUserEmail($pdo, $uid, $emailIn);
     };
 
     if ($action === 'create') {
@@ -255,13 +249,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ستون ایمیل با migration_password_reset آمده؛ اگر هنوز اجرا نشده باشد
 // صفحه باید بدون خطا کار کند.
-$hasEmailColumn = false;
-try {
-    $hasEmailColumn = (bool)$pdo->query(
-        "SELECT COUNT(*) FROM information_schema.columns
-         WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email'"
-    )->fetchColumn();
-} catch (PDOException $e) { $hasEmailColumn = false; }
+$hasEmailColumn = usersHaveEmailColumn($pdo);
 
 $users = $pdo->query($hasEmailColumn
     ? 'SELECT id, full_name, username, email, role, is_active, created_at FROM users ORDER BY created_at ASC'
@@ -446,11 +434,12 @@ include __DIR__ . '/../includes/header.php';
             </div>
 <?php if ($hasEmailColumn): ?>
             <div class="form-group">
-                <label>ایمیل <span style="color:var(--muted);font-weight:400">(اختیاری)</span></label>
+                <label>ایمیل</label>
                 <input type="email" name="email" maxlength="190"
                        autocapitalize="none" autocorrect="off" spellcheck="false"
                        placeholder="برای بازیابی رمز عبور"
                        value="<?= $reopenModal === 'edit' ? h(postParam('email')) : '' ?>">
+                <p class="hint">اگر خالی بماند، ایمیل فعلی کاربر دست‌نخورده می‌ماند.</p>
             </div>
 <?php endif; ?>
             <div class="form-group">

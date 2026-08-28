@@ -51,10 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // ستون email با migration_password_reset می‌آید؛ روی نصبی که
             // هنوز اجرا نشده باشد، ساخت مدیر نباید شکست بخورد.
-            $hasEmail = (bool)$pdo->query(
-                "SELECT COUNT(*) FROM information_schema.columns
-                 WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email'"
-            )->fetchColumn();
+            $hasEmail = usersHaveEmailColumn($pdo);
 
             if ($hasEmail) {
                 $stmt = $pdo->prepare('INSERT INTO users (full_name, username, email, password_hash, role, is_active) VALUES (:full_name, :username, :email, :password_hash, "admin", 1)');

@@ -42,13 +42,7 @@ try {
 
 // ستون ایمیل با migration_password_reset اضافه شده. اگر هنوز اجرا نشده
 // باشد، صفحه باید بدون خطا کار کند و فقط این بخش را نشان ندهد.
-$hasEmailColumn = false;
-try {
-    $hasEmailColumn = (bool)$pdo->query(
-        "SELECT COUNT(*) FROM information_schema.columns
-         WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email'"
-    )->fetchColumn();
-} catch (PDOException $e) { $hasEmailColumn = false; }
+$hasEmailColumn = usersHaveEmailColumn($pdo);
 
 $sessionOptions = [
     1   => 'یک ساعت',
