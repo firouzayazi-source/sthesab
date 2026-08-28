@@ -115,8 +115,20 @@ for port in 80 443; do
     fi
 done
 
-if [[ -e "/etc/nginx/sites-enabled/$SITE_NAME" || -e "/etc/nginx/sites-available/$SITE_NAME" ]]; then
-    info "سایت nginx به نام «$SITE_NAME» از قبل هست — بازنویسی می‌شود (فقط همین فایل)."
+SITE_FILE="/etc/nginx/sites-available/$SITE_NAME"
+SKIP_NGINX=0
+if [[ -e "$SITE_FILE" ]]; then
+    if grep -q "ssl_certificate" "$SITE_FILE" 2>/dev/null; then
+        # certbot این فایل را برای HTTPS بازنویسی کرده. بازنویسی دوباره‌ی آن
+        # با قالب HTTP، گواهی را از پیکربندی حذف می‌کند و سایت از HTTPS
+        # می‌افتد. پس دست نمی‌زنیم.
+        SKIP_NGINX=1
+        info "سایت «$SITE_NAME» گواهی SSL دارد (کار certbot) — دست‌نخورده می‌ماند."
+        info "اگر عمداً می‌خواهید از نو ساخته شود: mv $SITE_FILE $SITE_FILE.bak"
+        info "و بعد از اجرای دوباره‌ی این اسکریپت، certbot را دوباره بزنید."
+    else
+        info "سایت nginx به نام «$SITE_NAME» از قبل هست — بازنویسی می‌شود (فقط همین فایل)."
+    fi
 fi
 
 for f in /etc/nginx/sites-enabled/*; do
@@ -242,6 +254,9 @@ POOL
 
 # ---------- ۶. سایت nginx ----------
 step "۶. سایت nginx"
+if [[ $SKIP_NGINX -eq 1 ]]; then
+    info "رد شد — سایت گواهی‌دار موجود دست‌نخورده ماند."
+else
 info "فقط یک server block تازه برای $DOMAIN اضافه می‌شود."
 write_file "/etc/nginx/sites-available/${SITE_NAME}" <<NGINX
 # دفتر مالی — این فایل فقط به همین پروژه مربوط است.
@@ -301,6 +316,7 @@ NGINX
 
 assert_allowed "/etc/nginx/sites-enabled/${SITE_NAME}"
 run "ln -sfn '/etc/nginx/sites-available/${SITE_NAME}' '/etc/nginx/sites-enabled/${SITE_NAME}'"
+fi
 
 # ---------- ۷. اعمال ----------
 step "۷. اعمال تغییرات"
