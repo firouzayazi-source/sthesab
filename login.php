@@ -102,10 +102,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <form method="POST" class="auth-form" autocomplete="off">
                 <?= Csrf::field() ?>
                 <div class="form-group">
-                    <label for="username">نام کاربری</label>
+                    <label for="username">نام کاربری یا ایمیل</label>
                     <input type="text" id="username" name="username" required autofocus
                            autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text"
-                           autocomplete="username" placeholder="نام کاربری خود را وارد کنید" value="<?= h(postParam('username')) ?>">
+                           autocomplete="username" placeholder="نام کاربری یا ایمیل" value="<?= h(postParam('username')) ?>">
                 </div>
                 <div class="form-group">
                     <label for="password">رمز عبور</label>

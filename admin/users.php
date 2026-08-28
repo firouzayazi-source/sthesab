@@ -37,6 +37,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($emailIn !== '' && (mb_strlen($emailIn) > 190 || !filter_var($emailIn, FILTER_VALIDATE_EMAIL))) {
         $emailErr = 'ایمیل معتبر نیست.';
     }
+    // هنگام ساخت کاربر تازه، ایمیل اجباری است: کاربری که ایمیل ندارد
+    // نمی‌تواند رمزش را خودش بازیابی کند و کارش به مدیر می‌افتد.
+    // در ویرایش اجباری نیست، تا کاربران قدیمیِ بدون ایمیل قفل نشوند.
+    if ($emailCol && $action === 'create' && $emailIn === '') {
+        $emailErr = 'ایمیل الزامی است — بدون آن کاربر نمی‌تواند رمزش را بازیابی کند.';
+    }
 
     /**
      * ایمیل را جدا از کوئری اصلی می‌نویسیم تا کوئری‌های موجود دست‌نخورده
@@ -84,6 +90,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $checkStmt->execute(['username' => $username]);
             if ($checkStmt->fetch()) {
                 $error = 'این نام کاربری قبلاً استفاده شده است.';
+            } elseif ($emailErr !== '') {
+                $error = $emailErr;
             } else {
                 try {
                     $hash = password_hash($password, PASSWORD_DEFAULT);
@@ -383,11 +391,12 @@ include __DIR__ . '/../includes/header.php';
             </div>
 <?php if ($hasEmailColumn): ?>
             <div class="form-group">
-                <label>ایمیل <span style="color:var(--muted);font-weight:400">(اختیاری)</span></label>
-                <input type="email" name="email" maxlength="190"
+                <label>ایمیل</label>
+                <input type="email" name="email" maxlength="190" required
                        autocapitalize="none" autocorrect="off" spellcheck="false"
-                       placeholder="برای بازیابی رمز عبور"
+                       placeholder="مثلاً: user@gmail.com"
                        value="<?= $reopenModal === 'add' ? h(postParam('email')) : '' ?>">
+                <p class="hint">کاربر با همین ایمیل هم می‌تواند وارد شود و رمزش را بازیابی کند.</p>
             </div>
 <?php endif; ?>
             <div class="form-group">

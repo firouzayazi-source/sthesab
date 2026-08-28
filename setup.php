@@ -17,11 +17,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $fullName = postParam('full_name');
     $username = postParam('username');
+    $email    = trim(postParam('email'));
     $password = $_POST['password'] ?? '';
     $passwordConfirm = $_POST['password_confirm'] ?? '';
 
     if ($fullName === '' || $username === '' || $password === '') {
         $error = 'تمام فیلدها الزامی هستند.';
+    } elseif ($email === '') {
+        // ایمیل اجباری است: بدون آن، مدیرِ اول هیچ راهی برای بازیابی
+        // رمز ندارد و اگر فراموشش کند کسی نمی‌تواند کمکش کند.
+        $error = 'ایمیل الزامی است — بدون آن امکان بازیابی رمز وجود ندارد.';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 190) {
+        $error = 'ایمیل معتبر نیست.';
     } elseif (mb_strlen($password) < 6) {
         $error = 'رمز عبور باید حداقل ۶ کاراکتر باشد.';
     } elseif ($password !== $passwordConfirm) {
@@ -41,12 +48,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $hash = password_hash($password, PASSWORD_DEFAULT);
-            $stmt = $pdo->prepare('INSERT INTO users (full_name, username, password_hash, role, is_active) VALUES (:full_name, :username, :password_hash, "admin", 1)');
-            $stmt->execute([
-                'full_name'     => $fullName,
-                'username'      => $username,
-                'password_hash' => $hash,
-            ]);
+
+            // ستون email با migration_password_reset می‌آید؛ روی نصبی که
+            // هنوز اجرا نشده باشد، ساخت مدیر نباید شکست بخورد.
+            $hasEmail = (bool)$pdo->query(
+                "SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email'"
+            )->fetchColumn();
+
+            if ($hasEmail) {
+                $stmt = $pdo->prepare('INSERT INTO users (full_name, username, email, password_hash, role, is_active) VALUES (:full_name, :username, :email, :password_hash, "admin", 1)');
+                $stmt->execute([
+                    'full_name'     => $fullName,
+                    'username'      => $username,
+                    'email'         => $email,
+                    'password_hash' => $hash,
+                ]);
+            } else {
+                $stmt = $pdo->prepare('INSERT INTO users (full_name, username, password_hash, role, is_active) VALUES (:full_name, :username, :password_hash, "admin", 1)');
+                $stmt->execute([
+                    'full_name'     => $fullName,
+                    'username'      => $username,
+                    'password_hash' => $hash,
+                ]);
+            }
 
             $pdo->commit();
 
@@ -98,6 +123,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <input type="text" id="username" name="username" required
                        autocapitalize="none" autocorrect="off" spellcheck="false"
                        autocomplete="username" placeholder="فقط حروف انگلیسی و عدد" value="<?= h(postParam('username')) ?>">
+            </div>
+            <div class="form-group">
+                <label for="email">ایمیل</label>
+                <input type="email" id="email" name="email" required
+                       autocapitalize="none" autocorrect="off" spellcheck="false"
+                       autocomplete="email" maxlength="190"
+                       placeholder="مثلاً: you@gmail.com" value="<?= h(postParam('email')) ?>">
+                <p class="hint">با همین ایمیل هم می‌توانید وارد شوید، و اگر رمز را فراموش کردید بازیابی از همین‌جا انجام می‌شود.</p>
             </div>
             <div class="form-group">
                 <label for="password">رمز عبور</label>

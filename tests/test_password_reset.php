@@ -202,5 +202,55 @@ if (defined('APP_URL') && APP_URL !== '') {
 }
 
 // ---------------------------------------------------------------
+T::group('ورود با ایمیل، نه فقط نام کاربری');
+
+require_once __DIR__ . '/../includes/auth.php';
+
+$LOGINU = '__test_login_user';
+$LOGINE = '__test_login@example.invalid';
+$pdo->prepare('DELETE FROM users WHERE username = :u')->execute(['u' => $LOGINU]);
+$pdo->prepare(
+    'INSERT INTO users (full_name, username, email, password_hash, role, is_active)
+     VALUES (:f, :u, :e, :h, "user", 1)'
+)->execute([
+    'f' => 'کاربر ورود', 'u' => $LOGINU, 'e' => $LOGINE,
+    'h' => password_hash('LoginPass123', PASSWORD_DEFAULT),
+]);
+
+if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+$try = function (string $id, string $pass) {
+    $_SESSION = [];
+    return Auth::attemptLogin($id, $pass);
+};
+T::ok($try($LOGINU, 'LoginPass123')['success'], 'ورود با نام کاربری');
+T::ok($try($LOGINE, 'LoginPass123')['success'], 'ورود با ایمیل');
+T::ok($try(strtoupper($LOGINE), 'LoginPass123')['success'], 'ایمیل با حروف بزرگ هم می‌پذیرد');
+T::ok(!$try($LOGINE, 'رمزغلط')['success'], 'ایمیل درست با رمز غلط رد می‌شود');
+T::ok(!$try('__no_such_account__', 'LoginPass123')['success'], 'حساب ناموجود رد می‌شود');
+
+// پیام خطا نباید بگوید کدام‌یک اشتباه بوده
+$m1 = $try($LOGINE, 'رمزغلط')['message'];
+$m2 = $try('__no_such_account__', 'LoginPass123')['message'];
+T::same($m1, $m2, 'پیام خطا برای «رمز غلط» و «حساب ناموجود» یکی است');
+
+$pdo->prepare('DELETE FROM users WHERE username = :u')->execute(['u' => $LOGINU]);
+
+// ---------------------------------------------------------------
+T::group('ایمیل هنگام ثبت‌نام اجباری است');
+
+// این‌ها بررسی ساختاری‌اند: اگر کسی روزی اعتبارسنجی را بردارد، تست
+// شکست می‌خورد. اعتبارسنجی واقعی سمت سرور با مرورگر هم آزموده شده.
+$srcSetup   = file_get_contents(__DIR__ . '/../setup.php');
+$srcAdmin   = file_get_contents(__DIR__ . '/../admin/users.php');
+$srcProfile = file_get_contents(__DIR__ . '/../api/update_profile.php');
+
+T::ok(str_contains($srcSetup, 'ایمیل الزامی است'),
+    'setup.php ساخت مدیر بدون ایمیل را رد می‌کند');
+T::ok(str_contains($srcAdmin, 'ایمیل الزامی است'),
+    'admin/users.php ساخت کاربر بدون ایمیل را رد می‌کند');
+T::ok(str_contains($srcProfile, 'ایمیل الزامی است'),
+    'update_profile ذخیره‌ی پروفایل بدون ایمیل را رد می‌کند');
+
+// ---------------------------------------------------------------
 $cleanup();
 exit(T::report());

@@ -27,26 +27,52 @@ class Auth
         }
     }
 
-    public static function attemptLogin(string $username, string $password): array
+    /**
+     * ورود با نام کاربری یا ایمیل.
+     *
+     * هر دو پذیرفته می‌شوند چون کاربر لازم نیست یادش باشد کدام را ثبت
+     * کرده. ایمیل ایندکس یکتا دارد، پس ابهامی پیش نمی‌آید.
+     *
+     * پیام خطا عمداً برای «کاربر پیدا نشد» و «رمز غلط» یکی است تا این
+     * صفحه به ابزار کشف حساب تبدیل نشود.
+     */
+    public static function attemptLogin(string $identifier, string $password): array
     {
-        $username = trim($username);
+        $identifier = trim($identifier);
 
-        if ($username === '' || $password === '') {
-            return ['success' => false, 'message' => 'نام کاربری و رمز عبور را وارد کنید.'];
+        if ($identifier === '' || $password === '') {
+            return ['success' => false, 'message' => 'نام کاربری یا ایمیل و رمز عبور را وارد کنید.'];
         }
 
         $pdo = Database::getConnection();
-        try {
-            $stmt = $pdo->prepare('SELECT id, full_name, username, password_hash, role, is_active, session_hours FROM users WHERE username = :username LIMIT 1');
-            $stmt->execute(['username' => $username]);
-            $user = $stmt->fetch();
-        } catch (PDOException $e) {
-            // ستون session_hours هنوز اضافه نشده
-            $stmt = $pdo->prepare('SELECT id, full_name, username, password_hash, role, is_active FROM users WHERE username = :username LIMIT 1');
-            $stmt->execute(['username' => $username]);
-            $user = $stmt->fetch();
-            if ($user) { $user['session_hours'] = 1; }
+
+        // از کامل‌ترین کوئری شروع می‌شود و اگر ستونی هنوز با migration
+        // اضافه نشده باشد، به نسخه‌ی ساده‌تر می‌افتد.
+        $user = null;
+        $queries = [
+            'SELECT id, full_name, username, password_hash, role, is_active, session_hours
+             FROM users WHERE username = :id OR (email IS NOT NULL AND email = :id2) LIMIT 1',
+            'SELECT id, full_name, username, password_hash, role, is_active, session_hours
+             FROM users WHERE username = :id LIMIT 1',
+            'SELECT id, full_name, username, password_hash, role, is_active
+             FROM users WHERE username = :id LIMIT 1',
+        ];
+        foreach ($queries as $sql) {
+            try {
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute(
+                    str_contains($sql, ':id2')
+                        ? ['id' => $identifier, 'id2' => $identifier]
+                        : ['id' => $identifier]
+                );
+                $user = $stmt->fetch();
+                break;
+            } catch (PDOException $e) {
+                continue;   // ستون email یا session_hours هنوز نیست
+            }
         }
+        if ($user && !isset($user['session_hours'])) { $user['session_hours'] = 1; }
+
         if (!$user || !password_verify($password, $user['password_hash'])) {
             return ['success' => false, 'message' => 'نام کاربری یا رمز عبور اشتباه است.'];
         }

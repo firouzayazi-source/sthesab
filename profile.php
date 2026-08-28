@@ -115,15 +115,15 @@ include __DIR__ . '/includes/header.php';
 <?php if ($hasEmailColumn): ?>
             <div class="form-group">
                 <label for="pf_email">ایمیل</label>
-                <input type="email" id="pf_email" name="email" maxlength="190"
+                <input type="email" id="pf_email" name="email" maxlength="190" required
                        autocapitalize="none" autocorrect="off" spellcheck="false"
-                       autocomplete="email" placeholder="برای بازیابی رمز عبور"
+                       autocomplete="email" placeholder="مثلاً: you@gmail.com"
                        value="<?= h($me['email'] ?? '') ?>">
                 <p class="hint">
                     <?php if (empty($me['email'])): ?>
-                        بدون ایمیل، اگر رمزتان را فراموش کنید راهی برای بازیابی ندارید.
+                        هنوز ایمیلی ثبت نکرده‌اید. بدون آن، اگر رمزتان را فراموش کنید راهی برای بازیابی ندارید.
                     <?php else: ?>
-                        لینک بازیابی رمز به همین آدرس فرستاده می‌شود.
+                        با همین ایمیل هم می‌توانید وارد شوید، و لینک بازیابی رمز به همین آدرس می‌رود.
                     <?php endif; ?>
                 </p>
             </div>
