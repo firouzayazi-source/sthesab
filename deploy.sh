@@ -96,12 +96,15 @@ if command -v systemctl >/dev/null 2>&1; then
     done
 fi
 
-# ---------- ۶. یادآوری migration ----------
-PENDING=$(git diff --name-only "${BEFORE}..${AFTER}" 2>/dev/null | grep -E '^migration_.*\.sql$' || true)
-if [[ -n "$PENDING" ]]; then
+# ---------- ۶. وضعیت migration ----------
+# پیش از این فقط هشدار می‌داد که «فایلی عوض شده، یادت باشد اجرا کنی».
+# حالا migrate.sh دقیقاً می‌داند کدام اجرا شده و کدام نه، پس واقعیت را
+# نشان می‌دهیم نه حدس را. اجرا نمی‌کنیم — تغییر ساختار دیتابیس باید
+# تصمیم آگاهانه باشد، نه اثر جانبی یک deploy.
+if [[ -x deploy/migrate.sh ]]; then
     echo
-    red "⚠️  این migration ها در این نسخه تغییر کرده‌اند — یادتان باشد اجرایشان کنید:"
-    echo "$PENDING" | sed 's/^/  /'
+    info "وضعیت migration:"
+    bash deploy/migrate.sh 2>&1 | sed 's/^/  /' || true
 fi
 
 echo
