@@ -23,6 +23,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Csrf::verifyOrFail(postParam('csrf_token'));
     $action = postParam('action');
 
+    // ایمیل اختیاری است ولی اگر داده شد باید معتبر و یکتا باشد.
+    // بدون ایمیل، کاربر نمی‌تواند رمزش را خودش بازیابی کند.
+    $emailIn = trim(postParam('email'));
+    $emailErr = '';
+    $emailCol = false;
+    try {
+        $emailCol = (bool)$pdo->query(
+            "SELECT COUNT(*) FROM information_schema.columns
+             WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email'"
+        )->fetchColumn();
+    } catch (PDOException $e) { $emailCol = false; }
+    if ($emailIn !== '' && (mb_strlen($emailIn) > 190 || !filter_var($emailIn, FILTER_VALIDATE_EMAIL))) {
+        $emailErr = 'ایمیل معتبر نیست.';
+    }
+
+    /**
+     * ایمیل را جدا از کوئری اصلی می‌نویسیم تا کوئری‌های موجود دست‌نخورده
+     * بمانند و اگر ستون هنوز با migration اضافه نشده باشد چیزی نشکند.
+     * برمی‌گرداند: '' یعنی موفق، وگرنه متن خطا.
+     */
+    $saveEmail = function (int $uid) use ($pdo, $emailIn, $emailCol): string {
+        if (!$emailCol) { return ''; }
+        if ($emailIn !== '') {
+            $d = $pdo->prepare('SELECT username FROM users WHERE email = :e AND id <> :id');
+            $d->execute(['e' => $emailIn, 'id' => $uid]);
+            if ($other = $d->fetchColumn()) {
+                return 'این ایمیل برای کاربر «' . $other . '» ثبت شده است.';
+            }
+        }
+        $pdo->prepare('UPDATE users SET email = :e WHERE id = :id')
+            ->execute(['e' => ($emailIn === '' ? null : $emailIn), 'id' => $uid]);
+        return '';
+    };
+
     if ($action === 'create') {
         $fullName = postParam('full_name');
         $username = postParam('username');
@@ -60,6 +94,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'password_hash' => $hash,
                         'role'          => $role,
                     ]);
+                    $newId = (int)$pdo->lastInsertId();
+                    if ($emailErr === '') { $emailErr = $saveEmail($newId); }
+                    if ($emailErr !== '') {
+                        // کاربر ساخته شد ولی ایمیل ثبت نشد — صریح بگو
+                        redirectWithMessage('users.php', 'error',
+                            'کاربر ساخته شد، ولی ایمیل ثبت نشد: ' . $emailErr);
+                    }
                     redirectWithMessage('users.php', 'success', 'کاربر جدید با موفقیت ساخته شد.');
                 } catch (PDOException $e) {
                     error_log('Create User Error: ' . $e->getMessage());
@@ -130,6 +171,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'id'        => $targetId,
                         ]);
                     }
+                    if ($emailErr === '') { $emailErr = $saveEmail($targetId); }
+                    if ($emailErr !== '') {
+                        redirectWithMessage('users.php', 'error',
+                            'اطلاعات ذخیره شد، ولی ایمیل ثبت نشد: ' . $emailErr);
+                    }
                     redirectWithMessage('users.php', 'success', 'اطلاعات کاربر بروزرسانی شد.');
                 } catch (PDOException $e) {
                     error_log('Update User Error: ' . $e->getMessage());
@@ -199,7 +245,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$users = $pdo->query('SELECT id, full_name, username, role, is_active, created_at FROM users ORDER BY created_at ASC')->fetchAll();
+// ستون ایمیل با migration_password_reset آمده؛ اگر هنوز اجرا نشده باشد
+// صفحه باید بدون خطا کار کند.
+$hasEmailColumn = false;
+try {
+    $hasEmailColumn = (bool)$pdo->query(
+        "SELECT COUNT(*) FROM information_schema.columns
+         WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email'"
+    )->fetchColumn();
+} catch (PDOException $e) { $hasEmailColumn = false; }
+
+$users = $pdo->query($hasEmailColumn
+    ? 'SELECT id, full_name, username, email, role, is_active, created_at FROM users ORDER BY created_at ASC'
+    : 'SELECT id, full_name, username, role, is_active, created_at FROM users ORDER BY created_at ASC'
+)->fetchAll();
 $requireFullLoginSetting = getSetting('require_full_login', '0') === '1';
 
 $pageTitle = 'مدیریت کاربران';
@@ -238,6 +297,8 @@ include __DIR__ . '/../includes/header.php';
                 <tr>
                     <th>نام و نام خانوادگی</th>
                     <th>نام کاربری</th>
+<?php if ($hasEmailColumn): ?>                    <th>ایمیل</th>
+<?php endif; ?>
                     <th>نقش</th>
                     <th>وضعیت</th>
                     <th>تاریخ عضویت</th>
@@ -246,12 +307,15 @@ include __DIR__ . '/../includes/header.php';
             </thead>
             <tbody>
                 <?php if (empty($users)): ?>
-                    <tr><td colspan="6" class="empty-row">کاربری یافت نشد.</td></tr>
+                    <tr><td colspan="<?= $hasEmailColumn ? 7 : 6 ?>" class="empty-row">کاربری یافت نشد.</td></tr>
                 <?php else: ?>
                     <?php foreach ($users as $u): ?>
                         <tr>
                             <td data-label="نام"><?= h($u['full_name']) ?></td>
                             <td data-label="نام کاربری"><?= h($u['username']) ?></td>
+<?php if ($hasEmailColumn): ?>
+                            <td data-label="ایمیل"><?= $u['email'] ? h($u['email']) : '<span style="color:var(--muted)">—</span>' ?></td>
+<?php endif; ?>
                             <td data-label="نقش"><?= $u['role'] === 'admin' ? 'مدیر' : 'کاربر' ?></td>
                             <td data-label="وضعیت">
                                 <span class="status-badge <?= (int)$u['is_active'] === 1 ? 'status-active' : 'status-inactive' ?>">
@@ -265,6 +329,7 @@ include __DIR__ . '/../includes/header.php';
                                         data-id="<?= (int)$u['id'] ?>"
                                         data-full-name="<?= h($u['full_name']) ?>"
                                         data-username="<?= h($u['username']) ?>"
+                                        data-email="<?= h($u['email'] ?? '') ?>"
                                         data-role="<?= h($u['role']) ?>">ویرایش</button>
 
                                     <?php if ((int)$u['id'] !== $currentUserId): ?>
@@ -316,6 +381,15 @@ include __DIR__ . '/../includes/header.php';
                 <label>نام کاربری</label>
                 <input type="text" name="username" required placeholder="فقط حروف انگلیسی و عدد" value="<?= $reopenModal === 'add' ? h(postParam('username')) : '' ?>">
             </div>
+<?php if ($hasEmailColumn): ?>
+            <div class="form-group">
+                <label>ایمیل <span style="color:var(--muted);font-weight:400">(اختیاری)</span></label>
+                <input type="email" name="email" maxlength="190"
+                       autocapitalize="none" autocorrect="off" spellcheck="false"
+                       placeholder="برای بازیابی رمز عبور"
+                       value="<?= $reopenModal === 'add' ? h(postParam('email')) : '' ?>">
+            </div>
+<?php endif; ?>
             <div class="form-group">
                 <label>نقش</label>
                 <select name="role">
@@ -361,6 +435,15 @@ include __DIR__ . '/../includes/header.php';
                 <label>نام کاربری</label>
                 <input type="text" name="username" required value="<?= $reopenModal === 'edit' ? h(postParam('username')) : '' ?>">
             </div>
+<?php if ($hasEmailColumn): ?>
+            <div class="form-group">
+                <label>ایمیل <span style="color:var(--muted);font-weight:400">(اختیاری)</span></label>
+                <input type="email" name="email" maxlength="190"
+                       autocapitalize="none" autocorrect="off" spellcheck="false"
+                       placeholder="برای بازیابی رمز عبور"
+                       value="<?= $reopenModal === 'edit' ? h(postParam('email')) : '' ?>">
+            </div>
+<?php endif; ?>
             <div class="form-group">
                 <label>نقش</label>
                 <select name="role">

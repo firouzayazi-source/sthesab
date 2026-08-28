@@ -9,9 +9,11 @@ Auth::requireLogin();
 $pdo = Database::getConnection();
 $userId = Auth::userId();
 
-$me = null;
+// از کامل‌ترین کوئری شروع می‌شود و اگر ستونی هنوز با migration اضافه
+// نشده باشد، به نسخه‌ی ساده‌تر می‌افتد.
 $me = null;
 foreach ([
+    'SELECT id, full_name, avatar, username, email, role, session_hours, created_at FROM users WHERE id = :id',
     'SELECT id, full_name, avatar, username, role, session_hours, created_at FROM users WHERE id = :id',
     'SELECT id, full_name, avatar, username, role, created_at FROM users WHERE id = :id',
     'SELECT id, full_name, username, role, created_at FROM users WHERE id = :id',
@@ -28,6 +30,7 @@ foreach ([
 if ($me) {
     $me['session_hours'] = $me['session_hours'] ?? 1;
     $me['avatar'] = $me['avatar'] ?? null;
+    $me['email']  = $me['email'] ?? null;
 }
 
 $devices = [];
@@ -36,6 +39,16 @@ try {
     $dStmt->execute(['u' => $userId]);
     $devices = $dStmt->fetchAll();
 } catch (PDOException $e) { $devices = []; }
+
+// ستون ایمیل با migration_password_reset اضافه شده. اگر هنوز اجرا نشده
+// باشد، صفحه باید بدون خطا کار کند و فقط این بخش را نشان ندهد.
+$hasEmailColumn = false;
+try {
+    $hasEmailColumn = (bool)$pdo->query(
+        "SELECT COUNT(*) FROM information_schema.columns
+         WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email'"
+    )->fetchColumn();
+} catch (PDOException $e) { $hasEmailColumn = false; }
 
 $sessionOptions = [
     1   => 'یک ساعت',
@@ -81,7 +94,7 @@ include __DIR__ . '/includes/header.php';
 <!-- ---------- نام و نام کاربری ---------- -->
 <div class="card collapsible-card collapsed">
     <div class="collapsible-header">
-        <h2 class="card-title" style="margin-bottom:0;">تغییر نام و نام کاربری</h2>
+        <h2 class="card-title" style="margin-bottom:0;">نام، نام کاربری و ایمیل</h2>
         <span class="collapse-chevron">▾</span>
     </div>
     <div class="collapsible-body">
@@ -98,6 +111,23 @@ include __DIR__ . '/includes/header.php';
                 <input type="text" id="pf_username" name="username" required maxlength="50" value="<?= h($me['username'] ?? '') ?>">
                 <p class="hint">فقط حروف انگلیسی، عدد و زیرخط. بعد از تغییر، با نام جدید وارد شوید.</p>
             </div>
+
+<?php if ($hasEmailColumn): ?>
+            <div class="form-group">
+                <label for="pf_email">ایمیل</label>
+                <input type="email" id="pf_email" name="email" maxlength="190"
+                       autocapitalize="none" autocorrect="off" spellcheck="false"
+                       autocomplete="email" placeholder="برای بازیابی رمز عبور"
+                       value="<?= h($me['email'] ?? '') ?>">
+                <p class="hint">
+                    <?php if (empty($me['email'])): ?>
+                        بدون ایمیل، اگر رمزتان را فراموش کنید راهی برای بازیابی ندارید.
+                    <?php else: ?>
+                        لینک بازیابی رمز به همین آدرس فرستاده می‌شود.
+                    <?php endif; ?>
+                </p>
+            </div>
+<?php endif; ?>
 
             <div class="form-group">
                 <label for="pf_current_pass_1">رمز عبور فعلی (برای تأیید)</label>

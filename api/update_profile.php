@@ -12,6 +12,7 @@ Csrf::verifyOrFail(postParam('csrf_token'));
 $userId   = Auth::userId();
 $fullName = trim(postParam('full_name'));
 $username = trim(postParam('username'));
+$email    = trim(postParam('email'));
 $current  = postParam('current_password');
 
 $errors = [];
@@ -20,6 +21,13 @@ if (!preg_match('/^[A-Za-z0-9_]{3,50}$/', $username)) {
     $errors[] = 'نام کاربری باید ۳ تا ۵۰ کاراکتر و فقط شامل حروف انگلیسی، عدد و زیرخط باشد.';
 }
 if ($current === '') { $errors[] = 'برای تأیید، رمز فعلی را وارد کنید.'; }
+// ایمیل اختیاری است، ولی اگر داده شد باید معتبر باشد — بدون آن
+// بازیابی رمز برای این کاربر کار نمی‌کند.
+if ($email !== '') {
+    if (mb_strlen($email) > 190 || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors[] = 'ایمیل معتبر نیست.';
+    }
+}
 
 if (!empty($errors)) { jsonResponse(['success' => false, 'message' => implode(' ', $errors)], 422); }
 
@@ -39,9 +47,33 @@ if ($dup->fetch()) {
     jsonResponse(['success' => false, 'message' => 'این نام کاربری قبلاً استفاده شده است.'], 422);
 }
 
+// ستون email با migration_password_reset اضافه شده؛ اگر هنوز اجرا نشده
+// باشد، بقیه‌ی صفحه باید کار کند و فقط ایمیل نادیده گرفته شود.
+$hasEmail = (bool)$pdo->query(
+    "SELECT COUNT(*) FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email'"
+)->fetchColumn();
+
+if ($hasEmail && $email !== '') {
+    $dupE = $pdo->prepare('SELECT id FROM users WHERE email = :e AND id != :id');
+    $dupE->execute(['e' => $email, 'id' => $userId]);
+    if ($dupE->fetch()) {
+        jsonResponse(['success' => false, 'message' => 'این ایمیل قبلاً برای حساب دیگری ثبت شده است.'], 422);
+    }
+}
+
 try {
-    $upd = $pdo->prepare('UPDATE users SET full_name = :fn, username = :un WHERE id = :id');
-    $upd->execute(['fn' => $fullName, 'un' => $username, 'id' => $userId]);
+    if ($hasEmail) {
+        $upd = $pdo->prepare('UPDATE users SET full_name = :fn, username = :un, email = :em WHERE id = :id');
+        $upd->execute([
+            'fn' => $fullName, 'un' => $username,
+            'em' => ($email === '' ? null : $email),   // خالی یعنی NULL، نه رشته‌ی تهی
+            'id' => $userId,
+        ]);
+    } else {
+        $upd = $pdo->prepare('UPDATE users SET full_name = :fn, username = :un WHERE id = :id');
+        $upd->execute(['fn' => $fullName, 'un' => $username, 'id' => $userId]);
+    }
 
     $_SESSION['full_name'] = $fullName;
     $_SESSION['username']  = $username;

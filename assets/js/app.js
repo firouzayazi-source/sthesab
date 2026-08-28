@@ -2071,6 +2071,8 @@ document.addEventListener('DOMContentLoaded', function () {
             form.querySelector('[name="user_id"]').value = this.getAttribute('data-id');
             form.querySelector('[name="full_name"]').value = this.getAttribute('data-full-name');
             form.querySelector('[name="username"]').value = this.getAttribute('data-username');
+            var emailField = form.querySelector('[name="email"]');
+            if (emailField) emailField.value = this.getAttribute('data-email') || '';
             form.querySelector('[name="role"]').value = this.getAttribute('data-role');
             form.querySelector('[name="password"]').value = '';
             form.querySelector('[name="password_confirm"]').value = '';
