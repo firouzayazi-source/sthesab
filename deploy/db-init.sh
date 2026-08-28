@@ -14,8 +14,9 @@
 
 set -euo pipefail
 
-DB_NAME="${DB_NAME:-hesab_db}"
-DB_USER="${DB_USER:-hesab_user}"
+CONFIG="${CONFIG:-config/config.php}"
+DB_NAME="${DB_NAME:-}"
+DB_USER="${DB_USER:-}"
 APPLY=0
 [[ "${1:-}" == "--apply" ]] && APPLY=1
 
@@ -67,7 +68,32 @@ if [[ $APPLY -eq 0 ]]; then
     exit 0
 fi
 
-read -r -s -p "رمز کاربر $DB_USER: " DB_PASS; echo
+# اطلاعات اتصال از config.php خوانده می‌شود — همان چیزی که خود اپ استفاده
+# می‌کند. این‌طور امکان تایپ اشتباه رمز از بین می‌رود.
+# مسیر به‌صورت آرگومان به php داده می‌شود، نه داخل رشته، تا نقل‌قول‌ها امن بمانند.
+read_const() { php -r 'require $argv[1]; echo constant($argv[2]);' "$CONFIG" "$1" 2>/dev/null || true; }
+
+if [[ -r "$CONFIG" ]] && command -v php >/dev/null 2>&1; then
+    DB_NAME="${DB_NAME:-$(read_const DB_NAME)}"
+    DB_USER="${DB_USER:-$(read_const DB_USER)}"
+    DB_PASS="$(read_const DB_PASSWORD)"
+    [[ -n "$DB_PASS" ]] && info "اطلاعات اتصال از $CONFIG خوانده شد (دیتابیس: $DB_NAME، کاربر: $DB_USER)."
+fi
+
+DB_NAME="${DB_NAME:-hesab_db}"
+DB_USER="${DB_USER:-hesab_user}"
+
+if [[ -z "${DB_PASS:-}" ]]; then
+    info "رمز از $CONFIG خوانده نشد — دستی بدهید."
+    read -r -s -p "رمز کاربر $DB_USER: " DB_PASS; echo
+fi
+
+if ! mysql --default-character-set=utf8mb4 -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "SELECT 1" >/dev/null 2>&1; then
+    red "اتصال به دیتابیس برقرار نشد — نام کاربر یا رمز درست نیست."
+    red "  کاربر: $DB_USER   دیتابیس: $DB_NAME"
+    exit 1
+fi
+green "اتصال به دیتابیس برقرار است."
 
 for f in "${FILES[@]}"; do
     printf '  → %-32s' "$f"

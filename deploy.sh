@@ -72,6 +72,8 @@ info "تنظیم دسترسی‌ها..."
 chown -R root:root . 2>/dev/null || true
 find . -type d -not -path './.git/*' -exec chmod 755 {} \;
 find . -type f -not -path './.git/*' -exec chmod 644 {} \;
+# گیت بیت اجرا را ردیابی می‌کند؛ بدون این خط، git pull بعدی می‌شکند.
+find . -name '*.sh' -not -path './.git/*' -exec chmod 755 {} \;
 if id -u "$APP_USER" >/dev/null 2>&1; then
     chown -R "$APP_USER":"$APP_USER" uploads
 else

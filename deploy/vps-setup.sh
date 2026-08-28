@@ -175,6 +175,9 @@ run "mkdir -p '$APP_DIR/uploads/avatars'"
 run "chown -R root:root '$APP_DIR'"
 run "find '$APP_DIR' -type d -not -path '*/.git/*' -exec chmod 755 {} +"
 run "find '$APP_DIR' -type f -not -path '*/.git/*' -exec chmod 644 {} +"
+# بیت اجرای اسکریپت‌ها باید برگردد: گیت مود فایل را ردیابی می‌کند و
+# بدون این، هر git pull بعدی با «تغییرات محلی» شکست می‌خورد.
+run "find '$APP_DIR' -name '*.sh' -not -path '*/.git/*' -exec chmod 755 {} +"
 run "chown -R '$APP_USER':'$APP_USER' '$APP_DIR/uploads'"
 run "chmod 755 '$APP_DIR/uploads' '$APP_DIR/uploads/avatars'"
 # پوشه‌ی نشست‌ها — فقط کاربر اپ، هیچ‌کس دیگر
