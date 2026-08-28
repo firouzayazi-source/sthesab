@@ -56,6 +56,7 @@ cd "$(dirname "$0")/.."
 #   migration_p2 ............... attachments
 #   migration_p3 ............... trusted_devices, users.session_hours
 #   migration_p4 ............... users.avatar
+#   migration_password_reset ... users.email + جدول password_resets
 MIGRATIONS=(
     schema.sql
     migration_debts.sql
@@ -67,10 +68,35 @@ MIGRATIONS=(
     migration_p2.sql
     migration_p3.sql
     migration_p4.sql
+    migration_password_reset.sql
 )
 
 # این دو عمداً اجرا نمی‌شوند: migration_repair.sql جایگزین کامل هر دو است.
 SUPERSEDED=( migration_wallets.sql migration_p1.sql )
+
+# migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
+#
+# --baseline فقط همین‌ها را «اجراشده» علامت می‌زند. دلیلش یک باگ واقعی
+# است که در تست پیدا شد: اگر baseline کل فهرست را علامت بزند، هر
+# migration ای که بعد از ساخت دیتابیس اضافه شده باشد هم «اجراشده» ثبت
+# می‌شود بدون اینکه اجرا شده باشد — جدولش ساخته نمی‌شود و اپ بی‌سروصدا
+# می‌شکند.
+#
+# معنی baseline این است: «این دیتابیس از دورانی است که ردیابی نبود».
+# آنچه از آن دوران است، دقیقاً همین فهرست ثابت است. به این آرایه چیزی
+# اضافه نکنید — هر migration تازه باید واقعاً اجرا شود.
+BASELINE_SET=(
+    schema.sql
+    migration_debts.sql
+    migration_settings.sql
+    migration_cheques_assets.sql
+    migration_indexes.sql
+    migration_category_icons.sql
+    migration_repair.sql
+    migration_p2.sql
+    migration_p3.sql
+    migration_p4.sql
+)
 
 # ---------- بررسی همخوانی فهرست با فایل‌های روی دیسک ----------
 # اگر کسی فایل migration تازه‌ای اضافه کند و اینجا ثبتش نکند، باید سروصدا
@@ -151,12 +177,27 @@ fi
 
 # ---------- baseline ----------
 if [[ "$MODE" == "baseline" ]]; then
-    info "علامت‌زدن همه به‌عنوان اجراشده، بدون اجرا:"
-    for f in "${MIGRATIONS[@]}"; do
+    # فقط migration های پیش از راه‌اندازی ردیابی — نه هر چه در فهرست است
+    info "علامت‌زدن migration های دوران پیش از ردیابی، بدون اجرا:"
+    for f in "${BASELINE_SET[@]}"; do
         record "$f" "$(sum_of "$f")"
         echo "    ✓ $f"
     done
-    green "✅ baseline ثبت شد. از این پس فقط migration های تازه اجرا می‌شوند."
+
+    # هر چه در MIGRATIONS هست ولی در BASELINE_SET نیست، باید واقعاً اجرا شود
+    after=()
+    for f in "${MIGRATIONS[@]}"; do
+        [[ " ${BASELINE_SET[*]} " == *" $f "* ]] || after+=("$f")
+    done
+    echo
+    green "✅ baseline ثبت شد."
+    if (( ${#after[@]} )); then
+        warn "این migration ها بعد از دوران baseline اضافه شده‌اند و هنوز اجرا نشده‌اند:"
+        printf '     %s\n' "${after[@]}"
+        info "برای اجرایشان:  bash deploy/migrate.sh --apply"
+    else
+        info "از این پس فقط migration های تازه اجرا می‌شوند."
+    fi
     exit 0
 fi
 

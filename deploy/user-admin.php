@@ -1,0 +1,189 @@
+<?php
+/**
+ * user-admin.php — در پشتی برای وقتی که هیچ‌کس نمی‌تواند وارد شود.
+ *
+ * چرا لازم است: بازیابی با ایمیل هم می‌تواند از کار بیفتد — ایمیل نرسد،
+ * دامنه‌ی فرستنده اسپم شود، یا اصلاً ایمیلی برای کاربر ثبت نشده باشد.
+ * این ابزار به هیچ‌کدام وابسته نیست و مستقیم با دیتابیس کار می‌کند.
+ *
+ * ⚠️ فقط از خط فرمان اجرا می‌شود. اگر کسی از راه وب صدایش بزند، بلافاصله
+ *    می‌میرد — وگرنه هر کسی می‌توانست رمز مدیر را عوض کند.
+ *
+ * استفاده:
+ *   php deploy/user-admin.php --list
+ *   php deploy/user-admin.php --reset <نام‌کاربری>
+ *   php deploy/user-admin.php --reset <نام‌کاربری> --password '<رمز>'
+ *   php deploy/user-admin.php --activate <نام‌کاربری>
+ *   php deploy/user-admin.php --set-email <نام‌کاربری> <ایمیل>
+ */
+
+// ---------- نگهبان: فقط خط فرمان ----------
+if (PHP_SAPI !== 'cli') {
+    http_response_code(404);
+    exit('Not found.');
+}
+
+require_once __DIR__ . '/../includes/db.php';
+
+$argvIn = $argv;
+array_shift($argvIn);
+
+function out(string $s): void { fwrite(STDOUT, $s . "\n"); }
+function fail(string $s): void { fwrite(STDERR, "\033[0;31m$s\033[0m\n"); exit(1); }
+function ok(string $s): void { out("\033[0;32m$s\033[0m"); }
+function usage(): void
+{
+    $me = 'php deploy/user-admin.php';
+    out("استفاده:");
+    out("  $me --list                              فهرست کاربران");
+    out("  $me --reset <نام‌کاربری>                 رمز تازه (خودش می‌سازد)");
+    out("  $me --reset <نام‌کاربری> --password '…'  رمز دلخواه");
+    out("  $me --activate <نام‌کاربری>              فعال کردن کاربر غیرفعال");
+    out("  $me --set-email <نام‌کاربری> <ایمیل>     ثبت ایمیل برای بازیابی");
+    exit(0);
+}
+
+if (!$argvIn || in_array($argvIn[0], ['-h', '--help'], true)) { usage(); }
+
+try {
+    $pdo = Database::getConnection();
+} catch (Throwable $e) {
+    fail('اتصال به دیتابیس برقرار نشد: ' . $e->getMessage());
+}
+
+$hasEmailColumn = (bool)$pdo->query(
+    "SELECT COUNT(*) FROM information_schema.columns
+     WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email'"
+)->fetchColumn();
+
+$cmd = $argvIn[0];
+
+/** کاربر را با نام کاربری پیدا کن، وگرنه با پیام روشن بمیر */
+$findUser = function (string $username) use ($pdo): array {
+    $st = $pdo->prepare('SELECT * FROM users WHERE username = :u');
+    $st->execute(['u' => $username]);
+    $row = $st->fetch();
+    if (!$row) {
+        fail("کاربری با نام «$username» پیدا نشد. با --list فهرست را ببینید.");
+    }
+    return $row;
+};
+
+// ---------------------------------------------------------------
+if ($cmd === '--list') {
+    $cols = $hasEmailColumn ? 'id, username, full_name, role, is_active, email' : 'id, username, full_name, role, is_active';
+    $rows = $pdo->query("SELECT $cols FROM users ORDER BY id")->fetchAll();
+    if (!$rows) { out('هیچ کاربری در دیتابیس نیست.'); exit(0); }
+
+    out('');
+    printf("  %-4s %-16s %-22s %-7s %-8s %s\n", 'id', 'نام کاربری', 'نام', 'نقش', 'وضعیت', $hasEmailColumn ? 'ایمیل' : '');
+    out('  ' . str_repeat('─', 76));
+    foreach ($rows as $r) {
+        printf("  %-4s %-16s %-22s %-7s %-8s %s\n",
+            $r['id'], $r['username'], $r['full_name'], $r['role'],
+            $r['is_active'] ? 'فعال' : 'غیرفعال',
+            $hasEmailColumn ? ($r['email'] ?? '—') : '');
+    }
+    out('');
+    if (!$hasEmailColumn) {
+        out("  ستون ایمیل هنوز ساخته نشده — migration را اجرا کنید:");
+        out("      bash deploy/migrate.sh --apply");
+        out('');
+    }
+    exit(0);
+}
+
+// ---------------------------------------------------------------
+if ($cmd === '--reset') {
+    $username = $argvIn[1] ?? fail('نام کاربری را بدهید: --reset <نام‌کاربری>');
+    $user = $findUser($username);
+
+    $i = array_search('--password', $argvIn, true);
+    if ($i !== false) {
+        $password = $argvIn[$i + 1] ?? fail('بعد از --password رمز را بنویسید.');
+        if (mb_strlen($password) < 8) { fail('رمز باید حداقل ۸ کاراکتر باشد.'); }
+        $generated = false;
+    } else {
+        // رمز خوانا: بدون کاراکترهایی که در خواندن اشتباه می‌شوند (0/O, 1/l/I)
+        $alphabet = 'abcdefghjkmnpqrstuvwxyzACDEFGHJKLMNPQRSTUVWXYZ23456789';
+        $password = '';
+        for ($n = 0; $n < 14; $n++) { $password .= $alphabet[random_int(0, strlen($alphabet) - 1)]; }
+        $generated = true;
+    }
+
+    $pdo->beginTransaction();
+    try {
+        $st = $pdo->prepare('UPDATE users SET password_hash = :h WHERE id = :id');
+        $st->execute(['h' => password_hash($password, PASSWORD_DEFAULT), 'id' => $user['id']]);
+
+        // دستگاه‌های مورد اعتماد باید باطل شوند: اگر کسی رمز را فراموش کرده،
+        // ممکن است دلیلش دسترسی ناخواسته‌ی شخص دیگری باشد.
+        $revoked = 0;
+        try {
+            $d = $pdo->prepare('DELETE FROM trusted_devices WHERE user_id = :id');
+            $d->execute(['id' => $user['id']]);
+            $revoked = $d->rowCount();
+        } catch (PDOException $e) {
+            // جدول هنوز ساخته نشده — مهم نیست
+        }
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        fail('تغییر رمز انجام نشد: ' . $e->getMessage());
+    }
+
+    out('');
+    ok("رمز کاربر «{$user['username']}» ({$user['full_name']}) عوض شد.");
+    if ($generated) {
+        out('');
+        out("    رمز تازه:  \033[1m$password\033[0m");
+        out('');
+        out('    این رمز فقط همین یک بار نمایش داده می‌شود.');
+        out('    بعد از ورود، از صفحه‌ی پروفایل عوضش کنید.');
+    }
+    if ($revoked > 0) {
+        out("    $revoked دستگاه مورد اعتماد باطل شد — همه باید دوباره وارد شوند.");
+    }
+    if (!$user['is_active']) {
+        out('');
+        out("  \033[0;33m⚠  این کاربر غیرفعال است و با رمز تازه هم وارد نمی‌شود.\033[0m");
+        out("     فعالش کنید:  php deploy/user-admin.php --activate {$user['username']}");
+    }
+    out('');
+    exit(0);
+}
+
+// ---------------------------------------------------------------
+if ($cmd === '--activate') {
+    $username = $argvIn[1] ?? fail('نام کاربری را بدهید: --activate <نام‌کاربری>');
+    $user = $findUser($username);
+    if ($user['is_active']) { out("کاربر «$username» از قبل فعال است."); exit(0); }
+    $pdo->prepare('UPDATE users SET is_active = 1 WHERE id = :id')->execute(['id' => $user['id']]);
+    ok("کاربر «$username» فعال شد.");
+    exit(0);
+}
+
+// ---------------------------------------------------------------
+if ($cmd === '--set-email') {
+    if (!$hasEmailColumn) {
+        fail("ستون ایمیل هنوز ساخته نشده. اول:  bash deploy/migrate.sh --apply");
+    }
+    $username = $argvIn[1] ?? fail('استفاده: --set-email <نام‌کاربری> <ایمیل>');
+    $email    = $argvIn[2] ?? fail('استفاده: --set-email <نام‌کاربری> <ایمیل>');
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) { fail("ایمیل معتبر نیست: $email"); }
+    $user = $findUser($username);
+
+    $dup = $pdo->prepare('SELECT username FROM users WHERE email = :e AND id <> :id');
+    $dup->execute(['e' => $email, 'id' => $user['id']]);
+    if ($other = $dup->fetchColumn()) {
+        fail("این ایمیل برای کاربر «$other» ثبت شده است.");
+    }
+
+    $pdo->prepare('UPDATE users SET email = :e WHERE id = :id')
+        ->execute(['e' => $email, 'id' => $user['id']]);
+    ok("ایمیل «$email» برای کاربر «$username» ثبت شد.");
+    out('حالا می‌تواند از صفحه‌ی ورود، «رمز را فراموش کرده‌ام» را بزند.');
+    exit(0);
+}
+
+fail("دستور ناشناخته: $cmd  (--help را ببینید)");

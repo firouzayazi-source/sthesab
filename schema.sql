@@ -10,13 +10,15 @@ CREATE TABLE IF NOT EXISTS `users` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
     `full_name` VARCHAR(100) NOT NULL,
     `username` VARCHAR(50) NOT NULL,
+    `email` VARCHAR(190) NULL COMMENT 'برای بازیابی رمز',
     `password_hash` VARCHAR(255) NOT NULL,
     `role` ENUM('admin', 'user') NOT NULL DEFAULT 'user',
     `is_active` TINYINT(1) NOT NULL DEFAULT 1,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
-    UNIQUE KEY `uq_username` (`username`)
+    UNIQUE KEY `uq_username` (`username`),
+    UNIQUE KEY `uq_email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_persian_ci;
 
 CREATE TABLE IF NOT EXISTS `categories` (

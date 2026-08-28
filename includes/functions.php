@@ -1086,3 +1086,34 @@ function formatQuantity($qty): string
         : rtrim(rtrim(number_format($qty, 4, '.', ','), '0'), '.');
     return toPersianDigits($formatted);
 }
+
+/**
+ * آدرس پایه‌ی مطلق اپ — برای ساختن لینک‌هایی که در ایمیل می‌روند.
+ *
+ * ⚠️ چرا APP_URL بر Host مرورگر اولویت دارد:
+ * سرآیند Host را خود درخواست‌کننده تعیین می‌کند. در بازیابی رمز این یک
+ * حمله‌ی شناخته‌شده است: مهاجم برای حساب قربانی درخواست بازیابی می‌دهد
+ * ولی Host را evil.com می‌گذارد؛ ایمیل با لینکِ evil.com به قربانی
+ * می‌رسد و اگر رویش کلیک کند، توکن به دست مهاجم می‌افتد.
+ *
+ * پس اگر APP_URL در config تعریف شده باشد، همان ملاک است و Host
+ * درخواست اصلاً خوانده نمی‌شود.
+ */
+function appBaseUrl(): string
+{
+    if (defined('APP_URL') && APP_URL !== '') {
+        return rtrim(APP_URL, '/');
+    }
+
+    // برگشت به Host درخواست — فقط وقتی APP_URL تنظیم نشده باشد
+    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (defined('APP_FORCE_HTTPS') && APP_FORCE_HTTPS)
+        || (($_SERVER['SERVER_PORT'] ?? '') === '443');
+    $host = $_SERVER['HTTP_HOST'] ?? ($_SERVER['SERVER_NAME'] ?? 'localhost');
+
+    // حداقل پاکسازی: فقط کاراکترهای مجاز یک نام میزبان
+    $host = preg_replace('/[^A-Za-z0-9\.\-:\[\]]/', '', $host);
+
+    return ($https ? 'https://' : 'http://') . $host
+        . (defined('APP_BASE_PATH') ? rtrim(APP_BASE_PATH, '/') : '');
+}

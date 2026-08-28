@@ -95,6 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <span>این دستگاه را ۳۰ روز به خاطر بسپار</span>
                 </label>
                 <button type="submit" class="btn btn-primary btn-block">ورود</button>
+                <a href="forgot-password.php" class="link-back" style="display:block;text-align:center;margin-top:14px">رمز عبور را فراموش کرده‌ام</a>
             </form>
         <?php else: ?>
             <!-- ورود کامل (نام کاربری + رمز عبور) -->
@@ -113,6 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <span>این دستگاه را ۳۰ روز به خاطر بسپار</span>
                 </label>
                 <button type="submit" class="btn btn-primary btn-block">ورود</button>
+                <a href="forgot-password.php" class="link-back" style="display:block;text-align:center;margin-top:14px">رمز عبور را فراموش کرده‌ام</a>
             </form>
         <?php endif; ?>
     </div>
