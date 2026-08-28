@@ -177,6 +177,10 @@ run "find '$APP_DIR' -type d -not -path '*/.git/*' -exec chmod 755 {} +"
 run "find '$APP_DIR' -type f -not -path '*/.git/*' -exec chmod 644 {} +"
 run "chown -R '$APP_USER':'$APP_USER' '$APP_DIR/uploads'"
 run "chmod 755 '$APP_DIR/uploads' '$APP_DIR/uploads/avatars'"
+# پوشه‌ی نشست‌ها — فقط کاربر اپ، هیچ‌کس دیگر
+run "mkdir -p '$APP_DIR/var/sessions'"
+run "chown -R '$APP_USER':'$APP_USER' '$APP_DIR/var'"
+run "chmod 700 '$APP_DIR/var/sessions'"
 
 # ---------- ۴. دیتابیس ----------
 step "۴. دیتابیس"
@@ -219,6 +223,12 @@ pm.max_requests = 500
 ; هر تلاشی برای خواندن مسیر ربات‌ها یا هر جای دیگر سرور، خطا می‌دهد.
 php_admin_value[open_basedir] = ${APP_DIR}:/tmp:/usr/share/php
 php_admin_value[upload_tmp_dir] = /tmp
+
+; نشست‌ها داخل خود پروژه ذخیره می‌شوند، نه در /var/lib/php/sessions که
+; بین همه‌ی اپ‌های PHP سرور مشترک است. دو دلیل:
+;   ۱. مسیر پیش‌فرض بیرون از open_basedir است و session_start شکست می‌خورد
+;   ۲. جداسازی: کوکی نشست کاربران این اپ در قلمرو خودش می‌ماند
+php_admin_value[session.save_path] = ${APP_DIR}/var/sessions
 php_admin_value[disable_functions] = exec,passthru,shell_exec,system,proc_open,popen
 php_admin_value[upload_max_filesize] = 12M
 php_admin_value[post_max_size] = 14M

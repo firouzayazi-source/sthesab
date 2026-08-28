@@ -4,6 +4,9 @@ config/config.php
 # داده‌های کاربر
 uploads/
 
+# نشست‌های PHP و فایل‌های موقت اجرا
+var/
+
 # ابزارهای تشخیصی موقت
 diag.php
 diag2.php
