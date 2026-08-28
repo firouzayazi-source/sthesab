@@ -11,9 +11,19 @@
 #    دست می‌زند. هیچ سرویس، فایل یا دیتابیس دیگری روی سرور لمس نمی‌شود.
 #
 # استفاده:
-#   bash deploy/mail-setup.sh              پرسش‌وپاسخ
 #   bash deploy/mail-setup.sh --show       فقط نمایش تنظیمات فعلی
 #   bash deploy/mail-setup.sh --check      فقط آزمایش باز بودن مسیر SMTP
+#   bash deploy/mail-setup.sh              پرسش‌وپاسخ
+#
+#   یا همه‌چیز در یک فرمان (روی گوشی مطمئن‌تر است — سؤالی پرسیده نمی‌شود
+#   که پیستِ چندخطی جوابش را بخورد):
+#
+#     bash deploy/mail-setup.sh --yes \
+#       --app-url https://hesab.stland.ir \
+#       --smtp-host mail.stland.ir --smtp-port 587 --smtp-secure tls \
+#       --smtp-user no-reply@stland.ir --smtp-pass 'رمزصندوق'
+#
+#   رمز را حتماً داخل ' ' بگذارید تا کاراکترهایش را bash تفسیر نکند.
 
 set -uo pipefail
 
@@ -29,6 +39,50 @@ info() { printf '%s%s%s\n' "$CYN" "$*" "$NC"; }
 
 [[ -f "$CONFIG" ]] || die "config/config.php پیدا نشد: $CONFIG"
 command -v php >/dev/null || die "php روی این سرور پیدا نشد."
+
+# ---------------------------------------------------------------
+# آرگومان‌ها. هر کدام داده نشود، در حالت تعاملی پرسیده می‌شود.
+MODE=''
+APP_URL_IN=''; SMTP_HOST_IN=''; SMTP_PORT_IN=''; SMTP_SECURE_IN=''
+SMTP_USER_IN=''; SMTP_PASS_IN=''; MAIL_FROM_IN=''; MAIL_FROM_NAME_IN=''
+ASSUME_YES=0; RUN_TEST=1
+
+need_val() { [[ -n "${2:-}" ]] || die "بعد از $1 مقدار را بنویسید."; }
+
+while (( $# )); do
+  case "$1" in
+    --show|--check)   MODE="${1#--}" ;;
+    --app-url)        need_val "$1" "${2:-}"; APP_URL_IN="$2";        shift ;;
+    --smtp-host)      need_val "$1" "${2:-}"; SMTP_HOST_IN="$2";      shift ;;
+    --smtp-port)      need_val "$1" "${2:-}"; SMTP_PORT_IN="$2";      shift ;;
+    --smtp-secure)    need_val "$1" "${2:-}"; SMTP_SECURE_IN="$2";    shift ;;
+    --smtp-user)      need_val "$1" "${2:-}"; SMTP_USER_IN="$2";      shift ;;
+    --smtp-pass)      need_val "$1" "${2:-}"; SMTP_PASS_IN="$2";      shift ;;
+    --from)           need_val "$1" "${2:-}"; MAIL_FROM_IN="$2";      shift ;;
+    --from-name)      need_val "$1" "${2:-}"; MAIL_FROM_NAME_IN="$2"; shift ;;
+    --yes|-y)         ASSUME_YES=1 ;;
+    --no-test)        RUN_TEST=0 ;;
+    -h|--help)        sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *)                die "آرگومان ناشناخته: $1  (راهنما: --help)" ;;
+  esac
+  shift
+done
+
+# ---------------------------------------------------------------
+# اعتبارسنجی — تا اشتباه تایپی به فایل کانفیگ نرسد.
+#
+# چرا لازم شد: یک بار نام سرور ایمیل در APP_URL نوشته شد. اگر همان
+# ذخیره می‌شد، لینک بازیابی رمز به آدرسی می‌رفت که اپ آنجا نیست و
+# هیچ خطایی هم دیده نمی‌شد — فقط لینک‌ها کار نمی‌کردند.
+normalize_app_url() {
+  local u="${1%/}"
+  [[ -n "$u" ]] || { printf '%s' ''; return 1; }
+  # بدون پروتکل نوشته شده؟ https:// بگذار
+  [[ "$u" == http://* || "$u" == https://* ]] || u="https://$u"
+  # باید حداقل یک نقطه داشته باشد
+  [[ "${u#http*://}" == *.* ]] || return 1
+  printf '%s' "$u"
+}
 
 # ---------------------------------------------------------------
 # نمایش وضعیت فعلی — بدون لو دادن رمز
@@ -52,9 +106,15 @@ show_current() {
 # ---------------------------------------------------------------
 # آیا از این سرور به هاست/پورت SMTP می‌شود وصل شد؟
 # روی سرورهای ایران این اولین چیزی است که می‌شکند، پس قبل از تنظیم می‌پرسیم.
+# یک خط از بنر را می‌خواند، نه تعداد بایت ثابت.
+#
+# نسخه‌ی اول «head -c 120» داشت و روی هر سروری که بنرش کوتاه‌تر از ۱۲۰
+# بایت بود تا انقضای timeout منتظر می‌ماند و بعد «بسته» گزارش می‌داد —
+# یعنی سروری که کاملاً سالم است «بسته» دیده می‌شد و آدم می‌رفت سراغ
+# ارائه‌دهنده‌ی VPS برای مشکلی که وجود نداشت.
 probe() {
   local host="$1" port="$2"
-  timeout 8 bash -c "exec 3<>/dev/tcp/$host/$port && head -c 120 <&3" 2>/dev/null
+  timeout 8 bash -c "exec 3<>/dev/tcp/$host/$port && head -n 1 <&3" 2>/dev/null
 }
 
 check_route() {
@@ -70,13 +130,13 @@ check_route() {
   return 1
 }
 
-if [[ "${1:-}" == "--show" ]]; then
+if [[ "$MODE" == "show" ]]; then
   say ''; info 'تنظیمات فعلی ایمیل:'; say ''
   show_current; say ''
   exit 0
 fi
 
-if [[ "${1:-}" == "--check" ]]; then
+if [[ "$MODE" == "check" ]]; then
   say ''; info 'آزمایش مسیر خروجی SMTP از این سرور:'; say ''
   check_route smtp.gmail.com 587
   check_route smtp.gmail.com 465
@@ -96,56 +156,126 @@ if [[ "${1:-}" == "--check" ]]; then
 fi
 
 # ---------------------------------------------------------------
-say ''
-info '── تنظیم ارسال ایمیل برای بازیابی رمز ──'
-say ''
-say 'وضعیت فعلی:'
-show_current
-say ''
+# هرچه با آرگومان داده شده باشد پرسیده نمی‌شود. اگر همه داده شده باشند
+# اصلاً سؤالی در کار نیست — همان حالتی که روی گوشی مطمئن است.
+INTERACTIVE=0
+[[ -z "$APP_URL_IN" || -z "$SMTP_HOST_IN" || -z "$SMTP_USER_IN" || -z "$SMTP_PASS_IN" ]] && INTERACTIVE=1
 
-read -r -p 'ادامه بدهم و مقادیر تازه بگیرم؟ [y/N] ' go
-[[ "$go" == [yY] ]] || { say 'کاری انجام نشد.'; exit 0; }
+# ورودی اجباری را تا سه بار می‌پرسد. قبلاً یک بارِ خالی اسکریپت را
+# می‌کشت و کاربر باید همه را از اول وارد می‌کرد.
+ask_required() {
+  local prompt="$1" silent="${2:-0}" val='' i
+  for i in 1 2 3; do
+    if [[ "$silent" == 1 ]]; then read -r -s -p "$prompt" val; say ''
+    else read -r -p "$prompt" val; fi
+    val="$(printf '%s' "$val" | tr -d '[:space:]')"
+    [[ -n "$val" ]] && { printf '%s' "$val"; return 0; }
+    warn '  خالی بود — دوباره.'
+  done
+  die 'مقدار داده نشد.'
+}
 
-say ''
-say 'آدرس مطلق اپ — لینک بازیابی رمز با همین ساخته می‌شود.'
-read -r -p '  APP_URL [https://hesab.stland.ir]: ' APP_URL_IN
-APP_URL_IN="${APP_URL_IN:-https://hesab.stland.ir}"
-APP_URL_IN="${APP_URL_IN%/}"
+if (( INTERACTIVE )); then
+  say ''
+  info '── تنظیم ارسال ایمیل برای بازیابی رمز ──'
+  say ''
+  say 'وضعیت فعلی:'
+  show_current
+  say ''
 
-say ''
-say 'سرور SMTP. نمونه‌ها:'
-say '  Gmail        smtp.gmail.com    پورت 587    tls'
-say '  ایمیل دامنه  mail.stland.ir    پورت 587    tls'
-read -r -p '  SMTP_HOST: ' SMTP_HOST_IN
-[[ -n "$SMTP_HOST_IN" ]] || die 'SMTP_HOST خالی بود.'
-read -r -p '  SMTP_PORT [587]: ' SMTP_PORT_IN
+  if (( ! ASSUME_YES )); then
+    read -r -p 'ادامه بدهم و مقادیر تازه بگیرم؟ [y/N] ' go
+    [[ "$go" == [yY] ]] || { say 'کاری انجام نشد.'; exit 0; }
+  fi
+
+  if [[ -z "$APP_URL_IN" ]]; then
+    say ''
+    say 'آدرس وبِ خودِ اپ — همان که در مرورگر باز می‌کنید.'
+    say 'لینک بازیابی رمز با همین ساخته می‌شود. (نامِ سرورِ ایمیل نیست!)'
+    read -r -p '  APP_URL [https://hesab.stland.ir]: ' APP_URL_IN
+    APP_URL_IN="${APP_URL_IN:-https://hesab.stland.ir}"
+  fi
+
+  if [[ -z "$SMTP_HOST_IN" ]]; then
+    say ''
+    say 'سرور SMTP. نمونه‌ها:'
+    say '  Gmail        smtp.gmail.com    پورت 587    tls'
+    say '  ایمیل دامنه  mail.stland.ir    پورت 587    tls'
+    SMTP_HOST_IN="$(ask_required '  SMTP_HOST: ')"
+  fi
+  if [[ -z "$SMTP_PORT_IN" ]]; then
+    read -r -p '  SMTP_PORT [587]: ' SMTP_PORT_IN
+  fi
+  if [[ -z "$SMTP_SECURE_IN" ]]; then
+    read -r -p '  SMTP_SECURE (tls | ssl | none) [tls]: ' SMTP_SECURE_IN
+  fi
+fi
+
 SMTP_PORT_IN="${SMTP_PORT_IN:-587}"
-read -r -p '  SMTP_SECURE (tls | ssl | none) [tls]: ' SMTP_SECURE_IN
 SMTP_SECURE_IN="${SMTP_SECURE_IN:-tls}"
 
+# APP_URL باید آدرس وب باشد، نه نام سرور ایمیل
+_normalized="$(normalize_app_url "$APP_URL_IN")" \
+  || die "APP_URL معتبر نیست: «$APP_URL_IN» — باید مثل https://hesab.stland.ir باشد."
+APP_URL_IN="$_normalized"
+
+_urlhost="$(printf '%s' "$APP_URL_IN" | sed -E 's#^https?://##; s#/.*$##')"
+# اگر هر دو یکی باشند تقریباً همیشه یعنی نام سرور ایمیل را در APP_URL
+# نوشته‌اند. این خطا بی‌سروصداست: چیزی نمی‌شکند، فقط لینک بازیابی رمز
+# به جایی می‌رود که اپ آنجا نیست. پس نمی‌گذاریم رد شود — حتی با --yes،
+# چون --yes برای رد کردن سؤال‌های تأیید است نه برای پذیرفتن اشتباه.
+if [[ "$_urlhost" == "$SMTP_HOST_IN" ]]; then
+  warn "APP_URL و SMTP_HOST هر دو «$_urlhost» هستند."
+  say 'APP_URL آدرس وبِ اپ است (چیزی که در مرورگر باز می‌کنید)،'
+  say 'و SMTP_HOST سرور ایمیل. این دو یکی نیستند.'
+  say ''
+  say 'نمونه‌ی درست:'
+  say '  --app-url https://hesab.stland.ir  --smtp-host mail.stland.ir'
+  if (( INTERACTIVE && ! ASSUME_YES )); then
+    read -r -p 'با این حال ادامه بدهم؟ [y/N] ' goU
+    [[ "$goU" == [yY] ]] || { say 'کاری انجام نشد.'; exit 0; }
+  else
+    die 'متوقف شد — مقدار APP_URL را درست کنید.'
+  fi
+fi
+
+case "$SMTP_SECURE_IN" in
+  tls|ssl|none) ;;
+  *) die "SMTP_SECURE باید tls یا ssl یا none باشد، نه «$SMTP_SECURE_IN»." ;;
+esac
+[[ "$SMTP_PORT_IN" =~ ^[0-9]+$ ]] || die "SMTP_PORT باید عدد باشد، نه «$SMTP_PORT_IN»."
+
 say ''
-say 'قبل از ادامه، مسیر را آزمایش می‌کنم:'
+say 'آزمایش مسیر:'
 if ! check_route "$SMTP_HOST_IN" "$SMTP_PORT_IN"; then
   say ''
   warn 'از این سرور به آن هاست/پورت راهی نیست.'
-  say 'تنظیم را ذخیره می‌کنم ولی ایمیل ارسال نخواهد شد.'
-  read -r -p 'باز هم ادامه بدهم؟ [y/N] ' go2
-  [[ "$go2" == [yY] ]] || { say 'کاری انجام نشد.'; exit 0; }
+  say 'تنظیم ذخیره می‌شود ولی ایمیل ارسال نخواهد شد.'
+  if (( ! ASSUME_YES )); then
+    read -r -p 'باز هم ادامه بدهم؟ [y/N] ' go2
+    [[ "$go2" == [yY] ]] || { say 'کاری انجام نشد.'; exit 0; }
+  fi
 fi
 
-say ''
-read -r -p '  SMTP_USER (معمولاً همان آدرس ایمیل): ' SMTP_USER_IN
-[[ -n "$SMTP_USER_IN" ]] || die 'SMTP_USER خالی بود.'
-say ''
-say 'برای Gmail رمز خود حساب کار نمی‌کند — باید App Password ۱۶ حرفی'
-say 'بسازید (نیازمند فعال بودن تأیید دومرحله‌ای در حساب گوگل).'
-read -r -s -p '  SMTP_PASS (نمایش داده نمی‌شود): ' SMTP_PASS_IN; say ''
-[[ -n "$SMTP_PASS_IN" ]] || die 'SMTP_PASS خالی بود.'
+if [[ -z "$SMTP_USER_IN" ]]; then
+  say ''
+  SMTP_USER_IN="$(ask_required '  SMTP_USER (معمولاً همان آدرس ایمیل): ')"
+fi
+if [[ -z "$SMTP_PASS_IN" ]]; then
+  say ''
+  say 'برای Gmail رمز خود حساب کار نمی‌کند — باید App Password ۱۶ حرفی'
+  say 'بسازید (نیازمند فعال بودن تأیید دومرحله‌ای در حساب گوگل).'
+  SMTP_PASS_IN="$(ask_required '  SMTP_PASS (نمایش داده نمی‌شود): ' 1)"
+fi
 
-say ''
-read -r -p "  MAIL_FROM [$SMTP_USER_IN]: " MAIL_FROM_IN
+if (( INTERACTIVE )); then
+  say ''
+  read -r -p "  MAIL_FROM [$SMTP_USER_IN]: " _from
+  MAIL_FROM_IN="${MAIL_FROM_IN:-$_from}"
+  read -r -p '  MAIL_FROM_NAME [دفتر مالی]: ' _fromname
+  MAIL_FROM_NAME_IN="${MAIL_FROM_NAME_IN:-$_fromname}"
+fi
 MAIL_FROM_IN="${MAIL_FROM_IN:-$SMTP_USER_IN}"
-read -r -p '  MAIL_FROM_NAME [دفتر مالی]: ' MAIL_FROM_NAME_IN
 MAIL_FROM_NAME_IN="${MAIL_FROM_NAME_IN:-دفتر مالی}"
 
 # EHLO از روی دامنه‌ی APP_URL — بعضی سرورها EHLO ناهم‌خوان را رد می‌کنند
@@ -226,10 +356,13 @@ say ''
 info 'حالا آزمایش واقعی ارسال:'
 say "  php deploy/user-admin.php --test-mail $MAIL_FROM_IN"
 say ''
-read -r -p 'همین حالا آزمایش کنم؟ [Y/n] ' t
-if [[ "$t" != [nN] ]]; then
-  say ''
-  php "$APP_DIR/deploy/user-admin.php" --test-mail "$MAIL_FROM_IN"
+if (( RUN_TEST )); then
+  t='y'
+  (( ASSUME_YES )) || read -r -p 'همین حالا آزمایش کنم؟ [Y/n] ' t
+  if [[ "$t" != [nN] ]]; then
+    say ''
+    php "$APP_DIR/deploy/user-admin.php" --test-mail "$MAIL_FROM_IN"
+  fi
 fi
 say ''
 say "اگر نتیجه بد بود، برگرداندن به حالت قبل:  cp -p $BACKUP $CONFIG"
