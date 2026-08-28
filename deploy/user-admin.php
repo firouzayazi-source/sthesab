@@ -15,6 +15,7 @@
  *   php deploy/user-admin.php --reset <نام‌کاربری> --password '<رمز>'
  *   php deploy/user-admin.php --activate <نام‌کاربری>
  *   php deploy/user-admin.php --set-email <نام‌کاربری> <ایمیل>
+ *   php deploy/user-admin.php --test-mail <ایمیل>
  */
 
 // ---------- نگهبان: فقط خط فرمان ----------
@@ -31,6 +32,8 @@ array_shift($argvIn);
 function out(string $s): void { fwrite(STDOUT, $s . "\n"); }
 function fail(string $s): void { fwrite(STDERR, "\033[0;31m$s\033[0m\n"); exit(1); }
 function ok(string $s): void { out("\033[0;32m$s\033[0m"); }
+function red(string $s): void { out("\033[0;31m$s\033[0m"); }
+function info(string $s): void { out("\033[0;36m$s\033[0m"); }
 function usage(): void
 {
     $me = 'php deploy/user-admin.php';
@@ -40,6 +43,7 @@ function usage(): void
     out("  $me --reset <نام‌کاربری> --password '…'  رمز دلخواه");
     out("  $me --activate <نام‌کاربری>              فعال کردن کاربر غیرفعال");
     out("  $me --set-email <نام‌کاربری> <ایمیل>     ثبت ایمیل برای بازیابی");
+    out("  $me --test-mail <ایمیل>                 آزمایش تنظیمات ایمیل");
     exit(0);
 }
 
@@ -184,6 +188,72 @@ if ($cmd === '--set-email') {
     ok("ایمیل «$email» برای کاربر «$username» ثبت شد.");
     out('حالا می‌تواند از صفحه‌ی ورود، «رمز را فراموش کرده‌ام» را بزند.');
     exit(0);
+}
+
+// ---------------------------------------------------------------
+if ($cmd === '--test-mail') {
+    require_once __DIR__ . '/../includes/mailer.php';
+
+    $to = $argvIn[1] ?? fail('آدرس گیرنده را بدهید: --test-mail you@example.com');
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) { fail("آدرس معتبر نیست: $to"); }
+
+    out('');
+    out('  تنظیمات فعلی:');
+    $show = function (string $const, bool $secret = false) {
+        if (!defined($const)) { out(sprintf('    %-16s تعریف نشده', $const)); return; }
+        $v = constant($const);
+        if ($v === '' || $v === null) { out(sprintf('    %-16s (خالی)', $const)); return; }
+        out(sprintf('    %-16s %s', $const, $secret ? str_repeat('•', 8) : (string)$v));
+    };
+    foreach (['MAIL_METHOD', 'MAIL_FROM', 'MAIL_FROM_NAME', 'APP_URL'] as $c) { $show($c); }
+    if (defined('MAIL_METHOD') && MAIL_METHOD === 'smtp') {
+        foreach (['SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_EHLO'] as $c) { $show($c); }
+        $show('SMTP_PASS', true);
+    }
+    out('');
+
+    if (!Mailer::isConfigured()) {
+        red('  ارسال ایمیل تنظیم نشده است.');
+        out('');
+        out('  در config/config.php حداقل این‌ها لازم است:');
+        out("      define('MAIL_METHOD', 'smtp');   // یا 'mail'");
+        out("      define('MAIL_FROM', 'no-reply@example.com');");
+        out("      define('SMTP_HOST', 'mail.example.com');  // فقط برای smtp");
+        out('');
+        out('  نمونه‌ی کامل در config/config.example.php هست.');
+        exit(1);
+    }
+
+    info("  در حال فرستادن ایمیل آزمایشی به $to ...");
+    $t0 = microtime(true);
+    $okSend = Mailer::send(
+        $to,
+        'آزمایش تنظیمات ایمیل — ' . (defined('APP_NAME') ? APP_NAME : 'دفتر مالی'),
+        '<div style="font-family:Tahoma;direction:rtl;text-align:right">'
+        . '<h3>ارسال ایمیل درست کار می‌کند ✅</h3>'
+        . '<p>این پیام آزمایشی از سرور دفتر مالی فرستاده شده است.</p>'
+        . '<p>حالا بازیابی رمز با ایمیل هم کار می‌کند.</p></div>'
+    );
+    $ms = (int)round((microtime(true) - $t0) * 1000);
+
+    out('');
+    if ($okSend) {
+        ok("  ایمیل فرستاده شد ({$ms} میلی‌ثانیه).");
+        out('  صندوق ورودی و پوشه‌ی هرزنامه را نگاه کنید.');
+        out('  اگر نرسید، مشکل از تحویل است نه از تنظیمات — SPF و DKIM دامنه را بررسی کنید.');
+        exit(0);
+    }
+    red('  ارسال ناموفق بود.');
+    out('');
+    out('  خطای دقیق:');
+    out('    ' . (Mailer::$lastError !== '' ? Mailer::$lastError : '(بدون توضیح)'));
+    out('');
+    out('  رایج‌ترین علت‌ها:');
+    out('    • Connection refused / timed out → هاست یا پورت اشتباه، یا فایروال');
+    out('    • پاسخ 535 به AUTH             → نام کاربری یا رمز SMTP اشتباه');
+    out('    • خطای TLS                      → SMTP_SECURE را عوض کنید (tls / ssl / none)');
+    out('    • پاسخ 550 به MAIL FROM         → آدرس فرستنده باید متعلق به همان دامنه باشد');
+    exit(1);
 }
 
 fail("دستور ناشناخته: $cmd  (--help را ببینید)");
