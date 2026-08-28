@@ -119,6 +119,7 @@ $userId = Auth::userId();   // همیشه از اینجا، هرگز از ورو
 | pool مربوط به PHP | `/etc/php/<نسخه>/fpm/pool.d/hesab.conf` |
 | سوکت | `/run/php/php-hesab.sock` |
 | دیتابیس / کاربر | `hesab_db` / `'hesab_user'@'localhost'` با `GRANT ... ON hesab_db.*` |
+| بکاپ | `/opt/hesab/backups` و `/etc/cron.d/hesab-backup` |
 
 سه لایه‌ای که این قانون را عملاً تضمین می‌کنند:
 
@@ -138,6 +139,7 @@ $userId = Auth::userId();   // همیشه از اینجا، هرگز از ورو
 - ساخت ساختار دیتابیس با ترتیب درست: `deploy/db-init.sh`
 - نصب روی VPS (پیش‌فرض نمایشی؛ با `--apply` اجرا می‌شود): `deploy/vps-setup.sh`
 - به‌روزرسانی روی سرور: `./deploy.sh`
+- بکاپ روزانه دیتابیس: `deploy/backup.sh --install-cron`
 - `deploy.php` فقط برای هاست اشتراکی بود؛ روی VPS `DEPLOY_TOKEN` تعریف نشود تا غیرفعال بماند.
 
 `config/config.php` و `uploads/` هرگز وارد گیت نمی‌شوند و در استقرار دست‌نخورده می‌مانند.

@@ -18,6 +18,8 @@
 | سایت nginx | `/etc/nginx/sites-{available,enabled}/hesab` |
 | pool مربوط به PHP | `/etc/php/<نسخه>/fpm/pool.d/hesab.conf` |
 | سوکت PHP | `/run/php/php-hesab.sock` |
+| پوشه بکاپ | `/opt/hesab/backups` (بیرون از ریشه وب) |
+| زمان‌بندی بکاپ | `/etc/cron.d/hesab-backup` |
 | دیتابیس | `hesab_db` |
 | کاربر دیتابیس | `'hesab_user'@'localhost'` — فقط با دسترسی روی `hesab_db.*` |
 
