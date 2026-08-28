@@ -128,6 +128,8 @@ $userId = Auth::userId();   // همیشه از اینجا، هرگز از ورو
 | دیتابیس / کاربر | `hesab_db` / `'hesab_user'@'localhost'` با `GRANT ... ON hesab_db.*` |
 | بکاپ | `/opt/hesab/backups` و `/etc/cron.d/hesab-backup` |
 
+> **دام دسترسی `config/config.php`:** فایل‌های اپ مال `root:root` هستند ولی PHP با کاربر `hesab` اجرا می‌شود. پس `chmod 640` به‌تنهایی یعنی «هیچ‌کس جز root»، و PHP دیگر کانفیگ را نمی‌خواند — کل سایت ۵۰۰ می‌دهد. یک بار `deploy/mail-setup.sh` همین کار را کرد و اپ خوابید. ترتیب درست: `chown root:hesab` بعد `chmod 640`، و در آخر واقعاً آزمودن با `sudo -u hesab test -r`؛ اگر خوانده نشد، برگشت به `644`. هر اسکریپتی که به دسترسی این فایل دست می‌زند باید همین کار را بکند (`deploy.sh` و `deploy/mail-setup.sh` می‌کنند).
+
 سه لایه‌ای که این قانون را عملاً تضمین می‌کنند:
 
 1. `deploy/vps-setup.sh` تابع `assert_allowed()` دارد؛ هر نوشتن خارج از فهرست بالا اسکریپت را متوقف می‌کند.

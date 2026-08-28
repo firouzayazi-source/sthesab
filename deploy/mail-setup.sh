@@ -348,8 +348,46 @@ if ! php -l "$CONFIG" >/dev/null 2>&1; then
   die 'فایل بعد از ویرایش نحو درستی نداشت — بکاپ برگردانده شد. چیزی تغییر نکرد.'
 fi
 
-# رمز SMTP داخل این فایل است؛ نباید برای بقیه خواندنی بماند
-chmod 640 "$CONFIG" 2>/dev/null || true
+# ---------------------------------------------------------------
+# سخت‌کردن دسترسی فایل — با احتیاط.
+#
+# ⚠️ اینجا یک بار کل اپ خوابید. نسخه‌ی اول فقط «chmod 640» می‌زد. ولی
+# فایل‌های اپ مال root:root هستند و PHP با کاربر hesab اجرا می‌شود؛
+# 640 یعنی «root بخواند، گروه root بخواند، بقیه هیچ» — و hesab در آن
+# گروه نیست. PHP دیگر config.php را نتوانست بخواند و همه‌ی صفحه‌ها
+# ۵۰۰ دادند. تنظیم ایمیل، اپ را از دسترس خارج کرد.
+#
+# پس: اول گروه را به کاربر اپ می‌دهیم، بعد 640، و در آخر واقعاً
+# می‌آزماییم که کاربر اپ فایل را می‌خواند. اگر نخواند، برمی‌گردانیم به
+# 644. یک فایل کمی بازتر بهتر از یک اپ خوابیده است.
+harden_config() {
+  local appuser=''
+  # کاربر اپ همان مالک uploads است (vps-setup آن را chown می‌کند)
+  [[ -d "$APP_DIR/uploads" ]] && appuser="$(stat -c %U "$APP_DIR/uploads" 2>/dev/null)"
+
+  # اگر ریشه نیستیم یا کاربر اپ پیدا نشد، دست نمی‌زنیم
+  if [[ "$(id -u)" != "0" || -z "$appuser" || "$appuser" == "UNKNOWN" ]]; then
+    return 0
+  fi
+
+  local before_owner before_mode
+  before_owner="$(stat -c '%U:%G' "$CONFIG")"
+  before_mode="$(stat -c '%a' "$CONFIG")"
+
+  chown "root:$appuser" "$CONFIG" 2>/dev/null || return 0
+  chmod 640 "$CONFIG" 2>/dev/null || return 0
+
+  # آزمون واقعی: کاربر اپ می‌تواند بخواند؟
+  if sudo -u "$appuser" test -r "$CONFIG" 2>/dev/null; then
+    say "دسترسی فایل: root:$appuser با مود 640 (رمز از دید بقیه پنهان شد)"
+    return 0
+  fi
+
+  warn 'کاربر اپ نتوانست config.php را بخواند — دسترسی به حالت قبل برگشت.'
+  chown "$before_owner" "$CONFIG" 2>/dev/null || true
+  chmod "$before_mode" "$CONFIG" 2>/dev/null || true
+}
+harden_config
 
 say ''
 ok 'تنظیمات ذخیره شد.'

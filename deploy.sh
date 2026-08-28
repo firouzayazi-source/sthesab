@@ -81,10 +81,22 @@ else
 fi
 chmod +x deploy.sh 2>/dev/null || true
 
-# تنظیمات فقط برای خود سرور خوانده شود
+# تنظیمات فقط برای خود سرور خوانده شود.
+#
+# ⚠️ ترتیب مهم است: اول گروه به کاربر اپ، بعد 640. اگر chown شکست بخورد
+# و 640 اجرا شود، فایل مال root:root می‌ماند و PHP (که با $APP_USER
+# اجرا می‌شود) دیگر نمی‌تواند بخواند — کل اپ ۵۰۰ می‌دهد. یک بار همین
+# در deploy/mail-setup.sh اتفاق افتاد و سایت خوابید. پس آخرش واقعاً
+# می‌آزماییم و اگر خوانده نشد، برمی‌گردیم به 644.
 if [[ -f config/config.php ]]; then
-    chown root:"$APP_USER" config/config.php 2>/dev/null || true
-    chmod 640 config/config.php
+    if chown root:"$APP_USER" config/config.php 2>/dev/null \
+       && chmod 640 config/config.php 2>/dev/null \
+       && sudo -u "$APP_USER" test -r config/config.php 2>/dev/null; then
+        :
+    else
+        chmod 644 config/config.php 2>/dev/null || true
+        red "config.php نتوانست 640 بماند — 644 شد تا اپ بالا بماند."
+    fi
 fi
 
 # ---------- ۵. پاک کردن کش PHP ----------
