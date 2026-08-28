@@ -9,13 +9,14 @@
  * ⚠️ فقط از خط فرمان اجرا می‌شود. اگر کسی از راه وب صدایش بزند، بلافاصله
  *    می‌میرد — وگرنه هر کسی می‌توانست رمز مدیر را عوض کند.
  *
- * استفاده:
+ * استفاده (نمونه‌ها با مقدار واقعی — نه placeholder داخل < >، چون bash
+ * آن را تغییرمسیر ورودی می‌فهمد و فرمان با syntax error می‌میرد):
  *   php deploy/user-admin.php --list
- *   php deploy/user-admin.php --reset <نام‌کاربری>
- *   php deploy/user-admin.php --reset <نام‌کاربری> --password '<رمز>'
- *   php deploy/user-admin.php --activate <نام‌کاربری>
- *   php deploy/user-admin.php --set-email <نام‌کاربری> <ایمیل>
- *   php deploy/user-admin.php --test-mail <ایمیل>
+ *   php deploy/user-admin.php --reset ali
+ *   php deploy/user-admin.php --reset ali --password 'MyNewPass123'
+ *   php deploy/user-admin.php --activate ali
+ *   php deploy/user-admin.php --set-email ali ali@gmail.com
+ *   php deploy/user-admin.php --test-mail you@gmail.com
  */
 
 // ---------- نگهبان: فقط خط فرمان ----------
@@ -37,13 +38,16 @@ function info(string $s): void { out("\033[0;36m$s\033[0m"); }
 function usage(): void
 {
     $me = 'php deploy/user-admin.php';
-    out("استفاده:");
-    out("  $me --list                              فهرست کاربران");
-    out("  $me --reset <نام‌کاربری>                 رمز تازه (خودش می‌سازد)");
-    out("  $me --reset <نام‌کاربری> --password '…'  رمز دلخواه");
-    out("  $me --activate <نام‌کاربری>              فعال کردن کاربر غیرفعال");
-    out("  $me --set-email <نام‌کاربری> <ایمیل>     ثبت ایمیل برای بازیابی");
-    out("  $me --test-mail <ایمیل>                 آزمایش تنظیمات ایمیل");
+    out("استفاده — «ali» و ایمیل نمونه را با مقدار واقعی عوض کنید:");
+    out("  $me --list                             فهرست کاربران");
+    out("  $me --reset ali                        رمز تازه (خودش می‌سازد)");
+    out("  $me --reset ali --password 'رمزدلخواه'  رمز دلخواه");
+    out("  $me --activate ali                     فعال کردن کاربر غیرفعال");
+    out("  $me --set-email ali ali@gmail.com      ثبت ایمیل برای بازیابی");
+    out("  $me --test-mail you@gmail.com          آزمایش تنظیمات ایمیل");
+    out("");
+    out("نشانه‌های < > را در فرمان ننویسید — bash آن‌ها را تغییرمسیر فایل می‌فهمد");
+    out("و با «syntax error near unexpected token» متوقف می‌شود.");
     exit(0);
 }
 
@@ -99,7 +103,7 @@ if ($cmd === '--list') {
 
 // ---------------------------------------------------------------
 if ($cmd === '--reset') {
-    $username = $argvIn[1] ?? fail('نام کاربری را بدهید: --reset <نام‌کاربری>');
+    $username = $argvIn[1] ?? fail('نام کاربری را بدهید. نمونه:  --reset ali');
     $user = $findUser($username);
 
     $i = array_search('--password', $argvIn, true);
@@ -159,7 +163,7 @@ if ($cmd === '--reset') {
 
 // ---------------------------------------------------------------
 if ($cmd === '--activate') {
-    $username = $argvIn[1] ?? fail('نام کاربری را بدهید: --activate <نام‌کاربری>');
+    $username = $argvIn[1] ?? fail('نام کاربری را بدهید. نمونه:  --activate ali');
     $user = $findUser($username);
     if ($user['is_active']) { out("کاربر «$username» از قبل فعال است."); exit(0); }
     $pdo->prepare('UPDATE users SET is_active = 1 WHERE id = :id')->execute(['id' => $user['id']]);
@@ -172,8 +176,8 @@ if ($cmd === '--set-email') {
     if (!$hasEmailColumn) {
         fail("ستون ایمیل هنوز ساخته نشده. اول:  bash deploy/migrate.sh --apply");
     }
-    $username = $argvIn[1] ?? fail('استفاده: --set-email <نام‌کاربری> <ایمیل>');
-    $email    = $argvIn[2] ?? fail('استفاده: --set-email <نام‌کاربری> <ایمیل>');
+    $username = $argvIn[1] ?? fail('استفاده — نمونه:  --set-email ali ali@gmail.com');
+    $email    = $argvIn[2] ?? fail('استفاده — نمونه:  --set-email ali ali@gmail.com');
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) { fail("ایمیل معتبر نیست: $email"); }
     $user = $findUser($username);
 
