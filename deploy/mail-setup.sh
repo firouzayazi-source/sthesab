@@ -285,6 +285,9 @@ SMTP_EHLO_IN="$(printf '%s' "$APP_URL_IN" | sed -E 's#^https?://##; s#/.*$##')"
 # ---------------------------------------------------------------
 BACKUP="$CONFIG.bak.$(date +%Y%m%d-%H%M%S)"
 cp -p "$CONFIG" "$BACKUP" || die 'گرفتن بکاپ از config.php نشد.'
+# بکاپ همان رمزهای SMTP و دیتابیس را دارد — نباید برای بقیه خواندنی بماند.
+# cp -p مود فایل اصلی را می‌آورد و آن ممکن است هنوز 644 باشد.
+chmod 600 "$BACKUP" 2>/dev/null || true
 say ''
 say "بکاپ گرفته شد: $BACKUP"
 

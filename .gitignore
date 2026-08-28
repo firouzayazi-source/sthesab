@@ -1,6 +1,12 @@
 # تنظیمات محرمانه — هرگز داخل گیت نرود
 config/config.php
 
+# بکاپ‌های config که deploy/mail-setup.sh می‌سازد. اینها همان رمزهای
+# SMTP و دیتابیس را دارند؛ اگر ignore نشوند یک «git add -A» بی‌دقت
+# کافی است تا وارد مخزن شوند.
+config/config.php.bak.*
+config/*.bak
+
 # داده‌های کاربر
 uploads/
 
