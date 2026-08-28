@@ -112,12 +112,12 @@ if (!$check['ok']) {
 
                 <div class="form-group">
                     <label for="password">رمز تازه</label>
-                    <input type="password" id="password" name="password" required autofocus
+                    <input type="password" autocomplete="new-password" id="password" name="password" required autofocus
                            minlength="8" placeholder="حداقل ۸ کاراکتر">
                 </div>
                 <div class="form-group">
                     <label for="password_confirm">تکرار رمز تازه</label>
-                    <input type="password" id="password_confirm" name="password_confirm" required
+                    <input type="password" autocomplete="new-password" id="password_confirm" name="password_confirm" required
                            minlength="8" placeholder="همان رمز را دوباره بنویسید">
                 </div>
                 <button type="submit" class="btn btn-primary btn-block">ثبت رمز تازه</button>

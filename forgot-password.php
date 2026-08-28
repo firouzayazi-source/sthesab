@@ -97,6 +97,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $mailReady) {
                 <div class="form-group">
                     <label for="identifier">نام کاربری یا ایمیل</label>
                     <input type="text" id="identifier" name="identifier" required autofocus
+                           autocapitalize="none" autocorrect="off" spellcheck="false"
+                           autocomplete="username"
                            placeholder="نام کاربری یا ایمیل خود را وارد کنید"
                            value="<?= h(postParam('identifier')) ?>">
                 </div>

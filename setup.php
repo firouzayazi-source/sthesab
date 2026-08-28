@@ -95,15 +95,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <div class="form-group">
                 <label for="username">نام کاربری</label>
-                <input type="text" id="username" name="username" required placeholder="فقط حروف انگلیسی و عدد" value="<?= h(postParam('username')) ?>">
+                <input type="text" id="username" name="username" required
+                       autocapitalize="none" autocorrect="off" spellcheck="false"
+                       autocomplete="username" placeholder="فقط حروف انگلیسی و عدد" value="<?= h(postParam('username')) ?>">
             </div>
             <div class="form-group">
                 <label for="password">رمز عبور</label>
-                <input type="password" id="password" name="password" required placeholder="حداقل ۶ کاراکتر">
+                <input type="password" autocomplete="new-password" id="password" name="password" required placeholder="حداقل ۶ کاراکتر">
             </div>
             <div class="form-group">
                 <label for="password_confirm">تکرار رمز عبور</label>
-                <input type="password" id="password_confirm" name="password_confirm" required placeholder="رمز عبور را دوباره وارد کنید">
+                <input type="password" autocomplete="new-password" id="password_confirm" name="password_confirm" required placeholder="رمز عبور را دوباره وارد کنید">
             </div>
             <button type="submit" class="btn btn-primary btn-block">ساخت حساب مدیر</button>
         </form>

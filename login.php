@@ -87,7 +87,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 <div class="form-group">
                     <label for="password">رمز عبور — <?= h($rememberedUsername) ?></label>
-                    <input type="password" id="password" name="password" required autofocus placeholder="رمز عبور خود را وارد کنید">
+                    <input type="password" autocomplete="current-password" id="password" name="password" required autofocus placeholder="رمز عبور خود را وارد کنید">
                 </div>
 
                 <label class="inline-check" style="margin:4px 0 14px;">
@@ -103,11 +103,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?= Csrf::field() ?>
                 <div class="form-group">
                     <label for="username">نام کاربری</label>
-                    <input type="text" id="username" name="username" required autofocus placeholder="نام کاربری خود را وارد کنید" value="<?= h(postParam('username')) ?>">
+                    <input type="text" id="username" name="username" required autofocus
+                           autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text"
+                           autocomplete="username" placeholder="نام کاربری خود را وارد کنید" value="<?= h(postParam('username')) ?>">
                 </div>
                 <div class="form-group">
                     <label for="password">رمز عبور</label>
-                    <input type="password" id="password" name="password" required placeholder="رمز عبور خود را وارد کنید">
+                    <input type="password" autocomplete="current-password" id="password" name="password" required placeholder="رمز عبور خود را وارد کنید">
                 </div>
                 <label class="inline-check" style="margin:4px 0 14px;">
                     <input type="checkbox" name="trust_device" value="1" checked>
