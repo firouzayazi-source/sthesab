@@ -192,9 +192,28 @@ class Mailer
 
             if ($secure === 'tls') {
                 $cmd('STARTTLS', [220]);
-                $okTls = @stream_socket_enable_crypto($fp, true,
+                // خطای واقعی OpenSSL را نگه می‌داریم؛ بدون آن پیام «TLS
+                // ناموفق بود» هیچ سرنخی نمی‌دهد. شایع‌ترین علت روی
+                // هاست‌های اشتراکی این است که گواهی برای نام میزبان
+                // واقعی سرور صادر شده نه mail.<دامنه>.
+                $tlsError = '';
+                set_error_handler(function ($no, $str) use (&$tlsError) {
+                    $tlsError = $str;
+                    return true;
+                });
+                $okTls = stream_socket_enable_crypto($fp, true,
                     STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_3_CLIENT);
-                if (!$okTls) { throw new RuntimeException('SMTP: برقراری TLS ناموفق بود.'); }
+                restore_error_handler();
+                if (!$okTls) {
+                    $hint = '';
+                    if (stripos($tlsError, 'certificate') !== false || stripos($tlsError, 'verify') !== false) {
+                        $hint = ' — گواهی این سرور با نام «' . $host . '» نمی‌خواند.'
+                              . ' نام میزبان واقعی سرور ایمیل را در SMTP_HOST بگذارید'
+                              . ' (همان نامی که در بنر ESMTP دیده می‌شود).';
+                    }
+                    throw new RuntimeException('SMTP: برقراری TLS ناموفق بود'
+                        . ($tlsError !== '' ? ': ' . $tlsError : '.') . $hint);
+                }
                 $cmd('EHLO ' . $ehloName, [250]);   // بعد از TLS باید دوباره EHLO داد
             }
 
