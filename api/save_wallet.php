@@ -24,6 +24,31 @@ $color    = postParam('color', '#64748b');
 $rawInit  = postParam('initial_balance');
 $initNeg  = postParam('initial_negative') === '1';
 
+// اطلاعات کارت — با migration_wallet_cards آمده‌اند. روی نصبی که هنوز
+// اجرا نشده، بقیه‌ی فرم باید مثل قبل کار کند، پس شرطی نوشته شده‌اند.
+$hasCardCols = false;
+try {
+    $hasCardCols = (bool)Database::getConnection()->query(
+        "SELECT COUNT(*) FROM information_schema.columns
+         WHERE table_schema = DATABASE() AND table_name = 'wallets' AND column_name = 'card_number'"
+    )->fetchColumn();
+} catch (PDOException $e) { $hasCardCols = false; }
+
+$bankCode = postParam('bank_code');
+$cardNum  = digitsOnly(postParam('card_number'), 19);
+$accountNo= digitsOnly(postParam('account_number'), 30);
+$iban     = digitsOnly(postParam('iban'), 24);
+
+// اگر بانک از فهرست انتخاب شده ولی نام دلخواه خالی مانده، نام بانک بنشیند
+if ($bankCode !== '' && $bankName === '') {
+    $preset = bankPreset($bankCode);
+    if ($preset) { $bankName = $preset['name']; }
+}
+// شماره کارت که کامل باشد، ۴ رقم آخر را خودش می‌دهد
+if ($last4 === '' && mb_strlen($cardNum) >= 4) {
+    $last4 = mb_substr($cardNum, -4);
+}
+
 $errors = [];
 
 if ($name === '' || mb_strlen($name) > 100) {
@@ -40,6 +65,19 @@ if (!preg_match('/^#[0-9a-fA-F]{6}$/', $color)) {
 }
 if (mb_strlen($bankName) > 100) {
     $errors[] = 'نام بانک بیش از حد طولانی است.';
+}
+if ($bankCode !== '' && bankPreset($bankCode) === null) {
+    $errors[] = 'بانک انتخاب‌شده معتبر نیست.';
+}
+// کارت‌های ایرانی ۱۶ رقمی‌اند و شبا ۲۴ رقم (بدون IR). خالی هم مجاز است.
+if ($cardNum !== '' && !preg_match('/^[0-9]{16}$/', $cardNum)) {
+    $errors[] = 'شماره کارت باید دقیقاً ۱۶ رقم باشد.';
+}
+if ($iban !== '' && !preg_match('/^[0-9]{24}$/', $iban)) {
+    $errors[] = 'شبا باید ۲۴ رقم بعد از IR باشد.';
+}
+if ($accountNo !== '' && mb_strlen($accountNo) < 4) {
+    $errors[] = 'شماره حساب کوتاه‌تر از حد انتظار است.';
 }
 
 $initial = sanitizeAmount($rawInit);
@@ -64,33 +102,63 @@ try {
             jsonResponse(['success' => false, 'message' => 'حساب یافت نشد.'], 404);
         }
 
-        $stmt = $pdo->prepare('
-            UPDATE wallets
-            SET name = :name, kind = :kind, bank_name = :bank_name,
-                card_last4 = :last4, color = :color, initial_balance = :init
-            WHERE id = :id AND user_id = :u
-        ');
-        $stmt->execute([
+        $sql = $hasCardCols
+            ? 'UPDATE wallets
+               SET name = :name, kind = :kind, bank_name = :bank_name,
+                   card_last4 = :last4, color = :color, initial_balance = :init,
+                   bank_code = :bcode, card_number = :cardno,
+                   account_number = :accno, iban = :iban
+               WHERE id = :id AND user_id = :u'
+            : 'UPDATE wallets
+               SET name = :name, kind = :kind, bank_name = :bank_name,
+                   card_last4 = :last4, color = :color, initial_balance = :init
+               WHERE id = :id AND user_id = :u';
+        $stmt = $pdo->prepare($sql);
+        $params = [
             'name' => $name, 'kind' => $kind,
             'bank_name' => $bankName !== '' ? $bankName : null,
             'last4' => $last4 !== '' ? $last4 : null,
             'color' => $color, 'init' => $initial,
             'id' => $walletId, 'u' => $userId,
-        ]);
+        ];
+        if ($hasCardCols) {
+            $params += [
+                'bcode'  => $bankCode !== ''  ? $bankCode  : null,
+                'cardno' => $cardNum !== ''   ? $cardNum   : null,
+                'accno'  => $accountNo !== '' ? $accountNo : null,
+                'iban'   => $iban !== ''      ? $iban      : null,
+            ];
+        }
+        $stmt->execute($params);
 
         jsonResponse(['success' => true, 'message' => 'حساب بروزرسانی شد.']);
     }
 
-    $stmt = $pdo->prepare('
-        INSERT INTO wallets (user_id, name, kind, bank_name, card_last4, color, initial_balance)
-        VALUES (:u, :name, :kind, :bank_name, :last4, :color, :init)
-    ');
-    $stmt->execute([
+    // دو کوئری ثابت به‌جای ساختن رشته‌ی SQL با متغیر — همان قاعده‌ای که
+    // در CLAUDE.md آمده و تست قرارداد نگهش می‌دارد.
+    $sql = $hasCardCols
+        ? 'INSERT INTO wallets (user_id, name, kind, bank_name, card_last4, color, initial_balance,
+                                bank_code, card_number, account_number, iban)
+           VALUES (:u, :name, :kind, :bank_name, :last4, :color, :init,
+                   :bcode, :cardno, :accno, :iban)'
+        : 'INSERT INTO wallets (user_id, name, kind, bank_name, card_last4, color, initial_balance)
+           VALUES (:u, :name, :kind, :bank_name, :last4, :color, :init)';
+    $stmt = $pdo->prepare($sql);
+    $params = [
         'u' => $userId, 'name' => $name, 'kind' => $kind,
         'bank_name' => $bankName !== '' ? $bankName : null,
         'last4' => $last4 !== '' ? $last4 : null,
         'color' => $color, 'init' => $initial,
-    ]);
+    ];
+    if ($hasCardCols) {
+        $params += [
+            'bcode'  => $bankCode !== ''  ? $bankCode  : null,
+            'cardno' => $cardNum !== ''   ? $cardNum   : null,
+            'accno'  => $accountNo !== '' ? $accountNo : null,
+            'iban'   => $iban !== ''      ? $iban      : null,
+        ];
+    }
+    $stmt->execute($params);
 
     jsonResponse(['success' => true, 'message' => 'حساب ساخته شد.']);
 } catch (PDOException $e) {

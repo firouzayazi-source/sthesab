@@ -768,7 +768,9 @@ textarea { resize: vertical; }
 .tool-card {
     display: flex; flex-direction: column;
     align-items: flex-start; justify-content: space-between;
-    gap: 13px; min-height: 88px;
+    gap: 13px;
+    --tool-card-h: 90px;
+    min-height: var(--tool-card-h);
     padding: 14px;
     border-radius: var(--r);
     background: var(--line-soft);
@@ -1031,7 +1033,7 @@ textarea { resize: vertical; }
 
 @media (max-width: 420px) {
     .tools-grid { gap: 9px; }
-    .tool-card { min-height: 80px; font-size: 12.5px; }
+    .tool-card { font-size: 12.5px; }
 }
 
 /* ============================================================
@@ -2187,16 +2189,7 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
 #tradesWrap.view-list .trade-card.expanded .trade-remaining { display: block; }
 #tradesWrap:not(.view-list) .trade-card .list-profit { display: none; }
 
-/* کارت پهن معاملات در شیت ابزارها — تمام‌عرض برای دسترسی سریع */
-.tool-card-wide {
-    grid-column: 1 / -1;
-    flex-direction: row;
-    align-items: center;
-    justify-content: flex-start;
-    gap: 12px;
-    min-height: 0;
-    padding: 13px 15px;
-}
+
 
 .trade-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .trade-sum-item { text-align: center; }
@@ -2242,3 +2235,134 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
 .trade-sale-meta { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
 
 .trade-actions { display: flex; gap: 7px; margin-top: 13px; flex-wrap: wrap; }
+
+/* ---------- سربرگ شیت: دستگیره‌ی قابل لمس و دکمه‌ی بستن ----------
+   دستگیره قبلاً فقط یک خط تزئینی بود. حالا ناحیه‌ی لمسی دارد (کشیدن
+   به پایین یا زدنش، شیت را می‌بندد) چون با شیتِ بلند، نوار باریکِ
+   بالای آن عملاً تنها راه بستن بود. */
+.more-sheet-grab {
+    padding: 6px 0 2px;
+    margin: -3px 0 0;
+    cursor: pointer;
+    touch-action: none;
+}
+.more-sheet-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 13px;
+}
+.more-sheet-head .more-sheet-title { margin-bottom: 0; }
+
+/* کارت پهن معاملات: تمام‌عرض ولی دقیقاً هم‌ضخامتِ بقیه‌ی کارت‌ها.
+   ارتفاع از یک متغیر مشترک می‌آید تا دو جا از هم جدا نیفتند. */
+.tool-card-wide {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    text-align: center;
+    /* چون چیدمانش افقی است، محتوایش کوتاه‌تر از کارت‌های ستونی است و
+       بدون این خط، دو پیکسل کوتاه‌تر می‌نشست. */
+    min-height: var(--tool-card-h);
+    height: var(--tool-card-h);
+}
+.tool-card-wide span { flex: none; }
+
+/* ============================================================
+   کارت بانکی
+   ============================================================ */
+.ltr-num { direction: ltr; text-align: left; font-variant-numeric: tabular-nums; letter-spacing: .5px; }
+
+.iban-field { display: flex; align-items: stretch; gap: 0; direction: ltr; }
+.iban-prefix {
+    display: flex; align-items: center;
+    padding: 0 11px;
+    background: var(--line-soft);
+    border: 1px solid var(--line);
+    border-inline-end: none;
+    border-radius: var(--r-sm) 0 0 var(--r-sm);
+    font-weight: 700; font-size: 13px; color: var(--muted);
+}
+.iban-field input { border-radius: 0 var(--r-sm) var(--r-sm) 0 !important; flex: 1; min-width: 0; }
+
+.wallet-row.js-show-card { cursor: pointer; }
+
+.bank-card-box { max-width: 400px; }
+.bank-card {
+    position: relative;
+    overflow: hidden;
+    border-radius: 16px;
+    padding: 17px 18px 15px;
+    aspect-ratio: 1.586 / 1;      /* نسبت واقعی کارت بانکی */
+    display: flex; flex-direction: column; justify-content: space-between;
+    color: #fff;
+    background: linear-gradient(135deg, var(--bc1, #475569), var(--bc2, #2f3b4a));
+    box-shadow: 0 10px 26px rgba(21,23,28,.28);
+    direction: rtl;
+}
+/* درخشش مورب — به‌جای تصویر، طرح خودمان */
+.bank-card-shine {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(120% 80% at 85% -10%, rgba(255,255,255,.22), transparent 60%),
+        radial-gradient(90% 70% at -10% 110%, rgba(255,255,255,.10), transparent 55%);
+}
+.bank-card > *:not(.bank-card-shine) { position: relative; z-index: 1; }
+
+.bank-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.bank-card-bank { font-size: 14px; font-weight: 700; }
+.bank-card-kind {
+    font-size: 10.5px; opacity: .85;
+    background: rgba(255,255,255,.18);
+    padding: 3px 9px; border-radius: var(--r-pill);
+    white-space: nowrap;
+}
+.bank-card-chip {
+    width: 38px; height: 28px; border-radius: 6px;
+    background: linear-gradient(140deg, #f0d68a, #c8a44e 55%, #e5c877);
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.13);
+}
+.bank-card-number {
+    direction: ltr; text-align: left;
+    font-size: 17px; font-weight: 700;
+    letter-spacing: 1.5px;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 1px 2px rgba(0,0,0,.25);
+}
+.bank-card-number:empty::before { content: '•••• •••• •••• ••••'; opacity: .45; }
+.bank-card-bottom { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.bank-card-label { display: block; font-size: 9.5px; opacity: .75; margin-bottom: 2px; }
+.bank-card-owner { font-size: 12.5px; font-weight: 700; }
+.bank-card-balance-wrap { text-align: left; }
+.bank-card-balance { font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.bank-card-rows { margin-top: 15px; }
+.bank-card-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line-soft);
+}
+.bank-card-row:last-child { border-bottom: none; }
+.bank-card-row-label { font-size: 12px; color: var(--muted); flex: none; }
+.bank-card-row-value {
+    font-size: 13px; font-weight: 700;
+    direction: ltr; text-align: left;
+    word-break: break-all;
+    font-variant-numeric: tabular-nums;
+}
+.bank-card-copy {
+    flex: none;
+    background: var(--line-soft); border: none;
+    color: var(--muted); border-radius: var(--r-sm);
+    padding: 5px 9px; font-size: 11px;
+}
+.bank-card-copy.done { background: var(--in-wash); color: var(--in); }
+
+/* ---------- نوار پایین بالای شیت ابزارها می‌ماند ----------
+   شیت با inset:0 تمام صفحه را می‌پوشاند و دکمه‌ی «بیشتر» زیرش گم
+   می‌شد؛ یعنی همان دکمه‌ای که شیت را باز کرده، برای بستنش قابل زدن
+   نبود. حالا نوار بالاتر می‌نشیند و «بیشتر» ضامن واقعی است. */
+.bottom-nav { z-index: 260; }
+/* و شیت پشت نوار پنهان نشود */
+.more-sheet { padding-bottom: calc(74px + env(safe-area-inset-bottom)); }

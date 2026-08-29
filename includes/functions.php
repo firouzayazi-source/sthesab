@@ -267,9 +267,20 @@ function walletBalances(int $userId): array
         ) tsale ON tsale.wid = w.id';
     }
 
+    // ستون‌های کارت با migration_wallet_cards می‌آیند؛ روی نصبی که هنوز
+    // اجرا نشده، کوئری نباید بشکند.
+    $cardCols = '';
+    try {
+        $has = (bool)$pdo->query(
+            "SELECT COUNT(*) FROM information_schema.columns
+             WHERE table_schema = DATABASE() AND table_name = 'wallets' AND column_name = 'card_number'"
+        )->fetchColumn();
+        if ($has) { $cardCols = ' w.bank_code, w.card_number, w.account_number, w.iban,'; }
+    } catch (PDOException $e) { $cardCols = ''; }
+
     $stmt = $pdo->prepare('
         SELECT
-            w.id, w.name, w.kind, w.bank_name, w.card_last4,
+            w.id, w.name, w.kind, w.bank_name, w.card_last4,' . $cardCols . '
             w.color, w.is_active, w.initial_balance,
             w.initial_balance
               + COALESCE(tx.income, 0)
@@ -1477,4 +1488,79 @@ function deleteTradeProfitTransactions(int $userId, int $tradeId): void
     } catch (PDOException $e) {
         // ستون پیوند هنوز نیست — چیزی برای حذف نیست
     }
+}
+
+/* ============================================================
+   بانک‌ها و نمای کارت
+   ============================================================ */
+
+/**
+ * فهرست بانک‌های رایج با رنگ هویتی‌شان.
+ *
+ * ⚠️ رنگ‌ها تقریبی‌اند و از روی هویت بصری شناخته‌شده‌ی هر بانک انتخاب
+ * شده‌اند، نه از راهنمای رسمی برند. لوگو یا طرح کارت هیچ بانکی اینجا
+ * نیست — علامت تجاری‌شان است. کاربر رنگ را می‌تواند دستی هم عوض کند.
+ *
+ * ساختار: کد => [نام، رنگ اصلی، رنگ دوم گرادیان]
+ */
+function bankPresets(): array
+{
+    return [
+        'melli'      => ['بانک ملی ایران',      '#1b3f8f', '#12295e'],
+        'mellat'     => ['بانک ملت',            '#c0392b', '#8e2420'],
+        'saderat'    => ['بانک صادرات',         '#0d6fb8', '#084a7c'],
+        'tejarat'    => ['بانک تجارت',          '#1e88a8', '#125b73'],
+        'sepah'      => ['بانک سپه',            '#1f4e9c', '#14356b'],
+        'refah'      => ['بانک رفاه کارگران',   '#00695c', '#00443c'],
+        'keshavarzi' => ['بانک کشاورزی',        '#2e7d32', '#1b5220'],
+        'maskan'     => ['بانک مسکن',           '#b71c1c', '#7f1414'],
+        'post'       => ['پست بانک',            '#00838f', '#005b63'],
+        'parsian'    => ['بانک پارسیان',        '#8e1537', '#5e0e24'],
+        'pasargad'   => ['بانک پاسارگاد',       '#b8862f', '#7d5b1f'],
+        'saman'      => ['بانک سامان',          '#0f4c81', '#0a3357'],
+        'eghtesad'   => ['بانک اقتصاد نوین',    '#5b2d8e', '#3d1e60'],
+        'ayandeh'    => ['بانک آینده',          '#6a1b9a', '#471268'],
+        'shahr'      => ['بانک شهر',            '#c62828', '#8c1c1c'],
+        'sina'       => ['بانک سینا',           '#00695f', '#004841'],
+        'dey'        => ['بانک دی',             '#00838a', '#005a5f'],
+        'karafarin'  => ['بانک کارآفرین',       '#1565c0', '#0e4585'],
+        'gardeshgari'=> ['بانک گردشگری',        '#00897b', '#005f55'],
+        'resalat'    => ['بانک قرض‌الحسنه رسالت','#2e7d5b', '#1d5340'],
+        'other'      => ['سایر / بانک دیگر',    '#475569', '#2f3b4a'],
+    ];
+}
+
+/** رنگ و نام یک بانک از روی کدش؛ اگر نبود، مقدار پیش‌فرض. */
+function bankPreset(?string $code): ?array
+{
+    if ($code === null || $code === '') { return null; }
+    $all = bankPresets();
+    if (!isset($all[$code])) { return null; }
+    return ['name' => $all[$code][0], 'c1' => $all[$code][1], 'c2' => $all[$code][2]];
+}
+
+/**
+ * فقط رقم‌ها را نگه می‌دارد (ارقام فارسی و عربی را هم می‌فهمد).
+ * برای شماره‌ی کارت، شماره‌ی حساب و شبا.
+ */
+function digitsOnly($input, int $max = 40): string
+{
+    $clean = preg_replace('/[^0-9]/', '', toLatinDigits((string)$input));
+    return mb_substr($clean, 0, $max);
+}
+
+/** ۶۰۳۷۹۹۱۱۱۱۱۱۱۱۱۱ ← ۶۰۳۷ ۹۹۱۱ ۱۱۱۱ ۱۱۱۱ */
+function formatCardNumber(?string $card): string
+{
+    $d = digitsOnly($card ?? '', 19);
+    if ($d === '') { return ''; }
+    return toPersianDigits(trim(chunk_split($d, 4, ' ')));
+}
+
+/** ۱۲۳... ← IR12 3456 7890 ... (شبا همیشه با IR نمایش داده می‌شود) */
+function formatIban(?string $iban): string
+{
+    $d = digitsOnly($iban ?? '', 24);
+    if ($d === '') { return ''; }
+    return 'IR' . toPersianDigits(trim(chunk_split($d, 4, ' ')));
 }

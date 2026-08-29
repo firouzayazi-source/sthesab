@@ -49,7 +49,17 @@ include __DIR__ . '/includes/header.php';
         <p class="empty-row">هنوز حسابی ندارید.</p>
     <?php else: ?>
         <?php foreach ($wallets as $w): ?>
-            <div class="wallet-row <?= (int)$w['is_active'] ? '' : 'wallet-off' ?>">
+            <?php $__bp = bankPreset($w['bank_code'] ?? null); ?>
+            <div class="wallet-row js-show-card <?= (int)$w['is_active'] ? '' : 'wallet-off' ?>"
+                data-name="<?= h($w['name']) ?>"
+                data-bank="<?= h($w['bank_name'] ?: ($__bp['name'] ?? '')) ?>"
+                data-card="<?= h(formatCardNumber($w['card_number'] ?? '')) ?>"
+                data-account="<?= h(toPersianDigits($w['account_number'] ?? '')) ?>"
+                data-iban="<?= h(formatIban($w['iban'] ?? '')) ?>"
+                data-kind="<?= h(walletKindLabel($w['kind'])) ?>"
+                data-balance="<?= ((int)$w['balance'] < 0 ? '−' : '') . formatMoney(abs((int)$w['balance'])) ?>"
+                data-c1="<?= h($__bp['c1'] ?? $w['color']) ?>"
+                data-c2="<?= h($__bp['c2'] ?? $w['color']) ?>">
                 <span class="wallet-chip" style="background: <?= h($w['color']) ?>1f; color: <?= h($w['color']) ?>;">
                     <?php if ($w['kind'] === 'card'): ?>
                         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/></svg>
@@ -76,12 +86,16 @@ include __DIR__ . '/includes/header.php';
                     <?= (int)$w['balance'] < 0 ? '−' : '' ?><?= formatMoney(abs((int)$w['balance'])) ?>
                 </div>
 
-                <button type="button" class="wallet-menu js-edit-wallet"
+                <button type="button" class="wallet-menu js-edit-wallet" data-stop="1"
                     data-id="<?= (int)$w['id'] ?>"
                     data-name="<?= h($w['name']) ?>"
                     data-kind="<?= h($w['kind']) ?>"
                     data-bank="<?= h($w['bank_name'] ?? '') ?>"
                     data-last4="<?= h($w['card_last4'] ?? '') ?>"
+                    data-bank-code="<?= h($w['bank_code'] ?? '') ?>"
+                    data-card="<?= h($w['card_number'] ?? '') ?>"
+                    data-account="<?= h($w['account_number'] ?? '') ?>"
+                    data-iban="<?= h($w['iban'] ?? '') ?>"
                     data-color="<?= h($w['color']) ?>"
                     data-init="<?= (int)$w['initial_balance'] ?>"
                     data-active="<?= (int)$w['is_active'] ?>"
@@ -157,14 +171,50 @@ include __DIR__ . '/includes/header.php';
                 </select>
             </div>
 
-            <div class="form-row" id="walletBankFields">
+            <div id="walletBankFields">
                 <div class="form-group">
-                    <label for="wallet_bank">نام بانک (اختیاری)</label>
-                    <input type="text" id="wallet_bank" name="bank_name" maxlength="100">
+                    <label for="wallet_bank_code">بانک</label>
+                    <select id="wallet_bank_code" name="bank_code">
+                        <option value="">— انتخاب کنید —</option>
+                        <?php foreach (bankPresets() as $code => $b): ?>
+                            <option value="<?= h($code) ?>" data-c1="<?= h($b[1]) ?>"><?= h($b[0]) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <p class="hint">با انتخاب بانک، رنگ و طرح کارت خودکار تنظیم می‌شود — رنگ را می‌توانید دستی هم عوض کنید.</p>
                 </div>
+
                 <div class="form-group">
-                    <label for="wallet_last4">۴ رقم آخر کارت</label>
-                    <input type="text" inputmode="numeric" id="wallet_last4" name="card_last4" maxlength="4">
+                    <label for="wallet_bank">نام دلخواه بانک (اختیاری)</label>
+                    <input type="text" id="wallet_bank" name="bank_name" maxlength="100"
+                           placeholder="اگر خالی بماند، نام بانک انتخاب‌شده می‌نشیند">
+                </div>
+
+                <div class="form-group">
+                    <label for="wallet_card_number">شماره کارت</label>
+                    <input type="text" inputmode="numeric" id="wallet_card_number" name="card_number"
+                           maxlength="23" placeholder="۱۶ رقم" class="ltr-num">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="wallet_account_number">شماره حساب</label>
+                        <input type="text" inputmode="numeric" id="wallet_account_number" name="account_number"
+                               maxlength="30" class="ltr-num">
+                    </div>
+                    <div class="form-group">
+                        <label for="wallet_last4">۴ رقم آخر کارت</label>
+                        <input type="text" inputmode="numeric" id="wallet_last4" name="card_last4" maxlength="4" class="ltr-num">
+                        <p class="hint">اگر شماره کارت را کامل بزنید، خودش پر می‌شود.</p>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="wallet_iban">شبا</label>
+                    <div class="iban-field">
+                        <span class="iban-prefix">IR</span>
+                        <input type="text" inputmode="numeric" id="wallet_iban" name="iban"
+                               maxlength="29" placeholder="۲۴ رقم" class="ltr-num">
+                    </div>
                 </div>
             </div>
 
@@ -261,6 +311,40 @@ include __DIR__ . '/includes/header.php';
                 <button type="submit" class="btn btn-primary" id="transferSubmitBtn">ثبت</button>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- ---------- نمای کارت بانکی ----------
+     طرح و رنگ از روی بانکِ انتخاب‌شده ساخته می‌شود. عمداً از لوگو یا
+     تصویر کارت واقعی بانک‌ها استفاده نشده — علامت تجاری‌شان است. -->
+<div class="modal-overlay" id="bankCardModal">
+    <div class="modal-box bank-card-box">
+        <div class="modal-header">
+            <h3 id="bankCardTitle">کارت</h3>
+            <button type="button" class="modal-close" data-modal-close="bankCardModal" aria-label="بستن">&times;</button>
+        </div>
+
+        <div class="bank-card" id="bankCardVisual">
+            <div class="bank-card-shine"></div>
+            <div class="bank-card-top">
+                <span class="bank-card-bank" id="bcBank"></span>
+                <span class="bank-card-kind" id="bcKind"></span>
+            </div>
+            <div class="bank-card-chip" aria-hidden="true"></div>
+            <div class="bank-card-number" id="bcNumber"></div>
+            <div class="bank-card-bottom">
+                <div>
+                    <span class="bank-card-label">صاحب حساب</span>
+                    <span class="bank-card-owner" id="bcOwner"></span>
+                </div>
+                <div class="bank-card-balance-wrap">
+                    <span class="bank-card-label">موجودی</span>
+                    <span class="bank-card-balance" id="bcBalance"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="bank-card-rows" id="bcRows"></div>
     </div>
 </div>
 

@@ -596,6 +596,105 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    // ---------- شماره کارت / شبا: گروه‌بندی چهارتایی هنگام تایپ ----------
+    function groupDigits(v) {
+        var d = String(v || '').replace(/[^\d۰-۹٠-٩]/g, '');
+        d = toLatinDigitsJs(d);
+        return d.replace(/(.{4})/g, '$1 ').trim();
+    }
+    ['wallet_card_number', 'wallet_iban'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('input', function () {
+            var atEnd = this.selectionStart === this.value.length;
+            this.value = groupDigits(this.value);
+            if (atEnd) this.setSelectionRange(this.value.length, this.value.length);
+            // ۴ رقم آخر کارت را خودش پر کند
+            if (id === 'wallet_card_number') {
+                var last4 = document.getElementById('wallet_last4');
+                var digits = toLatinDigitsJs(this.value).replace(/\D/g, '');
+                if (last4 && digits.length >= 4) { last4.value = digits.slice(-4); }
+            }
+        });
+    });
+
+    // انتخاب بانک، رنگ حساب را تنظیم می‌کند (کاربر بعدش می‌تواند عوض کند)
+    var bankSel = document.getElementById('wallet_bank_code');
+    if (bankSel) {
+        bankSel.addEventListener('change', function () {
+            var opt = this.options[this.selectedIndex];
+            var c1 = opt && opt.getAttribute('data-c1');
+            if (c1) { document.getElementById('wallet_color').value = c1; }
+        });
+    }
+
+    // ---------- نمای کارت: زدن روی ردیف حساب ----------
+    var cardModal = document.getElementById('bankCardModal');
+    if (cardModal) {
+        document.querySelectorAll('.wallet-row.js-show-card').forEach(function (row) {
+            row.addEventListener('click', function (e) {
+                // دکمه‌ی ⋮ کار خودش را دارد
+                if (e.target.closest('[data-stop], button, a')) return;
+
+                var v = document.getElementById('bankCardVisual');
+                v.style.setProperty('--bc1', this.getAttribute('data-c1') || '#475569');
+                v.style.setProperty('--bc2', this.getAttribute('data-c2') || '#2f3b4a');
+
+                var bank = this.getAttribute('data-bank') || '';
+                document.getElementById('bankCardTitle').textContent = this.getAttribute('data-name') || 'کارت';
+                document.getElementById('bcBank').textContent = bank || (this.getAttribute('data-name') || '');
+                document.getElementById('bcKind').textContent = this.getAttribute('data-kind') || '';
+                document.getElementById('bcNumber').textContent = this.getAttribute('data-card') || '';
+                document.getElementById('bcOwner').textContent = this.getAttribute('data-name') || '';
+                document.getElementById('bcBalance').textContent = this.getAttribute('data-balance') || '';
+
+                // ردیف‌های زیر کارت فقط برای چیزهایی که واقعاً پر شده‌اند
+                var rows = document.getElementById('bcRows');
+                rows.innerHTML = '';
+                [['شماره کارت', this.getAttribute('data-card')],
+                 ['شماره حساب', this.getAttribute('data-account')],
+                 ['شبا', this.getAttribute('data-iban')]].forEach(function (pair) {
+                    if (!pair[1]) return;
+                    var r = document.createElement('div');
+                    r.className = 'bank-card-row';
+                    var l = document.createElement('span');
+                    l.className = 'bank-card-row-label'; l.textContent = pair[0];
+                    var val = document.createElement('span');
+                    val.className = 'bank-card-row-value'; val.textContent = pair[1];
+                    var cp = document.createElement('button');
+                    cp.type = 'button'; cp.className = 'bank-card-copy'; cp.textContent = 'کپی';
+                    cp.addEventListener('click', function () {
+                        var plain = toLatinDigitsJs(pair[1]).replace(/\s/g, '');
+                        var done = function () {
+                            cp.textContent = 'کپی شد'; cp.classList.add('done');
+                            setTimeout(function () { cp.textContent = 'کپی'; cp.classList.remove('done'); }, 1600);
+                        };
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                            navigator.clipboard.writeText(plain).then(done, function () {});
+                        } else {
+                            // مرورگرهای قدیمی‌تر یا زمینه‌ی غیرامن
+                            var ta = document.createElement('textarea');
+                            ta.value = plain; document.body.appendChild(ta); ta.select();
+                            try { document.execCommand('copy'); done(); } catch (err) {}
+                            document.body.removeChild(ta);
+                        }
+                    });
+                    r.appendChild(l); r.appendChild(val); r.appendChild(cp);
+                    rows.appendChild(r);
+                });
+                if (!rows.children.length) {
+                    var empty = document.createElement('p');
+                    empty.className = 'hint';
+                    empty.style.textAlign = 'center';
+                    empty.textContent = 'شماره کارت، حساب یا شبا ثبت نشده — از دکمه‌ی ⋮ اضافه کنید.';
+                    rows.appendChild(empty);
+                }
+
+                openModal('bankCardModal');
+            });
+        });
+    }
+
     document.querySelectorAll('.js-edit-wallet').forEach(function (btn) {
         btn.addEventListener('click', function () {
             document.getElementById('walletModalTitle').textContent = 'ویرایش حساب';
@@ -605,6 +704,14 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('wallet_bank').value = this.getAttribute('data-bank') || '';
             document.getElementById('wallet_last4').value = this.getAttribute('data-last4') || '';
             document.getElementById('wallet_color').value = this.getAttribute('data-color') || '#64748b';
+            var bcSel = document.getElementById('wallet_bank_code');
+            if (bcSel) bcSel.value = this.getAttribute('data-bank-code') || '';
+            var cardEl = document.getElementById('wallet_card_number');
+            if (cardEl) cardEl.value = groupDigits(this.getAttribute('data-card') || '');
+            var accEl = document.getElementById('wallet_account_number');
+            if (accEl) accEl.value = this.getAttribute('data-account') || '';
+            var ibanEl = document.getElementById('wallet_iban');
+            if (ibanEl) ibanEl.value = groupDigits(this.getAttribute('data-iban') || '');
 
             var init = parseInt(this.getAttribute('data-init') || '0', 10);
             document.getElementById('wallet_init').value = init ? toPersianDigitsJs(Math.abs(init).toLocaleString('en-US').replace(/,/g,'\u066C')) : '';
@@ -1557,18 +1664,106 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // ---------- قفل اسکرول: فقط لایه‌ی رویی اسکرول شود ----------
+    //
+    // وقتی شیت یا مودالی باز است، کشیدن انگشت نباید صفحه‌ی زیرش را
+    // جابه‌جا کند — کاربر فکر می‌کند دارد فهرست شیت را می‌بندد ولی
+    // صفحه‌ی پشت سُر می‌خورد و جای خودش را گم می‌کند. با برگشتن به
+    // صفحه، اسکرول دقیقاً از همان‌جا ادامه پیدا می‌کند.
+    var scrollLock = { count: 0, y: 0 };
+    function lockBodyScroll() {
+        if (scrollLock.count++ > 0) return;
+        scrollLock.y = window.scrollY || window.pageYOffset || 0;
+        document.body.style.position = 'fixed';
+        document.body.style.top = '-' + scrollLock.y + 'px';
+        document.body.style.left = '0';
+        document.body.style.right = '0';
+        document.body.style.width = '100%';
+    }
+    function unlockBodyScroll() {
+        if (scrollLock.count === 0) return;
+        if (--scrollLock.count > 0) return;
+        document.body.style.position = '';
+        document.body.style.top = '';
+        document.body.style.left = '';
+        document.body.style.right = '';
+        document.body.style.width = '';
+        window.scrollTo(0, scrollLock.y);
+    }
+
+    // هر لایه‌ای که با کلاس show باز/بسته می‌شود، خودکار قفل را می‌گیرد
+    // و پس می‌دهد — بدون اینکه لازم باشد هر جای کد یادش باشد.
+    (function watchOverlays() {
+        var overlays = document.querySelectorAll('.modal-overlay, .sheet-overlay, .more-sheet-overlay');
+        if (!overlays.length || !window.MutationObserver) return;
+        overlays.forEach(function (el) {
+            var wasOpen = el.classList.contains('show');
+            if (wasOpen) lockBodyScroll();
+            new MutationObserver(function () {
+                var isOpen = el.classList.contains('show');
+                if (isOpen === wasOpen) return;
+                wasOpen = isOpen;
+                isOpen ? lockBodyScroll() : unlockBodyScroll();
+            }).observe(el, { attributes: true, attributeFilter: ['class'] });
+        });
+    })();
+
     // ---------- شیت «بیشتر» در ناوبری پایین ----------
     var moreBtn = document.getElementById('moreTabBtn');
     var moreSheet = document.getElementById('moreSheet');
     if (moreBtn && moreSheet) {
-        moreBtn.addEventListener('click', function () {
-            moreSheet.classList.add('show');
+        function closeMoreSheet() { moreSheet.classList.remove('show'); }
+
+        // دکمه‌ی «بیشتر» ضامن است نه فقط بازکننده: با زدن دوباره بسته
+        // می‌شود. قبلاً فقط باز می‌کرد و چون شیت تا ۸۲٪ صفحه را می‌گیرد،
+        // نوار باریکِ بالای آن تنها راه بستن بود — عملاً گیر می‌کرد.
+        moreBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            moreSheet.classList.toggle('show');
         });
         moreSheet.addEventListener('click', function (e) {
-            if (e.target === moreSheet) moreSheet.classList.remove('show');
+            if (e.target === moreSheet) closeMoreSheet();
         });
         document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape') moreSheet.classList.remove('show');
+            if (e.key === 'Escape') closeMoreSheet();
+        });
+        // دستگیره و دکمه‌ی بستن، هر دو می‌بندند
+        moreSheet.querySelectorAll('.more-sheet-grab, .js-close-more').forEach(function (el) {
+            el.addEventListener('click', closeMoreSheet);
+        });
+        // کشیدن دستگیره به پایین هم می‌بندد — حرکت طبیعی روی گوشی
+        var dragStart = null;
+        var grip = moreSheet.querySelector('.more-sheet-grab');
+        if (grip) {
+            grip.addEventListener('touchstart', function (e) { dragStart = e.touches[0].clientY; }, { passive: true });
+            grip.addEventListener('touchmove', function (e) {
+                if (dragStart !== null && e.touches[0].clientY - dragStart > 45) {
+                    closeMoreSheet();
+                    dragStart = null;
+                }
+            }, { passive: true });
+            grip.addEventListener('touchend', function () { dragStart = null; }, { passive: true });
+        }
+    }
+
+    // ---------- زیرشیت مدیریت ----------
+    var adminSheet = document.getElementById('adminSheet');
+    if (adminSheet) {
+        function closeAdminSheet() { adminSheet.classList.remove('show'); }
+        document.querySelectorAll('.js-open-admin').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                if (moreSheet) moreSheet.classList.remove('show');
+                adminSheet.classList.add('show');
+            });
+        });
+        adminSheet.addEventListener('click', function (e) {
+            if (e.target === adminSheet) closeAdminSheet();
+        });
+        adminSheet.querySelectorAll('.more-sheet-grab, .js-close-admin').forEach(function (el) {
+            el.addEventListener('click', closeAdminSheet);
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') closeAdminSheet();
         });
     }
 
@@ -2183,8 +2378,14 @@ document.addEventListener('DOMContentLoaded', function () {
             fetch(apiUrl('delete_asset.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
-                    if (d.success) { if (row) row.remove(); }
-                    else { alert(d.message || 'خطا در حذف.'); }
+                    // فقط برداشتن ردیف کافی نیست: جمع دارایی‌ها و ارزش کل
+                    // بالای صفحه از روی همین رکوردها ساخته شده‌اند و
+                    // بی‌به‌روزرسانی، عدد قدیمی را نشان می‌دادند — کاربر
+                    // فکر می‌کرد حذف اصلاً انجام نشده.
+                    if (d.success) {
+                        if (row) row.remove();
+                        window.location.reload();
+                    } else { alert(d.message || 'خطا در حذف.'); }
                 })
                 .catch(function () { alert('خطا در ارتباط با سرور.'); });
         });

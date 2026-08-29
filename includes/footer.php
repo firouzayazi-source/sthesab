@@ -42,13 +42,17 @@ $moreActive = in_array($bottomPage, $morePages, true);
 <!-- شیت ابزارها -->
 <div class="more-sheet-overlay" id="moreSheet">
     <div class="more-sheet">
-        <div class="more-sheet-handle"></div>
-        <h3 class="more-sheet-title">ابزارها</h3>
+        <div class="more-sheet-grab"><div class="more-sheet-handle"></div></div>
+        <div class="more-sheet-head">
+            <h3 class="more-sheet-title">ابزارها</h3>
+            <button type="button" class="modal-close js-close-more" aria-label="بستن">&times;</button>
+        </div>
         <div class="tools-grid">
             <?php if (tradesEnabled(Database::getConnection(), (int)Auth::userId())): ?>
             <a href="<?= APP_BASE_PATH ?>/trades.php" class="tool-card tool-card-wide" style="--tc1:#b8862f; --tc2:#94620d;">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M7 4L3.5 7.5M7 4l3.5 3.5M17 20V4M17 20l3.5-3.5M17 20l-3.5-3.5"/></svg>
-                <span>معاملات — خرید و فروش</span>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M7 4L3.5 7.5M7 4l3.5 3.5M17 20V4M17 20l3.5-3.5M17 20l-3.5-3.5"/></svg>
+                <span>معاملات خرید و فروش</span>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M7 4L3.5 7.5M7 4l3.5 3.5M17 20V4M17 20l3.5-3.5M17 20l-3.5-3.5"/></svg>
             </a>
             <?php endif; ?>
             <a href="<?= APP_BASE_PATH ?>/wallets.php" class="tool-card" style="--tc1:#16794f; --tc2:#0f766e;">
@@ -96,18 +100,13 @@ $moreActive = in_array($bottomPage, $morePages, true);
                 <span>خروجی و ورودی</span>
             </a>
             <?php if (Auth::isAdmin()): ?>
-            <a href="<?= APP_BASE_PATH ?>/admin/users.php" class="tool-card" style="--tc1:#64748b; --tc2:#475569;">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                <span>کاربران</span>
-            </a>
-            <a href="<?= APP_BASE_PATH ?>/admin/categories.php" class="tool-card" style="--tc1:#78716c; --tc2:#57534e;">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-                <span>دسته‌بندی‌ها</span>
-            </a>
-            <a href="<?= APP_BASE_PATH ?>/admin/all-transactions.php" class="tool-card" style="--tc1:#525252; --tc2:#404040;">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>
-                <span>تراکنش همه</span>
-            </a>
+            <!-- کارهای مدیریتی زیر یک در جمع شده‌اند تا این شیت برای
+                 مدیر و کاربر عادی یک شکل باشد و ابزارهای روزمره میان
+                 گزینه‌های مدیریتی گم نشوند. -->
+            <button type="button" class="tool-card js-open-admin" style="--tc1:#64748b; --tc2:#475569;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 11-4 0v-.09a1.7 1.7 0 00-1.11-1.55 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.7 1.7 0 00.34-1.87 1.7 1.7 0 00-1.55-1H3a2 2 0 110-4h.09A1.7 1.7 0 004.6 8.6a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06a1.7 1.7 0 001.87.34H9a1.7 1.7 0 001-1.55V3a2 2 0 114 0v.09a1.7 1.7 0 001 1.55 1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87V9a1.7 1.7 0 001.55 1H21a2 2 0 110 4h-.09a1.7 1.7 0 00-1.55 1z"/></svg>
+                <span>مدیریت</span>
+            </button>
             <?php endif; ?>
             <a href="<?= APP_BASE_PATH ?>/profile.php" class="tool-card" style="--tc1:#334155; --tc2:#1e293b;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg>
@@ -120,6 +119,33 @@ $moreActive = in_array($bottomPage, $morePages, true);
         </div>
     </div>
 </div>
+
+<?php if (Auth::isAdmin()): ?>
+<!-- زیرشیت مدیریت -->
+<div class="more-sheet-overlay" id="adminSheet">
+    <div class="more-sheet">
+        <div class="more-sheet-grab"><div class="more-sheet-handle"></div></div>
+        <div class="more-sheet-head">
+            <h3 class="more-sheet-title">مدیریت</h3>
+            <button type="button" class="modal-close js-close-admin" aria-label="بستن">&times;</button>
+        </div>
+        <div class="tools-grid">
+            <a href="<?= APP_BASE_PATH ?>/admin/users.php" class="tool-card" style="--tc1:#64748b; --tc2:#475569;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span>کاربران</span>
+            </a>
+            <a href="<?= APP_BASE_PATH ?>/admin/categories.php" class="tool-card" style="--tc1:#78716c; --tc2:#57534e;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                <span>دسته‌بندی‌ها</span>
+            </a>
+            <a href="<?= APP_BASE_PATH ?>/admin/all-transactions.php" class="tool-card" style="--tc1:#525252; --tc2:#404040;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>
+                <span>تراکنش همه</span>
+            </a>
+        </div>
+    </div>
+</div>
+<?php endif; ?>
 
 <?php include __DIR__ . '/add_tx_sheet.php'; ?>
 
