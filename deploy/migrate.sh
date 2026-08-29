@@ -12,10 +12,21 @@
 # ─── حالت‌ها ────────────────────────────────────────────────────────
 #   bash deploy/migrate.sh              وضعیت را نشان می‌دهد (پیش‌فرض، بی‌خطر)
 #   bash deploy/migrate.sh --apply      migration های اجرانشده را اعمال می‌کند
-#   bash deploy/migrate.sh --baseline   همه را «اجراشده» علامت می‌زند بدون اجرا
+#   bash deploy/migrate.sh --baseline   موجودها را «اجراشده» علامت می‌زند
+#   bash deploy/migrate.sh --verify     ثبت را با ساختار واقعی می‌سنجد
 #
 # --baseline برای دیتابیسی است که از قبل کامل است ولی جدول ردیابی ندارد
 # (مثل دیتابیسی که از هاست اشتراکی ایمپورت شده). یک بار اجرا می‌شود.
+#
+# ⚠️ درسی که گران تمام شد: نسخه‌ی اول --baseline کل BASELINE_SET را
+# «اجراشده» علامت می‌زد، بدون اینکه بپرسد واقعاً اعمال شده یا نه. آن
+# دیتابیسِ ایمپورت‌شده migration_p4 (ستون users.avatar) را نداشت، ولی
+# ثبت شد که دارد. نتیجه: --apply می‌گفت «چیزی برای اجرا نیست» و آپلود
+# تصویر در اپ خطا می‌داد، و هیچ‌کدام به هم ربط داده نمی‌شدند.
+#
+# پس حالا هر migration یک «شاهد» دارد (جدول یا ستونی که می‌سازد).
+# --baseline فقط چیزی را علامت می‌زند که شاهدش واقعاً در دیتابیس باشد،
+# و --verify همیشه می‌تواند ثبت را با واقعیت بسنجد.
 # ────────────────────────────────────────────────────────────────────
 
 set -euo pipefail
@@ -28,6 +39,7 @@ MODE="status"
 case "${1:-}" in
     --apply)    MODE="apply" ;;
     --baseline) MODE="baseline" ;;
+    --verify)   MODE="verify" ;;
     --status|"") MODE="status" ;;
     -h|--help)  sed -n '2,25p' "$0"; exit 0 ;;
     *) echo "گزینه ناشناخته: $1"; exit 1 ;;
@@ -147,6 +159,53 @@ CREATE TABLE IF NOT EXISTS \`schema_migrations\` (
     PRIMARY KEY (\`filename\`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_persian_ci;" >/dev/null
 
+# ---------- شاهدِ هر migration ----------
+# «اگر این migration واقعاً اجرا شده باشد، این چیز باید در دیتابیس باشد.»
+# قالب:  جدول            یا  جدول.ستون
+#
+# با این می‌شود ثبت را با ساختار واقعی سنجید. بدون آن، جدول ردیابی فقط
+# حرف خودش را تکرار می‌کند و اگر یک بار اشتباه ثبت شود، تا ابد اشتباه
+# می‌ماند — دقیقاً همان چیزی که با users.avatar پیش آمد.
+declare -A SENTINEL=(
+    [schema.sql]="users"
+    [migration_debts.sql]="debts"
+    [migration_settings.sql]="app_settings"
+    [migration_cheques_assets.sql]="cheques"
+    [migration_indexes.sql]=""            # ایندکس است نه جدول/ستون — شاهد ساده ندارد
+    [migration_category_icons.sql]="categories.icon"
+    [migration_repair.sql]="wallets"
+    [migration_p2.sql]="attachments"
+    [migration_p3.sql]="trusted_devices"
+    [migration_p4.sql]="users.avatar"
+    [migration_password_reset.sql]="password_resets"
+)
+
+# آیا شاهد یک migration در دیتابیس هست؟
+#   0 = هست    1 = نیست    2 = شاهدی تعریف نشده (قابل سنجش نیست)
+sentinel_present() {
+    local spec="${SENTINEL[$1]-}"
+    [[ -n "$spec" ]] || return 2
+    local tbl="${spec%%.*}" col=""
+    [[ "$spec" == *.* ]] && col="${spec#*.}"
+    local n
+    if [[ -n "$col" ]]; then
+        n=$(mysql_q -N -e "SELECT COUNT(*) FROM information_schema.columns
+                           WHERE table_schema=DATABASE() AND table_name='$tbl' AND column_name='$col';")
+    else
+        n=$(mysql_q -N -e "SELECT COUNT(*) FROM information_schema.tables
+                           WHERE table_schema=DATABASE() AND table_name='$tbl';")
+    fi
+    [[ "$n" == "1" ]]
+}
+
+# هر شاهدی که در فهرست هست باید برای یک migration واقعی باشد
+for k in "${!SENTINEL[@]}"; do
+    [[ " ${MIGRATIONS[*]} " == *" $k "* ]] || { red "شاهد برای migration ناشناخته: $k"; exit 1; }
+done
+for f in "${MIGRATIONS[@]}"; do
+    [[ -v SENTINEL["$f"] ]] || { red "برای $f شاهدی تعریف نشده — در SENTINEL اضافه کنید."; exit 1; }
+done
+
 applied_list=$(mysql_q -N -e "SELECT filename FROM schema_migrations;" 2>/dev/null || true)
 is_applied() { grep -qxF "$1" <<<"$applied_list"; }
 sum_of() { sha256sum "$1" | cut -d' ' -f1; }
@@ -177,11 +236,26 @@ fi
 
 # ---------- baseline ----------
 if [[ "$MODE" == "baseline" ]]; then
-    # فقط migration های پیش از راه‌اندازی ردیابی — نه هر چه در فهرست است
+    # فقط migration های پیش از راه‌اندازی ردیابی — نه هر چه در فهرست است.
+    # و از آن مهم‌تر: فقط آن‌هایی که شاهدشان واقعاً در دیتابیس هست.
     info "علامت‌زدن migration های دوران پیش از ردیابی، بدون اجرا:"
+    missing=()
     for f in "${BASELINE_SET[@]}"; do
+        # زیر set -e، «cmd; st=$?» با خروجی غیرصفر اسکریپت را می‌کشد.
+        # «cmd || st=$?» شرط است، پس set -e کاری با آن ندارد.
+        st=0; sentinel_present "$f" || st=$?
+        if (( st == 1 )); then
+            missing+=("$f")
+            printf '    \033[0;33m·\033[0m %-34s علامت نخورد — «%s» در دیتابیس نیست\n' \
+                   "$f" "${SENTINEL[$f]}"
+            continue
+        fi
         record "$f" "$(sum_of "$f")"
-        echo "    ✓ $f"
+        if (( st == 2 )); then
+            printf '    ✓ %-34s (شاهد ندارد — بر اساس فرضِ baseline)\n' "$f"
+        else
+            echo "    ✓ $f"
+        fi
     done
 
     # هر چه در MIGRATIONS هست ولی در BASELINE_SET نیست، باید واقعاً اجرا شود
@@ -191,6 +265,11 @@ if [[ "$MODE" == "baseline" ]]; then
     done
     echo
     green "✅ baseline ثبت شد."
+    if (( ${#missing[@]} )); then
+        warn "این‌ها علامت نخوردند چون ساختارشان واقعاً در دیتابیس نبود:"
+        printf '     %s\n' "${missing[@]}"
+        info "با --apply واقعاً اجرا می‌شوند."
+    fi
     if (( ${#after[@]} )); then
         warn "این migration ها بعد از دوران baseline اضافه شده‌اند و هنوز اجرا نشده‌اند:"
         printf '     %s\n' "${after[@]}"
@@ -202,11 +281,17 @@ if [[ "$MODE" == "baseline" ]]; then
 fi
 
 # ---------- وضعیت / اعمال ----------
+# «drift» = ثبت شده که اجرا شده، ولی شاهدش در دیتابیس نیست.
+# این حالت بی‌سروصداترین خرابی ممکن است: --apply می‌گوید چیزی برای اجرا
+# نیست و اپ همان‌جا که به آن ستون نیاز دارد خطا می‌دهد.
 pending=()
 changed=()
+drift=()
 for f in "${MIGRATIONS[@]}"; do
     if is_applied "$f"; then
         [[ "$(stored_sum "$f")" == "$(sum_of "$f")" ]] || changed+=("$f")
+        st=0; sentinel_present "$f" || st=$?
+        (( st == 1 )) && drift+=("$f")
     else
         pending+=("$f")
     fi
@@ -217,7 +302,10 @@ info "دیتابیس: $DB_NAME"
 echo
 for f in "${MIGRATIONS[@]}"; do
     if is_applied "$f"; then
-        if [[ " ${changed[*]-} " == *" $f "* ]]; then
+        if [[ " ${drift[*]-} " == *" $f "* ]]; then
+            printf '  \033[0;31m✗\033[0m %-34s ثبت شده ولی «%s» در دیتابیس نیست\n' \
+                   "$f" "${SENTINEL[$f]}"
+        elif [[ " ${changed[*]-} " == *" $f "* ]]; then
             printf '  \033[0;33m~\033[0m %-34s اجرا شده — ولی فایل بعدش تغییر کرده\n' "$f"
         else
             printf '  \033[0;32m✓\033[0m %-34s اجرا شده\n' "$f"
@@ -234,6 +322,34 @@ if (( ${#changed[@]} )); then
     warn "   تغییر یک migration اجراشده یعنی دیتابیس‌های مختلف ساختار متفاوتی"
     warn "   دارند. به‌جای ویرایش فایل قدیمی، یک migration تازه بنویسید."
     echo
+fi
+
+if (( ${#drift[@]} )); then
+    red "⛔ این‌ها «اجراشده» ثبت شده‌اند ولی ساختارشان در دیتابیس نیست:"
+    printf '     %s\n' "${drift[@]}"
+    red "   یعنی جدول ردیابی با واقعیت نمی‌خواند — معمولاً اثر یک --baseline"
+    red "   روی دیتابیسی که واقعاً کامل نبوده."
+    if [[ "$MODE" == "apply" ]]; then
+        info "   با همین اجرا دوباره اعمال می‌شوند (فایل‌ها ایدمپوتنت‌اند)."
+        pending+=("${drift[@]}")
+        # ترتیب اصلی حفظ شود؛ pending را بر اساس MIGRATIONS مرتب می‌کنیم
+        ordered=()
+        for m in "${MIGRATIONS[@]}"; do
+            [[ " ${pending[*]} " == *" $m "* ]] && ordered+=("$m")
+        done
+        pending=("${ordered[@]}")
+    else
+        info "   برای درست‌کردن:  bash deploy/migrate.sh --apply"
+    fi
+    echo
+fi
+
+if [[ "$MODE" == "verify" ]]; then
+    if (( ${#drift[@]} == 0 && ${#pending[@]} == 0 )); then
+        green "✅ ثبت و ساختار واقعی دیتابیس با هم می‌خوانند."
+        exit 0
+    fi
+    exit 1
 fi
 
 if (( ${#pending[@]} == 0 )); then
