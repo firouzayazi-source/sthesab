@@ -120,9 +120,11 @@ if (!$check['ok']) {
                     <input type="password" autocomplete="new-password" id="password_confirm" name="password_confirm" required
                            minlength="8" placeholder="همان رمز را دوباره بنویسید">
                 </div>
-                <button type="submit" class="btn btn-primary btn-block">ثبت رمز تازه</button>
+                <button type="submit" class="btn btn-primary btn-block"
+                        data-busy="در حال ثبت…">ثبت رمز تازه</button>
             </form>
         <?php endif; ?>
     </div>
+<?php include __DIR__ . '/includes/auth_form_js.php'; ?>
 </body>
 </html>

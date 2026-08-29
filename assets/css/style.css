@@ -2088,3 +2088,44 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
 .crop-actions .btn-block { margin: 0; flex: 1; }
 /* «از نو» کوتاه است ولی در ستون باریک دو خطی می‌شد */
 .crop-actions #cropReset { flex: none; white-space: nowrap; }
+
+/* ============================================================
+   صفحه‌ی «ایمیل را ببینید» — بعد از درخواست بازیابی رمز
+   ============================================================ */
+.check-mail { text-align: center; padding: 4px 0 2px; }
+.check-mail-icon {
+    width: 62px; height: 62px;
+    margin: 0 auto 13px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: var(--gold-wash);
+    color: var(--gold);
+}
+.check-mail-title { font-size: 17px; font-weight: 700; margin-bottom: 7px; }
+.check-mail-text  { font-size: 13.5px; color: var(--muted); line-height: 2; }
+.check-mail-text b { color: var(--ink); word-break: break-all; }
+
+.check-mail-notes {
+    list-style: none;
+    margin: 15px 0 13px;
+    padding: 13px 14px;
+    background: var(--line-soft);
+    border-radius: var(--r);
+    font-size: 12.5px; color: var(--muted); line-height: 1.95;
+}
+.check-mail-notes li { position: relative; padding-inline-start: 15px; }
+.check-mail-notes li::before {
+    content: '';
+    position: absolute; inset-inline-start: 0; top: 11px;
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--muted-2);
+}
+.check-mail-notes b { color: var(--ink-soft); }
+
+/* دکمه‌ی در حال کار: باید بی‌درنگ دیده شود که زدن دوباره بی‌فایده است */
+.btn:disabled { opacity: .6; cursor: default; }
+
+/* .link-back مقدار display دارد و همان بر [hidden] پیش‌فرض مرورگر غلبه
+   می‌کند؛ بدون این خط، لینک «دوباره درخواست می‌دهم» از همان ثانیه‌ی اول
+   دیده می‌شد و شمارش معکوس بی‌اثر بود. */
+.link-back[hidden] { display: none; }

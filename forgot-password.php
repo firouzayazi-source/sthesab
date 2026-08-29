@@ -76,16 +76,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $mailReady) {
             <a href="login.php" class="link-back">← بازگشت به ورود</a>
 
         <?php elseif ($done): ?>
-            <div class="alert alert-success">
-                اگر حسابی با این مشخصات وجود داشته باشد و ایمیلی برایش ثبت شده باشد،
-                لینک بازیابی فرستاده شد.
+            <!-- کاربر باید در یک نگاه بفهمد کارِ بعدی‌اش چیست: برود ایمیلش
+                 را ببیند. جمله‌ی محتاطانه («اگر حسابی وجود داشته باشد…»)
+                 برای این است که این صفحه نگوید چه حسابی هست و چه نیست، ولی
+                 نباید تیتر باشد — وگرنه کاربر نمی‌داند بالاخره فرستاده شد
+                 یا نه و دوباره دکمه را می‌زند. -->
+            <div class="check-mail">
+                <div class="check-mail-icon" aria-hidden="true">
+                    <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                         stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2.5" y="4.5" width="19" height="15" rx="2.5"/>
+                        <path d="M3 7l8.2 5.6a1.5 1.5 0 001.6 0L21 7"/>
+                    </svg>
+                </div>
+                <h2 class="check-mail-title">صندوق ایمیل خود را ببینید</h2>
+                <p class="check-mail-text">
+                    اگر حسابی با
+                    <b><?= h(postParam('identifier')) ?></b>
+                    ثبت شده باشد، لینک تغییر رمز به ایمیلش فرستاده شد.
+                </p>
             </div>
-            <p style="color:var(--muted);font-size:13.5px;line-height:2">
-                پوشه‌ی هرزنامه را هم نگاه کنید. لینک تا
-                <?= toPersianDigits((string)PasswordReset::TTL_MINUTES) ?> دقیقه معتبر است
-                و فقط یک بار کار می‌کند.
-            </p>
-            <a href="login.php" class="link-back">← بازگشت به ورود</a>
+
+            <ul class="check-mail-notes">
+                <li>پوشه‌ی <b>هرزنامه (Spam)</b> را هم نگاه کنید.</li>
+                <li>لینک تا <?= toPersianDigits((string)PasswordReset::TTL_MINUTES) ?> دقیقه معتبر است و فقط یک بار کار می‌کند.</li>
+                <li>رسیدن ایمیل ممکن است تا چند دقیقه طول بکشد.</li>
+            </ul>
+
+            <p id="resendNote" class="hint" style="text-align:center"></p>
+            <a href="forgot-password.php" id="resendLink" class="link-back"
+               data-wait="60" style="text-align:center;padding-bottom:6px">دوباره درخواست می‌دهم</a>
+
+            <a href="login.php" class="btn btn-secondary btn-block" style="margin-top:6px">بازگشت به ورود</a>
 
         <?php else: ?>
             <?php if ($error): ?>
@@ -102,10 +124,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $mailReady) {
                            placeholder="نام کاربری یا ایمیل خود را وارد کنید"
                            value="<?= h(postParam('identifier')) ?>">
                 </div>
-                <button type="submit" class="btn btn-primary btn-block">فرستادن لینک بازیابی</button>
+                <button type="submit" class="btn btn-primary btn-block"
+                        data-busy="در حال فرستادن…">فرستادن لینک بازیابی</button>
+                <p class="hint" style="text-align:center;margin-top:10px">
+                    فرستادن ایمیل چند ثانیه طول می‌کشد. یک بار بزنید و صبر کنید.
+                </p>
             </form>
             <a href="login.php" class="link-back" style="display:block;margin-top:14px">← بازگشت به ورود</a>
         <?php endif; ?>
     </div>
+<?php include __DIR__ . '/includes/auth_form_js.php'; ?>
 </body>
 </html>

@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="checkbox" name="trust_device" value="1" checked>
                     <span>این دستگاه را ۳۰ روز به خاطر بسپار</span>
                 </label>
-                <button type="submit" class="btn btn-primary btn-block">ورود</button>
+                <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ورود…">ورود</button>
                 <a href="forgot-password.php" class="link-back" style="display:block;text-align:center;margin-top:14px">رمز عبور را فراموش کرده‌ام</a>
             </form>
         <?php else: ?>
@@ -115,10 +115,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="checkbox" name="trust_device" value="1" checked>
                     <span>این دستگاه را ۳۰ روز به خاطر بسپار</span>
                 </label>
-                <button type="submit" class="btn btn-primary btn-block">ورود</button>
+                <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ورود…">ورود</button>
                 <a href="forgot-password.php" class="link-back" style="display:block;text-align:center;margin-top:14px">رمز عبور را فراموش کرده‌ام</a>
             </form>
         <?php endif; ?>
     </div>
+<?php include __DIR__ . '/includes/auth_form_js.php'; ?>
 </body>
 </html>
