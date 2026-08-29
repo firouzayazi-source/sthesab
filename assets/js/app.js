@@ -36,6 +36,18 @@ document.addEventListener('DOMContentLoaded', function () {
         return String(str).replace(/[0-9]/g, function (d) { return persian[d]; });
     }
 
+    // بازگرداندن یک <select> به گزینه‌ی پیش‌فرضِ خودِ HTML.
+    // مقداردهی دستی به '0' اینجا کار نمی‌کند: فهرست حسابِ فروش گزینه‌ی
+    // «۰» ندارد و مرورگر انتخاب را خالی می‌گذارد، آن‌وقت فرم بدون حساب
+    // ارسال می‌شد.
+    function resetSelect(el) {
+        if (!el) return;
+        for (var i = 0; i < el.options.length; i++) {
+            if (el.options[i].defaultSelected) { el.selectedIndex = i; return; }
+        }
+        el.selectedIndex = 0;
+    }
+
     function setupAmountFormatter(inputId) {
         var input = document.getElementById(inputId);
         if (!input) return;
@@ -179,8 +191,12 @@ document.addEventListener('DOMContentLoaded', function () {
             })
             .then(function (res) { return res.json(); })
             .then(function (data) {
+                // برداشتن ردیف کافی نیست: جمع‌ها و موجودی حساب‌ها بالای
+                // صفحه از روی همین رکورد ساخته شده‌اند و بی‌تازه‌سازی،
+                // عدد قدیمی می‌ماند و کاربر فکر می‌کند حذف نشده.
                 if (data.success) {
                     if (row) row.remove();
+                    window.location.reload();
                 } else {
                     alert(data.message || 'خطا در حذف تراکنش.');
                 }
@@ -417,14 +433,89 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    /**
+     * پرسیدن «به کدام حساب؟» پیش از تسویه‌ی یک چک یا طلب/بدهی.
+     *
+     * تیک بلافاصله برداشته می‌شود و فقط بعد از پاسخ موفق سرور (که صفحه
+     * را تازه می‌کند) دوباره تیک می‌خورد. این‌طور اگر کاربر مودال را
+     * ببندد، ظاهرِ صفحه چیزی را نشان نمی‌دهد که در دیتابیس ثبت نشده.
+     */
+    var settleAsk = {};
+
+    function askSettleWallet(modalId, checkboxEl, opts) {
+        var modal = document.getElementById(modalId);
+        var form  = document.getElementById(modalId + 'Form');
+        var msgEl = document.getElementById(modalId + 'Message');
+        var btnEl = document.getElementById(modalId + 'SubmitBtn');
+        var selEl = document.getElementById(modalId + 'Wallet');
+        var hintEl = document.getElementById(modalId + 'Hint');
+        if (!modal || !form) { return; }
+
+        checkboxEl.checked = false;   // تا وقتی سرور تأیید نکرده، تیک نمی‌ماند
+
+        settleAsk[modalId] = { id: checkboxEl.getAttribute('data-id'), opts: opts };
+
+        if (hintEl) { hintEl.textContent = opts.hint || ''; }
+        if (msgEl) { msgEl.hidden = true; msgEl.classList.remove('show', 'success', 'error'); }
+        if (btnEl) { btnEl.disabled = false; }
+        resetSelect(selEl);
+
+        if (!form.getAttribute('data-wired')) {
+            form.setAttribute('data-wired', '1');
+            form.addEventListener('submit', function (e) {
+                e.preventDefault();
+                var pending = settleAsk[modalId];
+                if (!pending) { return; }
+
+                var fd = new FormData();
+                fd.append(pending.opts.idField, pending.id);
+                fd.append('wallet_id', selEl ? selEl.value : '');
+                fd.append('csrf_token', csrf());
+                if (btnEl) { btnEl.disabled = true; }
+
+                var fail = function (text) {
+                    if (msgEl) {
+                        msgEl.hidden = false;
+                        msgEl.classList.remove('success');
+                        msgEl.classList.add('show', 'error');
+                        msgEl.textContent = text;
+                    }
+                    if (btnEl) { btnEl.disabled = false; }
+                };
+
+                fetch(pending.opts.url, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (d.success) { window.location.reload(); return; }
+                        fail(d.message || 'خطایی رخ داد.');
+                    })
+                    .catch(function () { fail('خطا در ارتباط با سرور.'); });
+            });
+        }
+
+        modal.classList.add('show');
+    }
+
     // ---------- تیک تسویه طلب/بدهی ----------
+    // زدن تیک یعنی پول واقعاً جابه‌جا شده، پس اول می‌پرسیم از/به کدام
+    // حساب. برداشتن تیک سؤالی ندارد — همان اثر پس گرفته می‌شود.
+    var debtSettleModal = document.getElementById('debtSettle');
     document.querySelectorAll('.js-toggle-debt').forEach(function (checkbox) {
         checkbox.addEventListener('change', function () {
+            var checkboxEl = this;
+            if (debtSettleModal && checkboxEl.checked) {
+                askSettleWallet('debtSettle', checkboxEl, {
+                    hint: 'باقیمانده‌ی این مورد به‌عنوان تسویه ثبت می‌شود.',
+                    url: apiUrl('toggle_debt_settled.php'),
+                    idField: 'debt_id'
+                });
+                return;
+            }
+
             var debtId = this.getAttribute('data-id');
             var csrfToken = document.querySelector('meta[name="csrf-token"]')
                 ? document.querySelector('meta[name="csrf-token"]').content
                 : '';
-            var checkboxEl = this;
 
             var formData = new FormData();
             formData.append('debt_id', debtId);
@@ -479,6 +570,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(function (data) {
                 if (data.success) {
                     if (card) card.remove();
+                    window.location.reload();   // مجموع طلب/بدهی بالای صفحه هم باید عوض شود
                 } else {
                     alert(data.message || 'خطا در حذف.');
                 }
@@ -690,8 +782,75 @@ document.addEventListener('DOMContentLoaded', function () {
                     rows.appendChild(empty);
                 }
 
+                // دو کار روی همین حساب: تعدیل موجودی و دیدن تراکنش‌هایش
+                var wid = this.getAttribute('data-id') || '';
+                var wname = this.getAttribute('data-name') || '';
+                var wbal = this.getAttribute('data-balance') || '';
+                var adjBtn = document.getElementById('bcAdjustBtn');
+                if (adjBtn) {
+                    adjBtn.setAttribute('data-id', wid);
+                    adjBtn.setAttribute('data-name', wname);
+                    adjBtn.setAttribute('data-balance', wbal);
+                }
+                var txLink = document.getElementById('bcTxLink');
+                if (txLink) {
+                    txLink.href = (window.APP_BASE || '') + '/transactions.php?wallet=' + encodeURIComponent(wid);
+                }
+
                 openModal('bankCardModal');
             });
+        });
+    }
+
+    // ---------- تعدیل موجودی حساب ----------
+    var adjustForm = document.getElementById('adjustWalletForm');
+    if (adjustForm) {
+        var adjustHints = {
+            add: 'این مبلغ به موجودی حساب اضافه می‌شود.',
+            sub: 'این مبلغ از موجودی حساب کم می‌شود.',
+            set: 'موجودی واقعی حساب را بنویسید؛ تفاوتش خودکار اعمال می‌شود.'
+        };
+
+        document.querySelectorAll('#adjustModeToggle .type-btn').forEach(function (b) {
+            b.addEventListener('click', function () {
+                document.querySelectorAll('#adjustModeToggle .type-btn').forEach(function (x) {
+                    x.classList.remove('active');
+                });
+                this.classList.add('active');
+                var mode = this.getAttribute('data-mode');
+                document.getElementById('adjust_mode').value = mode;
+                document.getElementById('adjustModeHint').textContent = adjustHints[mode] || '';
+                var neg = document.getElementById('adjustNegWrap');
+                neg.hidden = mode !== 'set';
+                if (mode !== 'set') { document.getElementById('adjust_negative').checked = false; }
+            });
+        });
+
+        var adjustBtn = document.getElementById('bcAdjustBtn');
+        if (adjustBtn) {
+            adjustBtn.addEventListener('click', function () {
+                closeModal('bankCardModal');
+                document.getElementById('adjust_wallet_id').value = this.getAttribute('data-id') || '';
+                document.getElementById('adjustWalletTitle').textContent =
+                    'تعدیل موجودی: ' + (this.getAttribute('data-name') || '');
+                document.getElementById('adjustCurrentHint').textContent =
+                    'موجودی فعلی: ' + (this.getAttribute('data-balance') || '') + ' تومان';
+                document.getElementById('adjust_amount').value = '';
+                document.getElementById('adjust_negative').checked = false;
+                document.querySelector('#adjustModeToggle .type-btn[data-mode="add"]').click();
+                var m = document.getElementById('adjustWalletMessage');
+                if (m) { m.hidden = true; m.classList.remove('show', 'success', 'error'); }
+                openModal('adjustWalletModal');
+            });
+        }
+
+        setupAmountFormatter('adjust_amount');
+
+        adjustForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            submitJson(adjustForm, apiUrl('adjust_wallet.php'),
+                document.getElementById('adjustWalletMessage'),
+                document.getElementById('adjustWalletSubmitBtn'), 'adjust_amount');
         });
     }
 
@@ -2240,9 +2399,18 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    var chequeSettleModal = document.getElementById('chequeSettle');
     document.querySelectorAll('.js-toggle-cheque').forEach(function (cb) {
         cb.addEventListener('change', function () {
             var el = this;
+            if (chequeSettleModal && el.checked) {
+                askSettleWallet('chequeSettle', el, {
+                    hint: 'مبلغ چک در موجودی حساب انتخابی اعمال می‌شود.',
+                    url: apiUrl('toggle_cheque_settled.php'),
+                    idField: 'cheque_id'
+                });
+                return;
+            }
             var fd = new FormData();
             fd.append('cheque_id', el.getAttribute('data-id'));
             fd.append('csrf_token', csrf());
@@ -2269,7 +2437,7 @@ document.addEventListener('DOMContentLoaded', function () {
             fetch(apiUrl('delete_cheque.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
-                    if (d.success) { if (card) card.remove(); }
+                    if (d.success) { if (card) card.remove(); window.location.reload(); }
                     else { alert(d.message || 'خطا در حذف.'); }
                 })
                 .catch(function () { alert('خطا در ارتباط با سرور.'); });
@@ -2620,7 +2788,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('trade_qty').value = '1';
                 document.getElementById('trade_buy_total').value = '';
                 document.getElementById('trade_side_costs').value = '';
-                document.getElementById('trade_wallet').value = '0';
+                resetSelect(document.getElementById('trade_wallet'));
                 document.getElementById('trade_notes').value = '';
                 setJdpByHidden(document.getElementById('trade_buy_date'), todayG);
                 var m = document.getElementById('tradeMessage');
@@ -2663,7 +2831,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('sell_trade_id').value = this.getAttribute('data-id');
                 document.getElementById('sell_total').value = '';
                 document.getElementById('sell_qty').value = remaining;
-                document.getElementById('sell_wallet').value = '0';
+                resetSelect(document.getElementById('sell_wallet'));
                 document.getElementById('sell_notes').value = '';
                 document.getElementById('sellRemainingHint').textContent =
                     remaining === '1' ? '' : 'مانده: ' + remaining;
@@ -2692,7 +2860,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('asset_sell_id').value = this.getAttribute('data-id');
                 document.getElementById('asset_sell_total').value = '';
                 document.getElementById('asset_sell_qty').value = remaining;
-                document.getElementById('asset_sell_wallet').value = '0';
+                resetSelect(document.getElementById('asset_sell_wallet'));
                 document.getElementById('asset_sell_notes').value = '';
                 document.getElementById('assetSellRemaining').textContent = 'موجودی: ' + remaining + ' ' + unit;
                 setJdpByHidden(document.getElementById('asset_sell_date'), todayG);

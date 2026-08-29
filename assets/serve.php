@@ -14,6 +14,10 @@ $allowed = [
     'css/style.css'            => 'text/css; charset=utf-8',
     'js/app.js'                => 'application/javascript; charset=utf-8',
     'js/jalali-datepicker.js'  => 'application/javascript; charset=utf-8',
+    // Chart.js از CDN بیرونی می‌آمد. روی اینترنت داخلی همان یک درخواست
+    // گاهی چند ثانیه طول می‌کشید یا اصلاً نمی‌رسید و نمودار خالی می‌ماند.
+    // حالا از خود سرور می‌آید، gzip می‌شود و کش یک‌ساله دارد.
+    'js/chart.umd.js'          => 'application/javascript; charset=utf-8',
 ];
 
 $requested = isset($_GET['f']) ? (string)$_GET['f'] : '';

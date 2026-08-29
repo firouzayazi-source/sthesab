@@ -23,7 +23,16 @@ if (!isset($pageTitle)) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
     <title><?= h($pageTitle) ?> | <?= h(APP_NAME) ?></title>
+    <!-- فونت داخل CSS تعریف شده، پس مرورگر تا وقتی style.css را نگرفته و
+         تجزیه نکرده خبر ندارد لازمش دارد. با preload هر دو با هم دانلود
+         می‌شوند و متن یک رفت‌وبرگشت زودتر با فونت درست می‌نشیند. -->
+    <link rel="preload" href="<?= APP_BASE_PATH ?>/assets/fonts/Vazirmatn.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="<?= APP_BASE_PATH ?>/assets/serve.php?f=css/style.css&v=<?= assetVersion(['css/style.css']) ?>">
+    <!-- اسکریپت با defer در head می‌آید نه ته صفحه: این‌طور مرورگر همان
+         اول شروع به گرفتنش می‌کند و موازی با خواندن HTML دانلود می‌شود،
+         ولی اجرایش مثل قبل بعد از ساخته‌شدن کل صفحه است. -->
+    <script>window.APP_BASE = '<?= APP_BASE_PATH ?>';</script>
+    <script defer src="<?= APP_BASE_PATH ?>/assets/serve.php?f=js/jalali-datepicker.js,js/app.js&v=<?= assetVersion(['js/jalali-datepicker.js', 'js/app.js']) ?>"></script>
     <link rel="apple-touch-icon" href="<?= APP_BASE_PATH ?>/assets/icons/icon-180.png">
     <link rel="icon" type="image/png" sizes="32x32" href="<?= APP_BASE_PATH ?>/assets/icons/icon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="<?= APP_BASE_PATH ?>/assets/icons/icon-16.png">

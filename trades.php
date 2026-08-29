@@ -54,10 +54,15 @@ $assetsValue = 0;
 foreach ($sellableAssets as $a) { $assetsValue += (int)round((float)$a['quantity'] * (int)($a['unit_price'] ?? 0)); }
 
 $wallets = [];
+$defaultWallet = null;
 if ($enabled) {
     $wStmt = $pdo->prepare('SELECT id, name FROM wallets WHERE user_id = :u AND is_active = 1 ORDER BY sort_order, name');
     $wStmt->execute(['u' => $userId]);
     $wallets = $wStmt->fetchAll();
+    // پول فروش باید جایی بنشیند. اگر کاربر حسابی انتخاب نکند، «کیف پول»
+    // پیش‌فرض است و بعداً می‌تواند همان فروش را ویرایش کند و به حساب
+    // واقعی (مثلاً ملی) ببردش.
+    $defaultWallet = defaultWalletId($userId);
 }
 
 $pageTitle = 'معاملات';
@@ -330,7 +335,7 @@ include __DIR__ . '/includes/header.php';
                 <select id="trade_wallet" name="buy_wallet_id">
                     <option value="0">— بدون برداشت از حساب —</option>
                     <?php foreach ($wallets as $w): ?>
-                        <option value="<?= (int)$w['id'] ?>"><?= h($w['name']) ?></option>
+                        <option value="<?= (int)$w['id'] ?>" <?= (int)$w['id'] === $defaultWallet ? 'selected' : '' ?>><?= h($w['name']) ?></option>
                     <?php endforeach; ?>
                 </select>
                 <p class="hint">اگر انتخاب کنید، مبلغ خرید از موجودی آن حساب کم می‌شود.</p>
@@ -390,11 +395,11 @@ include __DIR__ . '/includes/header.php';
             <div class="form-group">
                 <label for="asset_sell_wallet">واریز به حساب</label>
                 <select id="asset_sell_wallet" name="wallet_id">
-                    <option value="0">— بدون واریز به حساب —</option>
                     <?php foreach ($wallets as $w): ?>
-                        <option value="<?= (int)$w['id'] ?>"><?= h($w['name']) ?></option>
+                        <option value="<?= (int)$w['id'] ?>" <?= (int)$w['id'] === $defaultWallet ? 'selected' : '' ?>><?= h($w['name']) ?></option>
                     <?php endforeach; ?>
                 </select>
+                <p class="hint">اگر دست نزنید، پول به کیف پول می‌رود؛ هر وقت خواستید حساب واقعی را انتخاب کنید.</p>
             </div>
 
             <div class="form-group">
@@ -442,11 +447,11 @@ include __DIR__ . '/includes/header.php';
             <div class="form-group">
                 <label for="sell_wallet">واریز به حساب</label>
                 <select id="sell_wallet" name="wallet_id">
-                    <option value="0">— بدون واریز به حساب —</option>
                     <?php foreach ($wallets as $w): ?>
-                        <option value="<?= (int)$w['id'] ?>"><?= h($w['name']) ?></option>
+                        <option value="<?= (int)$w['id'] ?>" <?= (int)$w['id'] === $defaultWallet ? 'selected' : '' ?>><?= h($w['name']) ?></option>
                     <?php endforeach; ?>
                 </select>
+                <p class="hint">اگر دست نزنید، پول به کیف پول می‌رود؛ هر وقت خواستید حساب واقعی را انتخاب کنید.</p>
             </div>
 
             <div class="form-group">

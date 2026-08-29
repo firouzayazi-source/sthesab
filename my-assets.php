@@ -83,8 +83,7 @@ usort($portfolio, fn($a, $b) => $b['value'] <=> $a['value']);
 $portfolioTotal = $totalPortfolioValue + $tradeInventoryValue;
 
 // همان پالت گزارش دسته‌بندی، تا دو صفحه یک زبان بصری داشته باشند
-$palette = ['#d97706', '#0891b2', '#7c3aed', '#db2777', '#059669', '#dc2626',
-            '#4f46e5', '#ca8a04', '#0d9488', '#e11d48', '#6d28d9', '#16a34a'];
+$palette = chartPalette('green');   // دارایی یعنی چیزی که داریم — سبز
 $chartLabels = []; $chartValues = []; $chartColors = [];
 foreach ($portfolio as $i => $row) {
     $portfolio[$i]['color'] = $palette[$i % count($palette)];
@@ -335,7 +334,7 @@ include __DIR__ . '/includes/header.php';
 
 <?php if (!empty($chartValues)): ?>
 <!-- همان منبعی که گزارش دسته‌بندی از آن استفاده می‌کند -->
-<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script defer src="<?= APP_BASE_PATH ?>/assets/serve.php?f=js/chart.umd.js&v=<?= assetVersion(['js/chart.umd.js']) ?>"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     var box = document.querySelector('.chart-container');

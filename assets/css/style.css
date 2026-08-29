@@ -478,6 +478,9 @@ textarea { resize: vertical; }
 .type-btn.active.type-btn-receivable { background: var(--in); color: #fff; }
 .type-btn.active.type-btn-expense,
 .type-btn.active.type-btn-payable   { background: var(--out); color: #fff; }
+/* حالت خنثی (مثل «موجودی واقعی» در تعدیل موجودی) — نه درآمد است نه هزینه،
+   پس رنگ معنادار نمی‌گیرد ولی باید معلوم باشد کدام انتخاب شده. */
+.type-btn.active.type-btn-neutral   { background: var(--brand); color: var(--brand-on); }
 
 /* ============================================================
    ۹. ردیف تراکنش
@@ -1276,6 +1279,9 @@ html[data-theme="dark"] .seg-item.active { background: #2b3037; color: var(--ink
     font-size: 13px; margin-bottom: 4px; cursor: pointer;
 }
 .inline-check input { width: auto; }
+/* display صریح بالا بر قاعده‌ی پیش‌فرضِ [hidden] مرورگر غلبه می‌کند، پس
+   بی این خط، هر .inline-check با صفت hidden باز هم دیده می‌شد. */
+.inline-check[hidden] { display: none !important; }
 
 .wallet-extra {
     display: flex; align-items: center; justify-content: space-between;
@@ -2338,6 +2344,11 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
 .bank-card-balance { font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
 
 .bank-card-rows { margin-top: 15px; }
+.bank-card-actions {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+    margin-top: 14px;
+}
+.bank-card-actions .btn { text-align: center; text-decoration: none; }
 .bank-card-row {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     padding: 10px 0;
@@ -2412,3 +2423,22 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
    .link-back خوردیم. */
 .asset-item[hidden] { display: none !important; }
 .chart-container[hidden] { display: none !important; }
+
+/* ---------- تفکیک موجودی حساب‌ها (داشبورد) ---------- */
+.wallet-line {
+    display: flex; align-items: center; gap: 9px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line-soft);
+    color: inherit; text-decoration: none;
+}
+.wallet-line:last-child { border-bottom: none; }
+.wallet-line-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.wallet-line-name { flex: 1; font-size: 13.5px; }
+.wallet-line-bal { font-size: 13.5px; font-weight: 700; direction: ltr; }
+.wallet-line-total {
+    border-top: 1px solid var(--line);
+    border-bottom: none;
+    margin-top: 4px; padding-top: 12px;
+}
+.wallet-line-total .wallet-line-name { font-weight: 700; }
+.wallet-line-total .wallet-line-bal { font-size: 15px; }

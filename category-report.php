@@ -93,7 +93,8 @@ if ((int)$uncatRow['total'] > 0) {
 
 $grandTotal = array_sum(array_column($categoryBreakdown, 'total'));
 
-$palette = ['#d97706', '#0891b2', '#7c3aed', '#db2777', '#059669', '#dc2626', '#4f46e5', '#ca8a04', '#0d9488', '#e11d48', '#6d28d9', '#16a34a'];
+// رنگ اینجا معنا دارد: هزینه گرم (قرمز/نارنجی/زرد)، درآمد سبز.
+$palette = chartPalette($type === 'income' ? 'green' : 'warm');
 
 $chartLabels = []; $chartValues = []; $chartColors = [];
 foreach ($categoryBreakdown as $i => $row) {
@@ -182,7 +183,7 @@ include __DIR__ . '/includes/header.php';
 <input type="hidden" id="reportType" value="<?= h($type) ?>">
 
 <?php if (!empty($categoryBreakdown)): ?>
-<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script defer src="<?= APP_BASE_PATH ?>/assets/serve.php?f=js/chart.umd.js&v=<?= assetVersion(['js/chart.umd.js']) ?>"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     new Chart(document.getElementById('categoryChart').getContext('2d'), {

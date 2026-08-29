@@ -149,7 +149,5 @@ $moreActive = in_array($bottomPage, $morePages, true);
 
 <?php include __DIR__ . '/add_tx_sheet.php'; ?>
 
-<script>window.APP_BASE = '<?= APP_BASE_PATH ?>';</script>
-<script src="<?= APP_BASE_PATH ?>/assets/serve.php?f=js/jalali-datepicker.js,js/app.js&v=<?= assetVersion(['js/jalali-datepicker.js', 'js/app.js']) ?>"></script>
 </body>
 </html>

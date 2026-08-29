@@ -51,6 +51,29 @@ try {
     unset($__d);
 }
 
+// حسابی که تسویه از/به آن انجام شده — تا در کارت بایگانی معلوم باشد پول
+// کجا رفت. جدا از کوئری اصلی پرسیده می‌شود تا آن کوئریِ حساس دست نخورد.
+$settleWalletNames = [];
+if ($allDebts && tableHasColumn('debt_payments', 'wallet_id')) {
+    $ids = array_column($allDebts, 'id');
+    $ph  = implode(',', array_fill(0, count($ids), '?'));
+    try {
+        $swStmt = $pdo->prepare(
+            "SELECT dp.debt_id, w.name
+             FROM debt_payments dp
+             JOIN wallets w ON w.id = dp.wallet_id
+             WHERE dp.user_id = ? AND dp.debt_id IN ($ph)
+             ORDER BY dp.id"
+        );
+        $swStmt->execute(array_merge([$userId], $ids));
+        foreach ($swStmt->fetchAll() as $row) {
+            $settleWalletNames[(int)$row['debt_id']] = $row['name'];   // آخرین پرداخت می‌ماند
+        }
+    } catch (PDOException $e) {
+        $settleWalletNames = [];
+    }
+}
+
 $receivables = array_values(array_filter($allDebts, fn($d) => $d['direction'] === 'receivable'));
 $payables    = array_values(array_filter($allDebts, fn($d) => $d['direction'] === 'payable'));
 
@@ -79,11 +102,23 @@ foreach ($totalsStmt->fetchAll() as $row) {
     if ($row['direction'] === 'payable') $pendingPayable = (int)$row['total'];
 }
 
+// حساب‌ها — برای اینکه هنگام پرداخت یا تسویه بپرسیم پول از/به کجا رفت
+$walletList = [];
+try {
+    $wStmt = $pdo->prepare('SELECT id, name FROM wallets WHERE user_id = :u AND is_active = 1 ORDER BY sort_order, name');
+    $wStmt->execute(['u' => $userId]);
+    $walletList = $wStmt->fetchAll();
+} catch (PDOException $e) {
+    $walletList = [];
+}
+$defaultWallet = defaultWalletId($userId);
+
 $pageTitle = 'طلب و بدهی';
 include __DIR__ . '/includes/header.php';
 
-function renderDebtCard(array $d, string $todayStr): void
+function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = []): void
 {
+    $settleWallet = $settleWalletNames[(int)$d['id']] ?? '';
     $isOverdue = !(int)$d['is_settled'] && $d['due_date'] < $todayStr;
     $cardClass = 'debt-card';
     if ((int)$d['is_settled']) {
@@ -124,7 +159,7 @@ function renderDebtCard(array $d, string $todayStr): void
 
         <div class="debt-card-footer">
             <?php if ((int)$d['is_settled']): ?>
-                <span class="status-badge status-active">تسویه شد</span>
+                <span class="status-badge status-active">تسویه شد<?= $settleWallet !== '' ? ' · ' . h($settleWallet) : '' ?></span>
             <?php elseif ($isOverdue): ?>
                 <span class="status-badge debt-badge-overdue">سررسید گذشته</span>
             <?php else: ?>
@@ -168,7 +203,7 @@ function renderDebtCard(array $d, string $todayStr): void
         <input type="hidden" name="view" value="<?= h($view) ?>">
         <div class="filter-bar">
             <div class="filter-chip <?= $view === 'active' ? 'active' : '' ?>" data-group="view" data-filter="active">در انتظار</div>
-            <div class="filter-chip <?= $view === 'archive' ? 'active' : '' ?>" data-group="view" data-filter="archive">آرشیو (تسویه‌شده)</div>
+            <div class="filter-chip <?= $view === 'archive' ? 'active' : '' ?>" data-group="view" data-filter="archive">تسویه شده</div>
         </div>
         <div class="debt-search-bar" style="display:flex; gap:8px; margin-top:10px;">
             <input type="text" name="search" placeholder="جستجو بر اساس نام یا مبلغ..." value="<?= h($search) ?>">
@@ -180,11 +215,11 @@ function renderDebtCard(array $d, string $todayStr): void
 <?php if ($view === 'archive'): ?>
 
 <div class="card">
-    <h2 class="card-title">آرشیو (تسویه‌شده)</h2>
+    <h2 class="card-title">تسویه شده</h2>
     <?php if (empty($allDebts)): ?>
         <p class="empty-row">موردی یافت نشد.</p>
     <?php else: ?>
-        <?php foreach ($allDebts as $d): renderDebtCard($d, $todayStr); endforeach; ?>
+        <?php foreach ($allDebts as $d): renderDebtCard($d, $todayStr, $settleWalletNames); endforeach; ?>
     <?php endif; ?>
 </div>
 
@@ -198,7 +233,7 @@ function renderDebtCard(array $d, string $todayStr): void
     <?php if (empty($receivables)): ?>
         <p class="empty-row">هنوز طلبی ثبت نشده است.</p>
     <?php else: ?>
-        <?php foreach ($receivables as $d): renderDebtCard($d, $todayStr); endforeach; ?>
+        <?php foreach ($receivables as $d): renderDebtCard($d, $todayStr, $settleWalletNames); endforeach; ?>
     <?php endif; ?>
 </div>
 
@@ -210,7 +245,7 @@ function renderDebtCard(array $d, string $todayStr): void
     <?php if (empty($payables)): ?>
         <p class="empty-row">هنوز بدهی‌ای ثبت نشده است.</p>
     <?php else: ?>
-        <?php foreach ($payables as $d): renderDebtCard($d, $todayStr); endforeach; ?>
+        <?php foreach ($payables as $d): renderDebtCard($d, $todayStr, $settleWalletNames); endforeach; ?>
     <?php endif; ?>
 </div>
 
@@ -356,6 +391,16 @@ function renderDebtCard(array $d, string $todayStr): void
             </div>
 
             <div class="form-group">
+                <label for="payment_wallet">از / به حساب</label>
+                <select id="payment_wallet" name="wallet_id">
+                    <?php foreach ($walletList as $w): ?>
+                        <option value="<?= (int)$w['id'] ?>" <?= (int)$w['id'] === $defaultWallet ? 'selected' : '' ?>><?= h($w['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="hint">موجودی همان حساب کم/زیاد می‌شود؛ در گزارش درآمد و هزینه نمی‌آید.</p>
+            </div>
+
+            <div class="form-group">
                 <label for="payment_note">توضیح (اختیاری)</label>
                 <textarea id="payment_note" name="note" rows="2" maxlength="1000"></textarea>
             </div>
@@ -365,6 +410,41 @@ function renderDebtCard(array $d, string $todayStr): void
             <div class="modal-actions">
                 <button type="button" class="btn btn-secondary" data-modal-close>انصراف</button>
                 <button type="submit" class="btn btn-primary" id="debtPaymentSubmitBtn">ثبت پرداخت</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+<!-- ---------- انتخاب حساب هنگام تسویه کامل ----------
+     پول واقعاً جابه‌جا می‌شود، پس باید معلوم باشد از/به کدام حساب.
+     اگر دست نزنید، «کیف پول» پیش‌فرض است. -->
+<div class="modal-overlay" id="debtSettle">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="debtSettleTitle">تسویه کامل</h3>
+            <button type="button" class="modal-close" data-modal-close="debtSettle">&times;</button>
+        </div>
+        <form id="debtSettleForm" autocomplete="off">
+            <input type="hidden" id="debtSettleRecordId" value="">
+
+            <p class="hint" id="debtSettleHint" style="margin-bottom:14px;"></p>
+
+            <div class="form-group">
+                <label for="debtSettleWallet">واریز به / پرداخت از حساب</label>
+                <select id="debtSettleWallet" name="wallet_id">
+                    <?php foreach ($walletList as $w): ?>
+                        <option value="<?= (int)$w['id'] ?>" <?= (int)$w['id'] === $defaultWallet ? 'selected' : '' ?>><?= h($w['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="hint">این مبلغ در موجودی همان حساب اعمال می‌شود. در گزارش درآمد و هزینه شمرده نمی‌شود.</p>
+            </div>
+
+            <div id="debtSettleMessage" class="form-message" hidden></div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" data-modal-close="debtSettle">انصراف</button>
+                <button type="submit" class="btn btn-primary" id="debtSettleSubmitBtn">تأیید</button>
             </div>
         </form>
     </div>

@@ -69,7 +69,7 @@ try {
     );
     $ins->execute([
         't' => $tradeId, 'u' => $userId, 'q' => $qty, 's' => $saleTotal,
-        'd' => $saleDate, 'w' => $walletId > 0 ? $walletId : null,
+        'd' => $saleDate, 'w' => resolveWalletId($userId, $walletId),
         'n' => $notes !== '' ? $notes : null,
     ]);
 

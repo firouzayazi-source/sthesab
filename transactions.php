@@ -14,6 +14,7 @@ $type   = getParam('type', 'all');
 $search = getParam('search', '');
 $fromDate = getParam('from_date', '');
 $toDate   = getParam('to_date', '');
+$walletId = (int)getParam('wallet', '0');
 
 $conditions = ['t.user_id = :user_id'];
 $params = ['user_id' => $userId];
@@ -47,6 +48,30 @@ if ($type === 'income' || $type === 'expense') {
 if ($search !== '') {
     $conditions[] = 't.title LIKE :search';
     $params['search'] = '%' . $search . '%';
+}
+
+// فیلتر حساب: بدون این، موجودی منفی یک حساب دیده می‌شد ولی هیچ راهی
+// نبود بفهمی کدام تراکنش‌ها رویش نشسته‌اند.
+$walletList = [];
+$walletName = '';
+try {
+    $wStmt = $pdo->prepare('SELECT id, name FROM wallets WHERE user_id = :u ORDER BY is_active DESC, sort_order, name');
+    $wStmt->execute(['u' => $userId]);
+    $walletList = $wStmt->fetchAll();
+} catch (PDOException $e) {
+    $walletList = [];   // جدول حساب‌ها هنوز ساخته نشده
+}
+
+if ($walletId > 0) {
+    foreach ($walletList as $w) {
+        if ((int)$w['id'] === $walletId) { $walletName = $w['name']; break; }
+    }
+    if ($walletName === '') {
+        $walletId = 0;      // مال این کاربر نیست — نادیده گرفته می‌شود
+    } else {
+        $conditions[] = 't.wallet_id = :wallet_id';
+        $params['wallet_id'] = $walletId;
+    }
 }
 
 $whereClause = 'WHERE ' . implode(' AND ', $conditions);
@@ -89,6 +114,7 @@ include __DIR__ . '/includes/header.php';
     <form method="GET" id="filterForm">
         <input type="hidden" name="period" value="<?= h($period) ?>">
         <input type="hidden" name="type" value="<?= h($type) ?>">
+        <input type="hidden" name="wallet" value="<?= (int)$walletId ?>">
 
         <div class="filter-bar">
             <div class="filter-chip <?= $period === 'all' ? 'active' : '' ?>" data-group="period" data-filter="all">همه</div>
@@ -110,6 +136,16 @@ include __DIR__ . '/includes/header.php';
                 <input type="text" name="search" placeholder="جستجو…" value="<?= h($search) ?>">
             </div>
         </div>
+
+        <?php if (count($walletList) > 1): ?>
+        <div class="filter-bar" style="margin-top:8px;">
+            <div class="filter-chip <?= $walletId === 0 ? 'active' : '' ?>" data-group="wallet" data-filter="0">همه حساب‌ها</div>
+            <?php foreach ($walletList as $w): ?>
+                <div class="filter-chip <?= $walletId === (int)$w['id'] ? 'active' : '' ?>"
+                     data-group="wallet" data-filter="<?= (int)$w['id'] ?>"><?= h($w['name']) ?></div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
 
         <?php if ($period === 'custom'): ?>
         <div class="form-row" style="margin-top:10px;">

@@ -214,6 +214,31 @@ function setSetting(string $key, string $value): void
  * نگاشت کد آیکن (که در دیتابیس ذخیره می‌شود) به ایموجی.
  * ایموجی عمداً در دیتابیس ذخیره نمی‌شود تا مشکل کاراکترست پیش نیاید.
  */
+/**
+ * پالت نمودارها.
+ *
+ * رنگ در این برنامه معنا دارد، تزئین نیست: دارایی و درآمد سبزند (پول
+ * وارد می‌شود / داراییِ ماست) و هزینه گرم است (قرمز، نارنجی، زرد —
+ * پول بیرون می‌رود). پس نمودار دسته‌بندی هم بسته به اینکه هزینه را
+ * نشان می‌دهد یا درآمد، پالتش عوض می‌شود.
+ *
+ * ترتیب رنگ‌ها عمداً تیره و روشن یک‌درمیان است تا دو قاچِ کنار هم در
+ * دونات به هم نچسبند.
+ */
+function chartPalette(string $tone): array
+{
+    $palettes = [
+        // سبزِ شاد — دارایی و درآمد
+        'green' => ['#16a34a', '#0d9488', '#84cc16', '#047857', '#2dd4bf', '#4d7c0f',
+                    '#34d399', '#0e7490', '#a3e635', '#065f46', '#5eead4', '#65a30d'],
+        // گرم — هزینه و مصرف
+        'warm'  => ['#dc2626', '#ea580c', '#f59e0b', '#b91c1c', '#fb923c', '#eab308',
+                    '#e11d48', '#c2410c', '#fbbf24', '#9f1239', '#f97316', '#a16207'],
+    ];
+
+    return $palettes[$tone] ?? $palettes['green'];
+}
+
 /* ============================================================
    کیف پول / حساب مالی
    ============================================================ */
@@ -236,10 +261,84 @@ function walletKindLabel(string $kind): string
  *        − هزینه‌های ثبت‌شده روی آن حساب
  *        + انتقال‌های واردشده
  *        − انتقال‌های خارج‌شده (به‌علاوه کارمزد)
+ *        ± معامله‌های وصل‌شده به حساب (خرید کم، فروش زیاد)
+ *        ± چک‌های پاس‌شده (دریافتی زیاد، صادره کم)
+ *        ± پرداخت‌های طلب و بدهی (وصول طلب زیاد، پرداخت بدهی کم)
  *
  * همه‌چیز در یک کوئری محاسبه می‌شود تا گزارش و داشبورد
  * هیچ‌وقت دو عدد متفاوت نشان ندهند.
  */
+/**
+ * آیا ستونی در جدولی هست؟ نتیجه در همان درخواست کش می‌شود.
+ *
+ * چند جای برنامه باید بدانند migration فلان ستون اجرا شده یا نه. بدون
+ * کش، هر بار یک کوئری به information_schema می‌خورد — که خودش کند است.
+ */
+function tableHasColumn(string $table, string $column): bool
+{
+    static $cache = [];
+    $key = $table . '.' . $column;
+    if (isset($cache[$key])) { return $cache[$key]; }
+
+    try {
+        $st = Database::getConnection()->prepare(
+            'SELECT COUNT(*) FROM information_schema.columns
+             WHERE table_schema = DATABASE() AND table_name = :t AND column_name = :c'
+        );
+        $st->execute(['t' => $table, 'c' => $column]);
+        $cache[$key] = (bool)$st->fetchColumn();
+    } catch (PDOException $e) {
+        $cache[$key] = false;
+    }
+
+    return $cache[$key];
+}
+
+/**
+ * حساب پیش‌فرض کاربر — همان «کیف پول» که برنامه خودش برای هر کاربر
+ * می‌سازد. هر پولی که کاربر حسابش را مشخص نکند اینجا می‌نشیند، تا هیچ
+ * مبلغی بی‌حساب نماند و بعداً بشود دستی به حساب درست منتقلش کرد.
+ *
+ * اگر کیف پول نبود (کاربر حذفش کرده)، اولین حساب فعال جایش را می‌گیرد.
+ */
+function defaultWalletId(int $userId): ?int
+{
+    static $cache = [];
+    if (array_key_exists($userId, $cache)) { return $cache[$userId]; }
+
+    try {
+        $st = Database::getConnection()->prepare(
+            "SELECT id FROM wallets
+             WHERE user_id = :u AND is_active = 1
+             ORDER BY (kind = 'cash') DESC, sort_order, id
+             LIMIT 1"
+        );
+        $st->execute(['u' => $userId]);
+        $id = $st->fetchColumn();
+        $cache[$userId] = $id ? (int)$id : null;
+    } catch (PDOException $e) {
+        $cache[$userId] = null;
+    }
+
+    return $cache[$userId];
+}
+
+/**
+ * حسابی که کاربر فرستاده را می‌سنجد؛ اگر نفرستاده یا مال او نیست،
+ * حساب پیش‌فرض برمی‌گردد. نقطه‌ی واحدِ «هیچ پولی بی‌حساب نماند».
+ */
+function resolveWalletId(int $userId, $walletId): ?int
+{
+    $walletId = (int)$walletId;
+    if ($walletId > 0) {
+        $st = Database::getConnection()->prepare('SELECT id FROM wallets WHERE id = :id AND user_id = :u');
+        $st->execute(['id' => $walletId, 'u' => $userId]);
+        if ($st->fetchColumn()) { return $walletId; }
+    }
+
+    return defaultWalletId($userId);
+}
+
 function walletBalances(int $userId): array
 {
     $pdo = Database::getConnection();
@@ -270,13 +369,45 @@ function walletBalances(int $userId): array
     // ستون‌های کارت با migration_wallet_cards می‌آیند؛ روی نصبی که هنوز
     // اجرا نشده، کوئری نباید بشکند.
     $cardCols = '';
-    try {
-        $has = (bool)$pdo->query(
-            "SELECT COUNT(*) FROM information_schema.columns
-             WHERE table_schema = DATABASE() AND table_name = 'wallets' AND column_name = 'card_number'"
-        )->fetchColumn();
-        if ($has) { $cardCols = ' w.bank_code, w.card_number, w.account_number, w.iban,'; }
-    } catch (PDOException $e) { $cardCols = ''; }
+    if (tableHasColumn('wallets', 'card_number')) {
+        $cardCols = ' w.bank_code, w.card_number, w.account_number, w.iban,';
+    }
+
+    // چک پاس‌شده و پرداخت طلب/بدهی هم پول جابه‌جا می‌کنند. مثل معامله،
+    // عمداً ردیف تراکنش نمی‌سازند (وصول طلب درآمد نیست) پس فقط روی
+    // موجودی حساب اثر می‌گذارند. ستون‌ها با migration_money_links می‌آیند.
+    $linkSelect = '';
+    $linkJoins  = '';
+    $linkParams = [];
+
+    if (tableHasColumn('cheques', 'settle_wallet_id')) {
+        $linkSelect .= '
+              + COALESCE(chq.total, 0)';
+        $linkJoins .= '
+        LEFT JOIN (
+            SELECT settle_wallet_id AS wid,
+                   SUM(CASE WHEN direction = "received" THEN amount ELSE -amount END) AS total
+            FROM cheques
+            WHERE user_id = :u7 AND is_settled = 1 AND settle_wallet_id IS NOT NULL
+            GROUP BY settle_wallet_id
+        ) chq ON chq.wid = w.id';
+        $linkParams['u7'] = $userId;
+    }
+
+    if (tableHasColumn('debt_payments', 'wallet_id')) {
+        $linkSelect .= '
+              + COALESCE(dbt.total, 0)';
+        $linkJoins .= '
+        LEFT JOIN (
+            SELECT dp.wallet_id AS wid,
+                   SUM(CASE WHEN d.direction = "receivable" THEN dp.amount ELSE -dp.amount END) AS total
+            FROM debt_payments dp
+            JOIN debts d ON d.id = dp.debt_id
+            WHERE dp.user_id = :u8 AND dp.wallet_id IS NOT NULL
+            GROUP BY dp.wallet_id
+        ) dbt ON dbt.wid = w.id';
+        $linkParams['u8'] = $userId;
+    }
 
     $stmt = $pdo->prepare('
         SELECT
@@ -286,7 +417,7 @@ function walletBalances(int $userId): array
               + COALESCE(tx.income, 0)
               - COALESCE(tx.expense, 0)
               + COALESCE(tin.total, 0)
-              - COALESCE(tout.total, 0)' . $tradeSelect . ' AS balance
+              - COALESCE(tout.total, 0)' . $tradeSelect . $linkSelect . ' AS balance
         FROM wallets w
         LEFT JOIN (
             SELECT wallet_id,
@@ -301,13 +432,13 @@ function walletBalances(int $userId): array
         LEFT JOIN (
             SELECT from_wallet_id AS wid, SUM(amount + fee) AS total
             FROM transfers WHERE user_id = :u3 GROUP BY from_wallet_id
-        ) tout ON tout.wid = w.id' . $tradeJoins . '
+        ) tout ON tout.wid = w.id' . $tradeJoins . $linkJoins . '
         WHERE w.user_id = :u4
         ORDER BY w.is_active DESC, w.sort_order, w.name
     ');
     $params = ['u1' => $userId, 'u2' => $userId, 'u3' => $userId, 'u4' => $userId];
     if ($tradeJoins !== '') { $params['u5'] = $userId; $params['u6'] = $userId; }
-    $stmt->execute($params);
+    $stmt->execute($params + $linkParams);
 
     return $stmt->fetchAll();
 }
@@ -1164,19 +1295,7 @@ function appBaseUrl(): string
  */
 function usersHaveColumn(PDO $pdo, string $column): bool
 {
-    static $cache = [];
-    if (isset($cache[$column])) { return $cache[$column]; }
-    try {
-        $st = $pdo->prepare(
-            "SELECT COUNT(*) FROM information_schema.columns
-             WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = :c"
-        );
-        $st->execute(['c' => $column]);
-        $cache[$column] = (bool)$st->fetchColumn();
-    } catch (PDOException $e) {
-        $cache[$column] = false;
-    }
-    return $cache[$column];
+    return tableHasColumn('users', $column);
 }
 
 function usersHaveEmailColumn(PDO $pdo): bool
@@ -1403,17 +1522,7 @@ function syncTradeProfitTransactions(int $userId, int $tradeId): void
     if (!tradesTablesExist($pdo)) { return; }
 
     // ستون پیوند با migration_trades2 می‌آید؛ بدون آن کاری نمی‌کنیم
-    static $hasLink = null;
-    if ($hasLink === null) {
-        try {
-            $hasLink = (bool)$pdo->query(
-                "SELECT COUNT(*) FROM information_schema.columns
-                 WHERE table_schema = DATABASE() AND table_name = 'trade_sales'
-                   AND column_name = 'profit_tx_id'"
-            )->fetchColumn();
-        } catch (PDOException $e) { $hasLink = false; }
-    }
-    if (!$hasLink) { return; }
+    if (!tableHasColumn('trade_sales', 'profit_tx_id')) { return; }
 
     $st = $pdo->prepare('SELECT title, qty, buy_total, side_costs FROM trades WHERE id = :id AND user_id = :u');
     $st->execute(['id' => $tradeId, 'u' => $userId]);

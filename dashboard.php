@@ -22,28 +22,44 @@ $weekStart  = startOfWeek();
 $monthStart = startOfJalaliMonth();
 $yearStart  = startOfJalaliYear();
 
-function getPeriodStats(PDO $pdo, int $userId, string $fromDate, string $toDate): array
-{
-    $stmt = $pdo->prepare('
-        SELECT
-            COALESCE(SUM(CASE WHEN type = "income" THEN amount ELSE 0 END), 0) AS income,
-            COALESCE(SUM(CASE WHEN type = "expense" THEN amount ELSE 0 END), 0) AS expense
-        FROM transactions
-        WHERE user_id = :user_id AND transaction_date BETWEEN :from_date AND :to_date
-    ');
-    $stmt->execute(['user_id' => $userId, 'from_date' => $fromDate, 'to_date' => $toDate]);
-    $row = $stmt->fetch();
+// جمعِ روزانه‌ی کل تاریخچه — یک بار خوانده می‌شود و همه‌ی بازه‌های این
+// صفحه از رویش ساخته می‌شوند. قبلاً برای امروز/هفته/ماه/سال/بازه‌ی دلخواه
+// پنج کوئری جدا می‌رفت که همگی روی همین جدول همین جمع را می‌گرفتند.
+$dailyStmt = $pdo->prepare('
+    SELECT transaction_date,
+        SUM(CASE WHEN type = "income"  THEN amount ELSE 0 END) AS daily_income,
+        SUM(CASE WHEN type = "expense" THEN amount ELSE 0 END) AS daily_expense,
+        SUM(type = "income")  AS income_count,
+        SUM(type = "expense") AS expense_count
+    FROM transactions
+    WHERE user_id = :user_id
+    GROUP BY transaction_date
+    ORDER BY transaction_date ASC
+');
+$dailyStmt->execute(['user_id' => $userId]);
+$dailyRows = $dailyStmt->fetchAll();
+$dailyRowsMap = [];
+foreach ($dailyRows as $row) {
+    $dailyRowsMap[$row['transaction_date']] = $row;
+}
 
-    $income  = (int)$row['income'];
-    $expense = (int)$row['expense'];
+function getPeriodStats(array $dailyRows, string $fromDate, string $toDate): array
+{
+    $income = 0; $expense = 0;
+    foreach ($dailyRows as $row) {
+        $d = $row['transaction_date'];
+        if ($d < $fromDate || $d > $toDate) { continue; }
+        $income  += (int)$row['daily_income'];
+        $expense += (int)$row['daily_expense'];
+    }
 
     return ['income' => $income, 'expense' => $expense, 'net' => $income - $expense];
 }
 
-$todayStats = getPeriodStats($pdo, $userId, $today, $today);
-$weekStats  = getPeriodStats($pdo, $userId, $weekStart, $today);
-$monthStats = getPeriodStats($pdo, $userId, $monthStart, $today);
-$yearStats  = getPeriodStats($pdo, $userId, $yearStart, $today);
+$todayStats = getPeriodStats($dailyRows, $today, $today);
+$weekStats  = getPeriodStats($dailyRows, $weekStart, $today);
+$monthStats = getPeriodStats($dailyRows, $monthStart, $today);
+$yearStats  = getPeriodStats($dailyRows, $yearStart, $today);
 
 // ---------- بخش گزارش با بازه دلخواه (ادغام‌شده از reports.php) ----------
 $customRangeSubmitted = isset($_GET['from_date']) || isset($_GET['to_date']);
@@ -57,48 +73,19 @@ if ($fromDate > $toDate) {
     [$fromDate, $toDate] = [$toDate, $fromDate];
 }
 
-$rangeStats = getPeriodStats($pdo, $userId, $fromDate, $toDate);
+$rangeStats = getPeriodStats($dailyRows, $fromDate, $toDate);
 
-$countStmt = $pdo->prepare('
-    SELECT
-        COALESCE(SUM(CASE WHEN type = "income" THEN 1 ELSE 0 END), 0) AS income_count,
-        COALESCE(SUM(CASE WHEN type = "expense" THEN 1 ELSE 0 END), 0) AS expense_count
-    FROM transactions
-    WHERE user_id = :user_id AND transaction_date BETWEEN :from_date AND :to_date
-');
-$countStmt->execute(['user_id' => $userId, 'from_date' => $fromDate, 'to_date' => $toDate]);
-$countRow = $countStmt->fetch();
-$incomeCount  = (int)$countRow['income_count'];
-$expenseCount = (int)$countRow['expense_count'];
-
-$rangeDailyStmt = $pdo->prepare('
-    SELECT transaction_date,
-        SUM(CASE WHEN type = "income" THEN amount ELSE 0 END) AS daily_income,
-        SUM(CASE WHEN type = "expense" THEN amount ELSE 0 END) AS daily_expense
-    FROM transactions
-    WHERE user_id = :user_id AND transaction_date BETWEEN :from_date AND :to_date
-    GROUP BY transaction_date
-    ORDER BY transaction_date ASC
-');
-$rangeDailyStmt->execute(['user_id' => $userId, 'from_date' => $fromDate, 'to_date' => $toDate]);
-$rangeDailyRows = $rangeDailyStmt->fetchAll();
-
-// ---------- داده‌های کل تاریخچه کاربر برای نمودار روند (هفته/ماه/سال) ----------
-$dailyStmt = $pdo->prepare('
-    SELECT transaction_date,
-        SUM(CASE WHEN type = "income" THEN amount ELSE 0 END) AS daily_income,
-        SUM(CASE WHEN type = "expense" THEN amount ELSE 0 END) AS daily_expense
-    FROM transactions
-    WHERE user_id = :user_id
-    GROUP BY transaction_date
-    ORDER BY transaction_date ASC
-');
-$dailyStmt->execute(['user_id' => $userId]);
-$dailyRows = $dailyStmt->fetchAll();
-$dailyRowsMap = [];
+$incomeCount = 0; $expenseCount = 0;
 foreach ($dailyRows as $row) {
-    $dailyRowsMap[$row['transaction_date']] = $row;
+    if ($row['transaction_date'] < $fromDate || $row['transaction_date'] > $toDate) { continue; }
+    $incomeCount  += (int)$row['income_count'];
+    $expenseCount += (int)$row['expense_count'];
 }
+
+$rangeDailyRows = array_values(array_filter(
+    $dailyRows,
+    fn($r) => $r['transaction_date'] >= $fromDate && $r['transaction_date'] <= $toDate
+));
 
 // تب «هفته»: ۷ روز اخیر
 $weekBuckets = [];
@@ -189,13 +176,22 @@ try {
     $chequeReminders = [];
 }
 
-// موجودی کل حساب‌ها (اگر بخش حساب‌ها هنوز راه‌اندازی نشده، صفر می‌ماند)
+// موجودی حساب‌ها (اگر بخش حساب‌ها هنوز راه‌اندازی نشده، خالی می‌ماند).
+// یک بار خوانده می‌شود و هم برای جمع کل و هم برای تفکیک به کار می‌رود —
+// totalBalance() خودش دوباره همین کوئری را می‌زد.
+$walletRows  = [];
 $walletTotal = null;
 try {
-    $walletTotal = totalBalance($userId);
+    $walletRows = walletBalances($userId);
+    $walletTotal = 0;
+    foreach ($walletRows as $w) {
+        if ((int)$w['is_active'] === 1) { $walletTotal += (int)$w['balance']; }
+    }
 } catch (PDOException $e) {
+    $walletRows = [];
     $walletTotal = null;
 }
+$activeWalletRows = array_values(array_filter($walletRows, fn($w) => (int)$w['is_active'] === 1));
 
 // گزارش مقایسه‌ای و بینش هزینه
 $comparison = null;
@@ -272,6 +268,33 @@ include __DIR__ . '/includes/header.php';
         </div>
     </div>
     <a href="wallets.php" class="ribbon-link">مدیریت حساب‌ها ←</a>
+</div>
+<?php endif; ?>
+
+<?php if (!empty($activeWalletRows)): ?>
+<!-- تفکیک موجودی هر حساب. جمع همین ستون دقیقاً همان «موجودی کل» بالاست؛
+     بدون این تفکیک معلوم نبود آن عدد از کجا آمده و کدام حساب منفی است. -->
+<div class="card">
+    <div class="card-header-row">
+        <h2 class="card-title">مجموع حساب‌ها</h2>
+        <a href="wallets.php" class="link-more">مدیریت ←</a>
+    </div>
+    <?php foreach ($activeWalletRows as $w): ?>
+        <?php $bal = (int)$w['balance']; ?>
+        <a class="wallet-line" href="transactions.php?wallet=<?= (int)$w['id'] ?>">
+            <span class="wallet-line-dot" style="background: <?= h($w['color']) ?>;"></span>
+            <span class="wallet-line-name"><?= h($w['name']) ?></span>
+            <span class="wallet-line-bal <?= $bal < 0 ? 'stats-expense' : '' ?>">
+                <?= $bal < 0 ? '−' : '' ?><?= formatMoney(abs($bal)) ?>
+            </span>
+        </a>
+    <?php endforeach; ?>
+    <div class="wallet-line wallet-line-total">
+        <span class="wallet-line-name">جمع کل</span>
+        <span class="wallet-line-bal <?= $walletTotal < 0 ? 'stats-expense' : '' ?>">
+            <?= $walletTotal < 0 ? '−' : '' ?><?= formatMoney(abs((int)$walletTotal)) ?> <small>تومان</small>
+        </span>
+    </div>
 </div>
 <?php endif; ?>
 
@@ -432,7 +455,7 @@ include __DIR__ . '/includes/header.php';
 </div>
 
 <?php if ($hasAnyData): ?>
-<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script defer src="<?= APP_BASE_PATH ?>/assets/serve.php?f=js/chart.umd.js&v=<?= assetVersion(['js/chart.umd.js']) ?>"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     var trendDatasets = {

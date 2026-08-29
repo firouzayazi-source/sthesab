@@ -51,6 +51,7 @@ include __DIR__ . '/includes/header.php';
         <?php foreach ($wallets as $w): ?>
             <?php $__bp = bankPreset($w['bank_code'] ?? null); ?>
             <div class="wallet-row js-show-card <?= (int)$w['is_active'] ? '' : 'wallet-off' ?>"
+                data-id="<?= (int)$w['id'] ?>"
                 data-name="<?= h($w['name']) ?>"
                 data-bank="<?= h($w['bank_name'] ?: ($__bp['name'] ?? '')) ?>"
                 data-card="<?= h(formatCardNumber($w['card_number'] ?? '')) ?>"
@@ -345,6 +346,58 @@ include __DIR__ . '/includes/header.php';
         </div>
 
         <div class="bank-card-rows" id="bcRows"></div>
+
+        <div class="bank-card-actions">
+            <button type="button" class="btn btn-secondary btn-sm" id="bcAdjustBtn">تعدیل موجودی</button>
+            <a href="<?= APP_BASE_PATH ?>/transactions.php" class="btn btn-secondary btn-sm" id="bcTxLink">تراکنش‌های این حساب</a>
+        </div>
+    </div>
+</div>
+
+<!-- ---------- تعدیل موجودی ----------
+     موجودی هر حساب محاسبه‌شده است؛ اگر با پول واقعی نخواند (مثلاً چون
+     خرج نقدی روی حسابی نشسته که واقعاً از آن پرداخت نشده)، اینجا برابرش
+     می‌کنیم. تعدیل عمداً تراکنش نمی‌سازد تا گزارش درآمد/هزینه دست‌نخورده
+     بماند — فقط موجودی اولیه‌ی حساب جابه‌جا می‌شود. -->
+<div class="modal-overlay" id="adjustWalletModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="adjustWalletTitle">تعدیل موجودی</h3>
+            <button type="button" class="modal-close" data-modal-close="adjustWalletModal">&times;</button>
+        </div>
+        <form id="adjustWalletForm" autocomplete="off">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="wallet_id" id="adjust_wallet_id">
+
+            <p class="hint" id="adjustCurrentHint"></p>
+
+            <div class="type-toggle" id="adjustModeToggle">
+                <button type="button" class="type-btn type-btn-income active" data-mode="add">افزودن</button>
+                <button type="button" class="type-btn type-btn-expense" data-mode="sub">کم کردن</button>
+                <button type="button" class="type-btn type-btn-neutral" data-mode="set">موجودی واقعی</button>
+            </div>
+            <input type="hidden" name="mode" id="adjust_mode" value="add">
+
+            <div class="form-group">
+                <label for="adjust_amount">مبلغ (تومان)</label>
+                <input type="text" inputmode="numeric" id="adjust_amount" name="amount" required class="amount-input" placeholder="۰">
+                <p class="hint" id="adjustModeHint">این مبلغ به موجودی حساب اضافه می‌شود.</p>
+            </div>
+
+            <label class="inline-check" id="adjustNegWrap" hidden>
+                <input type="checkbox" name="negative" value="1" id="adjust_negative">
+                <span>موجودی واقعی منفی است (بدهکار)</span>
+            </label>
+
+            <p class="hint">تعدیل در گزارش درآمد و هزینه شمرده نمی‌شود؛ فقط عدد حساب را با واقعیت برابر می‌کند.</p>
+
+            <div id="adjustWalletMessage" class="form-message" hidden></div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" data-modal-close="adjustWalletModal">انصراف</button>
+                <button type="submit" class="btn btn-primary" id="adjustWalletSubmitBtn">اعمال</button>
+            </div>
+        </form>
     </div>
 </div>
 

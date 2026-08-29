@@ -31,10 +31,20 @@ if ($search !== '') {
 
 $whereClause = 'WHERE ' . implode(' AND ', $conditions);
 
+// نام حسابِ وصول فقط وقتی خوانده می‌شود که migration_money_links اجرا
+// شده باشد؛ وگرنه کوئری روی ستون ناموجود می‌شکست.
+$walletJoin = tableHasColumn('cheques', 'settle_wallet_id')
+    ? ', w.name AS settle_wallet_name'
+    : ', NULL AS settle_wallet_name';
+$walletJoinSql = tableHasColumn('cheques', 'settle_wallet_id')
+    ? 'LEFT JOIN wallets w ON w.id = ch.settle_wallet_id'
+    : '';
+
 $stmt = $pdo->prepare("
-    SELECT ch.*, b.name AS bank_name
+    SELECT ch.*, b.name AS bank_name $walletJoin
     FROM cheques ch
     LEFT JOIN banks b ON b.id = ch.bank_id
+    $walletJoinSql
     $whereClause
     ORDER BY (ch.due_date IS NULL), ch.due_date ASC
 ");
@@ -67,6 +77,17 @@ $myBanks = $myBanksStmt->fetchAll();
 $extBanksStmt = $pdo->prepare('SELECT id, name FROM banks WHERE user_id = :user_id AND scope = "external" ORDER BY name');
 $extBanksStmt->execute(['user_id' => $userId]);
 $externalBanks = $extBanksStmt->fetchAll();
+
+// حساب‌ها — برای اینکه هنگام پاس شدن چک بپرسیم پول به/از کدام حساب رفت
+$walletList = [];
+try {
+    $wStmt = $pdo->prepare('SELECT id, name FROM wallets WHERE user_id = :u AND is_active = 1 ORDER BY sort_order, name');
+    $wStmt->execute(['u' => $userId]);
+    $walletList = $wStmt->fetchAll();
+} catch (PDOException $e) {
+    $walletList = [];
+}
+$defaultWallet = defaultWalletId($userId);
 
 $pageTitle = 'چک‌ها';
 include __DIR__ . '/includes/header.php';
@@ -112,7 +133,7 @@ function renderChequeCard(array $c, string $todayStr): void
         </div>
         <div class="debt-card-footer">
             <?php if ((int)$c['is_settled']): ?>
-                <span class="status-badge status-active">پاس شد</span>
+                <span class="status-badge status-active">پاس شد<?= !empty($c['settle_wallet_name']) ? ' · ' . h($c['settle_wallet_name']) : '' ?></span>
             <?php elseif ($isOverdue): ?>
                 <span class="status-badge debt-badge-overdue">سررسید گذشته</span>
             <?php else: ?>
@@ -361,6 +382,41 @@ function renderChequeCard(array $c, string $todayStr): void
             <div class="modal-actions">
                 <button type="button" class="btn btn-secondary" data-modal-close>انصراف</button>
                 <button type="submit" class="btn btn-primary" id="editChequeSubmitBtn">ذخیره تغییرات</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+<!-- ---------- انتخاب حساب هنگام پاس شدن چک ----------
+     پول واقعاً جابه‌جا می‌شود، پس باید معلوم باشد از/به کدام حساب.
+     اگر دست نزنید، «کیف پول» پیش‌فرض است. -->
+<div class="modal-overlay" id="chequeSettle">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="chequeSettleTitle">پاس شدن چک</h3>
+            <button type="button" class="modal-close" data-modal-close="chequeSettle">&times;</button>
+        </div>
+        <form id="chequeSettleForm" autocomplete="off">
+            <input type="hidden" id="chequeSettleRecordId" value="">
+
+            <p class="hint" id="chequeSettleHint" style="margin-bottom:14px;"></p>
+
+            <div class="form-group">
+                <label for="chequeSettleWallet">واریز به / برداشت از حساب</label>
+                <select id="chequeSettleWallet" name="wallet_id">
+                    <?php foreach ($walletList as $w): ?>
+                        <option value="<?= (int)$w['id'] ?>" <?= (int)$w['id'] === $defaultWallet ? 'selected' : '' ?>><?= h($w['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="hint">این مبلغ در موجودی همان حساب اعمال می‌شود. در گزارش درآمد و هزینه شمرده نمی‌شود.</p>
+            </div>
+
+            <div id="chequeSettleMessage" class="form-message" hidden></div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" data-modal-close="chequeSettle">انصراف</button>
+                <button type="submit" class="btn btn-primary" id="chequeSettleSubmitBtn">تأیید</button>
             </div>
         </form>
     </div>
