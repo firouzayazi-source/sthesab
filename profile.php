@@ -9,28 +9,26 @@ Auth::requireLogin();
 $pdo = Database::getConnection();
 $userId = Auth::userId();
 
-// از کامل‌ترین کوئری شروع می‌شود و اگر ستونی هنوز با migration اضافه
-// نشده باشد، به نسخه‌ی ساده‌تر می‌افتد.
-$me = null;
-foreach ([
-    'SELECT id, full_name, avatar, username, email, role, session_hours, created_at FROM users WHERE id = :id',
-    'SELECT id, full_name, avatar, username, role, session_hours, created_at FROM users WHERE id = :id',
-    'SELECT id, full_name, avatar, username, role, created_at FROM users WHERE id = :id',
-    'SELECT id, full_name, username, role, created_at FROM users WHERE id = :id',
-] as $sql) {
-    try {
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute(['id' => $userId]);
-        $me = $stmt->fetch();
-        break;
-    } catch (PDOException $e) {
-        continue; // ستون هنوز اضافه نشده — کوئری ساده‌تر را امتحان کن
-    }
-}
+// SELECT * می‌گیریم، نه فهرست ستون‌ها.
+//
+// چرا: قبلاً یک زنجیره‌ی کوئری بود که از کامل‌ترین شروع می‌کرد و با هر
+// خطا به ساده‌تر می‌افتاد. مشکلش این بود که ستون‌های مستقل را به هم
+// گره می‌زد: روی دیتابیسی که migration_p4 (ستون avatar) اجرا نشده بود،
+// کوئری اول می‌شکست و کوئری‌های بعدی هم avatar داشتند، تا می‌رسید به
+// آخری که نه avatar داشت و نه email. نتیجه: کاربری که ایمیل ثبت‌شده
+// داشت، در پروفایلش می‌دید «هنوز ایمیلی ثبت نکرده‌اید» — یعنی یک
+// migration اجرانشده‌ی بی‌ربط، ایمیل را ناپدید می‌کرد.
+//
+// با * هر ستونی که هست می‌آید و هر کدام نبود، جداگانه null می‌شود.
+$stmt = $pdo->prepare('SELECT * FROM users WHERE id = :id');
+$stmt->execute(['id' => $userId]);
+$me = $stmt->fetch();
+
 if ($me) {
     $me['session_hours'] = $me['session_hours'] ?? 1;
     $me['avatar'] = $me['avatar'] ?? null;
     $me['email']  = $me['email'] ?? null;
+    unset($me['password_hash']);   // لازم نیست در این صفحه باشد
 }
 
 $devices = [];

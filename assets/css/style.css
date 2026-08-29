@@ -1893,14 +1893,62 @@ html[data-theme="dark"] .profile-head {
     background: linear-gradient(90deg, #ff9ec4, #a78bfa, #60a5fa, #34d399);
 }
 
-/* ---------- کارت‌های ابزار: گرادیان زنده به‌جای خاکستری ---------- */
+/* ---------- کارت‌های ابزار: سطح شیشه‌ای، رنگ فقط در آیکن ----------
+   نسخه‌ی قبل هر کارت را یک گرادیان تمام‌رنگ می‌کرد. ده کارت کنار هم
+   یعنی ده رنگ اشباع که با بقیه‌ی اپ (سفید/زغالی/طلایی) بیگانه بود و
+   چشم نمی‌دانست کجا را نگاه کند.
+
+   حالا خودِ کارت یک سطح نیمه‌شفاف هم‌رنگ تم است و رنگِ اختصاصی هر
+   ابزار (--tc1) فقط در دو جا می‌ماند: آیکن، و یک لایه‌ی ته‌رنگ بسیار
+   کم‌جان روی کارت. تشخیص ابزارها حفظ می‌شود، سروصدا نه.
+
+   ته‌رنگ با یک لایه‌ی ::before و opacity ساخته می‌شود نه با color-mix،
+   تا روی مرورگرهای قدیمی‌تر هم همان‌طور دربیاید. */
 .tool-card {
-    background: linear-gradient(150deg, var(--tc1, #6d5ce7), var(--tc2, #3b2f8f));
-    color: #fff;
-    border: none;
+    position: relative;
+    overflow: hidden;
+    background: var(--tool-glass);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    backdrop-filter: blur(12px) saturate(140%);
+    border: 1px solid var(--tool-edge);
+    color: var(--ink);
+    box-shadow: var(--sh);
 }
-.tool-card svg { color: rgba(255,255,255,.95); }
-.tool-card:active { opacity: .9; }
+.tool-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--tc1, var(--gold));
+    opacity: var(--tool-tint);
+    pointer-events: none;
+}
+/* آیکن و متن باید روی لایه‌ی ته‌رنگ بنشینند */
+.tool-card > * { position: relative; z-index: 1; }
+
+.tool-card svg {
+    color: var(--tc1, var(--gold));
+    flex: none;
+}
+.tool-card:active {
+    transform: scale(.975);
+    background: var(--tool-glass-press);
+}
+
+:root {
+    --tool-glass:       rgba(255, 255, 255, .66);
+    --tool-glass-press: rgba(255, 255, 255, .86);
+    --tool-edge:        var(--line);
+    --tool-tint:        .05;
+}
+html[data-theme="dark"] {
+    --tool-glass:       rgba(255, 255, 255, .045);
+    --tool-glass-press: rgba(255, 255, 255, .085);
+    --tool-edge:        var(--line);
+    --tool-tint:        .085;
+}
+/* رنگ‌های --tc1 برای زمینه‌ی روشن انتخاب شده‌اند و روی کارت تیره
+   کدر می‌شوند؛ کمی روشنشان می‌کنیم تا آیکن خوانا بماند. */
+html[data-theme="dark"] .tool-card svg { filter: brightness(1.3) saturate(.85); }
 
 /* ---------- کارت‌های آماری: تیره‌تر و خواناتر روی زمینه‌ی کم‌رنگ ---------- */
 .money-card-income  { background: linear-gradient(140deg, #e6f9ee, #d8f5e6); }
