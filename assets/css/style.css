@@ -2017,3 +2017,74 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
 .profile-name { font-size: 17px; font-weight: 700; }
 .profile-sub { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
 .profile-head .form-message { text-align: center; margin-top: 10px; }
+
+/* ============================================================
+   تنظیم تصویر پروفایل (برش دایره‌ای)
+   ============================================================ */
+.avatar-crop-box { max-width: 380px; }
+
+/* صحنه مربع است و بوم دقیقاً همان اندازه را پر می‌کند؛ ماسک فقط
+   نشان می‌دهد چه چیزی داخل دایره می‌ماند. برش واقعی روی بوم انجام
+   می‌شود، نه با CSS — پس چیزی که دیده می‌شود همانی است که ذخیره می‌شود. */
+.crop-stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: #101216;
+    border-radius: var(--r);
+    overflow: hidden;
+    touch-action: none;          /* تا کشیدن انگشت صفحه را اسکرول نکند */
+    cursor: grab;
+    user-select: none;
+}
+.crop-stage:active { cursor: grabbing; }
+.crop-stage canvas { display: block; width: 100%; height: 100%; }
+
+/* بیرونِ دایره تیره می‌شود تا مرز برش پیدا باشد */
+.crop-mask {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    background: rgba(16, 18, 22, .58);
+    -webkit-mask-image: radial-gradient(circle at 50% 50%,
+        transparent 0, transparent 49.5%, #000 50%);
+            mask-image: radial-gradient(circle at 50% 50%,
+        transparent 0, transparent 49.5%, #000 50%);
+}
+/* مرورگری که mask ندارد: به‌جای تیرگیِ اشتباه، فقط یک حلقه‌ی راهنما */
+@supports not ((-webkit-mask-image: radial-gradient(#000, #000)) or (mask-image: radial-gradient(#000, #000))) {
+    .crop-mask {
+        background: none;
+        border-radius: 50%;
+        box-shadow: 0 0 0 2px rgba(255,255,255,.85) inset;
+    }
+}
+
+.crop-hint { margin: 10px 2px 12px; text-align: center; }
+
+/* این ردیف عمداً چپ‌به‌راست است. جهت نوار بزرگ‌نمایی فضایی است نه
+   زبانی: «−» باید سمت کم و «+» سمت زیاد باشد. در RTL دسته‌ی نوار در
+   کمترین مقدار به راست می‌چسبید و مثل «حداکثر» خوانده می‌شد. */
+.crop-controls {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 14px;
+    direction: ltr;
+}
+.crop-controls input[type="range"] {
+    flex: 1; min-width: 0;
+    accent-color: var(--gold);
+}
+.crop-zoom-btn {
+    flex: none;
+    width: 34px; height: 34px;
+    border: 1px solid var(--line);
+    background: var(--line-soft);
+    color: var(--ink);
+    border-radius: var(--r-pill);
+    font-size: 19px; line-height: 1;
+}
+.crop-zoom-btn:active { transform: scale(.94); }
+
+.crop-actions { display: flex; align-items: center; gap: 9px; }
+.crop-actions .btn-block { margin: 0; flex: 1; }
+/* «از نو» کوتاه است ولی در ستون باریک دو خطی می‌شد */
+.crop-actions #cropReset { flex: none; white-space: nowrap; }

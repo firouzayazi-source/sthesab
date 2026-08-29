@@ -1624,36 +1624,230 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ---------- عکس پروفایل ----------
+    // ---------- تنظیم و بارگذاری تصویر پروفایل ----------
+    //
+    // تصویر گالری گوشی تقریباً هیچ‌وقت مربع نیست و صورت آدم هم وسط کادر
+    // نیست. پیش از این هرچه انتخاب می‌شد مستقیم بالا می‌رفت و سرور وسط
+    // را می‌برید — نتیجه‌اش اغلب نیمی از سر بود. حالا کاربر خودش قاب را
+    // می‌بندد و همان چیزی که در دایره می‌بیند ذخیره می‌شود.
+    //
+    // بدون کتابخانه: یک <canvas> که تصویر را با مقیاس و جابه‌جایی
+    // می‌کشد، کشیدن با یک انگشت/ماوس، بزرگ‌نمایی با نوار یا دو انگشت.
     var avatarInput = document.getElementById('avatarInput');
-    if (avatarInput) {
+    var cropModal   = document.getElementById('avatarCropModal');
+
+    if (avatarInput && cropModal) {
+        var stage    = document.getElementById('cropStage');
+        var canvas   = document.getElementById('cropCanvas');
+        var zoomEl   = document.getElementById('cropZoom');
+        var msgEl    = document.getElementById('avatarMessage');
+        var saveBtn  = document.getElementById('cropSave');
+        var ctx      = canvas.getContext('2d');
+
+        var OUT = 512;              // اندازه‌ی تصویر ذخیره‌شده (مربع)
+        var img = null;             // تصویر بارگذاری‌شده
+        var minScale = 1, scale = 1, offX = 0, offY = 0;
+        var objectUrl = null;
+
+        function stageSize() {
+            // بوم را با اندازه‌ی واقعی پیکسلی صحنه هماهنگ می‌کنیم تا روی
+            // صفحه‌های رتینا تار نشود
+            var r = stage.getBoundingClientRect();
+            var dpr = Math.min(window.devicePixelRatio || 1, 2);
+            var css = Math.max(1, Math.round(r.width));
+            if (canvas.width !== Math.round(css * dpr)) {
+                canvas.width  = Math.round(css * dpr);
+                canvas.height = Math.round(css * dpr);
+            }
+            return { css: css, dpr: dpr };
+        }
+
+        // جابه‌جایی نباید بگذارد لبه‌ی تصویر داخل دایره بیفتد
+        function clamp() {
+            var s = stageSize().css;
+            var w = img.naturalWidth * scale, h = img.naturalHeight * scale;
+            var maxX = Math.max(0, (w - s) / 2), maxY = Math.max(0, (h - s) / 2);
+            offX = Math.min(maxX, Math.max(-maxX, offX));
+            offY = Math.min(maxY, Math.max(-maxY, offY));
+        }
+
+        function draw() {
+            if (!img) return;
+            var d = stageSize(), s = d.css;
+            clamp();
+            ctx.setTransform(d.dpr, 0, 0, d.dpr, 0, 0);
+            ctx.clearRect(0, 0, s, s);
+            var w = img.naturalWidth * scale, h = img.naturalHeight * scale;
+            ctx.drawImage(img, (s - w) / 2 + offX, (s - h) / 2 + offY, w, h);
+        }
+
+        function fit() {
+            var s = stageSize().css;
+            // کوچک‌ترین مقیاسی که تصویر تمام صحنه را بپوشاند
+            minScale = Math.max(s / img.naturalWidth, s / img.naturalHeight);
+            scale = minScale; offX = 0; offY = 0;
+            zoomEl.min = String(minScale);
+            zoomEl.max = String(minScale * 4);
+            zoomEl.step = String(minScale / 100);
+            zoomEl.value = String(scale);
+            draw();
+        }
+
+        function setScale(next, cx, cy) {
+            var s = stageSize().css;
+            next = Math.min(minScale * 4, Math.max(minScale, next));
+            if (next === scale) return;
+            // بزرگ‌نمایی حول نقطه‌ی مرکزِ اشاره، نه گوشه‌ی تصویر
+            if (typeof cx === 'number') {
+                var k = next / scale;
+                offX = cx - k * (cx - offX);
+                offY = cy - k * (cy - offY);
+            }
+            scale = next;
+            zoomEl.value = String(scale);
+            draw();
+        }
+
+        function showMsg(text, kind) {
+            if (!msgEl) return;
+            msgEl.hidden = false;
+            msgEl.classList.remove('success', 'error');
+            msgEl.classList.add('show');
+            if (kind) msgEl.classList.add(kind);
+            msgEl.textContent = text;
+        }
+
+        function closeCrop() {
+            cropModal.classList.remove('show');
+            if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null; }
+            img = null;
+            avatarInput.value = '';   // تا انتخاب دوباره‌ی همان فایل هم change بدهد
+        }
+
         avatarInput.addEventListener('change', function () {
             if (!this.files || !this.files[0]) return;
+            var file = this.files[0];
 
-            var msg = document.getElementById('avatarMessage');
-            var fd = new FormData();
-            fd.append('avatar', this.files[0]);
-            fd.append('csrf_token', csrf());
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            objectUrl = URL.createObjectURL(file);
 
-            if (msg) {
-                msg.hidden = false;
-                msg.classList.remove('success', 'error');
-                msg.classList.add('show');
-                msg.textContent = 'در حال بارگذاری…';
+            var probe = new Image();
+            probe.onload = function () {
+                img = probe;
+                cropModal.classList.add('show');
+                // صحنه باید اول در DOM دیده شود تا اندازه‌اش را بدانیم
+                requestAnimationFrame(fit);
+            };
+            probe.onerror = function () {
+                showMsg('این فایل تصویر معتبری نیست.', 'error');
+                closeCrop();
+            };
+            probe.src = objectUrl;
+        });
+
+        // ---- کشیدن با انگشت یا ماوس ----
+        var pointers = {}, pinchStart = 0, scaleStart = 1;
+
+        stage.addEventListener('pointerdown', function (e) {
+            stage.setPointerCapture(e.pointerId);
+            pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+            if (Object.keys(pointers).length === 2) {
+                var p = Object.keys(pointers).map(function (k) { return pointers[k]; });
+                pinchStart = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+                scaleStart = scale;
+            }
+        });
+
+        stage.addEventListener('pointermove', function (e) {
+            var prev = pointers[e.pointerId];
+            if (!prev || !img) return;
+            var ids = Object.keys(pointers);
+
+            if (ids.length === 2 && pinchStart > 0) {
+                pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+                var p = ids.map(function (k) { return pointers[k]; });
+                var dist = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+                if (dist > 0) setScale(scaleStart * (dist / pinchStart));
+                return;
             }
 
-            fetch(apiUrl('upload_avatar.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-                .then(function (r) { return r.json(); })
-                .then(function (d) {
-                    if (d.success) {
-                        window.location.reload();
-                    } else if (msg) {
-                        msg.classList.add('error');
-                        msg.textContent = d.message || 'خطا در بارگذاری.';
-                    }
+            offX += e.clientX - prev.x;
+            offY += e.clientY - prev.y;
+            pointers[e.pointerId] = { x: e.clientX, y: e.clientY };
+            draw();
+        });
+
+        function endPointer(e) {
+            delete pointers[e.pointerId];
+            if (Object.keys(pointers).length < 2) pinchStart = 0;
+        }
+        stage.addEventListener('pointerup', endPointer);
+        stage.addEventListener('pointercancel', endPointer);
+
+        stage.addEventListener('wheel', function (e) {
+            if (!img) return;
+            e.preventDefault();
+            setScale(scale * (e.deltaY < 0 ? 1.08 : 1 / 1.08));
+        }, { passive: false });
+
+        zoomEl.addEventListener('input', function () { setScale(parseFloat(this.value)); });
+        document.getElementById('cropZoomIn').addEventListener('click', function () { setScale(scale * 1.15); });
+        document.getElementById('cropZoomOut').addEventListener('click', function () { setScale(scale / 1.15); });
+        document.getElementById('cropReset').addEventListener('click', function () { if (img) fit(); });
+        document.getElementById('cropCancel').addEventListener('click', closeCrop);
+        cropModal.addEventListener('click', function (e) { if (e.target === cropModal) closeCrop(); });
+        window.addEventListener('resize', function () { if (img) draw(); });
+
+        // ---- برش و بارگذاری ----
+        saveBtn.addEventListener('click', function () {
+            if (!img) return;
+            var s = stageSize().css;
+
+            var out = document.createElement('canvas');
+            out.width = OUT; out.height = OUT;
+            var octx = out.getContext('2d');
+            // JPEG شفافیت ندارد؛ بدون این، بخش‌های شفاف سیاه درمی‌آیند
+            octx.fillStyle = '#ffffff';
+            octx.fillRect(0, 0, OUT, OUT);
+
+            // همان تبدیلی که روی صحنه دیده می‌شود، در مقیاس خروجی
+            var k = OUT / s;
+            var w = img.naturalWidth * scale * k, h = img.naturalHeight * scale * k;
+            octx.drawImage(img, (OUT - w) / 2 + offX * k, (OUT - h) / 2 + offY * k, w, h);
+
+            saveBtn.disabled = true;
+            showMsg('در حال بارگذاری…');
+
+            out.toBlob(function (blob) {
+                if (!blob) {
+                    saveBtn.disabled = false;
+                    showMsg('ساخت تصویر ناموفق بود.', 'error');
+                    return;
+                }
+                var fd = new FormData();
+                fd.append('avatar', blob, 'avatar.jpg');
+                fd.append('csrf_token', csrf());
+
+                fetch(apiUrl('upload_avatar.php'), {
+                    method: 'POST', body: fd,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
                 })
-                .catch(function () {
-                    if (msg) { msg.classList.add('error'); msg.textContent = 'خطا در ارتباط با سرور.'; }
-                });
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (d.success) {
+                            window.location.reload();
+                        } else {
+                            saveBtn.disabled = false;
+                            showMsg(d.message || 'خطا در بارگذاری.', 'error');
+                            closeCrop();
+                        }
+                    })
+                    .catch(function () {
+                        saveBtn.disabled = false;
+                        showMsg('خطا در ارتباط با سرور.', 'error');
+                        closeCrop();
+                    });
+            }, 'image/jpeg', 0.9);
         });
     }
 

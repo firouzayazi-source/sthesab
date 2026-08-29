@@ -226,6 +226,38 @@ include __DIR__ . '/includes/header.php';
     <a href="logout.php" class="btn btn-secondary btn-block" onclick="return confirm('از حساب خارج می‌شوید؟')">خروج از حساب</a>
 </div>
 
+<!-- ---------- تنظیم تصویر پروفایل ----------
+     تصویری که کاربر از گالری گوشی می‌گیرد تقریباً هیچ‌وقت مربع نیست.
+     پیش از این، سرور وسط تصویر را می‌برید — و صورت آدم معمولاً وسط
+     کادر نیست. اینجا خودِ کاربر جابه‌جا و بزرگ‌نمایی می‌کند و همان
+     چیزی که در دایره می‌بیند ذخیره می‌شود. -->
+<div class="modal-overlay" id="avatarCropModal">
+    <div class="modal-box avatar-crop-box">
+        <div class="modal-header">
+            <h3>تنظیم تصویر</h3>
+            <button type="button" class="modal-close" id="cropCancel" aria-label="بستن">&times;</button>
+        </div>
+
+        <div class="crop-stage" id="cropStage">
+            <canvas id="cropCanvas"></canvas>
+            <div class="crop-mask"></div>
+        </div>
+
+        <p class="hint crop-hint">با انگشت جابه‌جا کنید. برای بزرگ‌نمایی از نوار زیر یا دو انگشت استفاده کنید.</p>
+
+        <div class="crop-controls">
+            <button type="button" class="crop-zoom-btn" id="cropZoomOut" aria-label="کوچک‌تر">−</button>
+            <input type="range" id="cropZoom" min="1" max="4" step="0.01" value="1" aria-label="بزرگ‌نمایی">
+            <button type="button" class="crop-zoom-btn" id="cropZoomIn" aria-label="بزرگ‌تر">+</button>
+        </div>
+
+        <div class="crop-actions">
+            <button type="button" class="btn btn-secondary btn-sm" id="cropReset">از نو</button>
+            <button type="button" class="btn btn-primary btn-block" id="cropSave">ذخیره تصویر</button>
+        </div>
+    </div>
+</div>
+
 <meta name="csrf-token" content="<?= Csrf::token() ?>">
 
 <?php include __DIR__ . '/includes/footer.php'; ?>
