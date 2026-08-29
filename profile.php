@@ -41,6 +41,8 @@ try {
 // ستون ایمیل با migration_password_reset اضافه شده. اگر هنوز اجرا نشده
 // باشد، صفحه باید بدون خطا کار کند و فقط این بخش را نشان ندهد.
 $hasEmailColumn = usersHaveEmailColumn($pdo);
+$tradesOn = tradesEnabled($pdo, $userId);
+$tradesColumnReady = usersHaveColumn($pdo, 'trades_enabled');
 
 $sessionOptions = [
     1   => 'یک ساعت',
@@ -165,6 +167,21 @@ include __DIR__ . '/includes/header.php';
 </div>
 
 <!-- ---------- ورود و امنیت ---------- -->
+<?php if ($tradesColumnReady): ?>
+<div class="card">
+    <h2 class="card-title">بخش معاملات</h2>
+    <label class="inline-check" style="margin-bottom:0;">
+        <input type="checkbox" id="tradesToggle" <?= $tradesOn ? 'checked' : '' ?>>
+        <span>فعال کردن بخش خرید و فروش</span>
+    </label>
+    <p class="hint">
+        دفتری جدا از درآمد و هزینه: جنسی می‌خرید، بعداً می‌فروشید، و سود
+        هر معامله همان‌جا حساب می‌شود. خاموش کردنش چیزی را پاک نمی‌کند.
+    </p>
+    <div id="tradesToggleMsg" class="form-message" hidden></div>
+</div>
+<?php endif; ?>
+
 <div class="card">
     <h2 class="card-title">نمایش</h2>
     <label class="inline-check" style="margin-bottom:0;">

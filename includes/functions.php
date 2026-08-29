@@ -244,6 +244,29 @@ function walletBalances(int $userId): array
 {
     $pdo = Database::getConnection();
 
+    // معامله‌ها (بخش خرید و فروش) هم پول جابه‌جا می‌کنند: خرید از حساب
+    // کم می‌کند و فروش به حساب برمی‌گرداند. عمداً ردیف تراکنش نمی‌سازند
+    // (معامله نه هزینه است نه درآمد) پس باید همین‌جا جمع شوند.
+    // جدول‌ها شاید هنوز با migration ساخته نشده باشند.
+    $tradeJoins  = '';
+    $tradeSelect = '';
+    if (tradesTablesExist($pdo)) {
+        $tradeSelect = '
+              - COALESCE(tbuy.total, 0)
+              + COALESCE(tsale.total, 0)';
+        $tradeJoins = '
+        LEFT JOIN (
+            SELECT buy_wallet_id AS wid, SUM(buy_total) AS total
+            FROM trades WHERE user_id = :u5 AND buy_wallet_id IS NOT NULL
+            GROUP BY buy_wallet_id
+        ) tbuy ON tbuy.wid = w.id
+        LEFT JOIN (
+            SELECT wallet_id AS wid, SUM(sale_total) AS total
+            FROM trade_sales WHERE user_id = :u6 AND wallet_id IS NOT NULL
+            GROUP BY wallet_id
+        ) tsale ON tsale.wid = w.id';
+    }
+
     $stmt = $pdo->prepare('
         SELECT
             w.id, w.name, w.kind, w.bank_name, w.card_last4,
@@ -252,7 +275,7 @@ function walletBalances(int $userId): array
               + COALESCE(tx.income, 0)
               - COALESCE(tx.expense, 0)
               + COALESCE(tin.total, 0)
-              - COALESCE(tout.total, 0) AS balance
+              - COALESCE(tout.total, 0)' . $tradeSelect . ' AS balance
         FROM wallets w
         LEFT JOIN (
             SELECT wallet_id,
@@ -267,11 +290,13 @@ function walletBalances(int $userId): array
         LEFT JOIN (
             SELECT from_wallet_id AS wid, SUM(amount + fee) AS total
             FROM transfers WHERE user_id = :u3 GROUP BY from_wallet_id
-        ) tout ON tout.wid = w.id
+        ) tout ON tout.wid = w.id' . $tradeJoins . '
         WHERE w.user_id = :u4
         ORDER BY w.is_active DESC, w.sort_order, w.name
     ');
-    $stmt->execute(['u1' => $userId, 'u2' => $userId, 'u3' => $userId, 'u4' => $userId]);
+    $params = ['u1' => $userId, 'u2' => $userId, 'u3' => $userId, 'u4' => $userId];
+    if ($tradeJoins !== '') { $params['u5'] = $userId; $params['u6'] = $userId; }
+    $stmt->execute($params);
 
     return $stmt->fetchAll();
 }
@@ -1190,4 +1215,129 @@ function saveUserEmail(PDO $pdo, int $userId, string $email, bool $allowClear = 
     $pdo->prepare('UPDATE users SET email = :e WHERE id = :id')
         ->execute(['e' => $email, 'id' => $userId]);
     return '';
+}
+
+/* ============================================================
+   بخش معاملات (خرید و فروش)
+   ============================================================ */
+
+/** آیا جدول‌های معاملات ساخته شده‌اند؟ (migration_trades) */
+function tradesTablesExist(PDO $pdo): bool
+{
+    static $cached = null;
+    if ($cached !== null) { return $cached; }
+    try {
+        $cached = (bool)$pdo->query(
+            "SELECT COUNT(*) FROM information_schema.tables
+             WHERE table_schema = DATABASE() AND table_name = 'trades'"
+        )->fetchColumn();
+    } catch (PDOException $e) { $cached = false; }
+    return $cached;
+}
+
+/** آیا این کاربر بخش معاملات را روشن کرده؟ پیش‌فرض خاموش. */
+function tradesEnabled(PDO $pdo, int $userId): bool
+{
+    static $cache = [];
+    if (isset($cache[$userId])) { return $cache[$userId]; }
+    if (!usersHaveColumn($pdo, 'trades_enabled')) { return $cache[$userId] = false; }
+    $st = $pdo->prepare('SELECT trades_enabled FROM users WHERE id = :id');
+    $st->execute(['id' => $userId]);
+    return $cache[$userId] = ((int)$st->fetchColumn() === 1);
+}
+
+/**
+ * مقدار اعشاری (تعداد/گرم) از ورودی کاربر — با ارقام فارسی و ممیز فارسی.
+ * sanitizeAmount اینجا به کار نمی‌آید چون نقطه‌ی اعشار را هم می‌اندازد.
+ */
+function sanitizeQty($input): float
+{
+    $clean = toLatinDigits((string)$input);
+    $clean = str_replace(['٫', '،', ','], '.', $clean);
+    $clean = preg_replace('/[^0-9.]/', '', $clean);
+    return round((float)$clean, 3);
+}
+
+/**
+ * معامله‌های کاربر همراه با جمع فروش‌ها و سود.
+ *
+ * منطق سود این‌جاست و فقط این‌جا، تا صفحه و تست و هر مصرف‌کننده‌ی
+ * دیگری یک جواب بگیرند:
+ *
+ *   بهای هر واحد   = (خرید + هزینه‌های جانبی) / تعداد
+ *   سود قطعی       = جمع فروش‌ها − بهای واحد × تعداد فروخته‌شده
+ *
+ * یعنی هزینه‌ی جانبی به نسبتِ مقدارِ فروخته‌شده در سود اثر می‌گذارد؛
+ * تا وقتی چیزی نفروخته‌اید، سودی هم قطعی نشده.
+ */
+function tradesWithProgress(int $userId): array
+{
+    $pdo = Database::getConnection();
+    if (!tradesTablesExist($pdo)) { return []; }
+
+    $st = $pdo->prepare(
+        'SELECT t.*, w.name AS wallet_name,
+                COALESCE(s.sold_qty, 0)   AS sold_qty,
+                COALESCE(s.sold_total, 0) AS sold_total,
+                COALESCE(s.sales_count, 0) AS sales_count
+         FROM trades t
+         LEFT JOIN wallets w ON w.id = t.buy_wallet_id
+         LEFT JOIN (
+             SELECT trade_id, SUM(qty) AS sold_qty, SUM(sale_total) AS sold_total,
+                    COUNT(*) AS sales_count
+             FROM trade_sales WHERE user_id = :u1 GROUP BY trade_id
+         ) s ON s.trade_id = t.id
+         WHERE t.user_id = :u2
+         ORDER BY (COALESCE(s.sold_qty,0) >= t.qty), t.buy_date DESC, t.id DESC'
+    );
+    $st->execute(['u1' => $userId, 'u2' => $userId]);
+
+    $rows = [];
+    foreach ($st->fetchAll() as $t) {
+        $qty      = (float)$t['qty'];
+        $soldQty  = min((float)$t['sold_qty'], $qty);
+        $unitCost = $qty > 0 ? ((int)$t['buy_total'] + (int)$t['side_costs']) / $qty : 0;
+
+        $t['remaining_qty']   = round($qty - $soldQty, 3);
+        $t['is_closed']       = $t['remaining_qty'] <= 0;
+        $t['realized_profit'] = (int)round((int)$t['sold_total'] - $unitCost * $soldQty);
+        // سرمایه‌ای که هنوز در جنس مانده — به بهای خرید
+        $t['open_cost']       = (int)round($unitCost * $t['remaining_qty']);
+        $rows[] = $t;
+    }
+    return $rows;
+}
+
+/** فروش‌های یک معامله، نو به کهنه. مالکیت را همین‌جا چک می‌کند. */
+function tradeSales(int $userId, int $tradeId): array
+{
+    $pdo = Database::getConnection();
+    $st = $pdo->prepare(
+        'SELECT s.*, w.name AS wallet_name
+         FROM trade_sales s
+         LEFT JOIN wallets w ON w.id = s.wallet_id
+         WHERE s.user_id = :u AND s.trade_id = :t
+         ORDER BY s.sale_date DESC, s.id DESC'
+    );
+    $st->execute(['u' => $userId, 't' => $tradeId]);
+    return $st->fetchAll();
+}
+
+/** جمع کل صفحه‌ی معاملات: سود قطعی، سرمایه‌ی درگیر، تعداد باز. */
+function tradesSummary(array $trades): array
+{
+    $sum = ['realized_profit' => 0, 'open_cost' => 0, 'open_count' => 0, 'closed_count' => 0];
+    foreach ($trades as $t) {
+        $sum['realized_profit'] += $t['realized_profit'];
+        $sum['open_cost']       += $t['open_cost'];
+        $t['is_closed'] ? $sum['closed_count']++ : $sum['open_count']++;
+    }
+    return $sum;
+}
+
+/** نمایش تعداد: ۲٫۵ به‌جای 2.500، و ارقام فارسی */
+function formatQty($qty): string
+{
+    $s = rtrim(rtrim(number_format((float)$qty, 3, '.', ''), '0'), '.');
+    return toPersianDigits(str_replace('.', '٫', $s));
 }

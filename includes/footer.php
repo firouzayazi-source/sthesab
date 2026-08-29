@@ -103,6 +103,12 @@ $moreActive = in_array($bottomPage, $morePages, true);
                 <span>تراکنش همه</span>
             </a>
             <?php endif; ?>
+            <?php if (tradesEnabled(Database::getConnection(), (int)Auth::userId())): ?>
+            <a href="<?= APP_BASE_PATH ?>/trades.php" class="tool-card" style="--tc1:#b8862f; --tc2:#94620d;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M7 4L3.5 7.5M7 4l3.5 3.5M17 20V4M17 20l3.5-3.5M17 20l-3.5-3.5"/></svg>
+                <span>معاملات</span>
+            </a>
+            <?php endif; ?>
             <a href="<?= APP_BASE_PATH ?>/profile.php" class="tool-card" style="--tc1:#334155; --tc2:#1e293b;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg>
                 <span>حساب کاربری من</span>

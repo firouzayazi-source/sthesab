@@ -2290,4 +2290,165 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+
+    // ---------- کلید بخش معاملات در پروفایل ----------
+    var tradesToggle = document.getElementById('tradesToggle');
+    if (tradesToggle) {
+        tradesToggle.addEventListener('change', function () {
+            var fd = new FormData();
+            fd.append('csrf_token', csrf());
+            fd.append('enabled', this.checked ? '1' : '0');
+            var msg = document.getElementById('tradesToggleMsg');
+            fetch(apiUrl('toggle_trades.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (msg) {
+                        msg.hidden = false;
+                        msg.classList.remove('success', 'error');
+                        msg.classList.add('show', d.success ? 'success' : 'error');
+                        msg.textContent = d.message || (d.success ? 'ذخیره شد.' : 'خطا');
+                    }
+                    if (!d.success) tradesToggle.checked = !tradesToggle.checked;
+                })
+                .catch(function () {
+                    tradesToggle.checked = !tradesToggle.checked;
+                    if (msg) { msg.hidden = false; msg.classList.add('show', 'error'); msg.textContent = 'خطا در ارتباط با سرور.'; }
+                });
+        });
+    }
+
+    // ---------- معاملات (خرید و فروش) ----------
+    (function () {
+        // روشن کردن بخش از صفحه‌ی خودش (وقتی خاموش است)
+        var enableBtn = document.getElementById('enableTradesBtn');
+        if (enableBtn) {
+            enableBtn.addEventListener('click', function () {
+                enableBtn.disabled = true;
+                var fd = new FormData();
+                fd.append('csrf_token', csrf());
+                fd.append('enabled', '1');
+                fetch(apiUrl('toggle_trades.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        if (d.success) { window.location.reload(); return; }
+                        enableBtn.disabled = false;
+                        var m = document.getElementById('enableTradesMsg');
+                        if (m) { m.hidden = false; m.classList.add('show', 'error'); m.textContent = d.message || 'خطا'; }
+                    })
+                    .catch(function () { enableBtn.disabled = false; });
+            });
+        }
+
+        var tradeForm = document.getElementById('tradeForm');
+        if (!tradeForm) return;
+
+        function setJdpByHidden(hiddenEl, gDateStr) {
+            if (!window.JalaliDatePicker || !gDateStr) return;
+            var parts = gDateStr.split('-').map(Number);
+            var j = window.JalaliDatePicker.gregorianToJalali(parts[0], parts[1], parts[2]);
+            function pad2(n) { return (n < 10 ? '0' : '') + n; }
+            hiddenEl.value = gDateStr;
+            hiddenEl.closest('.jdp-field').querySelector('.jdp-display').value =
+                window.JalaliDatePicker.toFa(j[0]) + '/' + window.JalaliDatePicker.toFa(pad2(j[1])) + '/' + window.JalaliDatePicker.toFa(pad2(j[2]));
+        }
+        var todayG = document.getElementById('trade_buy_date').value;
+
+        var addBtn = document.getElementById('addTradeBtn');
+        if (addBtn) {
+            addBtn.addEventListener('click', function () {
+                document.getElementById('tradeModalTitle').textContent = 'خرید جدید';
+                document.getElementById('trade_id').value = '';
+                document.getElementById('trade_title').value = '';
+                document.getElementById('trade_qty').value = '1';
+                document.getElementById('trade_buy_total').value = '';
+                document.getElementById('trade_side_costs').value = '';
+                document.getElementById('trade_wallet').value = '0';
+                document.getElementById('trade_notes').value = '';
+                setJdpByHidden(document.getElementById('trade_buy_date'), todayG);
+                var m = document.getElementById('tradeMessage');
+                m.hidden = true; m.classList.remove('show', 'error', 'success');
+                openModal('tradeModal');
+            });
+        }
+
+        document.querySelectorAll('.js-edit-trade').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                document.getElementById('tradeModalTitle').textContent = 'ویرایش معامله';
+                document.getElementById('trade_id').value = this.getAttribute('data-id');
+                document.getElementById('trade_title').value = this.getAttribute('data-title');
+                document.getElementById('trade_qty').value = this.getAttribute('data-qty');
+                document.getElementById('trade_buy_total').value = this.getAttribute('data-buy-total');
+                var sc = this.getAttribute('data-side-costs');
+                document.getElementById('trade_side_costs').value = sc === '0' ? '' : sc;
+                document.getElementById('trade_wallet').value = this.getAttribute('data-wallet') || '0';
+                document.getElementById('trade_notes').value = this.getAttribute('data-notes') || '';
+                setJdpByHidden(document.getElementById('trade_buy_date'), this.getAttribute('data-buy-date'));
+                var m = document.getElementById('tradeMessage');
+                m.hidden = true; m.classList.remove('show', 'error', 'success');
+                openModal('tradeModal');
+            });
+        });
+
+        tradeForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            submitJson(tradeForm, apiUrl('save_trade.php'),
+                document.getElementById('tradeMessage'),
+                document.getElementById('tradeSubmitBtn'));
+        });
+
+        // ---- فروش ----
+        var sellForm = document.getElementById('sellForm');
+        document.querySelectorAll('.js-sell-trade').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var remaining = this.getAttribute('data-remaining') || '1';
+                document.getElementById('sellModalTitle').textContent = 'فروش: ' + this.getAttribute('data-title');
+                document.getElementById('sell_trade_id').value = this.getAttribute('data-id');
+                document.getElementById('sell_total').value = '';
+                document.getElementById('sell_qty').value = remaining;
+                document.getElementById('sell_wallet').value = '0';
+                document.getElementById('sell_notes').value = '';
+                document.getElementById('sellRemainingHint').textContent =
+                    remaining === '1' ? '' : 'مانده: ' + remaining;
+                setJdpByHidden(document.getElementById('sell_date'), todayG);
+                var m = document.getElementById('sellMessage');
+                m.hidden = true; m.classList.remove('show', 'error', 'success');
+                openModal('sellModal');
+            });
+        });
+        if (sellForm) {
+            sellForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+                submitJson(sellForm, apiUrl('sell_trade.php'),
+                    document.getElementById('sellMessage'),
+                    document.getElementById('sellSubmitBtn'));
+            });
+        }
+
+        // ---- حذف ----
+        document.querySelectorAll('.js-del-trade').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                if (!confirm('این معامله با همه‌ی فروش‌هایش حذف شود؟ قابل بازگشت نیست.')) return;
+                var fd = new FormData();
+                fd.append('csrf_token', csrf());
+                fd.append('trade_id', this.getAttribute('data-id'));
+                fetch(apiUrl('delete_trade.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) { if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                    .catch(function () { alert('خطا در ارتباط با سرور.'); });
+            });
+        });
+        document.querySelectorAll('.js-del-sale').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                if (!confirm('این فروش حذف شود؟')) return;
+                var fd = new FormData();
+                fd.append('csrf_token', csrf());
+                fd.append('sale_id', this.getAttribute('data-id'));
+                fetch(apiUrl('delete_trade_sale.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) { if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                    .catch(function () { alert('خطا در ارتباط با سرور.'); });
+            });
+        });
+    })();
+
 });
