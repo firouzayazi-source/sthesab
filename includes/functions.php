@@ -1126,19 +1126,26 @@ function appBaseUrl(): string
  * ایمیل این را می‌پرسیم. نتیجه در همان درخواست کش می‌شود چون کوئری
  * information_schema ارزان نیست و چند بار پرسیده می‌شود.
  */
+function usersHaveColumn(PDO $pdo, string $column): bool
+{
+    static $cache = [];
+    if (isset($cache[$column])) { return $cache[$column]; }
+    try {
+        $st = $pdo->prepare(
+            "SELECT COUNT(*) FROM information_schema.columns
+             WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = :c"
+        );
+        $st->execute(['c' => $column]);
+        $cache[$column] = (bool)$st->fetchColumn();
+    } catch (PDOException $e) {
+        $cache[$column] = false;
+    }
+    return $cache[$column];
+}
+
 function usersHaveEmailColumn(PDO $pdo): bool
 {
-    static $cached = null;
-    if ($cached !== null) { return $cached; }
-    try {
-        $cached = (bool)$pdo->query(
-            "SELECT COUNT(*) FROM information_schema.columns
-             WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'email'"
-        )->fetchColumn();
-    } catch (PDOException $e) {
-        $cached = false;
-    }
-    return $cached;
+    return usersHaveColumn($pdo, 'email');
 }
 
 /**

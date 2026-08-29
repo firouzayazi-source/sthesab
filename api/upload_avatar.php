@@ -12,6 +12,16 @@ Csrf::verifyOrFail(postParam('csrf_token'));
 
 $userId = Auth::userId();
 
+// ستون avatar با migration_p4 می‌آید. این را همین اول بررسی می‌کنیم تا
+// اگر نیست، فایل بی‌جهت آپلود و روی دیسک نوشته نشود و بعد دور انداخته
+// شود — و کاربر پیام درست بگیرد نه یک خطای عمومی.
+if (!usersHaveColumn(Database::getConnection(), 'avatar')) {
+    jsonResponse([
+        'success' => false,
+        'message' => 'ستون تصویر هنوز در دیتابیس ساخته نشده. روی سرور اجرا کنید:  bash deploy/migrate.sh --apply',
+    ], 500);
+}
+
 if (!isset($_FILES['avatar']) || $_FILES['avatar']['error'] !== UPLOAD_ERR_OK) {
     $code = $_FILES['avatar']['error'] ?? -1;
     $msg = ($code === UPLOAD_ERR_INI_SIZE || $code === UPLOAD_ERR_FORM_SIZE)
@@ -140,7 +150,10 @@ try {
         'message' => 'تصویر پروفایل بروزرسانی شد.',
     ]);
 } catch (PDOException $e) {
+    // پیام قبلی هر خطای دیتابیسی را «migration را اجرا کنید» می‌خواند،
+    // حتی وقتی ستون وجود داشت و مشکل چیز دیگری بود. حالا نبودِ ستون
+    // بالاتر و صریح بررسی می‌شود، پس اینجا واقعاً خطای غیرمنتظره است.
     @unlink($target);
     error_log('Upload Avatar Error: ' . $e->getMessage());
-    jsonResponse(['success' => false, 'message' => 'ابتدا migration_p4.sql را اجرا کنید.'], 500);
+    jsonResponse(['success' => false, 'message' => 'ذخیره در دیتابیس ناموفق بود.'], 500);
 }

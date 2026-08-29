@@ -68,7 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body class="auth-body">
     <div class="auth-box">
         <div class="auth-logo">
-            <span class="brand-icon">💰</span>
+            <img src="<?= APP_BASE_PATH ?>/assets/icons/icon-192.png" alt="" class="brand-icon brand-icon-img" width="64" height="64">
             <h1><?= h(APP_NAME) ?></h1>
             <p class="auth-subtitle">مدیریت ساده درآمد و هزینه</p>
         </div>

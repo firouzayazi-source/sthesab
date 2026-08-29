@@ -36,7 +36,7 @@ if (Auth::isLoggedIn()) {
 <div class="sidebar-overlay" id="sidebarOverlay"></div>
 <nav class="sidebar" id="sidebar">
     <div class="sidebar-brand">
-        <span class="brand-icon">💰</span>
+        <img src="<?= APP_BASE_PATH ?>/assets/icons/icon-192.png" alt="" class="brand-icon brand-icon-img" width="24" height="24">
         <span class="brand-text"><?= h(APP_NAME) ?></span>
     </div>
 
