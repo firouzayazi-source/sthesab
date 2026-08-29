@@ -45,9 +45,48 @@ $listStmt = $pdo->prepare('
 $listStmt->execute(['user_id' => $userId]);
 $assetRecords = $listStmt->fetchAll();
 
+// کالای معاملاتیِ موجود هم دارایی است — اما فقط-خواندنی: خرید و فروش
+// فقط از بخش معاملات انجام می‌شود، اینجا فقط «آخرین موجودی» دیده می‌شود.
+$openTrades = [];
+$openTradesCost = 0;
+if (tradesTablesExist($pdo) && tradesEnabled($pdo, $userId)) {
+    foreach (tradesWithProgress($userId) as $t) {
+        if (!$t['is_closed']) {
+            $openTrades[] = $t;
+            $openTradesCost += $t['open_cost'];
+        }
+    }
+}
+
 $pageTitle = 'دارایی‌ها';
 include __DIR__ . '/includes/header.php';
 ?>
+
+<?php if (!empty($openTrades)): ?>
+<div class="card">
+    <div class="card-header-row">
+        <h2 class="card-title">کالای معاملاتی موجود</h2>
+        <a href="<?= APP_BASE_PATH ?>/trades.php" class="btn btn-secondary btn-sm" style="text-decoration:none;">خرید و فروش</a>
+    </div>
+    <p class="hint" style="margin-bottom:11px;">
+        جمع سرمایه به بهای خرید: <b><?= formatMoney($openTradesCost) ?> <?= h(APP_CURRENCY) ?></b>
+        — معامله فقط از بخش معاملات انجام می‌شود.
+    </p>
+    <?php foreach ($openTrades as $t): ?>
+        <div class="trade-sale-row">
+            <div class="trade-sale-info">
+                <b><?= h($t['title']) ?></b>
+                <span class="trade-sale-meta">
+                    <?php if ((float)$t['qty'] != 1.0): ?>موجودی: <?= formatQty($t['remaining_qty']) ?> واحد · <?php endif; ?>
+                    ارزش خرید: <?= formatMoney($t['open_cost']) ?> <?= h(APP_CURRENCY) ?>
+                    · خرید <?= toJalali($t['buy_date']) ?>
+                </span>
+            </div>
+            <a href="<?= APP_BASE_PATH ?>/trades.php" class="btn btn-secondary btn-sm" style="text-decoration:none;flex:none;">فروش</a>
+        </div>
+    <?php endforeach; ?>
+</div>
+<?php endif; ?>
 
 <?php if ($totalPortfolioValue > 0): ?>
 <div class="summary-grid" style="grid-template-columns: 1fr;">

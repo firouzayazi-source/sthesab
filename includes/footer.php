@@ -45,6 +45,12 @@ $moreActive = in_array($bottomPage, $morePages, true);
         <div class="more-sheet-handle"></div>
         <h3 class="more-sheet-title">ابزارها</h3>
         <div class="tools-grid">
+            <?php if (tradesEnabled(Database::getConnection(), (int)Auth::userId())): ?>
+            <a href="<?= APP_BASE_PATH ?>/trades.php" class="tool-card tool-card-wide" style="--tc1:#b8862f; --tc2:#94620d;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M7 4L3.5 7.5M7 4l3.5 3.5M17 20V4M17 20l3.5-3.5M17 20l-3.5-3.5"/></svg>
+                <span>معاملات — خرید و فروش</span>
+            </a>
+            <?php endif; ?>
             <a href="<?= APP_BASE_PATH ?>/wallets.php" class="tool-card" style="--tc1:#16794f; --tc2:#0f766e;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7.5h15a2.5 2.5 0 012.5 2.5v7a2.5 2.5 0 01-2.5 2.5H5.5A2.5 2.5 0 013 17V7.5z"/><path d="M3 7.5l12-3v3"/><circle cx="17" cy="13.5" r="1.3" fill="currentColor"/></svg>
                 <span>حساب‌ها و انتقال</span>
@@ -101,12 +107,6 @@ $moreActive = in_array($bottomPage, $morePages, true);
             <a href="<?= APP_BASE_PATH ?>/admin/all-transactions.php" class="tool-card" style="--tc1:#525252; --tc2:#404040;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>
                 <span>تراکنش همه</span>
-            </a>
-            <?php endif; ?>
-            <?php if (tradesEnabled(Database::getConnection(), (int)Auth::userId())): ?>
-            <a href="<?= APP_BASE_PATH ?>/trades.php" class="tool-card" style="--tc1:#b8862f; --tc2:#94620d;">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M7 4L3.5 7.5M7 4l3.5 3.5M17 20V4M17 20l3.5-3.5M17 20l-3.5-3.5"/></svg>
-                <span>معاملات</span>
             </a>
             <?php endif; ?>
             <a href="<?= APP_BASE_PATH ?>/profile.php" class="tool-card" style="--tc1:#334155; --tc2:#1e293b;">

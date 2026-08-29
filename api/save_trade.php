@@ -71,6 +71,8 @@ try {
             'n' => $notes !== '' ? $notes : null,
             'id' => $tradeId, 'u' => $userId,
         ]);
+        // تغییر مبلغ/تعداد/هزینه‌ی جانبی، سودِ فروش‌های قبلی را عوض می‌کند
+        syncTradeProfitTransactions($userId, $tradeId);
         jsonResponse(['success' => true, 'message' => 'معامله بروزرسانی شد.']);
     }
 

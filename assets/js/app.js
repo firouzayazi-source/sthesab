@@ -2342,6 +2342,38 @@ document.addEventListener('DOMContentLoaded', function () {
         var tradeForm = document.getElementById('tradeForm');
         if (!tradeForm) return;
 
+        // مبلغ‌ها هنگام تایپ فارسی و هزارگان‌دار می‌شوند — 1000000 ← ۱٬۰۰۰٬۰۰۰
+        setupAmountFormatter('trade_buy_total');
+        setupAmountFormatter('trade_side_costs');
+        setupAmountFormatter('sell_total');
+
+        // ---- حالت نمایش: کارتی / فهرستی (مثل حالت‌های نمایش ویندوز) ----
+        var wrap = document.getElementById('tradesWrap');
+        var viewBtns = document.querySelectorAll('.view-switch-btn');
+        function applyViewMode(mode) {
+            if (!wrap) return;
+            wrap.classList.toggle('view-list', mode === 'list');
+            viewBtns.forEach(function (b) {
+                b.classList.toggle('active', b.getAttribute('data-view-mode') === mode);
+            });
+            try { localStorage.setItem('tradesViewMode', mode); } catch (e) {}
+        }
+        var savedMode = 'card';
+        try { savedMode = localStorage.getItem('tradesViewMode') || 'card'; } catch (e) {}
+        applyViewMode(savedMode);
+        viewBtns.forEach(function (b) {
+            b.addEventListener('click', function () { applyViewMode(this.getAttribute('data-view-mode')); });
+        });
+        // در حالت فهرستی، لمس ردیف جزئیاتش را باز می‌کند
+        if (wrap) {
+            wrap.addEventListener('click', function (e) {
+                if (!wrap.classList.contains('view-list')) return;
+                if (e.target.closest('button, a, input, select, textarea')) return;
+                var card = e.target.closest('.trade-card');
+                if (card) card.classList.toggle('expanded');
+            });
+        }
+
         function setJdpByHidden(hiddenEl, gDateStr) {
             if (!window.JalaliDatePicker || !gDateStr) return;
             var parts = gDateStr.split('-').map(Number);

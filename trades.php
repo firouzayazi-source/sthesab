@@ -3,9 +3,11 @@
  * معاملات — دفتر خرید و فروش، جدا از درآمد و هزینه.
  *
  * چرا جدا: خرید یک گوشی برای فروش، هزینه نیست و فروشش هم درآمد نیست؛
- * فقط تفاوتش سود یا زیان است. اگر داخل تراکنش‌ها می‌رفت، گزارش‌های
- * هزینه/درآمد بی‌معنی می‌شدند. تنها نقطه‌ی تماس، موجودی حساب‌هاست
- * (walletBalances) اگر معامله به حسابی وصل شده باشد.
+ * اگر کل مبلغ‌ها داخل تراکنش‌ها می‌رفت، گزارش‌های هزینه/درآمد بی‌معنی
+ * می‌شدند. دو نقطه‌ی تماس با بقیه‌ی اپ:
+ *  - موجودی حساب‌ها (walletBalances) اگر معامله به حسابی وصل باشد
+ *  - «سهم سودِ» هر فروش که به‌صورت تراکنش سود/زیان معامله ثبت می‌شود
+ *    (syncTradeProfitTransactions) تا در جمع روز/هفته/ماه دیده شود
  */
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
@@ -21,8 +23,14 @@ $todayStr = today();
 $tablesReady = tradesTablesExist($pdo);
 $enabled = $tablesReady && tradesEnabled($pdo, $userId);
 
-$trades  = $enabled ? tradesWithProgress($userId) : [];
-$summary = tradesSummary($trades);
+$allTrades = $enabled ? tradesWithProgress($userId) : [];
+// جمع‌بندی روی همه است؛ آرشیو کردن نباید سود کل را کم کند
+$summary = tradesSummary($allTrades);
+
+// فروخته‌شده‌ها آرشیو می‌شوند تا صفحه‌ی اصلی فقط کالای موجود را نشان دهد
+$view = getParam('view', 'open') === 'archive' ? 'archive' : 'open';
+$trades = array_values(array_filter($allTrades,
+    fn($t) => $view === 'archive' ? $t['is_closed'] : !$t['is_closed']));
 
 $wallets = [];
 if ($enabled) {
@@ -45,8 +53,8 @@ include __DIR__ . '/includes/header.php';
     <h2 class="card-title" style="margin-bottom:8px;">بخش معاملات خاموش است</h2>
     <p class="hint" style="margin-bottom:16px;">
         دفتری جدا از درآمد و هزینه برای خرید و فروش: جنسی را می‌خرید،
-        بعداً می‌فروشید، و سود هر معامله همین‌جا حساب می‌شود —
-        بدون اینکه چیزی وارد گزارش‌های درآمد/هزینه شود.
+        بعداً می‌فروشید، و سود هر معامله همین‌جا حساب می‌شود.
+        فقط «سودِ» هر فروش به حسابداری می‌رود، نه کل مبلغ‌ها.
     </p>
     <button type="button" class="btn btn-primary" id="enableTradesBtn">روشن کردن بخش معاملات</button>
     <div id="enableTradesMsg" class="form-message" hidden></div>
@@ -80,12 +88,29 @@ include __DIR__ . '/includes/header.php';
         <h2 class="card-title">معامله‌ها</h2>
         <button type="button" class="btn btn-primary btn-sm" id="addTradeBtn">+ خرید جدید</button>
     </div>
+    <div class="trade-toolbar">
+        <div class="filter-bar" style="margin:0;">
+            <a href="?view=open" class="filter-chip <?= $view === 'open' ? 'active' : '' ?>" style="text-decoration:none;">موجود<?= $summary['open_count'] ? ' (' . toPersianDigits($summary['open_count']) . ')' : '' ?></a>
+            <a href="?view=archive" class="filter-chip <?= $view === 'archive' ? 'active' : '' ?>" style="text-decoration:none;">آرشیو فروخته‌شده<?= $summary['closed_count'] ? ' (' . toPersianDigits($summary['closed_count']) . ')' : '' ?></a>
+        </div>
+        <div class="view-switch" role="group" aria-label="حالت نمایش">
+            <button type="button" class="view-switch-btn" data-view-mode="card" title="نمایش کارتی">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="8" rx="2"/><rect x="3" y="14" width="18" height="8" rx="2"/></svg>
+            </button>
+            <button type="button" class="view-switch-btn" data-view-mode="list" title="نمایش فهرستی">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
+        </div>
+    </div>
 </div>
+
+<div id="tradesWrap">
 
 <?php if (empty($trades)): ?>
     <div class="card">
-        <p class="empty-row">هنوز معامله‌ای ثبت نکرده‌اید.<br>
-        مثلاً: «آیفون ۱۳» را با مبلغ خرید ثبت کنید و هر وقت فروختید، فروشش را بزنید.</p>
+        <p class="empty-row"><?= $view === 'archive'
+            ? 'هنوز معامله‌ای کامل فروخته نشده است.'
+            : 'کالای موجودی ندارید.<br>مثلاً: «آیفون ۱۳» را با مبلغ خرید ثبت کنید و هر وقت فروختید، فروشش را بزنید.' ?></p>
     </div>
 <?php else: ?>
     <?php foreach ($trades as $t): ?>
@@ -96,7 +121,9 @@ include __DIR__ . '/includes/header.php';
         <div class="card trade-card <?= $isClosed ? 'trade-closed' : '' ?>">
             <div class="trade-head">
                 <div class="trade-title-wrap">
-                    <div class="trade-title"><?= h($t['title']) ?></div>
+                    <div class="trade-title"><?= h($t['title']) ?><span
+                        class="list-profit <?= $t['realized_profit'] > 0 ? 'is-in' : ($t['realized_profit'] < 0 ? 'is-out' : '') ?>"><?=
+                        $t['realized_profit'] !== 0 ? (($t['realized_profit'] < 0 ? '−' : '+') . formatMoney(abs($t['realized_profit']))) : '' ?></span></div>
                     <div class="trade-meta">
                         خرید: <?= toJalali($t['buy_date']) ?>
                         <?php if ((float)$t['qty'] != 1.0): ?> · تعداد: <?= formatQty($t['qty']) ?><?php endif; ?>
@@ -179,6 +206,7 @@ include __DIR__ . '/includes/header.php';
         </div>
     <?php endforeach; ?>
 <?php endif; ?>
+</div><!-- /tradesWrap -->
 
 <!-- ---------- ثبت / ویرایش خرید ---------- -->
 <div class="modal-overlay" id="tradeModal">
@@ -200,7 +228,7 @@ include __DIR__ . '/includes/header.php';
             <div class="form-row-2">
                 <div class="form-group">
                     <label for="trade_buy_total">مبلغ کل خرید</label>
-                    <input type="text" inputmode="numeric" id="trade_buy_total" name="buy_total" required placeholder="۰" class="amount-input">
+                    <input type="text" inputmode="numeric" id="trade_buy_total" name="buy_total" required placeholder="۰" class="amount-input-sm">
                 </div>
                 <div class="form-group">
                     <label for="trade_qty">تعداد / مقدار</label>
@@ -230,7 +258,7 @@ include __DIR__ . '/includes/header.php';
 
             <div class="form-group">
                 <label for="trade_side_costs">هزینه‌های جانبی <span style="color:var(--muted);font-weight:400">(اختیاری)</span></label>
-                <input type="text" inputmode="numeric" id="trade_side_costs" name="side_costs" placeholder="۰" class="amount-input">
+                <input type="text" inputmode="numeric" id="trade_side_costs" name="side_costs" placeholder="۰" class="amount-input-sm">
                 <p class="hint">کارمزد، حمل، تعمیر… فقط در محاسبه‌ی سود لحاظ می‌شود، از حساب کم نمی‌شود.</p>
             </div>
 
@@ -259,7 +287,7 @@ include __DIR__ . '/includes/header.php';
             <div class="form-row-2">
                 <div class="form-group">
                     <label for="sell_total">مبلغ کل فروش</label>
-                    <input type="text" inputmode="numeric" id="sell_total" name="sale_total" required placeholder="۰" class="amount-input">
+                    <input type="text" inputmode="numeric" id="sell_total" name="sale_total" required placeholder="۰" class="amount-input-sm">
                 </div>
                 <div class="form-group">
                     <label for="sell_qty">تعداد</label>

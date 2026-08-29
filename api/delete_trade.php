@@ -15,6 +15,8 @@ $tradeId = (int)postParam('trade_id');
 $pdo = Database::getConnection();
 
 try {
+    // تراکنش‌های سودِ فروش‌ها جدول جدایی‌اند و CASCADE شاملشان نمی‌شود
+    deleteTradeProfitTransactions($userId, $tradeId);
     // فروش‌ها با ON DELETE CASCADE خودشان پاک می‌شوند
     $st = $pdo->prepare('DELETE FROM trades WHERE id = :id AND user_id = :u');
     $st->execute(['id' => $tradeId, 'u' => $userId]);

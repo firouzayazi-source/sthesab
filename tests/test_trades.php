@@ -35,9 +35,23 @@ if (!tradesTablesExist($pdo)) {
     exit(T::report());
 }
 
+$hasProfitLink = false;
+try {
+    $hasProfitLink = (bool)$pdo->query(
+        "SELECT COUNT(*) FROM information_schema.columns
+         WHERE table_schema = DATABASE() AND table_name = 'trade_sales' AND column_name = 'profit_tx_id'"
+    )->fetchColumn();
+} catch (PDOException $e) {}
+
 // ---------------------------------------------------------------
 $TESTU = '__test_trades_user';
 $cleanup = function () use ($pdo, $TESTU) {
+    // FK کاربر روی transactions از نوع RESTRICT است؛ اول تراکنش‌ها
+    $st = $pdo->prepare('SELECT id FROM users WHERE username = :u');
+    $st->execute(['u' => $TESTU]);
+    if ($oldId = $st->fetchColumn()) {
+        $pdo->prepare('DELETE FROM transactions WHERE user_id = :u')->execute(['u' => $oldId]);
+    }
     // trades و trade_sales و wallets با CASCADE پاک می‌شوند
     $pdo->prepare('DELETE FROM users WHERE username = :u')->execute(['u' => $TESTU]);
 };
@@ -137,20 +151,73 @@ try {
     T::same(210000000, $balanceOf(), 'خریدِ وصل‌شده کم و فروشِ وصل‌شده اضافه شد');
 
     // ---------------------------------------------------------------
-    T::group('جدایی از درآمد/هزینه');
+    T::group('جدایی از درآمد/هزینه — فقط سود می‌رود، نه مبلغ‌ها');
 
+    // درج مستقیم بالا از مسیر sync رد نشده؛ پس هنوز تراکنشی نیست
     $txCount = $pdo->prepare('SELECT COUNT(*) FROM transactions WHERE user_id = :u');
     $txCount->execute(['u' => $uid]);
-    T::same('0', (string)$txCount->fetchColumn(), 'هیچ تراکنشی از معامله‌ها ساخته نشده');
+    T::same('0', (string)$txCount->fetchColumn(), 'خود خرید و فروش تراکنش نمی‌سازد');
+
+    if ($hasProfitLink) {
+        // هم‌گام‌سازی سود: گوشی (سود ۱۰) و سکه (سود ۸)
+        syncTradeProfitTransactions($uid, $t1);
+        syncTradeProfitTransactions($uid, $t2);
+
+        $txs = $pdo->prepare('SELECT type, amount, title, wallet_id FROM transactions WHERE user_id = :u ORDER BY amount');
+        $txs->execute(['u' => $uid]);
+        $rows = $txs->fetchAll();
+        T::same(2, count($rows), 'به ازای هر فروش، دقیقاً یک تراکنش سود');
+        T::same('income', $rows[0]['type'], 'سود، درآمد ثبت می‌شود');
+        T::same(8000000, (int)$rows[0]['amount'], 'مبلغ تراکنش = سهم سود فروش، نه کل فروش');
+        T::same(10000000, (int)$rows[1]['amount'], 'سود گوشی هم درست است');
+        T::ok(str_contains($rows[1]['title'], 'سود معامله'), 'عنوان می‌گوید از معامله آمده');
+        T::same(null, $rows[0]['wallet_id'], 'تراکنش سود به حساب نمی‌خورد — پول را خودِ فروش جابه‌جا کرده');
+
+        // موجودی حساب نباید با ثبت سود دوبار جمع شود
+        T::same(210000000, $balanceOf(), 'موجودی بعد از ثبت سود همان است — دوبار حساب نشد');
+
+        // اجرای دوباره‌ی sync نباید ردیف تکراری بسازد
+        syncTradeProfitTransactions($uid, $t1);
+        $txCount->execute(['u' => $uid]);
+        T::same('2', (string)$txCount->fetchColumn(), 'sync دوباره، ردیف تکراری نمی‌سازد');
+
+        // ویرایش خرید، سود فروش‌های قبلی را عوض می‌کند
+        $pdo->prepare('UPDATE trades SET buy_total = 105000000 WHERE id = :t')->execute(['t' => $t1]);
+        syncTradeProfitTransactions($uid, $t1);
+        $one = $pdo->prepare('SELECT amount FROM transactions WHERE user_id = :u AND title LIKE "%گوشی%"');
+        $one->execute(['u' => $uid]);
+        T::same(5000000, (int)$one->fetchColumn(), 'بعد از ویرایش خرید، تراکنش سود به‌روز شد');
+
+        // زیان → تراکنش هزینه
+        $pdo->prepare('UPDATE trades SET buy_total = 120000000 WHERE id = :t')->execute(['t' => $t1]);
+        syncTradeProfitTransactions($uid, $t1);
+        $one = $pdo->prepare('SELECT type, amount FROM transactions WHERE user_id = :u AND title LIKE "%گوشی%"');
+        $one->execute(['u' => $uid]);
+        $loss = $one->fetch();
+        T::same('expense', $loss['type'], 'زیان، هزینه ثبت می‌شود');
+        T::same(10000000, (int)$loss['amount'], 'مبلغ زیان درست است');
+
+        // برگرداندن برای تست‌های بعدی
+        $pdo->prepare('UPDATE trades SET buy_total = 100000000 WHERE id = :t')->execute(['t' => $t1]);
+        syncTradeProfitTransactions($uid, $t1);
+    } else {
+        T::skip('هم‌گام‌سازی سود', 'ستون profit_tx_id نیست — migration_trades2 را اجرا کنید');
+    }
 
     // ---------------------------------------------------------------
     T::group('حذف زنجیره‌ای');
 
+    if ($hasProfitLink) { deleteTradeProfitTransactions($uid, $t1); }
     $pdo->prepare('DELETE FROM trades WHERE id = :t AND user_id = :u')->execute(['t' => $t1, 'u' => $uid]);
     $orphan = $pdo->prepare('SELECT COUNT(*) FROM trade_sales WHERE trade_id = :t');
     $orphan->execute(['t' => $t1]);
     T::same('0', (string)$orphan->fetchColumn(), 'حذف معامله، فروش‌هایش را هم می‌برد');
     T::same(200000000, $balanceOf(), 'بعد از حذف، اثرش از موجودی هم رفت');
+    if ($hasProfitLink) {
+        $left = $pdo->prepare('SELECT COUNT(*) FROM transactions WHERE user_id = :u AND title LIKE "%گوشی%"');
+        $left->execute(['u' => $uid]);
+        T::same('0', (string)$left->fetchColumn(), 'تراکنش سودش هم پاک شد');
+    }
 
 } finally {
     $cleanup();

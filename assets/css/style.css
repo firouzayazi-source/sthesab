@@ -2133,7 +2133,70 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
 /* ============================================================
    معاملات (خرید و فروش)
    ============================================================ */
-.form-row-2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: 10px; }
+.form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* مبلغ در فرم معامله: هم‌قد بقیه‌ی فیلدها، فقط با ارقام هم‌عرض.
+   کلاس amount-input برای «قهرمانِ» شیت ثبت تراکنش است و اینجا فرم را
+   نامتقارن و درشت می‌کرد. */
+.amount-input-sm {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.2px;
+}
+
+.trade-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px;
+    margin-top: 12px;
+}
+.view-switch {
+    display: flex; flex: none;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    overflow: hidden;
+}
+.view-switch-btn {
+    display: flex; align-items: center; justify-content: center;
+    width: 34px; height: 30px;
+    background: var(--surface);
+    border: none; color: var(--muted);
+}
+.view-switch-btn.active { background: var(--line-soft); color: var(--ink); }
+
+/* ---------- حالت فهرستی: هر معامله یک ردیف فشرده ----------
+   جزئیات با لمس ردیف باز می‌شود (کلاس expanded) — برای وقتی کالاها
+   زیاد شدند و کاربر فقط می‌خواهد فهرست را مرور کند. */
+#tradesWrap.view-list .trade-card { padding: 11px 14px; margin-bottom: 7px; cursor: pointer; }
+#tradesWrap.view-list .trade-card .trade-figures,
+#tradesWrap.view-list .trade-card .trade-sales,
+#tradesWrap.view-list .trade-card .trade-notes,
+#tradesWrap.view-list .trade-card .trade-remaining,
+#tradesWrap.view-list .trade-card .trade-actions { display: none; }
+#tradesWrap.view-list .trade-card .trade-meta { margin-top: 1px; }
+#tradesWrap.view-list .trade-card .list-profit {
+    display: inline-block;
+    font-size: 12.5px; font-weight: 700;
+    margin-inline-start: 8px;
+}
+#tradesWrap.view-list .trade-card.expanded { cursor: default; }
+#tradesWrap.view-list .trade-card.expanded .trade-figures,
+#tradesWrap.view-list .trade-card.expanded .trade-sales,
+#tradesWrap.view-list .trade-card.expanded .trade-notes,
+#tradesWrap.view-list .trade-card.expanded .trade-remaining,
+#tradesWrap.view-list .trade-card.expanded .trade-actions { display: flex; }
+#tradesWrap.view-list .trade-card.expanded .trade-notes,
+#tradesWrap.view-list .trade-card.expanded .trade-remaining { display: block; }
+#tradesWrap:not(.view-list) .trade-card .list-profit { display: none; }
+
+/* کارت پهن معاملات در شیت ابزارها — تمام‌عرض برای دسترسی سریع */
+.tool-card-wide {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 12px;
+    min-height: 0;
+    padding: 13px 15px;
+}
 
 .trade-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .trade-sum-item { text-align: center; }

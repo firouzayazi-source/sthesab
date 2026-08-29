@@ -74,6 +74,10 @@ try {
     ]);
 
     $pdo->commit();
+
+    // سهم سود این فروش به‌صورت تراکنش در حسابداری ثبت می‌شود
+    syncTradeProfitTransactions($userId, $tradeId);
+
     jsonResponse(['success' => true, 'message' => 'فروش ثبت شد.']);
 } catch (PDOException $e) {
     if ($pdo->inTransaction()) { $pdo->rollBack(); }

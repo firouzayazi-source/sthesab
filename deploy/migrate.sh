@@ -82,6 +82,7 @@ MIGRATIONS=(
     migration_p4.sql
     migration_password_reset.sql
     migration_trades.sql
+    migration_trades2.sql
 )
 
 # این دو عمداً اجرا نمی‌شوند: migration_repair.sql جایگزین کامل هر دو است.
@@ -180,6 +181,7 @@ declare -A SENTINEL=(
     [migration_p4.sql]="users.avatar"
     [migration_password_reset.sql]="password_resets"
     [migration_trades.sql]="trades"
+    [migration_trades2.sql]="trade_sales.profit_tx_id"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

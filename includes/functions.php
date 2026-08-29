@@ -1341,3 +1341,140 @@ function formatQty($qty): string
     $s = rtrim(rtrim(number_format((float)$qty, 3, '.', ''), '0'), '.');
     return toPersianDigits(str_replace('.', '٫', $s));
 }
+
+/**
+ * دسته‌بندی سیستمی سود/زیان معامله — اگر نبود ساخته می‌شود.
+ * دسته‌ها در این اپ سراسری‌اند، پس یک بار برای همه ساخته می‌شود.
+ */
+function tradeProfitCategoryId(PDO $pdo, string $type): ?int
+{
+    static $cache = [];
+    if (isset($cache[$type])) { return $cache[$type]; }
+
+    $name = $type === 'income' ? 'سود معاملات' : 'زیان معاملات';
+    try {
+        $st = $pdo->prepare('SELECT id FROM categories WHERE name = :n AND type = :t LIMIT 1');
+        $st->execute(['n' => $name, 't' => $type]);
+        $id = $st->fetchColumn();
+        if (!$id) {
+            $pdo->prepare('INSERT INTO categories (name, type, is_active) VALUES (:n, :t, 1)')
+                ->execute(['n' => $name, 't' => $type]);
+            $id = $pdo->lastInsertId();
+        }
+        return $cache[$type] = (int)$id;
+    } catch (PDOException $e) {
+        return $cache[$type] = null;
+    }
+}
+
+/**
+ * تراکنش‌های سودِ یک معامله را با فروش‌هایش هم‌گام می‌کند.
+ *
+ * چرا لازم است: بخش معامله جداست، ولی سود و زیانش باید در حسابداری
+ * دیده شود — در آخرین تراکنش‌ها و جمع روز/هفته/ماه. پس به ازای هر
+ * فروش، یک تراکنش برای «سهم سود همان فروش» ساخته می‌شود (نه کل مبلغ
+ * فروش، که پول است نه سود).
+ *
+ * دو نکته که اگر رعایت نشوند اعداد غلط می‌شوند:
+ * - تراکنش سود عمداً بدون حساب (wallet) است: جابه‌جایی پول را خودِ
+ *   فروش در walletBalances حساب می‌کند؛ اگر تراکنش سود هم به حساب
+ *   می‌خورد، سود دوبار جمع می‌شد.
+ * - این تابع «هم‌گام‌سازی» است نه «افزودن»: بعد از ویرایش خرید
+ *   (تغییر مبلغ/تعداد/هزینه‌ی جانبی) سودِ فروش‌های قبلی عوض می‌شود و
+ *   تراکنش‌هایشان باید بازنویسی شوند، نه اینکه ردیف تازه اضافه شود.
+ *
+ * سود صفر = بدون تراکنش. زیان = تراکنش هزینه (amount در دیتابیس
+ * بدون علامت است).
+ */
+function syncTradeProfitTransactions(int $userId, int $tradeId): void
+{
+    $pdo = Database::getConnection();
+    if (!tradesTablesExist($pdo)) { return; }
+
+    // ستون پیوند با migration_trades2 می‌آید؛ بدون آن کاری نمی‌کنیم
+    static $hasLink = null;
+    if ($hasLink === null) {
+        try {
+            $hasLink = (bool)$pdo->query(
+                "SELECT COUNT(*) FROM information_schema.columns
+                 WHERE table_schema = DATABASE() AND table_name = 'trade_sales'
+                   AND column_name = 'profit_tx_id'"
+            )->fetchColumn();
+        } catch (PDOException $e) { $hasLink = false; }
+    }
+    if (!$hasLink) { return; }
+
+    $st = $pdo->prepare('SELECT title, qty, buy_total, side_costs FROM trades WHERE id = :id AND user_id = :u');
+    $st->execute(['id' => $tradeId, 'u' => $userId]);
+    $trade = $st->fetch();
+    if (!$trade) { return; }
+
+    $qty = (float)$trade['qty'];
+    $unitCost = $qty > 0 ? ((int)$trade['buy_total'] + (int)$trade['side_costs']) / $qty : 0;
+
+    $sales = $pdo->prepare('SELECT id, qty, sale_total, sale_date, profit_tx_id FROM trade_sales WHERE trade_id = :t AND user_id = :u');
+    $sales->execute(['t' => $tradeId, 'u' => $userId]);
+
+    foreach ($sales->fetchAll() as $s) {
+        $profit = (int)round((int)$s['sale_total'] - $unitCost * (float)$s['qty']);
+        $txId   = $s['profit_tx_id'] ? (int)$s['profit_tx_id'] : null;
+
+        if ($profit === 0) {
+            if ($txId) {
+                $pdo->prepare('DELETE FROM transactions WHERE id = :id AND user_id = :u')
+                    ->execute(['id' => $txId, 'u' => $userId]);
+                $pdo->prepare('UPDATE trade_sales SET profit_tx_id = NULL WHERE id = :id')
+                    ->execute(['id' => $s['id']]);
+            }
+            continue;
+        }
+
+        $type   = $profit > 0 ? 'income' : 'expense';
+        $title  = ($profit > 0 ? 'سود معامله: ' : 'زیان معامله: ') . $trade['title'];
+        $catId  = tradeProfitCategoryId($pdo, $type);
+        $params = [
+            'c' => $catId, 't' => $type, 'a' => abs($profit),
+            'ti' => mb_substr($title, 0, 255), 'd' => $s['sale_date'], 'u' => $userId,
+        ];
+
+        if ($txId) {
+            $upd = $pdo->prepare(
+                'UPDATE transactions SET category_id = :c, type = :t, amount = :a,
+                        title = :ti, transaction_date = :d
+                 WHERE id = :id AND user_id = :u'
+            );
+            $upd->execute($params + ['id' => $txId]);
+            if ($upd->rowCount() > 0 || tradeProfitTxExists($pdo, $txId, $userId)) { continue; }
+            // تراکنش پیوندی دستی حذف شده — یکی تازه می‌سازیم
+        }
+
+        $pdo->prepare(
+            'INSERT INTO transactions (user_id, category_id, type, amount, title, note, transaction_date)
+             VALUES (:u, :c, :t, :a, :ti, "ثبت خودکار از بخش معاملات", :d)'
+        )->execute($params);
+        $pdo->prepare('UPDATE trade_sales SET profit_tx_id = :tx WHERE id = :id')
+            ->execute(['tx' => $pdo->lastInsertId(), 'id' => $s['id']]);
+    }
+}
+
+function tradeProfitTxExists(PDO $pdo, int $txId, int $userId): bool
+{
+    $st = $pdo->prepare('SELECT 1 FROM transactions WHERE id = :id AND user_id = :u');
+    $st->execute(['id' => $txId, 'u' => $userId]);
+    return (bool)$st->fetchColumn();
+}
+
+/** تراکنش‌های سودِ همه‌ی فروش‌های یک معامله را حذف می‌کند (پیش از حذف معامله). */
+function deleteTradeProfitTransactions(int $userId, int $tradeId): void
+{
+    $pdo = Database::getConnection();
+    try {
+        $pdo->prepare(
+            'DELETE tx FROM transactions tx
+             JOIN trade_sales s ON s.profit_tx_id = tx.id
+             WHERE s.trade_id = :t AND s.user_id = :u AND tx.user_id = :u2'
+        )->execute(['t' => $tradeId, 'u' => $userId, 'u2' => $userId]);
+    } catch (PDOException $e) {
+        // ستون پیوند هنوز نیست — چیزی برای حذف نیست
+    }
+}

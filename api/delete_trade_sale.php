@@ -15,6 +15,17 @@ $saleId = (int)postParam('sale_id');
 $pdo = Database::getConnection();
 
 try {
+    // اول تراکنش سودِ پیوندی، بعد خود فروش
+    try {
+        $link = $pdo->prepare('SELECT profit_tx_id FROM trade_sales WHERE id = :id AND user_id = :u');
+        $link->execute(['id' => $saleId, 'u' => $userId]);
+        $txId = $link->fetchColumn();
+        if ($txId) {
+            $pdo->prepare('DELETE FROM transactions WHERE id = :id AND user_id = :u')
+                ->execute(['id' => (int)$txId, 'u' => $userId]);
+        }
+    } catch (PDOException $e) { /* ستون پیوند هنوز نیست */ }
+
     $st = $pdo->prepare('DELETE FROM trade_sales WHERE id = :id AND user_id = :u');
     $st->execute(['id' => $saleId, 'u' => $userId]);
     if ($st->rowCount() === 0) { jsonResponse(['success' => false, 'message' => 'فروش یافت نشد.'], 404); }
