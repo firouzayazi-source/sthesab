@@ -67,7 +67,9 @@ if (!$check['ok']) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
     <title>تعیین رمز تازه | <?= h(APP_NAME) ?></title>
-    <link rel="stylesheet" href="<?= APP_BASE_PATH ?>/assets/serve.php?f=css/style.css&v=<?= @filemtime(__DIR__ . '/assets/css/style.css') ?: time() ?>">
+    <?php foreach (assetUrls(['css/style.css']) as $__u): ?>
+    <link rel="stylesheet" href="<?= h($__u) ?>">
+    <?php endforeach; ?>
     <link rel="apple-touch-icon" href="<?= APP_BASE_PATH ?>/assets/icons/icon-180.png">
     <link rel="icon" type="image/png" sizes="32x32" href="<?= APP_BASE_PATH ?>/assets/icons/icon-32.png">
     <meta name="theme-color" content="#0b0b0b">

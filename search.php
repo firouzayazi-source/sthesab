@@ -185,7 +185,7 @@ include __DIR__ . '/includes/header.php';
         <a href="wallets.php" class="event-row">
             <span class="event-body">
                 <span class="event-title"><?= h($w['name']) ?></span>
-                <span class="event-meta"><?= walletKindLabel($w['kind']) ?><?= !empty($w['bank_name']) ? ' · ' . h($w['bank_name']) : '' ?></span>
+                <span class="event-meta"><?= walletKindLabel($w['kind'], $w['kind_label'] ?? null) ?><?= !empty($w['bank_name']) ? ' · ' . h($w['bank_name']) : '' ?></span>
             </span>
         </a>
     <?php endforeach; ?>

@@ -215,48 +215,11 @@ function renderChequeCard(array $c, string $todayStr): void
 
 <?php endif; ?>
 
-<!-- مدیریت بانک‌ها -->
-<div class="card collapsible-card collapsed">
-    <div class="collapsible-header">
-        <h2 class="card-title" style="margin-bottom:0;">مدیریت بانک‌ها</h2>
-        <span class="collapse-chevron">▾</span>
-    </div>
-    <div class="collapsible-body">
-        <p style="font-size:12.5px; color:var(--color-gray-500); margin-bottom:14px;">
-            این دو لیست کاملاً از هم جدا هستند: «بانک‌های من» فقط برای چک‌هایی که خودم صادر می‌کنم، و «بانک‌های طرف مقابل» برای چک‌هایی که دریافت می‌کنم.
-        </p>
-
-        <div class="ref-manager">
-            <h3 class="ref-manager-title">بانک‌های من (دسته‌چک خودم)</h3>
-            <div class="ref-add-row">
-                <input type="text" id="newMyBank" placeholder="مثلاً: ملت" maxlength="100">
-                <button type="button" class="btn btn-secondary btn-sm js-ref-add" data-kind="bank_mine" data-input="newMyBank">افزودن</button>
-            </div>
-            <div class="ref-chip-list" id="myBankList">
-                <?php if (empty($myBanks)): ?>
-                    <span class="ref-empty">هنوز بانکی اضافه نکرده‌اید.</span>
-                <?php else: ?>
-                    <?php foreach ($myBanks as $b): ?>
-                        <span class="ref-chip"><?= h($b['name']) ?><button type="button" class="ref-chip-x js-ref-delete" data-kind="bank_mine" data-id="<?= (int)$b['id'] ?>">&times;</button></span>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <div class="ref-manager">
-            <h3 class="ref-manager-title">بانک‌های طرف مقابل (چک‌های دریافتی)</h3>
-            <div class="ref-add-row">
-                <input type="text" id="newExtBank" placeholder="مثلاً: سامان" maxlength="100">
-                <button type="button" class="btn btn-secondary btn-sm js-ref-add" data-kind="bank_external" data-input="newExtBank">افزودن</button>
-            </div>
-            <div class="ref-chip-list" id="extBankList">
-                <?php foreach ($externalBanks as $b): ?>
-                    <span class="ref-chip"><?= h($b['name']) ?><button type="button" class="ref-chip-x js-ref-delete" data-kind="bank_external" data-id="<?= (int)$b['id'] ?>">&times;</button></span>
-                <?php endforeach; ?>
-            </div>
-        </div>
-    </div>
-</div>
+<!-- مدیریت بانک‌ها به صفحه‌ی «فهرست‌های من» منتقل شد: قبلاً ته همین
+     صفحه قایم بود و کاربر پیدایش نمی‌کرد. -->
+<p class="ref-link-row">
+    <a href="<?= APP_BASE_PATH ?>/references.php" class="link-more">افزودن یا حذف بانک‌ها ←</a>
+</p>
 
 <!-- مودال افزودن چک -->
 <div class="modal-overlay" id="addChequeModal">

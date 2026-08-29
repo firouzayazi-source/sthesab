@@ -25,4 +25,17 @@ $manifest = [
     ],
 ];
 
-echo json_encode($manifest, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+$json = json_encode($manifest, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+// این فایل فقط وقتی عوض می‌شود که نام یا مسیر اپ عوض شود. بدون هدر کش،
+// مرورگر با هر بار باز کردن صفحه دوباره می‌گرفتش و یک پروسه‌ی PHP-FPM
+// می‌خورد — همان منبعی که pool این اپ کم دارد.
+$etag = '"' . md5($json) . '"';
+header('Cache-Control: public, max-age=86400');
+header('ETag: ' . $etag);
+if (trim($_SERVER['HTTP_IF_NONE_MATCH'] ?? '') === $etag) {
+    http_response_code(304);
+    exit;
+}
+
+echo $json;

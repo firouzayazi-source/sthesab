@@ -285,14 +285,45 @@ function chartDotStyle(string $tone, int $index): string
    کیف پول / حساب مالی
    ============================================================ */
 
-function walletKindLabel(string $kind): string
+/**
+ * برچسب نوع حساب.
+ *
+ * «سایر» به‌تنهایی چیزی نمی‌گوید، پس اگر کاربر برایش اسم گذاشته باشد
+ * (حساب ارزی، صندوق قرض‌الحسنه، …) همان اسم نشان داده می‌شود.
+ * 'card' دیگر در فهرست انتخاب نیست ولی حساب‌های قدیمی هنوز دارندش.
+ */
+function walletKindLabel(string $kind, ?string $label = null): string
 {
+    if ($kind === 'other' && $label !== null && trim($label) !== '') {
+        return trim($label);
+    }
+
     return [
         'cash'  => 'نقدی',
         'bank'  => 'حساب بانکی',
         'card'  => 'کارت بانکی',
         'other' => 'سایر',
     ][$kind] ?? 'سایر';
+}
+
+/** نوع‌های دلخواهی که کاربر تا حالا ساخته — برای فهرست انتخاب. */
+function walletKinds(int $userId): array
+{
+    static $cache = [];
+    if (isset($cache[$userId])) { return $cache[$userId]; }
+    if (!tableExists('wallet_kinds')) { return $cache[$userId] = []; }
+
+    try {
+        $st = Database::getConnection()->prepare(
+            'SELECT id, name FROM wallet_kinds WHERE user_id = :u ORDER BY name'
+        );
+        $st->execute(['u' => $userId]);
+        $cache[$userId] = $st->fetchAll();
+    } catch (PDOException $e) {
+        $cache[$userId] = [];
+    }
+
+    return $cache[$userId];
 }
 
 /**
@@ -449,6 +480,9 @@ function walletBalances(int $userId): array
     $cardCols = '';
     if (tableHasColumn('wallets', 'card_number')) {
         $cardCols = ' w.bank_code, w.card_number, w.account_number, w.iban,';
+    }
+    if (tableHasColumn('wallets', 'kind_label')) {
+        $cardCols .= ' w.kind_label,';
     }
 
     // چک پاس‌شده و پرداخت طلب/بدهی هم پول جابه‌جا می‌کنند. مثل معامله،
@@ -1097,6 +1131,41 @@ function cachedCategories(): array
     return $cats;
 }
 
+/**
+ * آدرس‌های یک دسته فایل ثابت (CSS یا JS).
+ *
+ * دو حالت دارد و پیش‌فرض «مستقیم» است:
+ *
+ *  direct — مرورگر خودِ فایل را می‌گیرد و وب‌سرور (nginx) gzip و کش
+ *           یک‌ساله را می‌دهد. **این حالت روی VPS واجب است**: هر فایلی
+ *           که از assets/serve.php بیاید یک پروسه‌ی PHP-FPM می‌گیرد، و
+ *           pool این اپ فقط چند پروسه دارد. یک بار بارگذاری صفحه با
+ *           CSS و JS و chart.js یعنی چهار پروسه‌ی هم‌زمان از همان چند
+ *           تا — و همین باعث می‌شد سایت وسط کار چند ثانیه قفل کند.
+ *
+ *  php    — همه از assets/serve.php می‌آیند (یک درخواست برای چند فایل،
+ *           به‌علاوه gzip و کش که خود PHP می‌دهد). فقط برای هاست
+ *           اشتراکی‌ای که mod_deflate و mod_expires ندارد.
+ *
+ * با ثابت ASSET_DELIVERY در config.php قابل تغییر است.
+ */
+function assetUrls(array $relativePaths): array
+{
+    $mode = defined('ASSET_DELIVERY') ? ASSET_DELIVERY : 'direct';
+    $ver  = assetVersion($relativePaths);
+
+    if ($mode === 'php') {
+        return [APP_BASE_PATH . '/assets/serve.php?f=' . implode(',', $relativePaths) . '&v=' . $ver];
+    }
+
+    $urls = [];
+    foreach ($relativePaths as $rel) {
+        $urls[] = APP_BASE_PATH . '/assets/' . $rel . '?v=' . $ver;
+    }
+
+    return $urls;
+}
+
 function assetVersion(array $relativePaths): string
 {
     static $cache = [];
@@ -1716,6 +1785,31 @@ function bankPreset(?string $code): ?array
     $all = bankPresets();
     if (!isset($all[$code])) { return null; }
     return ['name' => $all[$code][0], 'c1' => $all[$code][1], 'c2' => $all[$code][2]];
+}
+
+/**
+ * تیره کردن یک رنگ hex — برای ساختن پایه‌ی گرادیان کارت.
+ *
+ * کارت با دو رنگ ساخته می‌شود. رنگ اول همانی است که کاربر انتخاب کرده
+ * و رنگ دوم نسخه‌ی تیره‌ترش. پیش از این اگر بانک از فهرست انتخاب شده
+ * بود، رنگ‌های همان بانک بر انتخاب کاربر غلبه می‌کردند و کاربر رنگ
+ * عوض می‌کرد ولی هیچ اتفاقی نمی‌افتاد.
+ */
+function shadeColor(string $hex, float $factor = 0.62): string
+{
+    $hex = ltrim(trim($hex), '#');
+    if (strlen($hex) === 3) {
+        $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+    }
+    if (!preg_match('/^[0-9a-fA-F]{6}$/', $hex)) { return '#2f3b4a'; }
+
+    $out = '#';
+    foreach ([0, 2, 4] as $i) {
+        $v = (int)round(hexdec(substr($hex, $i, 2)) * $factor);
+        $out .= str_pad(dechex(max(0, min(255, $v))), 2, '0', STR_PAD_LEFT);
+    }
+
+    return $out;
 }
 
 /**

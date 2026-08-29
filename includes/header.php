@@ -27,12 +27,16 @@ if (!isset($pageTitle)) {
          تجزیه نکرده خبر ندارد لازمش دارد. با preload هر دو با هم دانلود
          می‌شوند و متن یک رفت‌وبرگشت زودتر با فونت درست می‌نشیند. -->
     <link rel="preload" href="<?= APP_BASE_PATH ?>/assets/fonts/Vazirmatn.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="<?= APP_BASE_PATH ?>/assets/serve.php?f=css/style.css&v=<?= assetVersion(['css/style.css']) ?>">
+    <?php foreach (assetUrls(['css/style.css']) as $__u): ?>
+    <link rel="stylesheet" href="<?= h($__u) ?>">
+    <?php endforeach; ?>
     <!-- اسکریپت با defer در head می‌آید نه ته صفحه: این‌طور مرورگر همان
          اول شروع به گرفتنش می‌کند و موازی با خواندن HTML دانلود می‌شود،
          ولی اجرایش مثل قبل بعد از ساخته‌شدن کل صفحه است. -->
     <script>window.APP_BASE = '<?= APP_BASE_PATH ?>';</script>
-    <script defer src="<?= APP_BASE_PATH ?>/assets/serve.php?f=js/jalali-datepicker.js,js/app.js&v=<?= assetVersion(['js/jalali-datepicker.js', 'js/app.js']) ?>"></script>
+    <?php foreach (assetUrls(['js/jalali-datepicker.js', 'js/app.js']) as $__u): ?>
+    <script defer src="<?= h($__u) ?>"></script>
+    <?php endforeach; ?>
     <link rel="apple-touch-icon" href="<?= APP_BASE_PATH ?>/assets/icons/icon-180.png">
     <link rel="icon" type="image/png" sizes="32x32" href="<?= APP_BASE_PATH ?>/assets/icons/icon-32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="<?= APP_BASE_PATH ?>/assets/icons/icon-16.png">

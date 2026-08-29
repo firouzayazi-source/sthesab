@@ -227,11 +227,21 @@ listen.owner = www-data
 listen.group = www-data
 listen.mode  = 0660
 
-; سرور ۳.۸ گیگ RAM دارد و postgres، docker و uvicorn هم رویش هستند.
-; ondemand یعنی تا وقتی کسی سایت را باز نکند، هیچ پروسه‌ای زنده نیست.
-pm = ondemand
-pm.max_children = 5
-pm.process_idle_timeout = 30s
+; چرا dynamic و نه ondemand:
+;
+; با ondemand و max_children=5، پروسه‌ها بعد از ۳۰ ثانیه بی‌کاری کشته
+; می‌شدند و درخواست بعدی باید منتظر ساخته‌شدن پروسه می‌ماند. بدتر از آن،
+; یک بارگذاری صفحه چند درخواست PHP هم‌زمان داشت و ۵ تا زود پر می‌شد —
+; بقیه در صف می‌ماندند و کاربر می‌دید سایت چند ثانیه قفل کرد.
+;
+; حالا دو پروسه همیشه گرم می‌مانند (حافظه‌ی ناچیز) و سقف بالاتر است.
+; ضمناً CSS/JS دیگر از PHP نمی‌گذرند (ASSET_DELIVERY=direct) پس هر
+; بارگذاری صفحه فقط یک پروسه می‌خواهد نه چهار تا.
+pm = dynamic
+pm.max_children = 12
+pm.start_servers = 2
+pm.min_spare_servers = 1
+pm.max_spare_servers = 3
 pm.max_requests = 500
 
 ; حصار امنیتی: PHP این اپ فقط همین مسیرها را می‌بیند.

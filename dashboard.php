@@ -176,22 +176,8 @@ try {
     $chequeReminders = [];
 }
 
-// موجودی حساب‌ها (اگر بخش حساب‌ها هنوز راه‌اندازی نشده، خالی می‌ماند).
-// یک بار خوانده می‌شود و هم برای جمع کل و هم برای تفکیک به کار می‌رود —
-// totalBalance() خودش دوباره همین کوئری را می‌زد.
-$walletRows  = [];
-$walletTotal = null;
-try {
-    $walletRows = walletBalances($userId);
-    $walletTotal = 0;
-    foreach ($walletRows as $w) {
-        if ((int)$w['is_active'] === 1) { $walletTotal += (int)$w['balance']; }
-    }
-} catch (PDOException $e) {
-    $walletRows = [];
-    $walletTotal = null;
-}
-$activeWalletRows = array_values(array_filter($walletRows, fn($w) => (int)$w['is_active'] === 1));
+// موجودی حساب‌ها عمداً اینجا نیست: جایش صفحه‌ی «حساب‌ها و انتقال» است.
+// در گزارش دو بار یک عدد نشان دادن، فقط شلوغی بود.
 
 // گزارش مقایسه‌ای و بینش هزینه
 $comparison = null;
@@ -250,53 +236,7 @@ include __DIR__ . '/includes/header.php';
 </div>
 <?php endif; ?>
 
-<?php if ($walletTotal !== null): ?>
-<div class="balance-ribbon">
-    <div class="balance-label">موجودی کل حساب‌ها</div>
-    <div class="balance-value">
-        <span class="bv-num"><?= $walletTotal < 0 ? '−' : '' ?><?= formatMoney(abs($walletTotal)) ?></span>
-        <span class="bv-unit">تومان</span>
-    </div>
-    <div class="balance-split">
-        <div>
-            <div class="bs-label">دریافتی این ماه</div>
-            <div class="bs-value bs-in"><?= formatMoney($monthStats['income']) ?></div>
-        </div>
-        <div>
-            <div class="bs-label">پرداختی این ماه</div>
-            <div class="bs-value bs-out"><?= formatMoney($monthStats['expense']) ?></div>
-        </div>
-    </div>
-    <a href="wallets.php" class="ribbon-link">مدیریت حساب‌ها ←</a>
-</div>
-<?php endif; ?>
 
-<?php if (!empty($activeWalletRows)): ?>
-<!-- تفکیک موجودی هر حساب. جمع همین ستون دقیقاً همان «موجودی کل» بالاست؛
-     بدون این تفکیک معلوم نبود آن عدد از کجا آمده و کدام حساب منفی است. -->
-<div class="card">
-    <div class="card-header-row">
-        <h2 class="card-title">مجموع حساب‌ها</h2>
-        <a href="wallets.php" class="link-more">مدیریت ←</a>
-    </div>
-    <?php foreach ($activeWalletRows as $w): ?>
-        <?php $bal = (int)$w['balance']; ?>
-        <a class="wallet-line" href="transactions.php?wallet=<?= (int)$w['id'] ?>">
-            <span class="wallet-line-dot" style="background: <?= h($w['color']) ?>;"></span>
-            <span class="wallet-line-name"><?= h($w['name']) ?></span>
-            <span class="wallet-line-bal <?= $bal < 0 ? 'stats-expense' : '' ?>">
-                <?= $bal < 0 ? '−' : '' ?><?= formatMoney(abs($bal)) ?>
-            </span>
-        </a>
-    <?php endforeach; ?>
-    <div class="wallet-line wallet-line-total">
-        <span class="wallet-line-name">جمع کل</span>
-        <span class="wallet-line-bal <?= $walletTotal < 0 ? 'stats-expense' : '' ?>">
-            <?= $walletTotal < 0 ? '−' : '' ?><?= formatMoney(abs((int)$walletTotal)) ?> <small>تومان</small>
-        </span>
-    </div>
-</div>
-<?php endif; ?>
 
 <div class="stats-grid">
     <div class="stats-card">
@@ -455,7 +395,9 @@ include __DIR__ . '/includes/header.php';
 </div>
 
 <?php if ($hasAnyData): ?>
-<script defer src="<?= APP_BASE_PATH ?>/assets/serve.php?f=js/chart.umd.js&v=<?= assetVersion(['js/chart.umd.js']) ?>"></script>
+<?php foreach (assetUrls(['js/chart.umd.js']) as $__u): ?>
+<script defer src="<?= h($__u) ?>"></script>
+<?php endforeach; ?>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     var trendDatasets = {

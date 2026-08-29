@@ -714,24 +714,56 @@ document.addEventListener('DOMContentLoaded', function () {
         var box  = document.getElementById('walletBankFields');
         if (!kind || !box) return;
         box.hidden = (kind.value === 'cash');
+
+        // «سایر» باید اسم داشته باشد، وگرنه بعداً معلوم نیست چه حسابی بوده
+        var labelWrap = document.getElementById('walletKindLabelWrap');
+        if (labelWrap) {
+            labelWrap.hidden = (kind.value !== 'other');
+            if (kind.value === 'other') { walletKindLabelField(); }
+        }
     }
+
+    // انتخاب «+ نوع تازه…» جعبه‌ی متن را باز می‌کند
+    function walletKindLabelField() {
+        var sel = document.getElementById('wallet_kind_label');
+        var txt = document.getElementById('wallet_kind_new');
+        if (!sel || !txt) return;
+        var isNew = (sel.value === '__new__' || sel.options.length === 1);
+        txt.hidden = !isNew;
+        if (!isNew) { txt.value = ''; }
+    }
+    var kindLabelSel = document.getElementById('wallet_kind_label');
+    if (kindLabelSel) kindLabelSel.addEventListener('change', walletKindLabelField);
     var kindSel = document.getElementById('wallet_kind');
     if (kindSel) kindSel.addEventListener('change', walletKindFields);
+
+    // فرم «حساب جدید» باید کاملاً خام باز شود. نسخه‌ی قبلی فقط چند فیلد
+    // را پاک می‌کرد و شماره‌ی کارت و حساب و شبای حسابِ قبلی سر جایشان
+    // می‌ماندند — کاربر حساب تازه می‌ساخت و اطلاعات حساب دیگری تویش بود.
+    function resetWalletForm() {
+        ['wallet_id', 'wallet_name', 'wallet_bank', 'wallet_last4', 'wallet_init',
+         'wallet_card_number', 'wallet_account_number', 'wallet_iban',
+         'wallet_kind_new'].forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.value = '';
+        });
+        var kind = document.getElementById('wallet_kind');
+        if (kind) kind.value = 'cash';
+        var bcode = document.getElementById('wallet_bank_code');
+        if (bcode) bcode.value = '';
+        var kl = document.getElementById('wallet_kind_label');
+        if (kl) resetSelect(kl);
+        var color = document.getElementById('wallet_color');
+        if (color) color.value = '#16794f';
+        var m = document.getElementById('walletMessage');
+        if (m) { m.hidden = true; m.classList.remove('show', 'success', 'error'); }
+    }
 
     document.querySelectorAll('.js-add-wallet').forEach(function (btn) {
         btn.addEventListener('click', function () {
             document.getElementById('walletModalTitle').textContent = 'حساب جدید';
-            document.getElementById('wallet_id').value = '';
-            document.getElementById('wallet_name').value = '';
-            document.getElementById('wallet_kind').value = 'cash';
-            document.getElementById('wallet_bank').value = '';
-            document.getElementById('wallet_last4').value = '';
-            document.getElementById('wallet_init').value = '';
-            document.getElementById('wallet_color').value = '#16794f';
-            document.getElementById('wallet_init_neg').checked = false;
+            resetWalletForm();
             document.getElementById('walletExtraActions').hidden = true;
-            var m = document.getElementById('walletMessage');
-            if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
             walletKindFields();
             openModal('walletModal');
         });
@@ -846,6 +878,18 @@ document.addEventListener('DOMContentLoaded', function () {
                     txLink.href = (window.APP_BASE || '') + '/transactions.php?wallet=' + encodeURIComponent(wid);
                 }
 
+                // ویرایش کامل همین حساب — رنگ، شماره کارت، شبا و بقیه.
+                // دکمه‌ی ⋮ روی ردیف همین کار را می‌کند ولی پیدا کردنش
+                // آسان نبود؛ اینجا کنار خود کارت است.
+                var editBtn = document.getElementById('bcEditBtn');
+                var rowEdit = this.querySelector('.js-edit-wallet');
+                if (editBtn) {
+                    editBtn.onclick = function () {
+                        closeModal('bankCardModal');
+                        if (rowEdit) { rowEdit.click(); }
+                    };
+                }
+
                 openModal('bankCardModal');
             });
         });
@@ -905,6 +949,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.querySelectorAll('.js-edit-wallet').forEach(function (btn) {
         btn.addEventListener('click', function () {
+            resetWalletForm();
             document.getElementById('walletModalTitle').textContent = 'ویرایش حساب';
             document.getElementById('wallet_id').value = this.getAttribute('data-id');
             document.getElementById('wallet_name').value = this.getAttribute('data-name');
@@ -923,7 +968,21 @@ document.addEventListener('DOMContentLoaded', function () {
 
             var init = parseInt(this.getAttribute('data-init') || '0', 10);
             document.getElementById('wallet_init').value = init ? toPersianDigitsJs(Math.abs(init).toLocaleString('en-US').replace(/,/g,'\u066C')) : '';
-            document.getElementById('wallet_init_neg').checked = init < 0;
+
+            // نوع دلخواه: اگر در فهرست بود انتخابش کن، وگرنه به‌عنوان
+            // نوع تازه در جعبه‌ی متن بنشیند تا از دست نرود
+            var kl = this.getAttribute('data-kind-label') || '';
+            var klSel = document.getElementById('wallet_kind_label');
+            var klNew = document.getElementById('wallet_kind_new');
+            if (klSel && klNew) {
+                var found = false;
+                for (var i = 0; i < klSel.options.length; i++) {
+                    if (klSel.options[i].value === kl) { klSel.selectedIndex = i; found = true; break; }
+                }
+                if (!found) { klSel.value = '__new__'; klNew.value = kl; }
+                else { klNew.value = ''; }
+                walletKindLabelField();
+            }
 
             var extra = document.getElementById('walletExtraActions');
             extra.hidden = false;

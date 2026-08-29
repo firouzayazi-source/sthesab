@@ -77,6 +77,15 @@ foreach ($paths as $p) {
     $body .= file_get_contents($p) . "\n";
 }
 
+// مسیرهای نسبی داخل CSS نسبت به آدرسِ خودِ CSS حساب می‌شوند. فایل واقعی
+// در assets/css/ است و فونت در assets/fonts/، پس در فایل نوشته‌ایم
+// `../fonts/…`. ولی وقتی همین CSS از assets/serve.php تحویل داده شود،
+// آدرس پایه یک پله بالاتر است و `../fonts/` بیرون از پوشه‌ی assets
+// می‌افتد. اینجا به شکل درستِ همین حالت برمی‌گردد.
+if (strpos($contentType, 'text/css') === 0) {
+    $body = str_replace('../fonts/', 'fonts/', $body);
+}
+
 // فشرده‌سازی اگر مرورگر پشتیبانی کند
 $acceptEncoding = $_SERVER['HTTP_ACCEPT_ENCODING'] ?? '';
 if (function_exists('gzencode') && stripos($acceptEncoding, 'gzip') !== false) {

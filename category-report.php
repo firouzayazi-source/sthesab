@@ -190,7 +190,9 @@ include __DIR__ . '/includes/header.php';
 <input type="hidden" id="reportType" value="<?= h($type) ?>">
 
 <?php if (!empty($categoryBreakdown)): ?>
-<script defer src="<?= APP_BASE_PATH ?>/assets/serve.php?f=js/chart.umd.js&v=<?= assetVersion(['js/chart.umd.js']) ?>"></script>
+<?php foreach (assetUrls(['js/chart.umd.js']) as $__u): ?>
+<script defer src="<?= h($__u) ?>"></script>
+<?php endforeach; ?>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     if (!window.Chart) { return; }

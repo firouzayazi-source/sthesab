@@ -22,7 +22,14 @@ $bankName = postParam('bank_name');
 $last4    = toLatinDigits(postParam('card_last4'));
 $color    = postParam('color', '#64748b');
 $rawInit  = postParam('initial_balance');
-$initNeg  = postParam('initial_negative') === '1';
+
+// نوع دلخواه — فقط وقتی kind = 'other' است معنا دارد. اگر کاربر نوع
+// تازه‌ای نوشته باشد، برای دفعات بعد در فهرست خودش ذخیره می‌شود؛ همان
+// رفتاری که برای نام بانک‌ها هست.
+$kindLabel = trim(postParam('kind_label'));
+$kindNew   = trim(postParam('kind_label_new'));
+if ($kindLabel === '__new__' || $kindNew !== '') { $kindLabel = $kindNew; }
+if (mb_strlen($kindLabel) > 60) { $kindLabel = mb_substr($kindLabel, 0, 60); }
 
 // اطلاعات کارت — با migration_wallet_cards آمده‌اند. روی نصبی که هنوز
 // اجرا نشده، بقیه‌ی فرم باید مثل قبل کار کند، پس شرطی نوشته شده‌اند.
@@ -51,6 +58,7 @@ if ($name === '' || mb_strlen($name) > 100) {
 if (!in_array($kind, ['cash', 'bank', 'card', 'other'], true)) {
     $kind = 'cash';
 }
+if ($kind !== 'other') { $kindLabel = ''; }
 if ($last4 !== '' && !preg_match('/^[0-9]{4}$/', $last4)) {
     $errors[] = 'چهار رقم آخر کارت باید دقیقاً ۴ رقم باشد.';
 }
@@ -78,12 +86,31 @@ $initial = sanitizeAmount($rawInit);
 if ($initial > 999999999999) {
     $errors[] = 'موجودی اولیه بیش از حد بزرگ است.';
 }
-if ($initNeg) {
-    $initial = -$initial;
-}
 
 if (!empty($errors)) {
     jsonResponse(['success' => false, 'message' => implode(' ', $errors)], 422);
+}
+
+/**
+ * ثبت نوع دلخواه روی حساب، و افزودنش به فهرست کاربر برای دفعات بعد.
+ *
+ * جدا از کوئری اصلی نوشته شده تا آن SQL شاخه‌شاخه نشود؛ ستون و جدولش
+ * با migration_wallet_kinds می‌آیند و روی نصبی که هنوز اجرا نشده، این
+ * تابع بی‌سروصدا کاری نمی‌کند.
+ */
+function saveWalletKind(PDO $pdo, int $userId, int $walletId, string $kind, string $label): void
+{
+    if ($walletId <= 0 || !tableHasColumn('wallets', 'kind_label')) { return; }
+
+    $label = $kind === 'other' ? trim($label) : '';
+
+    $pdo->prepare('UPDATE wallets SET kind_label = :l WHERE id = :id AND user_id = :u')
+        ->execute(['l' => $label !== '' ? $label : null, 'id' => $walletId, 'u' => $userId]);
+
+    if ($label !== '' && tableExists('wallet_kinds')) {
+        $pdo->prepare('INSERT IGNORE INTO wallet_kinds (user_id, name) VALUES (:u, :n)')
+            ->execute(['u' => $userId, 'n' => $label]);
+    }
 }
 
 $pdo = Database::getConnection();
@@ -124,6 +151,7 @@ try {
             ];
         }
         $stmt->execute($params);
+        saveWalletKind($pdo, $userId, $walletId, $kind, $kindLabel);
 
         jsonResponse(['success' => true, 'message' => 'حساب بروزرسانی شد.']);
     }
@@ -153,6 +181,7 @@ try {
         ];
     }
     $stmt->execute($params);
+    saveWalletKind($pdo, $userId, (int)$pdo->lastInsertId(), $kind, $kindLabel);
 
     jsonResponse(['success' => true, 'message' => 'حساب ساخته شد.']);
 } catch (PDOException $e) {

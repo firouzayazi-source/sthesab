@@ -11,9 +11,36 @@ $userId = Auth::userId();
 $todayStr = today();
 
 $wallets = walletBalances($userId);
-$total   = totalBalance($userId);
+$total   = 0;
+foreach ($wallets as $__w) {
+    if ((int)$__w['is_active'] === 1) { $total += (int)$__w['balance']; }
+}
+
+// دریافتی و پرداختی این ماه — همان چیزی که تا حالا بالای صفحه‌ی گزارش
+// بود. جایش اینجاست: کنار خودِ حساب‌ها معنا دارد، نه در گزارش که یک بار
+// دیگر همین عدد را نشان می‌داد.
+$monthStats = ['income' => 0, 'expense' => 0];
+$msStmt = $pdo->prepare('
+    SELECT
+        COALESCE(SUM(CASE WHEN type = "income"  THEN amount ELSE 0 END), 0) AS income,
+        COALESCE(SUM(CASE WHEN type = "expense" THEN amount ELSE 0 END), 0) AS expense
+    FROM transactions
+    WHERE user_id = :u AND transaction_date BETWEEN :f AND :t
+');
+$msStmt->execute(['u' => $userId, 'f' => startOfJalaliMonth(), 't' => $todayStr]);
+if ($row = $msStmt->fetch()) {
+    $monthStats = ['income' => (int)$row['income'], 'expense' => (int)$row['expense']];
+}
 
 $activeWallets = array_values(array_filter($wallets, fn($w) => (int)$w['is_active'] === 1));
+
+// «کارت بانکی» از فهرست انتخاب برداشته شد (عملاً همان حساب بانکی بود).
+// ولی اگر کاربر از قبل حسابی با این نوع دارد، گزینه‌اش باید در فرم بماند
+// وگرنه ویرایشِ ساده‌ی همان حساب نوعش را بی‌سروصدا عوض می‌کرد.
+$legacyKind = '';
+foreach ($wallets as $__w) {
+    if ($__w['kind'] === 'card') { $legacyKind = 'card'; break; }
+}
 
 $transferStmt = $pdo->prepare('
     SELECT tr.*, wf.name AS from_name, wt.name AS to_name
@@ -32,10 +59,20 @@ include __DIR__ . '/includes/header.php';
 ?>
 
 <div class="balance-ribbon">
-    <div class="balance-label">موجودی کل</div>
+    <div class="balance-label">موجودی کل حساب‌ها</div>
     <div class="balance-value">
         <span class="bv-num"><?= $total < 0 ? '−' : '' ?><?= formatMoney(abs($total)) ?></span>
-        <span class="bv-unit">تومان</span>
+        <span class="bv-unit"><?= h(APP_CURRENCY) ?></span>
+    </div>
+    <div class="balance-split">
+        <div>
+            <div class="bs-label">دریافتی این ماه</div>
+            <div class="bs-value bs-in"><?= formatMoney($monthStats['income']) ?></div>
+        </div>
+        <div>
+            <div class="bs-label">پرداختی این ماه</div>
+            <div class="bs-value bs-out"><?= formatMoney($monthStats['expense']) ?></div>
+        </div>
     </div>
 </div>
 
@@ -57,10 +94,10 @@ include __DIR__ . '/includes/header.php';
                 data-card="<?= h(formatCardNumber($w['card_number'] ?? '')) ?>"
                 data-account="<?= h(toPersianDigits($w['account_number'] ?? '')) ?>"
                 data-iban="<?= h(formatIban($w['iban'] ?? '')) ?>"
-                data-kind="<?= h(walletKindLabel($w['kind'])) ?>"
+                data-kind="<?= h(walletKindLabel($w['kind'], $w['kind_label'] ?? null)) ?>"
                 data-balance="<?= ((int)$w['balance'] < 0 ? '−' : '') . formatMoney(abs((int)$w['balance'])) ?>"
-                data-c1="<?= h($__bp['c1'] ?? $w['color']) ?>"
-                data-c2="<?= h($__bp['c2'] ?? $w['color']) ?>">
+                data-c1="<?= h($w['color']) ?>"
+                data-c2="<?= h(shadeColor($w['color'])) ?>">
                 <span class="wallet-chip" style="background: <?= h($w['color']) ?>1f; color: <?= h($w['color']) ?>;">
                     <?php if ($w['kind'] === 'card'): ?>
                         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/></svg>
@@ -76,7 +113,7 @@ include __DIR__ . '/includes/header.php';
                 <div class="wallet-meta">
                     <div class="wallet-name"><?= h($w['name']) ?></div>
                     <div class="wallet-sub">
-                        <?= walletKindLabel($w['kind']) ?>
+                        <?= h(walletKindLabel($w['kind'], $w['kind_label'] ?? null)) ?>
                         <?php if (!empty($w['bank_name'])): ?> · <?= h($w['bank_name']) ?><?php endif; ?>
                         <?php if (!empty($w['card_last4'])): ?> · <?= toPersianDigits($w['card_last4']) ?><?php endif; ?>
                         <?php if (!(int)$w['is_active']): ?> · غیرفعال<?php endif; ?>
@@ -91,6 +128,7 @@ include __DIR__ . '/includes/header.php';
                     data-id="<?= (int)$w['id'] ?>"
                     data-name="<?= h($w['name']) ?>"
                     data-kind="<?= h($w['kind']) ?>"
+                    data-kind-label="<?= h($w['kind_label'] ?? '') ?>"
                     data-bank="<?= h($w['bank_name'] ?? '') ?>"
                     data-last4="<?= h($w['card_last4'] ?? '') ?>"
                     data-bank-code="<?= h($w['bank_code'] ?? '') ?>"
@@ -167,9 +205,26 @@ include __DIR__ . '/includes/header.php';
                 <select id="wallet_kind" name="kind">
                     <option value="cash">نقدی</option>
                     <option value="bank">حساب بانکی</option>
-                    <option value="card">کارت بانکی</option>
                     <option value="other">سایر</option>
+                    <?php if (in_array($legacyKind, ['card'], true)): ?>
+                        <option value="card">کارت بانکی (قدیمی)</option>
+                    <?php endif; ?>
                 </select>
+            </div>
+
+            <!-- «سایر» به‌تنهایی چیزی نمی‌گوید. اسمی که اینجا بنویسید
+                 برای دفعه‌ی بعد می‌ماند — مثل نام بانک‌ها. -->
+            <div class="form-group" id="walletKindLabelWrap" hidden>
+                <label for="wallet_kind_label">این حساب چه نوعی است؟</label>
+                <select id="wallet_kind_label" name="kind_label">
+                    <?php foreach (walletKinds($userId) as $k): ?>
+                        <option value="<?= h($k['name']) ?>"><?= h($k['name']) ?></option>
+                    <?php endforeach; ?>
+                    <option value="__new__">+ نوع تازه…</option>
+                </select>
+                <input type="text" id="wallet_kind_new" name="kind_label_new" maxlength="60"
+                       placeholder="مثلاً: حساب ارزی" hidden style="margin-top:8px;">
+                <p class="hint">هر نوعی که بسازید در فهرست می‌ماند و دفعه‌ی بعد فقط انتخابش می‌کنید.</p>
             </div>
 
             <div id="walletBankFields">
@@ -223,18 +278,13 @@ include __DIR__ . '/includes/header.php';
                 <div class="form-group">
                     <label for="wallet_init">موجودی اولیه</label>
                     <input type="text" inputmode="numeric" id="wallet_init" name="initial_balance" placeholder="۰">
+                    <p class="hint">اگر بعداً با پول واقعی نخواند، از «تعدیل موجودی» درستش کنید.</p>
                 </div>
                 <div class="form-group">
                     <label for="wallet_color">رنگ</label>
                     <input type="color" id="wallet_color" name="color" value="#16794f">
                 </div>
             </div>
-
-            <label class="switch" style="margin:2px 0 4px;">
-                <input type="checkbox" name="initial_negative" value="1" id="wallet_init_neg">
-                <span class="switch-track"><span class="switch-knob"></span></span>
-                <span class="switch-text">موجودی اولیه منفی است (بدهکار)</span>
-            </label>
 
             <div id="walletMessage" class="form-message" hidden></div>
 
@@ -349,8 +399,9 @@ include __DIR__ . '/includes/header.php';
         <div class="bank-card-rows" id="bcRows"></div>
 
         <div class="bank-card-actions">
+            <button type="button" class="btn btn-primary btn-sm" id="bcEditBtn">ویرایش حساب</button>
             <button type="button" class="btn btn-secondary btn-sm" id="bcAdjustBtn">تعدیل موجودی</button>
-            <a href="<?= APP_BASE_PATH ?>/transactions.php" class="btn btn-secondary btn-sm" id="bcTxLink">تراکنش‌های این حساب</a>
+            <a href="<?= APP_BASE_PATH ?>/transactions.php" class="btn btn-secondary btn-sm bank-card-actions-wide" id="bcTxLink">تراکنش‌های این حساب</a>
         </div>
     </div>
 </div>

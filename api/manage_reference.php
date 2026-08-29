@@ -18,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 Csrf::verifyOrFail(postParam('csrf_token'));
 
 $userId = Auth::userId();
-$kind   = postParam('kind');   // bank_mine | bank_external | asset_type
+$kind   = postParam('kind');   // bank_mine | bank_external | asset_type | wallet_kind
 $action = postParam('action'); // add | delete
 
 $pdo = Database::getConnection();
@@ -62,6 +62,26 @@ if ($action === 'add') {
             $ins->execute(['user_id' => $userId, 'name' => $name, 'unit' => $unit]);
 
             jsonResponse(['success' => true, 'id' => (int)$pdo->lastInsertId(), 'name' => $name, 'message' => 'نوع دارایی اضافه شد.']);
+        }
+
+        if ($kind === 'wallet_kind') {
+            if (!tableExists('wallet_kinds')) {
+                jsonResponse(['success' => false, 'message' => 'جدول انواع حساب هنوز ساخته نشده. روی سرور:  bash deploy/migrate.sh --apply'], 500);
+            }
+            if (mb_strlen($name) > 60) {
+                jsonResponse(['success' => false, 'message' => 'نام نوع حساب باید کوتاه‌تر از ۶۰ کاراکتر باشد.'], 422);
+            }
+
+            $stmt = $pdo->prepare('SELECT id FROM wallet_kinds WHERE user_id = :user_id AND name = :name');
+            $stmt->execute(['user_id' => $userId, 'name' => $name]);
+            if ($stmt->fetch()) {
+                jsonResponse(['success' => false, 'message' => 'این نوع حساب قبلاً ثبت شده است.'], 422);
+            }
+
+            $ins = $pdo->prepare('INSERT INTO wallet_kinds (user_id, name) VALUES (:user_id, :name)');
+            $ins->execute(['user_id' => $userId, 'name' => $name]);
+
+            jsonResponse(['success' => true, 'id' => (int)$pdo->lastInsertId(), 'name' => $name, 'message' => 'نوع حساب اضافه شد.']);
         }
 
         jsonResponse(['success' => false, 'message' => 'نوع نامعتبر است.'], 422);
@@ -121,6 +141,37 @@ if ($action === 'delete') {
             $del->execute(['id' => $id, 'user_id' => $userId]);
 
             jsonResponse(['success' => true, 'message' => 'نوع دارایی حذف شد.']);
+        }
+
+        if ($kind === 'wallet_kind') {
+            if (!tableExists('wallet_kinds')) {
+                jsonResponse(['success' => false, 'message' => 'مورد یافت نشد.'], 404);
+            }
+
+            $own = $pdo->prepare('SELECT name FROM wallet_kinds WHERE id = :id AND user_id = :user_id');
+            $own->execute(['id' => $id, 'user_id' => $userId]);
+            $kindName = $own->fetchColumn();
+            if ($kindName === false) {
+                jsonResponse(['success' => false, 'message' => 'مورد یافت نشد.'], 404);
+            }
+
+            // اگر حسابی همین نوع را دارد، حذفش اسم آن حساب را بی‌معنا می‌کند
+            if (tableHasColumn('wallets', 'kind_label')) {
+                $cnt = $pdo->prepare('SELECT COUNT(*) FROM wallets WHERE user_id = :u AND kind_label = :n');
+                $cnt->execute(['u' => $userId, 'n' => $kindName]);
+                $inUse = (int)$cnt->fetchColumn();
+                if ($inUse > 0) {
+                    jsonResponse([
+                        'success' => false,
+                        'message' => 'این نوع روی ' . toPersianDigits($inUse) . ' حساب ثبت شده و قابل حذف نیست.',
+                    ], 409);
+                }
+            }
+
+            $del = $pdo->prepare('DELETE FROM wallet_kinds WHERE id = :id AND user_id = :user_id');
+            $del->execute(['id' => $id, 'user_id' => $userId]);
+
+            jsonResponse(['success' => true, 'message' => 'نوع حساب حذف شد.']);
         }
 
         jsonResponse(['success' => false, 'message' => 'نوع نامعتبر است.'], 422);

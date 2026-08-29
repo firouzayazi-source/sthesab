@@ -207,7 +207,7 @@ include __DIR__ . '/includes/header.php';
     </div>
 
     <?php if (empty($assetTypes)): ?>
-        <p class="empty-row">ابتدا از بخش «مدیریت انواع دارایی» پایین صفحه، یک نوع دارایی اضافه کنید.</p>
+        <p class="empty-row">ابتدا از صفحه‌ی «فهرست‌های من» یک نوع دارایی اضافه کنید.<br><a href="<?= APP_BASE_PATH ?>/references.php" class="link-more">رفتن به فهرست‌های من ←</a></p>
     <?php elseif (empty($assetRecords)): ?>
         <p class="empty-row">هنوز دارایی‌ای ثبت نشده است.</p>
     <?php else: ?>
@@ -242,34 +242,10 @@ include __DIR__ . '/includes/header.php';
     <?php endif; ?>
 </div>
 
-<!-- مدیریت انواع دارایی -->
-<div class="card collapsible-card collapsed">
-    <div class="collapsible-header">
-        <h2 class="card-title" style="margin-bottom:0;">مدیریت انواع دارایی</h2>
-        <span class="collapse-chevron">▾</span>
-    </div>
-    <div class="collapsible-body">
-        <div class="ref-manager">
-            <div class="ref-add-row">
-                <input type="text" id="newAssetType" placeholder="نام (مثلاً: سکه نیم)" maxlength="100">
-                <input type="text" id="newAssetUnit" placeholder="واحد (عدد/گرم)" maxlength="30" style="max-width:120px;">
-                <button type="button" class="btn btn-secondary btn-sm js-ref-add" data-kind="asset_type" data-input="newAssetType" data-unit-input="newAssetUnit">افزودن</button>
-            </div>
-            <div class="ref-chip-list" id="assetTypeList">
-                <?php if (empty($assetTypes)): ?>
-                    <span class="ref-empty">هنوز نوعی اضافه نکرده‌اید.</span>
-                <?php else: ?>
-                    <?php foreach ($assetTypes as $at): ?>
-                        <span class="ref-chip"><?= h($at['name']) ?> <small style="opacity:.6;">(<?= h($at['unit']) ?>)</small><button type="button" class="ref-chip-x js-ref-delete" data-kind="asset_type" data-id="<?= (int)$at['id'] ?>">&times;</button></span>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </div>
-            <p style="font-size:12px; color:var(--color-gray-500); margin-top:10px;">
-                نوعی که روی آن دارایی ثبت شده باشد قابل حذف نیست.
-            </p>
-        </div>
-    </div>
-</div>
+<!-- مدیریت انواع دارایی به صفحه‌ی «فهرست‌های من» منتقل شد. -->
+<p class="ref-link-row">
+    <a href="<?= APP_BASE_PATH ?>/references.php" class="link-more">افزودن یا حذف انواع دارایی ←</a>
+</p>
 
 <!-- مودال افزودن دارایی -->
 <div class="modal-overlay" id="addAssetModal">
@@ -375,7 +351,9 @@ include __DIR__ . '/includes/header.php';
 
 <?php if (!empty($chartable)): ?>
 <!-- همان منبعی که گزارش دسته‌بندی از آن استفاده می‌کند -->
-<script defer src="<?= APP_BASE_PATH ?>/assets/serve.php?f=js/chart.umd.js&v=<?= assetVersion(['js/chart.umd.js']) ?>"></script>
+<?php foreach (assetUrls(['js/chart.umd.js']) as $__u): ?>
+<script defer src="<?= h($__u) ?>"></script>
+<?php endforeach; ?>
 <script id="assetPortfolioData" type="application/json"><?= json_encode(array_map(fn($r) => [
     'key'   => $r['key'],
     'name'  => $r['name'],
