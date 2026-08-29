@@ -314,7 +314,7 @@ server {
     location ^~ /deploy/ { deny all; return 404; }
     location ^~ /tests/  { deny all; return 404; }
 
-    location ~ ^/(config|\.git)/ { deny all; return 404; }
+    location ~ ^/(config|includes|\.git)/ { deny all; return 404; }
     location ~ /\.(?!well-known)  { deny all; return 404; }
     location ~ \.(sql|md|sh)\$    { deny all; return 404; }
 
