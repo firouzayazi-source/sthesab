@@ -2518,6 +2518,25 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // ---------- فیلتر فهرست دارایی‌ها ----------
+    // وقتی اقلام زیاد می‌شوند، پیدا کردن یکی‌شان با اسکرول سخت است.
+    var assetFilter = document.getElementById('assetFilter');
+    if (assetFilter) {
+        var assetItems = [].slice.call(document.querySelectorAll('#assetBreakdown .asset-item'));
+        var noMatch = document.getElementById('assetNoMatch');
+        assetFilter.addEventListener('input', function () {
+            var q = toLatinDigitsJs(this.value).trim().toLowerCase();
+            var shown = 0;
+            assetItems.forEach(function (el) {
+                var name = (el.getAttribute('data-name') || '').toLowerCase();
+                var hit = q === '' || name.indexOf(q) !== -1;
+                el.hidden = !hit;
+                if (hit) shown++;
+            });
+            if (noMatch) noMatch.hidden = shown !== 0;
+        });
+    }
+
     // ---------- معاملات (خرید و فروش) ----------
     (function () {
         // روشن کردن بخش از صفحه‌ی خودش (وقتی خاموش است)
@@ -2541,7 +2560,9 @@ document.addEventListener('DOMContentLoaded', function () {
         }
 
         var tradeForm = document.getElementById('tradeForm');
-        if (!tradeForm) return;
+        var assetForm = document.getElementById('assetSellForm');
+        // زبانه‌ی «دارایی» فرم خرید ندارد ولی فرم فروش دارایی دارد
+        if (!tradeForm && !assetForm) return;
 
         // مبلغ‌ها هنگام تایپ فارسی و هزارگان‌دار می‌شوند — 1000000 ← ۱٬۰۰۰٬۰۰۰
         setupAmountFormatter('trade_buy_total');
@@ -2584,7 +2605,11 @@ document.addEventListener('DOMContentLoaded', function () {
             hiddenEl.closest('.jdp-field').querySelector('.jdp-display').value =
                 window.JalaliDatePicker.toFa(j[0]) + '/' + window.JalaliDatePicker.toFa(pad2(j[1])) + '/' + window.JalaliDatePicker.toFa(pad2(j[2]));
         }
-        var todayG = document.getElementById('trade_buy_date').value;
+        // زبانه‌ی «دارایی» فرم خرید ندارد، پس تاریخ امروز را از هر فرمی که
+        // در صفحه هست برمی‌داریم.
+        var todayHidden = document.getElementById('trade_buy_date')
+                       || document.getElementById('asset_sell_date');
+        var todayG = todayHidden ? todayHidden.value : '';
 
         var addBtn = document.getElementById('addTradeBtn');
         if (addBtn) {
@@ -2654,6 +2679,35 @@ document.addEventListener('DOMContentLoaded', function () {
                 submitJson(sellForm, apiUrl('sell_trade.php'),
                     document.getElementById('sellMessage'),
                     document.getElementById('sellSubmitBtn'));
+            });
+        }
+
+        // ---- فروش دارایی (زبانه‌ی «دارایی») ----
+        var assetSellForm = document.getElementById('assetSellForm');
+        document.querySelectorAll('.js-sell-asset').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var remaining = this.getAttribute('data-remaining') || '1';
+                var unit = this.getAttribute('data-unit') || '';
+                document.getElementById('assetSellTitle').textContent = 'فروش: ' + this.getAttribute('data-title');
+                document.getElementById('asset_sell_id').value = this.getAttribute('data-id');
+                document.getElementById('asset_sell_total').value = '';
+                document.getElementById('asset_sell_qty').value = remaining;
+                document.getElementById('asset_sell_wallet').value = '0';
+                document.getElementById('asset_sell_notes').value = '';
+                document.getElementById('assetSellRemaining').textContent = 'موجودی: ' + remaining + ' ' + unit;
+                setJdpByHidden(document.getElementById('asset_sell_date'), todayG);
+                var m = document.getElementById('assetSellMessage');
+                m.hidden = true; m.classList.remove('show', 'error', 'success');
+                openModal('assetSellModal');
+            });
+        });
+        if (assetSellForm) {
+            setupAmountFormatter('asset_sell_total');
+            assetSellForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+                submitJson(assetSellForm, apiUrl('sell_asset.php'),
+                    document.getElementById('assetSellMessage'),
+                    document.getElementById('assetSellSubmitBtn'));
             });
         }
 

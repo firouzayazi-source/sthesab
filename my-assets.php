@@ -45,16 +45,53 @@ $listStmt = $pdo->prepare('
 $listStmt->execute(['user_id' => $userId]);
 $assetRecords = $listStmt->fetchAll();
 
-// کالای معاملاتیِ موجود هم دارایی است — اما فقط-خواندنی: خرید و فروش
-// فقط از بخش معاملات انجام می‌شود، اینجا فقط «آخرین موجودی» دیده می‌شود.
-$openTrades = [];
-$openTradesCost = 0;
+// نمای کلی دارایی‌ها: هم دارایی‌های ثبت‌شده‌ی خود کاربر، هم کالایی که
+// در بخش معاملات خریده و هنوز نفروخته — چون همه‌ی این‌ها دارایی‌اند.
+//
+// ⚠️ اینجا فقط «چقدر داریم» دیده می‌شود. خرید و فروش فقط در بخش
+// معاملات انجام می‌شود و کم و زیاد کردن مقدار دارایی فقط همین‌جا.
+$portfolio = [];
+
+foreach ($assetSummary as $s) {
+    $portfolio[] = [
+        'name'     => $s['name'],
+        'qty'      => (float)$s['total_qty'],
+        'unit'     => $s['unit'],
+        'value'    => (int)$s['total_value'],
+        'is_trade' => false,
+    ];
+}
+
+$tradeInventoryValue = 0;
 if (tradesTablesExist($pdo) && tradesEnabled($pdo, $userId)) {
     foreach (tradesWithProgress($userId) as $t) {
-        if (!$t['is_closed']) {
-            $openTrades[] = $t;
-            $openTradesCost += $t['open_cost'];
-        }
+        if ($t['is_closed']) { continue; }
+        $tradeInventoryValue += $t['open_cost'];
+        $portfolio[] = [
+            'name'     => $t['title'],
+            'qty'      => (float)$t['remaining_qty'],
+            'unit'     => 'واحد',
+            'value'    => (int)$t['open_cost'],
+            'is_trade' => true,
+        ];
+    }
+}
+
+// بزرگ‌ترین‌ها اول — وقتی اقلام زیاد شوند، مهم‌ها بالا می‌مانند
+usort($portfolio, fn($a, $b) => $b['value'] <=> $a['value']);
+
+$portfolioTotal = $totalPortfolioValue + $tradeInventoryValue;
+
+// همان پالت گزارش دسته‌بندی، تا دو صفحه یک زبان بصری داشته باشند
+$palette = ['#d97706', '#0891b2', '#7c3aed', '#db2777', '#059669', '#dc2626',
+            '#4f46e5', '#ca8a04', '#0d9488', '#e11d48', '#6d28d9', '#16a34a'];
+$chartLabels = []; $chartValues = []; $chartColors = [];
+foreach ($portfolio as $i => $row) {
+    $portfolio[$i]['color'] = $palette[$i % count($palette)];
+    if ($row['value'] > 0) {
+        $chartLabels[] = $row['name'];
+        $chartValues[] = $row['value'];
+        $chartColors[] = $portfolio[$i]['color'];
     }
 }
 
@@ -62,57 +99,66 @@ $pageTitle = 'دارایی‌ها';
 include __DIR__ . '/includes/header.php';
 ?>
 
-<?php if (!empty($openTrades)): ?>
+<!-- ---------- نمای کلی دارایی‌ها ---------- -->
 <div class="card">
-    <div class="card-header-row">
-        <h2 class="card-title">کالای معاملاتی موجود</h2>
-        <a href="<?= APP_BASE_PATH ?>/trades.php" class="btn btn-secondary btn-sm" style="text-decoration:none;">خرید و فروش</a>
+    <div class="asset-total-row">
+        <span class="asset-total-label">ارزش کل دارایی‌ها</span>
+        <b class="asset-total-value"><?= formatMoney($portfolioTotal) ?> <small><?= h(APP_CURRENCY) ?></small></b>
     </div>
-    <p class="hint" style="margin-bottom:11px;">
-        جمع سرمایه به بهای خرید: <b><?= formatMoney($openTradesCost) ?> <?= h(APP_CURRENCY) ?></b>
-        — معامله فقط از بخش معاملات انجام می‌شود.
-    </p>
-    <?php foreach ($openTrades as $t): ?>
-        <div class="trade-sale-row">
-            <div class="trade-sale-info">
-                <b><?= h($t['title']) ?></b>
-                <span class="trade-sale-meta">
-                    <?php if ((float)$t['qty'] != 1.0): ?>موجودی: <?= formatQty($t['remaining_qty']) ?> واحد · <?php endif; ?>
-                    ارزش خرید: <?= formatMoney($t['open_cost']) ?> <?= h(APP_CURRENCY) ?>
-                    · خرید <?= toJalali($t['buy_date']) ?>
-                </span>
-            </div>
-            <a href="<?= APP_BASE_PATH ?>/trades.php" class="btn btn-secondary btn-sm" style="text-decoration:none;flex:none;">فروش</a>
-        </div>
-    <?php endforeach; ?>
-</div>
-<?php endif; ?>
 
-<?php if ($totalPortfolioValue > 0): ?>
-<div class="summary-grid" style="grid-template-columns: 1fr;">
-    <div class="summary-box">
-        <div class="label">ارزش تقریبی کل دارایی‌ها (بر اساس قیمت‌های ثبت‌شده)</div>
-        <div class="value stats-income"><?= formatMoney($totalPortfolioValue) ?> <small>تومان</small></div>
-    </div>
-</div>
-<?php endif; ?>
-
-<?php if (!empty($assetSummary)): ?>
-<div class="card">
-    <h2 class="card-title">موجودی به تفکیک نوع</h2>
-    <?php foreach ($assetSummary as $s): ?>
-        <div class="stats-row" style="padding:10px 0; border-bottom:1px solid var(--color-gray-100);">
-            <span class="stats-label"><?= h($s['name']) ?></span>
-            <span class="stats-value">
-                <?= formatQuantity($s['total_qty']) ?> <small><?= h($s['unit']) ?></small>
-                <?php if ((int)$s['total_value'] > 0): ?>
-                    <span style="color:var(--color-gray-500); font-weight:400;"> &nbsp;≈ <?= formatMoney($s['total_value']) ?> تومان</span>
-                <?php endif; ?>
-            </span>
+    <?php if (empty($portfolio)): ?>
+        <p class="empty-row">هنوز دارایی‌ای ثبت نشده است.</p>
+    <?php else: ?>
+        <?php if (!empty($chartValues)): ?>
+        <div class="chart-container" style="max-width:250px; height:250px; margin:16px auto 18px;">
+            <canvas id="assetChart"></canvas>
         </div>
-    <?php endforeach; ?>
+        <?php endif; ?>
+
+        <?php if (count($portfolio) > 6): ?>
+        <div class="asset-search-wrap">
+            <input type="search" id="assetFilter" class="asset-search"
+                   placeholder="جستجو میان <?= toPersianDigits(count($portfolio)) ?> دارایی…"
+                   autocapitalize="none" autocorrect="off">
+        </div>
+        <?php endif; ?>
+
+        <div class="category-breakdown-list" id="assetBreakdown">
+            <?php foreach ($portfolio as $row): ?>
+                <?php $pct = $portfolioTotal > 0 ? round($row['value'] / $portfolioTotal * 100, 1) : 0; ?>
+                <div class="cat-breakdown-item asset-item" data-name="<?= h($row['name']) ?>">
+                    <div class="cat-breakdown-summary">
+                        <span class="cat-dot" style="background:<?= h($row['color']) ?>;"></span>
+                        <span class="cat-breakdown-name">
+                            <?= h($row['name']) ?>
+                            <?php if ($row['is_trade']): ?><span class="asset-tag">معامله</span><?php endif; ?>
+                        </span>
+                        <span class="cat-breakdown-pct"><?= $row['value'] > 0 ? toPersianDigits($pct) . '٪' : '—' ?></span>
+                        <span class="cat-breakdown-amount"><?= $row['value'] > 0 ? formatMoney($row['value']) : '' ?></span>
+                    </div>
+                    <div class="asset-item-qty">
+                        <?= formatQuantity($row['qty']) ?> <?= h($row['unit']) ?>
+                        <?php if ($row['value'] === 0): ?>
+                            <span class="asset-noprice">قیمت واحد ثبت نشده</span>
+                        <?php endif; ?>
+                    </div>
+                    <?php if ($row['value'] > 0): ?>
+                    <div class="cat-breakdown-bar-track">
+                        <div class="cat-breakdown-bar" style="width:<?= $pct ?>%; background:<?= h($row['color']) ?>;"></div>
+                    </div>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <p class="asset-empty-filter" id="assetNoMatch" hidden>چیزی با این نام پیدا نشد.</p>
+
+        <?php if ($tradeInventoryValue > 0): ?>
+        <p class="hint" style="margin-top:12px;">
+            موارد نشان‌دار «معامله» از بخش خرید و فروش آمده‌اند و فقط همان‌جا قابل فروش‌اند.
+        </p>
+        <?php endif; ?>
+    <?php endif; ?>
 </div>
-<?php endif; ?>
 
 <div class="card">
     <div class="card-header-row">
@@ -286,5 +332,36 @@ include __DIR__ . '/includes/header.php';
 </div>
 
 <meta name="csrf-token" content="<?= Csrf::token() ?>">
+
+<?php if (!empty($chartValues)): ?>
+<!-- همان منبعی که گزارش دسته‌بندی از آن استفاده می‌کند -->
+<script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var box = document.querySelector('.chart-container');
+    // Chart.js از CDN می‌آید و ممکن است در دسترس نباشد؛ در آن صورت
+    // به‌جای یک مستطیل خالی، فهرست رنگی پایین به‌تنهایی کار می‌کند.
+    if (!window.Chart) { if (box) box.hidden = true; return; }
+    new Chart(document.getElementById('assetChart').getContext('2d'), {
+        type: 'doughnut',
+        data: {
+            labels: <?= json_encode($chartLabels, JSON_UNESCAPED_UNICODE) ?>,
+            datasets: [{
+                data: <?= json_encode($chartValues) ?>,
+                backgroundColor: <?= json_encode($chartColors) ?>,
+                borderWidth: 2,
+                borderColor: getComputedStyle(document.documentElement)
+                    .getPropertyValue('--surface').trim() || '#ffffff'
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            cutout: '62%',
+            plugins: { legend: { display: false } }
+        }
+    });
+});
+</script>
+<?php endif; ?>
 
 <?php include __DIR__ . '/includes/footer.php'; ?>

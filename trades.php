@@ -27,10 +27,31 @@ $allTrades = $enabled ? tradesWithProgress($userId) : [];
 // جمع‌بندی روی همه است؛ آرشیو کردن نباید سود کل را کم کند
 $summary = tradesSummary($allTrades);
 
-// فروخته‌شده‌ها آرشیو می‌شوند تا صفحه‌ی اصلی فقط کالای موجود را نشان دهد
-$view = getParam('view', 'open') === 'archive' ? 'archive' : 'open';
+// سه نما: موجودی (کالای خریداری‌شده‌ی نفروخته) / دارایی (آنچه از بخش
+// دارایی آمده و می‌شود فروختش) / سوابق معاملات (فروخته‌شده‌ها)
+$view = getParam('view', 'open');
+if (!in_array($view, ['open', 'assets', 'archive'], true)) { $view = 'open'; }
+
 $trades = array_values(array_filter($allTrades,
     fn($t) => $view === 'archive' ? $t['is_closed'] : !$t['is_closed']));
+
+// دارایی‌های ثبت‌شده در بخش دارایی — اینجا فقط فروخته می‌شوند؛ کم و
+// زیاد کردنشان همچنان فقط در همان بخش است.
+$sellableAssets = [];
+if ($enabled) {
+    $aStmt = $pdo->prepare(
+        'SELECT a.id, a.quantity, a.unit_price, a.entry_date, a.note,
+                at.name AS type_name, at.unit
+         FROM assets a
+         JOIN asset_types at ON at.id = a.asset_type_id
+         WHERE a.user_id = :u AND a.quantity > 0
+         ORDER BY (a.quantity * COALESCE(a.unit_price,0)) DESC, a.entry_date DESC'
+    );
+    $aStmt->execute(['u' => $userId]);
+    $sellableAssets = $aStmt->fetchAll();
+}
+$assetsValue = 0;
+foreach ($sellableAssets as $a) { $assetsValue += (int)round((float)$a['quantity'] * (int)($a['unit_price'] ?? 0)); }
 
 $wallets = [];
 if ($enabled) {
@@ -90,8 +111,9 @@ include __DIR__ . '/includes/header.php';
     </div>
     <div class="trade-toolbar">
         <div class="filter-bar" style="margin:0;">
-            <a href="?view=open" class="filter-chip <?= $view === 'open' ? 'active' : '' ?>" style="text-decoration:none;">موجود<?= $summary['open_count'] ? ' (' . toPersianDigits($summary['open_count']) . ')' : '' ?></a>
-            <a href="?view=archive" class="filter-chip <?= $view === 'archive' ? 'active' : '' ?>" style="text-decoration:none;">آرشیو فروخته‌شده<?= $summary['closed_count'] ? ' (' . toPersianDigits($summary['closed_count']) . ')' : '' ?></a>
+            <a href="?view=open" class="filter-chip <?= $view === 'open' ? 'active' : '' ?>" style="text-decoration:none;">موجودی<?= $summary['open_count'] ? ' (' . toPersianDigits($summary['open_count']) . ')' : '' ?></a>
+            <a href="?view=assets" class="filter-chip <?= $view === 'assets' ? 'active' : '' ?>" style="text-decoration:none;">دارایی<?= $sellableAssets ? ' (' . toPersianDigits(count($sellableAssets)) . ')' : '' ?></a>
+            <a href="?view=archive" class="filter-chip <?= $view === 'archive' ? 'active' : '' ?>" style="text-decoration:none;">سوابق معاملات<?= $summary['closed_count'] ? ' (' . toPersianDigits($summary['closed_count']) . ')' : '' ?></a>
         </div>
         <div class="view-switch" role="group" aria-label="حالت نمایش">
             <button type="button" class="view-switch-btn" data-view-mode="card" title="نمایش کارتی">
@@ -104,6 +126,63 @@ include __DIR__ . '/includes/header.php';
     </div>
 </div>
 
+<?php if ($view === 'assets'): ?>
+<!-- ---------- دارایی‌های قابل فروش ---------- -->
+<?php if (empty($sellableAssets)): ?>
+    <div class="card">
+        <p class="empty-row">دارایی‌ای برای فروش ندارید.<br>
+        از بخش «دارایی‌ها» ثبتش کنید تا اینجا قابل فروش شود.</p>
+    </div>
+<?php else: ?>
+    <div class="card">
+        <p class="hint" style="margin:0;">
+            ارزش این دارایی‌ها به بهای ثبت‌شده:
+            <b><?= formatMoney($assetsValue) ?> <?= h(APP_CURRENCY) ?></b>
+            — کم و زیاد کردن مقدار فقط در بخش <a href="<?= APP_BASE_PATH ?>/my-assets.php">دارایی‌ها</a>.
+        </p>
+    </div>
+    <?php foreach ($sellableAssets as $a): ?>
+        <?php $cost = (int)round((float)$a['quantity'] * (int)($a['unit_price'] ?? 0)); ?>
+        <div class="card trade-card">
+            <div class="trade-head">
+                <div class="trade-title-wrap">
+                    <div class="trade-title"><?= h($a['type_name']) ?></div>
+                    <div class="trade-meta">
+                        موجودی: <?= formatQuantity($a['quantity']) ?> <?= h($a['unit']) ?>
+                        · ثبت <?= toJalali($a['entry_date']) ?>
+                    </div>
+                </div>
+                <span class="trade-status is-open">دارایی</span>
+            </div>
+
+            <div class="trade-figures">
+                <div class="trade-fig">
+                    <span>قیمت واحد</span>
+                    <b><?= (int)($a['unit_price'] ?? 0) > 0 ? formatMoney($a['unit_price']) : '—' ?></b>
+                </div>
+                <div class="trade-fig">
+                    <span>ارزش ثبت‌شده</span>
+                    <b><?= $cost > 0 ? formatMoney($cost) : '—' ?></b>
+                </div>
+            </div>
+
+            <?php if (!empty($a['note'])): ?>
+                <p class="trade-notes"><?= h($a['note']) ?></p>
+            <?php endif; ?>
+
+            <div class="trade-actions">
+                <button type="button" class="btn btn-primary btn-sm js-sell-asset"
+                    data-id="<?= (int)$a['id'] ?>"
+                    data-title="<?= h($a['type_name']) ?>"
+                    data-unit="<?= h($a['unit']) ?>"
+                    data-remaining="<?= h(rtrim(rtrim(number_format((float)$a['quantity'], 3, '.', ''), '0'), '.')) ?>">ثبت فروش</button>
+                <a href="<?= APP_BASE_PATH ?>/my-assets.php" class="btn btn-secondary btn-sm" style="text-decoration:none;">تغییر مقدار</a>
+            </div>
+        </div>
+    <?php endforeach; ?>
+<?php endif; ?>
+
+<?php else: ?>
 <div id="tradesWrap">
 
 <?php if (empty($trades)): ?>
@@ -207,6 +286,7 @@ include __DIR__ . '/includes/header.php';
     <?php endforeach; ?>
 <?php endif; ?>
 </div><!-- /tradesWrap -->
+<?php endif; ?>
 
 <!-- ---------- ثبت / ویرایش خرید ---------- -->
 <div class="modal-overlay" id="tradeModal">
@@ -269,6 +349,61 @@ include __DIR__ . '/includes/header.php';
 
             <div id="tradeMessage" class="form-message" hidden></div>
             <button type="submit" class="btn btn-primary btn-block" id="tradeSubmitBtn">ثبت</button>
+        </form>
+    </div>
+</div>
+
+<!-- ---------- فروش دارایی ----------
+     فروش یک دارایی، همان مقدار را از موجودی کم می‌کند و به‌صورت یک
+     معامله‌ی بسته‌شده در سوابق ثبتش می‌کند: بهای خرید از قیمت واحدِ
+     ثبت‌شده می‌آید، پس سود همان‌جا درست حساب می‌شود. -->
+<div class="modal-overlay" id="assetSellModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="assetSellTitle">فروش دارایی</h3>
+            <button type="button" class="modal-close" data-modal-close="assetSellModal" aria-label="بستن">&times;</button>
+        </div>
+        <form id="assetSellForm" autocomplete="off">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="asset_id" id="asset_sell_id" value="">
+
+            <div class="form-row-2">
+                <div class="form-group">
+                    <label for="asset_sell_total">مبلغ کل فروش</label>
+                    <input type="text" inputmode="numeric" id="asset_sell_total" name="sale_total" required placeholder="۰" class="amount-input-sm">
+                </div>
+                <div class="form-group">
+                    <label for="asset_sell_qty">مقدار</label>
+                    <input type="text" inputmode="decimal" id="asset_sell_qty" name="qty" required>
+                    <p class="hint" id="assetSellRemaining"></p>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>تاریخ فروش</label>
+                <div class="jdp-field">
+                    <input type="text" class="jdp-display" readonly value="<?= toJalali($todayStr) ?>">
+                    <input type="hidden" class="jdp-hidden" id="asset_sell_date" name="sale_date" value="<?= h($todayStr) ?>">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="asset_sell_wallet">واریز به حساب</label>
+                <select id="asset_sell_wallet" name="wallet_id">
+                    <option value="0">— بدون واریز به حساب —</option>
+                    <?php foreach ($wallets as $w): ?>
+                        <option value="<?= (int)$w['id'] ?>"><?= h($w['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="asset_sell_notes">توضیحات <span style="color:var(--muted);font-weight:400">(اختیاری)</span></label>
+                <input type="text" id="asset_sell_notes" name="notes" maxlength="500">
+            </div>
+
+            <div id="assetSellMessage" class="form-message" hidden></div>
+            <button type="submit" class="btn btn-primary btn-block" id="assetSellSubmitBtn">ثبت فروش</button>
         </form>
     </div>
 </div>
