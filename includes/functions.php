@@ -225,18 +225,60 @@ function setSetting(string $key, string $value): void
  * ترتیب رنگ‌ها عمداً تیره و روشن یک‌درمیان است تا دو قاچِ کنار هم در
  * دونات به هم نچسبند.
  */
-function chartPalette(string $tone): array
+function chartPalette(string $tone, string $mode = 'light'): array
 {
-    $palettes = [
-        // سبزِ شاد — دارایی و درآمد
-        'green' => ['#16a34a', '#0d9488', '#84cc16', '#047857', '#2dd4bf', '#4d7c0f',
-                    '#34d399', '#0e7490', '#a3e635', '#065f46', '#5eead4', '#65a30d'],
-        // گرم — هزینه و مصرف
-        'warm'  => ['#dc2626', '#ea580c', '#f59e0b', '#b91c1c', '#fb923c', '#eab308',
-                    '#e11d48', '#c2410c', '#fbbf24', '#9f1239', '#f97316', '#a16207'],
+    // یک چرخه‌ی ثابت از هشت هیوی متمایز. ترتیبش دلخواه نیست: با
+    // scripts/validate_palette.js سنجیده شده و هر جفتِ کنارِ هم، هم برای
+    // چشم عادی و هم برای انواع کوررنگی، اختلاف کافی دارد — روی زمینه‌ی
+    // روشن و شب، و حتی جفتِ اولی/آخری که در دونات به هم می‌رسند.
+    //
+    // پله‌های شب همان هشت هیو هستند ولی برای زمینه‌ی تیره دوباره چیده
+    // شده‌اند؛ برگرداندن رنگ روشن روی زمینه‌ی تیره کار نمی‌کند (بنفش
+    // گم می‌شد و زرد می‌زد توی چشم).
+    $cycle = [
+        'light' => ['#e34948', '#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#4a3aa7', '#e87ba4', '#008300'],
+        'dark'  => ['#e66767', '#3987e5', '#d95926', '#199e70', '#c98500', '#9085e9', '#d55181', '#008300'],
     ];
 
-    return $palettes[$tone] ?? $palettes['green'];
+    // فقط نقطه‌ی شروع فرق می‌کند، نه خود چرخه: رنگ اولِ نمودار باید با
+    // موضوعش بخواند (هزینه قرمز، درآمد و دارایی سبز) ولی بقیه‌ی قاچ‌ها
+    // باید از هم جدا باشند. پالت تک‌رنگ — همه سبز یا همه نارنجی — قاچ‌ها
+    // را به هم می‌چسباند و خواندنش سخت می‌شود.
+    $startAt = ['warm' => 0, 'green' => 3];
+    $start   = $startAt[$tone] ?? $startAt['green'];
+
+    $colors = $cycle[$mode] ?? $cycle['light'];
+    $count  = count($colors);
+    $out    = [];
+    for ($i = 0; $i < $count; $i++) {
+        $out[] = $colors[($start + $i) % $count];
+    }
+
+    return $out;
+}
+
+/**
+ * رنگ قلم شماره‌ی $index در هر دو حالت روشن و شب.
+ *
+ * نقطه‌ی رنگ کنار هر ردیف در HTML رندر می‌شود و نمی‌داند کاربر حالت شب
+ * دارد یا نه؛ پس هر دو مقدار به‌صورت متغیر CSS نوشته می‌شود و خود CSS
+ * انتخاب می‌کند. آرایه‌ی نمودار هم در جاوااسکریپت بر همین اساس عوض می‌شود.
+ */
+function chartColorPair(string $tone, int $index): array
+{
+    $light = chartPalette($tone, 'light');
+    $dark  = chartPalette($tone, 'dark');
+    $n     = count($light);
+
+    return [$light[$index % $n], $dark[$index % $n]];
+}
+
+/** استایل درون‌خطی نقطه‌ی رنگ — روشن و شب با هم. */
+function chartDotStyle(string $tone, int $index): string
+{
+    [$l, $d] = chartColorPair($tone, $index);
+
+    return '--dot-l:' . $l . '; --dot-d:' . $d . ';';
 }
 
 /* ============================================================
@@ -269,29 +311,74 @@ function walletKindLabel(string $kind): string
  * هیچ‌وقت دو عدد متفاوت نشان ندهند.
  */
 /**
- * آیا ستونی در جدولی هست؟ نتیجه در همان درخواست کش می‌شود.
+ * نقشه‌ی ساختار دیتابیس: کدام جدول‌ها هستند و هر کدام چه ستون‌هایی دارند.
  *
- * چند جای برنامه باید بدانند migration فلان ستون اجرا شده یا نه. بدون
- * کش، هر بار یک کوئری به information_schema می‌خورد — که خودش کند است.
+ * چند جای برنامه باید بدانند فلان migration اجرا شده یا نه. نسخه‌ی اول
+ * برای هر پرسش یک کوئری جدا به information_schema می‌زد و فقط داشبورد
+ * پنج‌تایش را می‌زد — و information_schema ارزان نیست. حالا یک بار همه‌ی
+ * نقشه خوانده می‌شود و بقیه‌ی پرسش‌ها از حافظه جواب می‌گیرند.
+ *
+ * عمداً بین درخواست‌ها کش نمی‌شود: بعد از اجرای یک migration تازه، همان
+ * درخواست بعدی باید ساختار واقعی را ببیند، نه نقشه‌ی کهنه را.
  */
+function schemaMap(): array
+{
+    static $map = null;
+    if ($map !== null) { return $map; }
+
+    $map = [];
+    try {
+        $rows = Database::getConnection()->query(
+            'SELECT table_name, column_name FROM information_schema.columns
+             WHERE table_schema = DATABASE()'
+        )->fetchAll(PDO::FETCH_NUM);
+        foreach ($rows as [$table, $column]) {
+            $map[strtolower($table)][strtolower($column)] = true;
+        }
+    } catch (PDOException $e) {
+        $map = [];
+    }
+
+    return $map;
+}
+
+/** آیا این جدول ساخته شده؟ */
+function tableExists(string $table): bool
+{
+    return isset(schemaMap()[strtolower($table)]);
+}
+
+/** آیا این ستون در این جدول هست؟ */
 function tableHasColumn(string $table, string $column): bool
 {
+    return isset(schemaMap()[strtolower($table)][strtolower($column)]);
+}
+
+/**
+ * فهرست حساب‌های فعال کاربر — یک بار در هر درخواست خوانده می‌شود.
+ *
+ * چند جا همین فهرست را می‌خواهند (صفحه‌ی چک، طلب و بدهی، معاملات، و شیت
+ * ثبت تراکنش که در فوتر هر صفحه است)، و بدون کش دو سه بار پشت سر هم
+ * همان کوئری می‌رفت.
+ */
+function activeWallets(int $userId): array
+{
     static $cache = [];
-    $key = $table . '.' . $column;
-    if (isset($cache[$key])) { return $cache[$key]; }
+    if (isset($cache[$userId])) { return $cache[$userId]; }
 
     try {
         $st = Database::getConnection()->prepare(
-            'SELECT COUNT(*) FROM information_schema.columns
-             WHERE table_schema = DATABASE() AND table_name = :t AND column_name = :c'
+            "SELECT id, name, kind, sort_order FROM wallets
+             WHERE user_id = :u AND is_active = 1
+             ORDER BY sort_order, name"
         );
-        $st->execute(['t' => $table, 'c' => $column]);
-        $cache[$key] = (bool)$st->fetchColumn();
+        $st->execute(['u' => $userId]);
+        $cache[$userId] = $st->fetchAll();
     } catch (PDOException $e) {
-        $cache[$key] = false;
+        $cache[$userId] = [];   // جدول حساب‌ها هنوز ساخته نشده
     }
 
-    return $cache[$key];
+    return $cache[$userId];
 }
 
 /**
@@ -303,24 +390,15 @@ function tableHasColumn(string $table, string $column): bool
  */
 function defaultWalletId(int $userId): ?int
 {
-    static $cache = [];
-    if (array_key_exists($userId, $cache)) { return $cache[$userId]; }
+    $wallets = activeWallets($userId);
+    if (!$wallets) { return null; }
 
-    try {
-        $st = Database::getConnection()->prepare(
-            "SELECT id FROM wallets
-             WHERE user_id = :u AND is_active = 1
-             ORDER BY (kind = 'cash') DESC, sort_order, id
-             LIMIT 1"
-        );
-        $st->execute(['u' => $userId]);
-        $id = $st->fetchColumn();
-        $cache[$userId] = $id ? (int)$id : null;
-    } catch (PDOException $e) {
-        $cache[$userId] = null;
+    // کیف پول نقدی مقدم است؛ اگر کاربر حذفش کرده، اولین حساب فعال
+    foreach ($wallets as $w) {
+        if ($w['kind'] === 'cash') { return (int)$w['id']; }
     }
 
-    return $cache[$userId];
+    return (int)$wallets[0]['id'];
 }
 
 /**
@@ -1290,8 +1368,8 @@ function appBaseUrl(): string
  *
  * با migration_password_reset اضافه شده. نصب‌هایی که هنوز migration را
  * اجرا نکرده‌اند باید بدون خطا کار کنند، پس همه جا قبل از دست زدن به
- * ایمیل این را می‌پرسیم. نتیجه در همان درخواست کش می‌شود چون کوئری
- * information_schema ارزان نیست و چند بار پرسیده می‌شود.
+ * ایمیل این را می‌پرسیم. جواب از نقشه‌ی schemaMap() می‌آید که یک بار در
+ * هر درخواست خوانده می‌شود.
  */
 function usersHaveColumn(PDO $pdo, string $column): bool
 {
@@ -1354,15 +1432,7 @@ function saveUserEmail(PDO $pdo, int $userId, string $email, bool $allowClear = 
 /** آیا جدول‌های معاملات ساخته شده‌اند؟ (migration_trades) */
 function tradesTablesExist(PDO $pdo): bool
 {
-    static $cached = null;
-    if ($cached !== null) { return $cached; }
-    try {
-        $cached = (bool)$pdo->query(
-            "SELECT COUNT(*) FROM information_schema.tables
-             WHERE table_schema = DATABASE() AND table_name = 'trades'"
-        )->fetchColumn();
-    } catch (PDOException $e) { $cached = false; }
-    return $cached;
+    return tableExists('trades');
 }
 
 /** آیا این کاربر بخش معاملات را روشن کرده؟ پیش‌فرض خاموش. */

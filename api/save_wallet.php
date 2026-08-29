@@ -26,13 +26,7 @@ $initNeg  = postParam('initial_negative') === '1';
 
 // اطلاعات کارت — با migration_wallet_cards آمده‌اند. روی نصبی که هنوز
 // اجرا نشده، بقیه‌ی فرم باید مثل قبل کار کند، پس شرطی نوشته شده‌اند.
-$hasCardCols = false;
-try {
-    $hasCardCols = (bool)Database::getConnection()->query(
-        "SELECT COUNT(*) FROM information_schema.columns
-         WHERE table_schema = DATABASE() AND table_name = 'wallets' AND column_name = 'card_number'"
-    )->fetchColumn();
-} catch (PDOException $e) { $hasCardCols = false; }
+$hasCardCols = tableHasColumn('wallets', 'card_number');
 
 $bankCode = postParam('bank_code');
 $cardNum  = digitsOnly(postParam('card_number'), 19);

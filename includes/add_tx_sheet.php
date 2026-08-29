@@ -10,17 +10,8 @@ if (!isset($incomeCategories) || !isset($expenseCategories)) {
 }
 $__today = today();
 
-// حساب‌های فعال کاربر برای انتخاب در فرم
-$__wallets = [];
-try {
-    $__ws = Database::getConnection()->prepare(
-        'SELECT id, name FROM wallets WHERE user_id = :u AND is_active = 1 ORDER BY sort_order, name'
-    );
-    $__ws->execute(['u' => Auth::userId()]);
-    $__wallets = $__ws->fetchAll();
-} catch (PDOException $e) {
-    $__wallets = []; // جدول هنوز ساخته نشده
-}
+// حساب‌های فعال کاربر برای انتخاب در فرم (کش‌شده در همین درخواست)
+$__wallets = activeWallets((int)Auth::userId());
 ?>
 <div class="sheet-overlay" id="addTxSheet">
     <div class="sheet">

@@ -230,9 +230,10 @@ include __DIR__ . '/includes/header.php';
                 </div>
             </div>
 
-            <label class="inline-check">
+            <label class="switch" style="margin:2px 0 4px;">
                 <input type="checkbox" name="initial_negative" value="1" id="wallet_init_neg">
-                <span>موجودی اولیه منفی است (بدهکار)</span>
+                <span class="switch-track"><span class="switch-knob"></span></span>
+                <span class="switch-text">موجودی اولیه منفی است (بدهکار)</span>
             </label>
 
             <div id="walletMessage" class="form-message" hidden></div>
@@ -384,9 +385,10 @@ include __DIR__ . '/includes/header.php';
                 <p class="hint" id="adjustModeHint">این مبلغ به موجودی حساب اضافه می‌شود.</p>
             </div>
 
-            <label class="inline-check" id="adjustNegWrap" hidden>
+            <label class="switch" id="adjustNegWrap" hidden style="margin:2px 0 4px;">
                 <input type="checkbox" name="negative" value="1" id="adjust_negative">
-                <span>موجودی واقعی منفی است (بدهکار)</span>
+                <span class="switch-track"><span class="switch-knob"></span></span>
+                <span class="switch-text">موجودی واقعی منفی است (بدهکار)</span>
             </label>
 
             <p class="hint">تعدیل در گزارش درآمد و هزینه شمرده نمی‌شود؛ فقط عدد حساب را با واقعیت برابر می‌کند.</p>

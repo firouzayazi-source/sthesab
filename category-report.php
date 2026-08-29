@@ -93,14 +93,21 @@ if ((int)$uncatRow['total'] > 0) {
 
 $grandTotal = array_sum(array_column($categoryBreakdown, 'total'));
 
-// رنگ اینجا معنا دارد: هزینه گرم (قرمز/نارنجی/زرد)، درآمد سبز.
-$palette = chartPalette($type === 'income' ? 'green' : 'warm');
+// رنگ اینجا معنا دارد: قاچ اول هم‌رنگِ موضوع است (هزینه قرمز، درآمد
+// سبز) و بقیه از همان چرخه‌ی هیوهای متمایز می‌آیند تا قاچ‌ها به هم
+// نچسبند. پالت روشن و شب جدا ساخته می‌شود چون رنگ روشن روی زمینه‌ی
+// تیره خوانا نیست.
+$tone = $type === 'income' ? 'green' : 'warm';
+$paletteLight = chartPalette($tone, 'light');
+$paletteDark  = chartPalette($tone, 'dark');
+$n = count($paletteLight);
 
-$chartLabels = []; $chartValues = []; $chartColors = [];
+$chartLabels = []; $chartValues = []; $colorsLight = []; $colorsDark = [];
 foreach ($categoryBreakdown as $i => $row) {
-    $chartLabels[] = $row['name'];
-    $chartValues[] = (int)$row['total'];
-    $chartColors[] = $palette[$i % count($palette)];
+    $chartLabels[]  = $row['name'];
+    $chartValues[]  = (int)$row['total'];
+    $colorsLight[]  = $paletteLight[$i % $n];
+    $colorsDark[]   = $paletteDark[$i % $n];
 }
 
 $pageTitle = 'گزارش دسته‌بندی';
@@ -160,13 +167,13 @@ include __DIR__ . '/includes/header.php';
                 <?php $pct = $grandTotal > 0 ? round(((int)$row['total'] / $grandTotal) * 100, 1) : 0; ?>
                 <div class="cat-breakdown-item">
                     <div class="cat-breakdown-summary <?= $row['id'] > 0 ? 'js-cat-toggle' : '' ?>" data-cat-id="<?= (int)$row['id'] ?>">
-                        <span class="cat-dot" style="background:<?= h($chartColors[$i]) ?>;"></span>
+                        <span class="cat-dot" style="--dot-l:<?= h($colorsLight[$i]) ?>; --dot-d:<?= h($colorsDark[$i]) ?>;"></span>
                         <span class="cat-breakdown-name"><?= h($row['name']) ?></span>
                         <span class="cat-breakdown-pct"><?= toPersianDigits($pct) ?>٪</span>
                         <span class="cat-breakdown-amount"><?= formatMoney($row['total']) ?></span>
                     </div>
                     <div class="cat-breakdown-bar-track">
-                        <div class="cat-breakdown-bar" style="width:<?= $pct ?>%; background:<?= h($chartColors[$i]) ?>;"></div>
+                        <div class="cat-breakdown-bar" style="width:<?= $pct ?>%; --dot-l:<?= h($colorsLight[$i]) ?>; --dot-d:<?= h($colorsDark[$i]) ?>;"></div>
                     </div>
                     <?php if ((int)$row['id'] > 0): ?>
                         <div class="cat-breakdown-detail" id="catDetail<?= (int)$row['id'] ?>" hidden></div>
@@ -186,15 +193,14 @@ include __DIR__ . '/includes/header.php';
 <script defer src="<?= APP_BASE_PATH ?>/assets/serve.php?f=js/chart.umd.js&v=<?= assetVersion(['js/chart.umd.js']) ?>"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    new Chart(document.getElementById('categoryChart').getContext('2d'), {
+    if (!window.Chart) { return; }
+    var chart = new Chart(document.getElementById('categoryChart').getContext('2d'), {
         type: 'doughnut',
         data: {
             labels: <?= json_encode($chartLabels, JSON_UNESCAPED_UNICODE) ?>,
             datasets: [{
                 data: <?= json_encode($chartValues) ?>,
-                backgroundColor: <?= json_encode($chartColors) ?>,
-                borderWidth: 2,
-                borderColor: '#ffffff'
+                borderWidth: 2
             }]
         },
         options: {
@@ -204,6 +210,11 @@ document.addEventListener('DOMContentLoaded', function () {
             plugins: { legend: { display: false } }
         }
     });
+    // رنگ و رنگِ فاصله‌ی بین قاچ‌ها را همین‌جا نمی‌گذاریم: با عوض شدن
+    // حالت شب باید عوض شوند.
+    registerThemedChart(chart,
+        <?= json_encode($colorsLight) ?>,
+        <?= json_encode($colorsDark) ?>);
 });
 </script>
 <?php endif; ?>

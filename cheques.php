@@ -79,14 +79,7 @@ $extBanksStmt->execute(['user_id' => $userId]);
 $externalBanks = $extBanksStmt->fetchAll();
 
 // حساب‌ها — برای اینکه هنگام پاس شدن چک بپرسیم پول به/از کدام حساب رفت
-$walletList = [];
-try {
-    $wStmt = $pdo->prepare('SELECT id, name FROM wallets WHERE user_id = :u AND is_active = 1 ORDER BY sort_order, name');
-    $wStmt->execute(['u' => $userId]);
-    $walletList = $wStmt->fetchAll();
-} catch (PDOException $e) {
-    $walletList = [];
-}
+$walletList = activeWallets($userId);
 $defaultWallet = defaultWalletId($userId);
 
 $pageTitle = 'چک‌ها';

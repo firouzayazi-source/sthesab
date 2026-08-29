@@ -54,11 +54,11 @@ $portfolio = [];
 
 foreach ($assetSummary as $s) {
     $portfolio[] = [
-        'name'     => $s['name'],
-        'qty'      => (float)$s['total_qty'],
-        'unit'     => $s['unit'],
-        'value'    => (int)$s['total_value'],
-        'is_trade' => false,
+        'name'  => $s['name'],
+        'qty'   => (float)$s['total_qty'],
+        'unit'  => $s['unit'],
+        'value' => (int)$s['total_value'],
+        'kind'  => 'asset',
     ];
 }
 
@@ -68,47 +68,80 @@ if (tradesTablesExist($pdo) && tradesEnabled($pdo, $userId)) {
         if ($t['is_closed']) { continue; }
         $tradeInventoryValue += $t['open_cost'];
         $portfolio[] = [
-            'name'     => $t['title'],
-            'qty'      => (float)$t['remaining_qty'],
-            'unit'     => 'واحد',
-            'value'    => (int)$t['open_cost'],
-            'is_trade' => true,
+            'name'  => $t['title'],
+            'qty'   => (float)$t['remaining_qty'],
+            'unit'  => 'واحد',
+            'value' => (int)$t['open_cost'],
+            'kind'  => 'trade',
         ];
     }
+}
+
+// پولِ توی حساب‌ها هم دارایی است. به‌صورت یک قلم می‌آید تا در همین
+// نمودار دیده شود، ولی مثل بقیه‌ی قلم‌ها قابل خاموش کردن است — گاهی
+// می‌خواهید بدانید دارایی غیرنقدی‌تان چقدر است.
+$walletsTotal = 0;
+$walletsCount = 0;
+try {
+    foreach (walletBalances($userId) as $w) {
+        if ((int)$w['is_active'] !== 1) { continue; }
+        $walletsTotal += (int)$w['balance'];
+        $walletsCount++;
+    }
+} catch (PDOException $e) {
+    $walletsCount = 0;
+}
+if ($walletsCount > 0) {
+    $portfolio[] = [
+        'name'  => 'مجموع حساب‌ها',
+        'qty'   => (float)$walletsCount,
+        'unit'  => 'حساب',
+        'value' => $walletsTotal,
+        'kind'  => 'wallets',
+    ];
 }
 
 // بزرگ‌ترین‌ها اول — وقتی اقلام زیاد شوند، مهم‌ها بالا می‌مانند
 usort($portfolio, fn($a, $b) => $b['value'] <=> $a['value']);
 
-$portfolioTotal = $totalPortfolioValue + $tradeInventoryValue;
-
-// همان پالت گزارش دسته‌بندی، تا دو صفحه یک زبان بصری داشته باشند
-$palette = chartPalette('green');   // دارایی یعنی چیزی که داریم — سبز
-$chartLabels = []; $chartValues = []; $chartColors = [];
+// همان پالت گزارش دسته‌بندی، تا دو صفحه یک زبان بصری داشته باشند.
+// قاچ اول سبز است (دارایی) و بقیه از چرخه‌ی هیوهای متمایز می‌آیند.
+$paletteLight = chartPalette('green', 'light');
+$paletteDark  = chartPalette('green', 'dark');
+$pn = count($paletteLight);
 foreach ($portfolio as $i => $row) {
-    $portfolio[$i]['color'] = $palette[$i % count($palette)];
-    if ($row['value'] > 0) {
-        $chartLabels[] = $row['name'];
-        $chartValues[] = $row['value'];
-        $chartColors[] = $portfolio[$i]['color'];
-    }
+    $portfolio[$i]['color_l'] = $paletteLight[$i % $pn];
+    $portfolio[$i]['color_d'] = $paletteDark[$i % $pn];
+    // کلید پایدار برای به‌خاطر سپردن انتخابِ روشن/خاموش در همین مرورگر
+    $portfolio[$i]['key'] = $row['kind'] . ':' . $row['name'];
 }
+
+// جمع اولیه = همه‌ی قلم‌ها روشن. جاوااسکریپت با خاموش کردن هر قلم،
+// همین عدد و درصدها و نمودار را دوباره می‌سازد.
+$portfolioTotal = 0;
+foreach ($portfolio as $row) { $portfolioTotal += $row['value']; }
+$chartable = array_values(array_filter($portfolio, fn($r) => $r['value'] > 0));
 
 $pageTitle = 'دارایی‌ها';
 include __DIR__ . '/includes/header.php';
 ?>
 
-<!-- ---------- نمای کلی دارایی‌ها ---------- -->
+<!-- ---------- نمای کلی دارایی‌ها ----------
+     هر قلم یک کلید روشن/خاموش دارد. خاموش کردنش چیزی را پاک نمی‌کند؛
+     فقط از جمع و نمودار بیرونش می‌گذارد — تا بشود پرسید «دارایی‌ام
+     بدون طلا چقدر است؟» یا «بدون پولِ توی حساب‌ها چقدر؟». انتخاب در
+     همین مرورگر به خاطر می‌ماند. -->
 <div class="card">
     <div class="asset-total-row">
         <span class="asset-total-label">ارزش کل دارایی‌ها</span>
-        <b class="asset-total-value"><?= formatMoney($portfolioTotal) ?> <small><?= h(APP_CURRENCY) ?></small></b>
+        <b class="asset-total-value" id="assetGrandTotal"><?= formatMoney($portfolioTotal) ?> <small><?= h(APP_CURRENCY) ?></small></b>
     </div>
+    <p class="hint asset-total-note" id="assetExcludedNote" hidden></p>
 
     <?php if (empty($portfolio)): ?>
         <p class="empty-row">هنوز دارایی‌ای ثبت نشده است.</p>
     <?php else: ?>
-        <?php if (!empty($chartValues)): ?>
+        <?php if (!empty($chartable)): ?>
         <div class="chart-container" style="max-width:250px; height:250px; margin:16px auto 18px;">
             <canvas id="assetChart"></canvas>
         </div>
@@ -125,15 +158,23 @@ include __DIR__ . '/includes/header.php';
         <div class="category-breakdown-list" id="assetBreakdown">
             <?php foreach ($portfolio as $row): ?>
                 <?php $pct = $portfolioTotal > 0 ? round($row['value'] / $portfolioTotal * 100, 1) : 0; ?>
-                <div class="cat-breakdown-item asset-item" data-name="<?= h($row['name']) ?>">
+                <div class="cat-breakdown-item asset-item"
+                     data-name="<?= h($row['name']) ?>"
+                     data-key="<?= h($row['key']) ?>"
+                     data-value="<?= (int)$row['value'] ?>">
                     <div class="cat-breakdown-summary">
-                        <span class="cat-dot" style="background:<?= h($row['color']) ?>;"></span>
+                        <span class="cat-dot" style="--dot-l:<?= h($row['color_l']) ?>; --dot-d:<?= h($row['color_d']) ?>;"></span>
                         <span class="cat-breakdown-name">
                             <?= h($row['name']) ?>
-                            <?php if ($row['is_trade']): ?><span class="asset-tag">معامله</span><?php endif; ?>
+                            <?php if ($row['kind'] === 'trade'): ?><span class="asset-tag">معامله</span><?php endif; ?>
+                            <?php if ($row['kind'] === 'wallets'): ?><span class="asset-tag asset-tag-wallet">حساب‌ها</span><?php endif; ?>
                         </span>
                         <span class="cat-breakdown-pct"><?= $row['value'] > 0 ? toPersianDigits($pct) . '٪' : '—' ?></span>
-                        <span class="cat-breakdown-amount"><?= $row['value'] > 0 ? formatMoney($row['value']) : '' ?></span>
+                        <span class="cat-breakdown-amount"><?= $row['value'] !== 0 ? formatMoney(abs($row['value'])) : '' ?></span>
+                        <label class="switch switch-sm asset-toggle" title="اعمال در جمع و نمودار">
+                            <input type="checkbox" class="js-asset-include" checked>
+                            <span class="switch-track"><span class="switch-knob"></span></span>
+                        </label>
                     </div>
                     <div class="asset-item-qty">
                         <?= formatQuantity($row['qty']) ?> <?= h($row['unit']) ?>
@@ -143,7 +184,7 @@ include __DIR__ . '/includes/header.php';
                     </div>
                     <?php if ($row['value'] > 0): ?>
                     <div class="cat-breakdown-bar-track">
-                        <div class="cat-breakdown-bar" style="width:<?= $pct ?>%; background:<?= h($row['color']) ?>;"></div>
+                        <div class="cat-breakdown-bar" style="width:<?= $pct ?>%; --dot-l:<?= h($row['color_l']) ?>; --dot-d:<?= h($row['color_d']) ?>;"></div>
                     </div>
                     <?php endif; ?>
                 </div>
@@ -332,35 +373,16 @@ include __DIR__ . '/includes/header.php';
 
 <meta name="csrf-token" content="<?= Csrf::token() ?>">
 
-<?php if (!empty($chartValues)): ?>
+<?php if (!empty($chartable)): ?>
 <!-- همان منبعی که گزارش دسته‌بندی از آن استفاده می‌کند -->
 <script defer src="<?= APP_BASE_PATH ?>/assets/serve.php?f=js/chart.umd.js&v=<?= assetVersion(['js/chart.umd.js']) ?>"></script>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    var box = document.querySelector('.chart-container');
-    // Chart.js از CDN می‌آید و ممکن است در دسترس نباشد؛ در آن صورت
-    // به‌جای یک مستطیل خالی، فهرست رنگی پایین به‌تنهایی کار می‌کند.
-    if (!window.Chart) { if (box) box.hidden = true; return; }
-    new Chart(document.getElementById('assetChart').getContext('2d'), {
-        type: 'doughnut',
-        data: {
-            labels: <?= json_encode($chartLabels, JSON_UNESCAPED_UNICODE) ?>,
-            datasets: [{
-                data: <?= json_encode($chartValues) ?>,
-                backgroundColor: <?= json_encode($chartColors) ?>,
-                borderWidth: 2,
-                borderColor: getComputedStyle(document.documentElement)
-                    .getPropertyValue('--surface').trim() || '#ffffff'
-            }]
-        },
-        options: {
-            responsive: true, maintainAspectRatio: false,
-            cutout: '62%',
-            plugins: { legend: { display: false } }
-        }
-    });
-});
-</script>
+<script id="assetPortfolioData" type="application/json"><?= json_encode(array_map(fn($r) => [
+    'key'   => $r['key'],
+    'name'  => $r['name'],
+    'value' => (int)$r['value'],
+    'cl'    => $r['color_l'],
+    'cd'    => $r['color_d'],
+], $chartable), JSON_UNESCAPED_UNICODE) ?></script>
 <?php endif; ?>
 
 <?php include __DIR__ . '/includes/footer.php'; ?>

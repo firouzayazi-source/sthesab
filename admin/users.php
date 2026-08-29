@@ -269,9 +269,10 @@ include __DIR__ . '/../includes/header.php';
     <form method="POST">
         <?= Csrf::field() ?>
         <input type="hidden" name="action" value="update_login_setting">
-        <label style="display:flex; align-items:center; gap:8px; margin-bottom:12px; cursor:pointer;">
-            <input type="checkbox" name="require_full_login" value="1" style="width:auto;" <?= $requireFullLoginSetting ? 'checked' : '' ?>>
-            <span>الزام به وارد کردن نام کاربری هنگام ورود</span>
+        <label class="switch" style="margin-bottom:14px;">
+            <input type="checkbox" name="require_full_login" value="1" <?= $requireFullLoginSetting ? 'checked' : '' ?>>
+            <span class="switch-track"><span class="switch-knob"></span></span>
+            <span class="switch-text">الزام به وارد کردن نام کاربری هنگام ورود</span>
         </label>
         <button type="submit" class="btn btn-secondary btn-sm">ذخیره تنظیمات</button>
     </form>

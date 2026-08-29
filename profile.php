@@ -170,9 +170,10 @@ include __DIR__ . '/includes/header.php';
 <?php if ($tradesColumnReady): ?>
 <div class="card">
     <h2 class="card-title">بخش معاملات</h2>
-    <label class="inline-check" style="margin-bottom:0;">
+    <label class="switch" style="margin-bottom:0;">
         <input type="checkbox" id="tradesToggle" <?= $tradesOn ? 'checked' : '' ?>>
-        <span>فعال کردن بخش خرید و فروش</span>
+        <span class="switch-track"><span class="switch-knob"></span></span>
+        <span class="switch-text">فعال کردن بخش خرید و فروش</span>
     </label>
     <p class="hint">
         دفتری جدا از درآمد و هزینه: جنسی می‌خرید، بعداً می‌فروشید، و سود
@@ -184,9 +185,10 @@ include __DIR__ . '/includes/header.php';
 
 <div class="card">
     <h2 class="card-title">نمایش</h2>
-    <label class="inline-check" style="margin-bottom:0;">
+    <label class="switch" style="margin-bottom:0;">
         <input type="checkbox" id="themeAuto">
-        <span>پیروی خودکار از حالت شب گوشی</span>
+        <span class="switch-track"><span class="switch-knob"></span></span>
+        <span class="switch-text">پیروی خودکار از حالت شب گوشی</span>
     </label>
     <p class="hint">وقتی روشن باشد، با تغییر حالت شب گوشی اپ هم بلافاصله عوض می‌شود. با زدن دکمه‌ی ماه/خورشید بالای صفحه، این گزینه خاموش می‌شود.</p>
 </div>

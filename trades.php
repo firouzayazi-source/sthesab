@@ -56,9 +56,7 @@ foreach ($sellableAssets as $a) { $assetsValue += (int)round((float)$a['quantity
 $wallets = [];
 $defaultWallet = null;
 if ($enabled) {
-    $wStmt = $pdo->prepare('SELECT id, name FROM wallets WHERE user_id = :u AND is_active = 1 ORDER BY sort_order, name');
-    $wStmt->execute(['u' => $userId]);
-    $wallets = $wStmt->fetchAll();
+    $wallets = activeWallets($userId);
     // پول فروش باید جایی بنشیند. اگر کاربر حسابی انتخاب نکند، «کیف پول»
     // پیش‌فرض است و بعداً می‌تواند همان فروش را ویرایش کند و به حساب
     // واقعی (مثلاً ملی) ببردش.

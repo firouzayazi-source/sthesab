@@ -1,3 +1,52 @@
+/* ============================================================
+   رنگِ وابسته به حالت شب
+   ------------------------------------------------------------
+   نمودارها رنگشان را در جاوااسکریپت می‌گیرند، پس با عوض شدن حالت شب
+   باید دوباره رنگ بگیرند — نقطه‌های رنگی کنار فهرست‌ها این مشکل را
+   ندارند چون رنگشان از متغیر CSS می‌آید.
+
+   این تکه عمداً بیرون از DOMContentLoaded است: اسکریپت درون‌صفحه‌ایِ
+   صفحه‌ی گزارش شنونده‌اش را هنگام تجزیه‌ی HTML ثبت می‌کند، یعنی زودتر
+   از شنونده‌ی این فایل که با defer اجرا می‌شود. اگر این توابع داخل
+   شنونده تعریف می‌شدند، آن صفحه با «registerThemedChart is not defined»
+   می‌شکست.
+   ============================================================ */
+(function () {
+    var themedCharts = [];
+    window.__themeHooks = window.__themeHooks || [];
+
+    function surfaceColor() {
+        return getComputedStyle(document.documentElement)
+            .getPropertyValue('--surface').trim() || '#ffffff';
+    }
+
+    function paintChart(entry) {
+        var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+        var colors = dark ? entry.dark : entry.light;
+        var surface = surfaceColor();
+        entry.chart.data.datasets.forEach(function (ds) {
+            ds.backgroundColor = colors;
+            ds.borderColor = surface;
+        });
+        entry.chart.update('none');
+    }
+
+    window.registerThemedChart = function (chart, lightColors, darkColors) {
+        var entry = { chart: chart, light: lightColors, dark: darkColors };
+        themedCharts.push(entry);
+        paintChart(entry);
+    };
+
+    window.onThemeChange = function (fn) { window.__themeHooks.push(fn); };
+
+    window.__repaintThemedCharts = function () {
+        themedCharts.forEach(paintChart);
+        window.__themeHooks.forEach(function (fn) {
+            try { fn(); } catch (e) {}
+        });
+    };
+})();
+
 document.addEventListener('DOMContentLoaded', function () {
 
     // پایه‌ی آدرس API — تا فراخوانی‌ها از داخل پوشه admin/ هم درست کار کند
@@ -1944,6 +1993,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
         var autoBox = document.getElementById('themeAuto');
         if (autoBox) { autoBox.checked = (mode === 'auto'); }
+
+        // نمودارها رنگشان را در جاوااسکریپت گرفته‌اند و خودشان خبر ندارند
+        window.__repaintThemedCharts();
     }
 
     // وقتی گوشی بین حالت شب و روز جابه‌جا می‌شود، اپ هم زنده عوض شود
@@ -2685,6 +2737,133 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
         });
     }
+
+    // ---------- نمای دارایی‌ها: روشن/خاموش کردن هر قلم ----------
+    //
+    // هر قلم (دارایی ثبت‌شده، کالای معاملاتی، مجموع حساب‌ها) یک کلید
+    // دارد. خاموش کردنش چیزی را پاک نمی‌کند؛ فقط از جمع کل، درصدها و
+    // نمودار بیرونش می‌گذارد — تا بشود پرسید «دارایی‌ام بدون طلا چقدر
+    // است؟». انتخاب در همین مرورگر می‌ماند تا هر بار از نو نچینید.
+    (function () {
+        var list = document.getElementById('assetBreakdown');
+        if (!list) { return; }
+
+        var STORE = 'daftar_asset_off';
+        var items = [].slice.call(list.querySelectorAll('.asset-item'));
+        var totalEl = document.getElementById('assetGrandTotal');
+        var noteEl = document.getElementById('assetExcludedNote');
+        var unit = totalEl ? (totalEl.querySelector('small') ? totalEl.querySelector('small').textContent : '') : '';
+
+        var off = {};
+        try { off = JSON.parse(localStorage.getItem(STORE) || '{}') || {}; } catch (e) { off = {}; }
+
+        var chart = null;
+        var chartData = [];
+        var dataEl = document.getElementById('assetPortfolioData');
+        if (dataEl) {
+            try { chartData = JSON.parse(dataEl.textContent) || []; } catch (e) { chartData = []; }
+        }
+
+        function money(n) {
+            var neg = n < 0;
+            var t = toPersianDigitsJs(Math.abs(n).toLocaleString('en-US').replace(/,/g, '\u066C'));
+            return (neg ? '\u2212' : '') + t;
+        }
+
+        function isOn(key) { return !off[key]; }
+
+        function refresh() {
+            var total = 0, excluded = 0;
+            items.forEach(function (el) {
+                if (isOn(el.getAttribute('data-key'))) {
+                    total += parseInt(el.getAttribute('data-value') || '0', 10);
+                } else {
+                    excluded++;
+                }
+            });
+
+            if (totalEl) {
+                totalEl.innerHTML = '';
+                totalEl.appendChild(document.createTextNode(money(total) + ' '));
+                var sm = document.createElement('small');
+                sm.textContent = unit;
+                totalEl.appendChild(sm);
+            }
+
+            if (noteEl) {
+                noteEl.hidden = excluded === 0;
+                noteEl.textContent = excluded === 0 ? ''
+                    : toPersianDigitsJs(String(excluded)) + ' قلم از این محاسبه بیرون گذاشته شده.';
+            }
+
+            items.forEach(function (el) {
+                var on = isOn(el.getAttribute('data-key'));
+                var val = parseInt(el.getAttribute('data-value') || '0', 10);
+                var pct = (on && total > 0 && val > 0) ? Math.round(val / total * 1000) / 10 : 0;
+                el.classList.toggle('asset-item-off', !on);
+
+                var pctEl = el.querySelector('.cat-breakdown-pct');
+                if (pctEl) { pctEl.textContent = (on && val > 0) ? toPersianDigitsJs(String(pct)) + '٪' : '—'; }
+
+                var bar = el.querySelector('.cat-breakdown-bar');
+                if (bar) { bar.style.width = (on ? pct : 0) + '%'; }
+            });
+
+            if (chart) {
+                var keep = chartData.filter(function (d) { return isOn(d.key) && d.value > 0; });
+                chart.data.labels = keep.map(function (d) { return d.name; });
+                chart.data.datasets[0].data = keep.map(function (d) { return d.value; });
+                repaintAssetChart(keep);
+            }
+        }
+
+        function repaintAssetChart(keep) {
+            var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+            var surface = getComputedStyle(document.documentElement)
+                .getPropertyValue('--surface').trim() || '#ffffff';
+            chart.data.datasets[0].backgroundColor = keep.map(function (d) { return dark ? d.cd : d.cl; });
+            chart.data.datasets[0].borderColor = surface;
+            chart.update('none');
+        }
+
+        items.forEach(function (el) {
+            var box = el.querySelector('.js-asset-include');
+            if (!box) { return; }
+            var key = el.getAttribute('data-key');
+            box.checked = isOn(key);
+            box.addEventListener('change', function () {
+                if (this.checked) { delete off[key]; } else { off[key] = 1; }
+                try { localStorage.setItem(STORE, JSON.stringify(off)); } catch (e) {}
+                refresh();
+            });
+        });
+
+        var canvas = document.getElementById('assetChart');
+        if (canvas && chartData.length) {
+            var box = canvas.closest('.chart-container');
+            // Chart.js ممکن است نرسیده باشد؛ در آن صورت به‌جای یک مستطیل
+            // خالی، فهرست رنگی پایین به‌تنهایی کار می‌کند.
+            if (!window.Chart) { if (box) box.hidden = true; }
+            else {
+                chart = new Chart(canvas.getContext('2d'), {
+                    type: 'doughnut',
+                    data: { labels: [], datasets: [{ data: [], borderWidth: 2 }] },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        cutout: '62%',
+                        plugins: { legend: { display: false } }
+                    }
+                });
+                // با عوض شدن حالت شب، رنگ قاچ‌ها هم باید عوض شود
+                window.onThemeChange(function () {
+                    var keep = chartData.filter(function (d) { return isOn(d.key) && d.value > 0; });
+                    repaintAssetChart(keep);
+                });
+            }
+        }
+
+        refresh();
+    })();
 
     // ---------- فیلتر فهرست دارایی‌ها ----------
     // وقتی اقلام زیاد می‌شوند، پیدا کردن یکی‌شان با اسکرول سخت است.

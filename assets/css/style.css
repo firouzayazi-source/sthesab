@@ -835,7 +835,11 @@ textarea { resize: vertical; }
 .category-breakdown-list { display: flex; flex-direction: column; gap: 15px; }
 .cat-breakdown-summary { display: flex; align-items: center; gap: 9px; }
 .cat-breakdown-summary.js-cat-toggle { cursor: pointer; }
-.cat-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+/* رنگ نقطه و نوار از دو متغیر می‌آید که PHP کنارشان می‌نویسد: مقدار
+   روشن و مقدار شب. این‌طور همان HTML در هر دو حالت درست است و لازم
+   نیست صفحه دوباره ساخته شود. */
+.cat-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; background: var(--dot-l); }
+[data-theme="dark"] .cat-dot { background: var(--dot-d, var(--dot-l)); }
 .cat-breakdown-name {
     flex: 1; font-size: 13.5px; font-weight: 600;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -846,7 +850,8 @@ textarea { resize: vertical; }
     height: 5px; background: var(--line-soft);
     border-radius: 3px; overflow: hidden; margin-top: 7px;
 }
-.cat-breakdown-bar { height: 100%; border-radius: 3px; }
+.cat-breakdown-bar { height: 100%; border-radius: 3px; background: var(--dot-l); }
+[data-theme="dark"] .cat-breakdown-bar { background: var(--dot-d, var(--dot-l)); }
 .cat-breakdown-detail {
     margin-top: 10px; padding: 10px 12px;
     background: var(--line-soft); border-radius: var(--r-sm);
@@ -971,6 +976,22 @@ textarea { resize: vertical; }
     border-radius: 22%;
 }
 .auth-logo .brand-icon-img { margin: 0 auto 11px; width: 64px; height: 64px; }
+
+/* قاب گرد صفحه‌ی ورود — همان قابی که عکس پروفایل در بقیه‌ی اپ دارد.
+   اگر دستگاه کاربری را به خاطر داشته باشد عکس خودش می‌نشیند، وگرنه
+   آیکن برنامه؛ ولی شکل قاب در هر دو حالت یکی است. */
+.auth-avatar {
+    display: block; margin: 0 auto 12px;
+    width: 76px; height: 76px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 3px solid var(--surface);
+    box-shadow: 0 6px 18px -8px rgba(0,0,0,.45);
+    background: var(--brand);
+}
+/* آیکن برنامه مربع است و طرحش تا لبه می‌رود؛ کمی تو رفتگی لازم دارد
+   تا داخل دایره بریده به نظر نرسد. */
+.auth-avatar-app { object-fit: contain; padding: 6px; }
 .sidebar-brand .brand-icon-img { width: 24px; height: 24px; border-radius: 26%; }
 .auth-logo h1 { font-size: 21px; font-weight: 700; }
 .auth-subtitle { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
@@ -1274,14 +1295,47 @@ html[data-theme="dark"] .seg-item.active { background: #2b3037; color: var(--ink
 .transfer-date { font-size: 11px; color: var(--muted-2); }
 .transfer-actions { display: flex; gap: 6px; }
 
-.inline-check {
-    display: flex; align-items: center; gap: 8px;
-    font-size: 13px; margin-bottom: 4px; cursor: pointer;
+/* ============================================================
+   کلید دو حالته — یک شکل برای همه‌ی گزینه‌های روشن/خاموش اپ.
+   قبلاً هر صفحه چک‌باکس خام مرورگر را نشان می‌داد و هر مرورگر
+   شکل خودش را می‌کشید؛ حالا همه‌جا همین است.
+   ============================================================ */
+.switch {
+    display: flex; align-items: center; gap: 10px;
+    cursor: pointer; font-size: 13.5px; line-height: 1.5;
+    user-select: none;
 }
-.inline-check input { width: auto; }
-/* display صریح بالا بر قاعده‌ی پیش‌فرضِ [hidden] مرورگر غلبه می‌کند، پس
-   بی این خط، هر .inline-check با صفت hidden باز هم دیده می‌شد. */
-.inline-check[hidden] { display: none !important; }
+.switch input {
+    position: absolute; opacity: 0; width: 0; height: 0;
+}
+.switch-track {
+    width: 42px; height: 24px; flex: none;
+    border-radius: 999px;
+    background: var(--line);
+    position: relative;
+    transition: background .18s ease;
+}
+.switch-knob {
+    position: absolute; top: 3px; inset-inline-start: 3px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,.28);
+    transition: transform .18s ease;
+}
+.switch input:checked + .switch-track { background: var(--in); }
+/* راست‌به‌چپ: حالت روشن یعنی دستگیره به سمت چپ می‌رود */
+.switch input:checked + .switch-track .switch-knob { transform: translateX(-18px); }
+.switch input:focus-visible + .switch-track {
+    outline: 2px solid var(--brand); outline-offset: 2px;
+}
+.switch input:disabled + .switch-track { opacity: .5; }
+.switch-text { flex: 1; min-width: 0; }
+.switch[hidden] { display: none !important; }
+
+/* نسخه‌ی جمع‌وجور برای کنار ردیف‌های فهرست */
+.switch-sm .switch-track { width: 34px; height: 20px; }
+.switch-sm .switch-knob { width: 14px; height: 14px; top: 3px; }
+.switch-sm input:checked + .switch-track .switch-knob { transform: translateX(-14px); }
 
 .wallet-extra {
     display: flex; align-items: center; justify-content: space-between;
@@ -2423,6 +2477,17 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
    .link-back خوردیم. */
 .asset-item[hidden] { display: none !important; }
 .chart-container[hidden] { display: none !important; }
+
+.asset-tag-wallet { background: var(--in-wash); color: var(--in); }
+
+/* کلید اعمال/عدم اعمال هر قلم در جمع و نمودار */
+.asset-toggle { flex: none; margin-inline-start: 8px; }
+.asset-item-off .cat-breakdown-name,
+.asset-item-off .cat-breakdown-amount,
+.asset-item-off .asset-item-qty { opacity: .42; }
+.asset-item-off .cat-dot { opacity: .3; }
+.asset-item-off .cat-breakdown-bar-track { opacity: .35; }
+.asset-total-note { margin-top: 8px; }
 
 /* ---------- تفکیک موجودی حساب‌ها (داشبورد) ---------- */
 .wallet-line {

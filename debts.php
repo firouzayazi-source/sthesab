@@ -103,14 +103,7 @@ foreach ($totalsStmt->fetchAll() as $row) {
 }
 
 // حساب‌ها — برای اینکه هنگام پرداخت یا تسویه بپرسیم پول از/به کجا رفت
-$walletList = [];
-try {
-    $wStmt = $pdo->prepare('SELECT id, name FROM wallets WHERE user_id = :u AND is_active = 1 ORDER BY sort_order, name');
-    $wStmt->execute(['u' => $userId]);
-    $walletList = $wStmt->fetchAll();
-} catch (PDOException $e) {
-    $walletList = [];
-}
+$walletList = activeWallets($userId);
 $defaultWallet = defaultWalletId($userId);
 
 $pageTitle = 'طلب و بدهی';

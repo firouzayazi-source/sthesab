@@ -24,6 +24,25 @@ if (getParam('switch_user') === '1') {
 $requireFullLogin = getSetting('require_full_login', '0') === '1';
 $rememberedUsername = $requireFullLogin ? null : Auth::getRememberedUsername();
 
+// اگر این دستگاه کاربری را به خاطر دارد، عکس پروفایل خودش را نشان می‌دهیم
+// نه آیکن برنامه را — صفحه‌ی ورود این‌طور «مال خودش» به نظر می‌رسد.
+// اگر عکسی ثبت نکرده باشد، آیکن برنامه در همان قاب گرد می‌نشیند.
+$loginAvatar = null;
+if ($rememberedUsername !== null && tableHasColumn('users', 'avatar')) {
+    try {
+        $av = Database::getConnection()->prepare(
+            'SELECT avatar FROM users WHERE username = :u AND is_active = 1 LIMIT 1'
+        );
+        $av->execute(['u' => $rememberedUsername]);
+        $file = (string)$av->fetchColumn();
+        if ($file !== '' && is_file(__DIR__ . '/uploads/avatars/' . basename($file))) {
+            $loginAvatar = basename($file);
+        }
+    } catch (PDOException $e) {
+        $loginAvatar = null;
+    }
+}
+
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -68,7 +87,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body class="auth-body">
     <div class="auth-box">
         <div class="auth-logo">
-            <img src="<?= APP_BASE_PATH ?>/assets/icons/icon-192.png" alt="" class="brand-icon brand-icon-img" width="64" height="64">
+            <?php if ($loginAvatar !== null): ?>
+                <img src="<?= APP_BASE_PATH ?>/uploads/avatars/<?= h($loginAvatar) ?>" alt=""
+                     class="auth-avatar" width="76" height="76">
+            <?php else: ?>
+                <img src="<?= APP_BASE_PATH ?>/assets/icons/icon-192.png" alt=""
+                     class="auth-avatar auth-avatar-app" width="76" height="76">
+            <?php endif; ?>
             <h1><?= h(APP_NAME) ?></h1>
             <p class="auth-subtitle">مدیریت ساده درآمد و هزینه</p>
         </div>
@@ -90,9 +115,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="password" autocomplete="current-password" id="password" name="password" required autofocus placeholder="رمز عبور خود را وارد کنید">
                 </div>
 
-                <label class="inline-check" style="margin:4px 0 14px;">
+                <label class="switch" style="margin:4px 0 16px;">
                     <input type="checkbox" name="trust_device" value="1" checked>
-                    <span>این دستگاه را ۳۰ روز به خاطر بسپار</span>
+                    <span class="switch-track"><span class="switch-knob"></span></span>
+                    <span class="switch-text">این دستگاه را ۳۰ روز به خاطر بسپار</span>
                 </label>
                 <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ورود…">ورود</button>
                 <a href="forgot-password.php" class="link-back" style="display:block;text-align:center;margin-top:14px">رمز عبور را فراموش کرده‌ام</a>
@@ -111,9 +137,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <label for="password">رمز عبور</label>
                     <input type="password" autocomplete="current-password" id="password" name="password" required placeholder="رمز عبور خود را وارد کنید">
                 </div>
-                <label class="inline-check" style="margin:4px 0 14px;">
+                <label class="switch" style="margin:4px 0 16px;">
                     <input type="checkbox" name="trust_device" value="1" checked>
-                    <span>این دستگاه را ۳۰ روز به خاطر بسپار</span>
+                    <span class="switch-track"><span class="switch-knob"></span></span>
+                    <span class="switch-text">این دستگاه را ۳۰ روز به خاطر بسپار</span>
                 </label>
                 <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ورود…">ورود</button>
                 <a href="forgot-password.php" class="link-back" style="display:block;text-align:center;margin-top:14px">رمز عبور را فراموش کرده‌ام</a>
