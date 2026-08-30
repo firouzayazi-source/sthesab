@@ -62,19 +62,33 @@ foreach ($assetSummary as $s) {
     ];
 }
 
+// کالای بازِ بخش معاملات **یک قلمِ جمع‌شده** است، نه یکی به‌ازای هر کالا.
+//
+// چرا: این صفحه نمای کلیِ ترکیب دارایی است — «چند درصدم طلاست، چند
+// درصدم پولِ نقد». اسمِ تک‌تکِ معامله‌ها (گوشی، سکه، …) اینجا فهرست را
+// شلوغ می‌کرد و درصدها را خرد می‌کرد، در حالی که جای دیدنِ آن‌ها صفحه‌ی
+// معاملات است. با یک ردیف و یک توگل، می‌شود پرسید «دارایی‌ام بدون
+// بخش معاملات چقدر است؟» — که همان سؤالِ واقعی است.
+//
+// دارایی‌های ثبت‌شده عمداً جدا جدا می‌مانند (به تفکیک نوع)، چون آن‌ها
+// خودشان ترکیبِ دارایی‌اند نه یک بخش.
 $tradeInventoryValue = 0;
+$tradeOpenCount      = 0;
 if (tradesTablesExist($pdo) && tradesEnabled($pdo, $userId)) {
     foreach (tradesWithProgress($userId) as $t) {
         if ($t['is_closed']) { continue; }
         $tradeInventoryValue += $t['open_cost'];
-        $portfolio[] = [
-            'name'  => $t['title'],
-            'qty'   => (float)$t['remaining_qty'],
-            'unit'  => 'واحد',
-            'value' => (int)$t['open_cost'],
-            'kind'  => 'trade',
-        ];
+        $tradeOpenCount++;
     }
+}
+if ($tradeOpenCount > 0) {
+    $portfolio[] = [
+        'name'  => 'مجموع دارایی‌های بخش معاملات',
+        'qty'   => (float)$tradeOpenCount,
+        'unit'  => 'قلم',
+        'value' => (int)$tradeInventoryValue,
+        'kind'  => 'trade',
+    ];
 }
 
 // پولِ توی حساب‌ها هم دارایی است. به‌صورت یک قلم می‌آید تا در همین
@@ -164,11 +178,13 @@ include __DIR__ . '/includes/header.php';
                      data-value="<?= (int)$row['value'] ?>">
                     <div class="cat-breakdown-summary">
                         <span class="cat-dot" style="--dot-l:<?= h($row['color_l']) ?>; --dot-d:<?= h($row['color_d']) ?>;"></span>
-                        <span class="cat-breakdown-name">
-                            <?= h($row['name']) ?>
-                            <?php if ($row['kind'] === 'trade'): ?><span class="asset-tag">معامله</span><?php endif; ?>
-                            <?php if ($row['kind'] === 'wallets'): ?><span class="asset-tag asset-tag-wallet">حساب‌ها</span><?php endif; ?>
-                        </span>
+                        <?php
+                        // برچسب فقط روی دارایی‌های ثبت‌شده معنا دارد. دو ردیفِ
+                        // جمع‌شده («مجموع دارایی‌های بخش معاملات» و «مجموع
+                        // حساب‌ها») خودشان اسمشان را می‌گویند، و برچسبِ تکراری
+                        // فقط عرض می‌گرفت و نام را با «…» می‌برید.
+                        ?>
+                        <span class="cat-breakdown-name"><?= h($row['name']) ?></span>
                         <span class="cat-breakdown-pct"><?= $row['value'] > 0 ? toPersianDigits($pct) . '٪' : '—' ?></span>
                         <span class="cat-breakdown-amount"><?= $row['value'] !== 0 ? formatMoney(abs($row['value'])) : '' ?></span>
                         <label class="switch switch-sm asset-toggle" title="اعمال در جمع و نمودار">
@@ -192,9 +208,10 @@ include __DIR__ . '/includes/header.php';
         </div>
         <p class="asset-empty-filter" id="assetNoMatch" hidden>چیزی با این نام پیدا نشد.</p>
 
-        <?php if ($tradeInventoryValue > 0): ?>
+        <?php if ($tradeOpenCount > 0): ?>
         <p class="hint" style="margin-top:12px;">
-            موارد نشان‌دار «معامله» از بخش خرید و فروش آمده‌اند و فقط همان‌جا قابل فروش‌اند.
+            «مجموع دارایی‌های بخش معاملات» جمعِ <?= toPersianDigits((string)$tradeOpenCount) ?> کالای فروخته‌نشده است.
+            برای دیدن و فروششان به <a href="<?= APP_BASE_PATH ?>/trades.php">بخش معاملات</a> بروید.
         </p>
         <?php endif; ?>
     <?php endif; ?>
