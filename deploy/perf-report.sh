@@ -224,7 +224,12 @@ else
     else warn "HTML بدون فشرده‌سازی می‌آید — حجم چند برابر می‌شود" "gzip را در سایت nginx روشن کنید"; fi
 
     # کش دارایی‌های ثابت
-    CSSH=$(curl -sI --max-time 10 "$BASE/assets/css/style.css" 2>/dev/null | grep -i "cache-control" | tr -d '\r')
+    # nginx ممکن است بیش از یک هدر cache-control بفرستد (expires + add_header)؛
+    # همه در یک خط جمع می‌شوند وگرنه ستون‌های گزارش به هم می‌ریزد.
+    cc_of() { curl -sI --max-time 10 "$1" 2>/dev/null | tr -d '\r' \
+              | grep -i "^cache-control:" | sed 's/^[^:]*:[[:space:]]*//' \
+              | tr '\n' ' ' | sed 's/[[:space:]]*$//'; }
+    CSSH=$(cc_of "$BASE/assets/css/style.css")
     row "کش style.css" "${CSSH:-(هدر کش ندارد)}"
     if grep -qi "immutable\|max-age=31536000" <<<"${CSSH:-}"; then
         ok "دارایی‌های ثابت کش بلندمدت دارند"
@@ -234,7 +239,7 @@ else
     fi
 
     # سرویس‌ورکر نباید کش بلندمدت بگیرد
-    SWH=$(curl -sI --max-time 10 "$BASE/sw.js" 2>/dev/null | grep -i "cache-control" | tr -d '\r')
+    SWH=$(cc_of "$BASE/sw.js")
     row "کش sw.js" "${SWH:-(هدر ندارد)}"
     if grep -qi "immutable\|max-age=31536000" <<<"${SWH:-}"; then
         bad "sw.js کش یک‌ساله گرفته — نسخه‌ی تازه‌اش هرگز به کاربر نمی‌رسد" \
