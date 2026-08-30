@@ -231,8 +231,6 @@ sudo chown hesab:hesab /opt/hesab/app/config/config.php
 sudo chmod 640 /opt/hesab/app/config/config.php
 ```
 
-> **`DEPLOY_TOKEN` را روی VPS تعریف نکنید.** `deploy.php` (به‌روزرسان تحت وب) برای هاست اشتراکی بود. اینجا `deploy.sh` را دارید که امن‌تر است. بدون `DEPLOY_TOKEN`، فایل `deploy.php` خودش خطای ۵۰۰ می‌دهد و کاری نمی‌کند.
-
 ---
 
 ## مرحله ۴ — انتقال داده از هاست اشتراکی

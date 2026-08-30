@@ -64,7 +64,6 @@ cd "$(dirname "$0")/.."
 #   migration_category_icons ... ستون icon و color روی categories
 #   migration_repair ........... wallets, transfers, budgets, savings_*,
 #                                debt_payments, recurring_transactions
-#                                ← جایگزین کامل migration_wallets و migration_p1
 #   migration_p2 ............... attachments
 #   migration_p3 ............... trusted_devices, users.session_hours
 #   migration_p4 ............... users.avatar
@@ -90,9 +89,6 @@ MIGRATIONS=(
     migration_login_throttle.sql
     migration_people.sql
 )
-
-# این دو عمداً اجرا نمی‌شوند: migration_repair.sql جایگزین کامل هر دو است.
-SUPERSEDED=( migration_wallets.sql migration_p1.sql )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
 #
@@ -121,7 +117,7 @@ BASELINE_SET=(
 # ---------- بررسی همخوانی فهرست با فایل‌های روی دیسک ----------
 # اگر کسی فایل migration تازه‌ای اضافه کند و اینجا ثبتش نکند، باید سروصدا
 # کند — نه اینکه بی‌سروصدا نادیده گرفته شود.
-known=" ${MIGRATIONS[*]} ${SUPERSEDED[*]} "
+known=" ${MIGRATIONS[*]} "
 unregistered=()
 for f in migration_*.sql; do
     [[ -f "$f" ]] || continue

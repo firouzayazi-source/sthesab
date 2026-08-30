@@ -19,19 +19,6 @@ define('APP_SECRET_KEY', 'CHANGE_THIS_TO_A_RANDOM_SECRET_STRING_1234567890');
 
 define('APP_FORCE_HTTPS', false);
 
-/*
- * نحوه‌ی تحویل CSS و JS:
- *
- *   'direct' (پیش‌فرض) — مرورگر خودِ فایل را می‌گیرد و وب‌سرور gzip و کش
- *                        می‌دهد. روی VPS با nginx همین درست است و **مهم**
- *                        هم هست: هر فایلی که از assets/serve.php بیاید یک
- *                        پروسه‌ی PHP-FPM می‌گیرد و pool این اپ کوچک است.
- *
- *   'php'             — همه از assets/serve.php بیایند. فقط برای هاست
- *                        اشتراکی‌ای که mod_deflate و mod_expires ندارد.
- */
-define('ASSET_DELIVERY', 'direct');
-
 /**
  * اگر پروژه را مستقیم روی ریشه دامنه/ساب‌دامنه نصب کرده‌اید، این مقدار را خالی بگذارید.
  * اگر پروژه داخل یک زیرپوشه نصب شده (مثلاً https://example.com/daftar)، مسیر را اینجا بنویسید: '/daftar'

@@ -279,14 +279,7 @@ head1 "۶. تنظیمات خود اپ"
 
 if [[ -r "$CONFIG" ]]; then
     read_const() { php -r 'require $argv[1]; echo defined($argv[2]) ? constant($argv[2]) : "";' "$CONFIG" "$1" 2>/dev/null; }
-    AD=$(read_const ASSET_DELIVERY)
-    row "ASSET_DELIVERY" "${AD:-(تعریف نشده — پیش‌فرض direct)}"
-    if [[ "$AD" == "php" ]]; then
-        bad "فایل‌های CSS/JS از PHP تحویل می‌شوند — هر بارگذاری چند پروسه‌ی PHP می‌گیرد" \
-            "در config.php مقدار ASSET_DELIVERY را 'direct' کنید"
-    else
-        ok "CSS/JS مستقیم از وب‌سرور می‌آیند (نه از PHP)"
-    fi
+    row "APP_BASE_PATH" "$(read_const APP_BASE_PATH)/ (ریشه‌ی نصب)"
     DB_NAME=$(read_const DB_NAME); DB_USER=$(read_const DB_USER); DB_PASS=$(read_const DB_PASSWORD)
 else
     warn "config.php خوانده نشد ($CONFIG) — بخش دیتابیس رد می‌شود" "دسترسی فایل را بررسی کنید"

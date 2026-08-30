@@ -69,8 +69,8 @@ function isStaticAsset(url) {
     if (url.origin !== self.location.origin) { return false; }
     const base = new URL('./', self.location).pathname;      // ریشه‌ی نصب
     if (!url.pathname.startsWith(base + 'assets/')) { return false; }
-    // manifest.php و serve.php خودشان PHP اند و هدر کش خودشان را دارند؛
-    // نباید در لایه‌ی سرویس‌ورکر دوباره کش شوند.
+    // manifest.php خودش PHP است و هدر کش خودش را دارد؛ نباید در
+    // لایه‌ی سرویس‌ورکر دوباره کش شود.
     return !url.pathname.endsWith('.php');
 }
 

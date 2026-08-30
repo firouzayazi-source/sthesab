@@ -1269,29 +1269,18 @@ function cachedCategories(): array
 /**
  * آدرس‌های یک دسته فایل ثابت (CSS یا JS).
  *
- * دو حالت دارد و پیش‌فرض «مستقیم» است:
+ * مرورگر خودِ فایل را مستقیم از وب‌سرور می‌گیرد و nginx گزیپ و کش
+ * یک‌ساله را می‌دهد. **هیچ فایل ثابتی از PHP رد نمی‌شود** و این عمدی
+ * است: یک بار روی نسخه‌ای که همه را از یک اسکریپت PHP تحویل می‌داد،
+ * هر بارگذاری صفحه چهار پروسه‌ی PHP-FPM می‌گرفت (HTML + CSS + JS +
+ * chart.js) از pool ای که فقط چند پروسه دارد، و سایت وسط کار قفل
+ * می‌کرد. اگر روزی وسوسه شدید دوباره از PHP تحویلشان بدهید، همین.
  *
- *  direct — مرورگر خودِ فایل را می‌گیرد و وب‌سرور (nginx) gzip و کش
- *           یک‌ساله را می‌دهد. **این حالت روی VPS واجب است**: هر فایلی
- *           که از assets/serve.php بیاید یک پروسه‌ی PHP-FPM می‌گیرد، و
- *           pool این اپ فقط چند پروسه دارد. یک بار بارگذاری صفحه با
- *           CSS و JS و chart.js یعنی چهار پروسه‌ی هم‌زمان از همان چند
- *           تا — و همین باعث می‌شد سایت وسط کار چند ثانیه قفل کند.
- *
- *  php    — همه از assets/serve.php می‌آیند (یک درخواست برای چند فایل،
- *           به‌علاوه gzip و کش که خود PHP می‌دهد). فقط برای هاست
- *           اشتراکی‌ای که mod_deflate و mod_expires ندارد.
- *
- * با ثابت ASSET_DELIVERY در config.php قابل تغییر است.
+ * `?v=` از زمان تغییر فایل ساخته می‌شود، پس کش یک‌ساله امن است.
  */
 function assetUrls(array $relativePaths): array
 {
-    $mode = defined('ASSET_DELIVERY') ? ASSET_DELIVERY : 'direct';
     $ver  = assetVersion($relativePaths);
-
-    if ($mode === 'php') {
-        return [APP_BASE_PATH . '/assets/serve.php?f=' . implode(',', $relativePaths) . '&v=' . $ver];
-    }
 
     $urls = [];
     foreach ($relativePaths as $rel) {

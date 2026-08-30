@@ -27,7 +27,7 @@ if ($search !== '') {
 
 $whereClause = 'WHERE ' . implode(' AND ', $conditions);
 
-// اگر migration_p1.sql هنوز اجرا نشده (ستون paid_amount موجود نیست)،
+// اگر migration_repair.sql هنوز اجرا نشده (ستون paid_amount موجود نیست)،
 // همان رفتار قبلی حفظ می‌شود تا این صفحه‌ی موجود خراب نشود
 try {
     $stmt = $pdo->prepare("

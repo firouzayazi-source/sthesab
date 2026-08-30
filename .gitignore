@@ -24,5 +24,3 @@ verify.php
 .DS_Store
 Thumbs.db
 *.log
-.deploy_tmp/
-.deploy_download.zip

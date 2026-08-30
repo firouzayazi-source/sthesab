@@ -15,15 +15,11 @@
    و kern که نبودش فاصله‌ی حروف را خراب می‌کند.
    با font-weight: 100 900 همه‌ی وزن‌ها از همین یک فایل می‌آیند.
 
-   ⚠️ مسیر عمداً 'fonts/…' است و نه '../fonts/…'.
-   این فایل همیشه از طریق assets/serve.php تحویل داده می‌شود (header.php
-   را ببینید)، پس مبدأ آدرس‌های نسبی پوشه‌ی assets/ است نه assets/css/.
-   با '../fonts/…' آدرس به /fonts/ می‌رسید و فونت ۴۰۴ می‌گرفت. */
+   مسیر فونت '../fonts/…' است: مرورگر خودِ این فایل را از
+   assets/css/ می‌گیرد، پس مبدأ آدرس‌های نسبی همان پوشه است. */
 @font-face {
     font-family: 'Vazirmatn';
-    /* نسبت به همین فایل: assets/css/ → assets/fonts/
-       (وقتی CSS از assets/serve.php بیاید، همان فایل این مسیر را به
-        شکل درستِ آن حالت بازنویسی می‌کند.) */
+    /* نسبت به همین فایل: assets/css/ → assets/fonts/ */
     src: url('../fonts/Vazirmatn.woff2') format('woff2');
     font-weight: 100 900; font-style: normal; font-display: swap;
 }

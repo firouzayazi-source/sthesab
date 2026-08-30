@@ -235,8 +235,8 @@ listen.mode  = 0660
 ; بقیه در صف می‌ماندند و کاربر می‌دید سایت چند ثانیه قفل کرد.
 ;
 ; حالا دو پروسه همیشه گرم می‌مانند (حافظه‌ی ناچیز) و سقف بالاتر است.
-; ضمناً CSS/JS دیگر از PHP نمی‌گذرند (ASSET_DELIVERY=direct) پس هر
-; بارگذاری صفحه فقط یک پروسه می‌خواهد نه چهار تا.
+; ضمناً CSS/JS اصلاً از PHP نمی‌گذرند، پس هر بارگذاری صفحه فقط یک
+; پروسه می‌خواهد نه چهار تا.
 pm = dynamic
 pm.max_children = 12
 pm.start_servers = 2
@@ -316,9 +316,6 @@ server {
         expires 30d;
         add_header Cache-Control "private";
     }
-
-    # deploy.php فقط برای هاست اشتراکی بود؛ روی VPS جای git pull را نمی‌گیرد.
-    location = /deploy.php { deny all; return 404; }
 
     # deploy/ ابزار خط فرمان دارد (از جمله بازنشانی رمز) — از وب مسدود
     location ^~ /deploy/ { deny all; return 404; }

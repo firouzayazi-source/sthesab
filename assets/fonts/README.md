@@ -42,6 +42,6 @@ pyftsubset "ext/fonts/webfonts/Vazirmatn[wght].woff2" \
 
 ## نکته‌ی مسیر
 
-در `style.css` آدرس فونت `url('fonts/Vazirmatn.woff2')` است، **نه**
-`'../fonts/…'`. چون CSS همیشه از `assets/serve.php` تحویل داده می‌شود،
-مبدأ آدرس‌های نسبی پوشه‌ی `assets/` است نه `assets/css/`.
+در `style.css` آدرس فونت `url('../fonts/Vazirmatn.woff2')` است: مرورگر
+خودِ فایل CSS را از `assets/css/` می‌گیرد، پس مبدأ آدرس‌های نسبی همان
+پوشه است و باید یک پله بالا رفت.
