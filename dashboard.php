@@ -265,6 +265,39 @@ include __DIR__ . '/includes/header.php';
     </div>
 </div>
 
+<!-- ---------- راه ورود به گزارش دسته‌بندی ----------
+     تا حالا این گزارش فقط از شیت «بیشتر» پیدا می‌شد، در حالی که جایش
+     دقیقاً همین‌جاست: کاربر عددِ کلِ هزینه‌ی ماه را می‌بیند و سؤال بعدی‌اش
+     «این پول کجا رفت؟» است. دو دکمه چون هزینه و درآمد دو گزارش جدا هستند
+     و رنگشان هم همان رنگی است که در خودِ گزارش می‌بیند. -->
+<div class="card">
+    <div class="card-header-row">
+        <h2 class="card-title">گزارش دسته‌بندی</h2>
+        <span class="breakdown-cta-period">این ماه</span>
+    </div>
+    <p class="hint" style="margin:-4px 0 12px;">ببینید پولتان در هر دسته چقدر بوده — با نمودار و سهم درصدی.</p>
+    <div class="breakdown-cta">
+        <a href="<?= APP_BASE_PATH ?>/category-report.php?type=expense&preset=this_month" class="breakdown-cta-btn breakdown-cta-out">
+            <span class="breakdown-cta-icon">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M12 21l-6-6M12 21l6-6"/></svg>
+            </span>
+            <span class="breakdown-cta-text">
+                <span class="breakdown-cta-title">هزینه‌ها</span>
+                <span class="breakdown-cta-amount"><?= formatMoney($monthStats['expense']) ?></span>
+            </span>
+        </a>
+        <a href="<?= APP_BASE_PATH ?>/category-report.php?type=income&preset=this_month" class="breakdown-cta-btn breakdown-cta-in">
+            <span class="breakdown-cta-icon">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V3M12 3L6 9M12 3l6 6"/></svg>
+            </span>
+            <span class="breakdown-cta-text">
+                <span class="breakdown-cta-title">درآمدها</span>
+                <span class="breakdown-cta-amount"><?= formatMoney($monthStats['income']) ?></span>
+            </span>
+        </a>
+    </div>
+</div>
+
 <?php if ($hasAnyData): ?>
 <div class="card">
     <h2 class="card-title">روند مالی</h2>

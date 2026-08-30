@@ -2545,6 +2545,42 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
 .asset-item-off .cat-breakdown-bar-track { opacity: .35; }
 .asset-total-note { margin-top: 8px; }
 
+/* ---------- دکمه‌های ورود به گزارش دسته‌بندی (داشبورد) ----------
+   رنگ همان رنگی است که در خودِ گزارش می‌بیند: هزینه گرم، درآمد سبز. */
+.breakdown-cta { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.breakdown-cta-period {
+    font-size: 11.5px; color: var(--muted);
+    background: var(--line-soft);
+    padding: 3px 9px; border-radius: var(--r-pill);
+}
+.breakdown-cta-btn {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 13px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    color: inherit; text-decoration: none;
+    transition: border-color .15s, background .15s;
+}
+.breakdown-cta-btn:active { background: var(--line-soft); }
+.breakdown-cta-icon {
+    width: 34px; height: 34px; flex: none;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+}
+.breakdown-cta-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.breakdown-cta-title { font-size: 13px; font-weight: 700; }
+.breakdown-cta-amount {
+    font-size: 12px; font-weight: 700; direction: ltr; text-align: start;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.breakdown-cta-out .breakdown-cta-icon { background: var(--out-wash); color: var(--out); }
+.breakdown-cta-out .breakdown-cta-amount { color: var(--out); }
+.breakdown-cta-out:hover { border-color: var(--out); }
+.breakdown-cta-in  .breakdown-cta-icon { background: var(--in-wash);  color: var(--in); }
+.breakdown-cta-in  .breakdown-cta-amount { color: var(--in); }
+.breakdown-cta-in:hover { border-color: var(--in); }
+
 /* ---------- تفکیک موجودی حساب‌ها (داشبورد) ---------- */
 .wallet-line {
     display: flex; align-items: center; gap: 9px;
