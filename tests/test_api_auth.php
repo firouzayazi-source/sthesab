@@ -152,6 +152,170 @@ if ($bad) {
 }
 
 // ---------------------------------------------------------------
+T::group('با ورود، هیچ اندپوینتی نباید ۵۰۰ بدهد');
+
+// چرا این گروه لازم شد: همه‌ی بررسی‌های بالا *بدون ورود* اند، پس روی
+// خطِ «ابتدا وارد شوید» متوقف می‌شوند و هرگز به بدنه‌ی اندپوینت
+// نمی‌رسند. یک بار دقیقاً همین‌جا یک باگ رد شد:
+// `api/add_transaction.php` و `api/update_transaction.php` تابع
+// `categoryScopeParams($userId)` را صدا می‌زدند در حالی که `$userId`
+// در آن دو فایل هرگز تعریف نشده بود. نتیجه: خطای کشنده‌ی PHP، پاسخ
+// ۵۰۰ با بدنه‌ی خالی، و در مرورگر فقط «خطا در ارتباط با سرور» —
+// یعنی ثبت و ویرایش تراکنشِ دسته‌دار اصلاً کار نمی‌کرد.
+//
+// `php -l` متغیر تعریف‌نشده را نمی‌گیرد و تست قرارداد هم شکل کد را
+// می‌بیند نه اجرایش. تنها چیزی که این را می‌گیرد، همین است: واقعاً
+// صدا زدنِ اندپوینت با یک نشستِ معتبر.
+//
+// ایمنی: کاربر تازه‌ای ساخته می‌شود که هیچ داده‌ای ندارد، و ورودی‌ها
+// عمداً ناقص‌اند تا اعتبارسنجی ردشان کند. انتظار ما ۴xx است، نه ۲۰۰.
+$smokeUser = '__test_api_smoke';
+$smokePass = 'SmokePass12345';
+
+$pdoOk = false;
+try {
+    require_once $root . '/includes/db.php';
+    $pdo = Database::getConnection();
+    $pdo->prepare('DELETE FROM users WHERE username = :u')->execute(['u' => $smokeUser]);
+    $pdo->prepare(
+        "INSERT INTO users (username, password_hash, full_name, role, is_active)
+         VALUES (:u, :p, 'کاربر تست اندپوینت', 'user', 1)"
+    )->execute(['u' => $smokeUser, 'p' => password_hash($smokePass, PASSWORD_DEFAULT)]);
+    $pdoOk = true;
+} catch (Throwable $e) {
+    T::skip('تست اندپوینت‌ها با ورود', 'اتصال به دیتابیس برقرار نشد');
+}
+
+if ($pdoOk) {
+    $jar = tempnam(sys_get_temp_dir(), 'apijar');
+
+    /** درخواست با کوکی — نشست بین فراخوانی‌ها می‌ماند. */
+    $sess = function (string $path, array $fields = null, string $method = 'GET') use ($port, $jar): array {
+        $ch = curl_init("http://127.0.0.1:$port$path");
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CUSTOMREQUEST  => $method,
+            CURLOPT_COOKIEJAR      => $jar,
+            CURLOPT_COOKIEFILE     => $jar,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_TIMEOUT        => 10,
+        ]);
+        if ($fields !== null) { curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($fields)); }
+        $body = (string)curl_exec($ch);
+        $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        return [$code, $body];
+    };
+
+    // ورود واقعی: توکن CSRF از خودِ صفحه گرفته می‌شود
+    [, $loginHtml] = $sess('/login.php');
+    preg_match('/name="csrf_token"[^>]*value="([^"]+)"/', $loginHtml, $m);
+    $token = $m[1] ?? '';
+    T::ok($token !== '', 'توکن CSRF از صفحه‌ی ورود گرفته شد');
+
+    [$lc] = $sess('/login.php', [
+        'csrf_token' => $token, 'username' => $smokeUser, 'password' => $smokePass,
+    ], 'POST');
+    T::same(302, $lc, 'ورود کاربر آزمایشی انجام شد');
+
+    // توکن بعد از ورود عوض می‌شود (session_regenerate_id)، پس دوباره می‌گیریم
+    [, $home] = $sess('/index.php');
+    preg_match('/name="csrf_token"[^>]*value="([^"]+)"/', $home, $m2);
+    $token = $m2[1] ?? $token;
+
+    $files = glob($root . '/api/*.php');
+    sort($files);
+    $bad = [];
+    foreach ($files as $f) {
+        $name = basename($f);
+        [$code, $body] = $sess("/api/$name", ['csrf_token' => $token], 'POST');
+
+        if ($code >= 500) {
+            $snippet = trim(preg_replace('/\s+/', ' ', $body));
+            $bad[] = "$name → کد $code" . ($snippet === '' ? ' با بدنه‌ی خالی (خطای کشنده‌ی PHP)' : ': ' . substr($snippet, 0, 80));
+            continue;
+        }
+        // پاسخ باید JSON باشد. اندپوینتی که فایل می‌دهد (مثل دانلود پیوست)
+        // استثناست و فقط وقتی شمرده می‌شود که JSON اعلام کرده باشد.
+        if ($body !== '' && $body[0] === '{' && json_decode($body) === null) {
+            $bad[] = "$name → بدنه شبیه JSON است ولی پارس نمی‌شود";
+        }
+    }
+    T::bulk(count($files), $bad, 'هیچ اندپوینتی با نشستِ معتبر خطای ۵۰۰ نمی‌دهد');
+
+    // -----------------------------------------------------------
+    T::group('مسیر واقعیِ پول: ثبت و ویرایش تراکنشِ دسته‌دار');
+
+    // بررسی بالا با ورودیِ خالی کافی نیست و این را به سختی یاد گرفتیم:
+    // خطِ باگ‌دار داخل `if ($categoryIdValue !== null)` بود، پس بدون
+    // فرستادنِ `category_id` هرگز اجرا نمی‌شد و تست سبز می‌ماند.
+    // این بخش عمداً یک پیلود کامل و واقعی می‌فرستد.
+    $catId = null;
+    try {
+        $cs = $pdo->query("SELECT id FROM categories WHERE type = 'expense' AND is_active = 1 LIMIT 1");
+        $catId = $cs ? $cs->fetchColumn() : null;
+    } catch (PDOException $e) { /* ignore */ }
+
+    if (!$catId) {
+        T::skip('مسیر واقعیِ پول', 'هیچ دسته‌بندیِ هزینه‌ای در دیتابیس نیست');
+    } else {
+        $payload = [
+            'csrf_token'       => $token,
+            'type'             => 'expense',
+            'amount'           => '125000',
+            'title'            => 'تست دود اندپوینت',
+            'note'             => '',
+            'transaction_date' => date('Y-m-d'),
+            'category_id'      => (string)$catId,
+        ];
+
+        [$c1, $b1] = $sess('/api/add_transaction.php', $payload, 'POST');
+        $j1 = json_decode($b1, true);
+        T::same(200, $c1, 'ثبت تراکنشِ دسته‌دار پاسخ ۲۰۰ می‌دهد',
+            $c1 >= 500 ? 'بدنه: ' . substr(trim($b1), 0, 120) . ' (بدنه‌ی خالی = خطای کشنده‌ی PHP)' : '');
+        T::ok(is_array($j1), 'پاسخ ثبت، JSON معتبر است');
+        T::ok(!empty($j1['success']), 'ثبت تراکنش موفق بود', $j1['message'] ?? '');
+
+        // حالا همان تراکنش را ویرایش می‌کنیم — مسیر دومی که شکسته بود
+        $txId = null;
+        try {
+            $st = $pdo->prepare(
+                'SELECT t.id FROM transactions t JOIN users u ON u.id = t.user_id
+                 WHERE u.username = :u ORDER BY t.id DESC LIMIT 1'
+            );
+            $st->execute(['u' => $smokeUser]);
+            $txId = $st->fetchColumn();
+        } catch (PDOException $e) { /* ignore */ }
+
+        if (!$txId) {
+            T::ok(false, 'تراکنش تازه در دیتابیس پیدا شد');
+        } else {
+            $payload['transaction_id'] = (string)$txId;
+            $payload['amount']         = '175000';
+            [$c2, $b2] = $sess('/api/update_transaction.php', $payload, 'POST');
+            $j2 = json_decode($b2, true);
+            T::same(200, $c2, 'ویرایش تراکنشِ دسته‌دار پاسخ ۲۰۰ می‌دهد',
+                $c2 >= 500 ? 'بدنه: ' . substr(trim($b2), 0, 120) . ' (بدنه‌ی خالی = خطای کشنده‌ی PHP)' : '');
+            T::ok(is_array($j2), 'پاسخ ویرایش، JSON معتبر است');
+            T::ok(!empty($j2['success']), 'ویرایش تراکنش موفق بود', $j2['message'] ?? '');
+        }
+    }
+
+    @unlink($jar);
+    try {
+        $st = $pdo->prepare('SELECT id FROM users WHERE username = :u');
+        $st->execute(['u' => $smokeUser]);
+        if ($id = $st->fetchColumn()) {
+            foreach (['transactions', 'wallets', 'categories'] as $t) {
+                try { $pdo->prepare("DELETE FROM `$t` WHERE user_id = :u")->execute(['u' => $id]); }
+                catch (PDOException $e) { /* جدول شاید نباشد */ }
+            }
+        }
+        $pdo->prepare('DELETE FROM users WHERE username = :u')->execute(['u' => $smokeUser]);
+    } catch (Throwable $e) { /* ignore */ }
+}
+
+// ---------------------------------------------------------------
 if ($pid) { @exec("kill $pid 2>/dev/null"); }
 @unlink($log);
 

@@ -17,6 +17,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 Csrf::verifyOrFail(postParam('csrf_token'));
 
+$userId = Auth::userId();   // همیشه از اینجا، هرگز از ورودی کاربر
+
 $type = postParam('type');
 $rawAmount = postParam('amount');
 $title = postParam('title');

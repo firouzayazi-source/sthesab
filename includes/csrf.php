@@ -133,9 +133,21 @@ class Csrf
 HTML;
     }
 
+    /**
+     * آیا فراخوان جواب JSON می‌خواهد؟
+     *
+     * ⚠ `X-Requested-With` اینجا لازم است. همه‌ی fetch های `app.js` این
+     * سرآیند را می‌فرستند ولی `Accept: application/json` نمی‌فرستند و
+     * بدنه‌شان `FormData` است. بدون این شرط، یک ردِ CSRF به آن‌ها
+     * صفحه‌ی HTML برمی‌گرداند، `res.json()` می‌شکند، و کاربر فقط
+     * «خطا در ارتباط با سرور» می‌بیند — یعنی دلیل واقعی گم می‌شود.
+     */
     private static function isJsonRequest(): bool
     {
-        return isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json')
+        if (strcasecmp((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''), 'XMLHttpRequest') === 0) {
+            return true;
+        }
+        return (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json'))
             || (isset($_SERVER['CONTENT_TYPE']) && str_contains($_SERVER['CONTENT_TYPE'], 'application/json'));
     }
 }
