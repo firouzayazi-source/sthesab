@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS `users` (
 
 CREATE TABLE IF NOT EXISTS `categories` (
     `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+    -- NULL یعنی دسته‌ی پیش‌فرضِ برنامه (مال همه)؛ عدد یعنی دسته‌ی شخصیِ
+    -- همان کاربر. جزئیات در migration_user_categories.sql
+    `user_id` INT UNSIGNED NULL,
     `name` VARCHAR(100) NOT NULL,
     `type` ENUM('income', 'expense') NOT NULL,
     `is_active` TINYINT(1) NOT NULL DEFAULT 1,

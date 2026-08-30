@@ -2349,6 +2349,11 @@ document.addEventListener('DOMContentLoaded', function () {
             fd.append('action', 'add');
             fd.append('name', name);
 
+            // دسته‌بندی درآمد و هزینه دو فهرست جدا هستند و سرور باید
+            // بداند این نام برای کدام‌شان است
+            var refType = this.getAttribute('data-type');
+            if (refType) { fd.append('type', refType); }
+
             var unitInputId = this.getAttribute('data-unit-input');
             if (unitInputId) {
                 var unitInput = document.getElementById(unitInputId);
@@ -2382,7 +2387,9 @@ document.addEventListener('DOMContentLoaded', function () {
             fetch(apiUrl('manage_reference.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
-                    if (d.success) { if (chip) chip.remove(); }
+                    // فقط برداشتن چیپ کافی نیست: فهرست «پیش‌فرض‌ها» و
+                    // فرم‌های دیگرِ همین صفحه هم از همین داده ساخته شده‌اند
+                    if (d.success) { if (chip) chip.remove(); window.location.reload(); }
                     else { alert(d.message || 'قابل حذف نیست.'); }
                 })
                 .catch(function () { alert('خطا در ارتباط با سرور.'); });
@@ -2670,6 +2677,19 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    // ---------- دکمه‌ی بازگشت صفحه‌های فرعی ----------
+    // اگر کاربر از داخل خود اپ آمده، برگردیم همان‌جا که بود؛ اگر مستقیم
+    // این آدرس را باز کرده (یا از میان‌بر صفحه‌ی اصلی گوشی)، href صفحه‌ی
+    // خانه جایگزین است.
+    document.querySelectorAll('.js-page-back').forEach(function (link) {
+        link.addEventListener('click', function (e) {
+            if (window.history.length > 1 && document.referrer.indexOf(location.host) !== -1) {
+                e.preventDefault();
+                window.history.back();
+            }
+        });
+    });
+
     // ---------- فیلترهای صفحه تراکنش‌ها ----------
     var filterChips = document.querySelectorAll('.filter-chip[data-filter], .seg-item[data-filter]');
     if (filterChips.length > 0) {
@@ -2788,7 +2808,12 @@ document.addEventListener('DOMContentLoaded', function () {
                         msg.classList.add('show', d.success ? 'success' : 'error');
                         msg.textContent = d.message || (d.success ? 'ذخیره شد.' : 'خطا');
                     }
-                    if (!d.success) tradesToggle.checked = !tradesToggle.checked;
+                    if (!d.success) { tradesToggle.checked = !tradesToggle.checked; return; }
+                    // منوی «بیشتر» و نوار کناری با حالت قبلی رندر شده‌اند؛
+                    // بی‌تازه‌سازی، دکمه‌ی معاملات تا ناوبری بعدی سر جایش
+                    // می‌ماند (یا برعکس، غایب می‌ماند) و کاربر فکر می‌کند
+                    // کلید کار نکرد.
+                    window.location.reload();
                 })
                 .catch(function () {
                     tradesToggle.checked = !tradesToggle.checked;

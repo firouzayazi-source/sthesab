@@ -24,8 +24,12 @@ $listStmt = $pdo->prepare('
 $listStmt->execute(['u' => $userId]);
 $allRecurring = $listStmt->fetchAll();
 
-$catStmt = $pdo->prepare('SELECT id, name, type FROM categories WHERE is_active = 1 ORDER BY type, name');
-$catStmt->execute();
+$catStmt = $pdo->prepare(
+    'SELECT id, name, type FROM categories
+     WHERE is_active = 1 AND ' . categoryScopeSql() . '
+     ORDER BY type, name'
+);
+$catStmt->execute(categoryScopeParams($userId));
 $allCats = $catStmt->fetchAll();
 $incomeCategories = array_values(array_filter($allCats, fn($c) => $c['type'] === 'income'));
 $expenseCategories = array_values(array_filter($allCats, fn($c) => $c['type'] === 'expense'));

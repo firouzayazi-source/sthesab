@@ -67,8 +67,11 @@ $pdo = Database::getConnection();
 
 // اگر دسته‌بندی انتخاب شده، بررسی شود که واقعاً وجود دارد و با نوع تراکنش هم‌خوانی دارد
 if ($categoryIdValue !== null) {
-    $catCheckStmt = $pdo->prepare('SELECT id FROM categories WHERE id = :id AND type = :type AND is_active = 1');
-    $catCheckStmt->execute(['id' => $categoryIdValue, 'type' => $type]);
+    $catCheckStmt = $pdo->prepare(
+        'SELECT id FROM categories
+         WHERE id = :id AND type = :type AND is_active = 1 AND ' . categoryScopeSql()
+    );
+    $catCheckStmt->execute(['id' => $categoryIdValue, 'type' => $type] + categoryScopeParams($userId));
     if (!$catCheckStmt->fetch()) {
         $categoryIdValue = null;
     }

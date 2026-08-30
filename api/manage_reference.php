@@ -18,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 Csrf::verifyOrFail(postParam('csrf_token'));
 
 $userId = Auth::userId();
-$kind   = postParam('kind');   // bank_mine | bank_external | asset_type | wallet_kind
+$kind   = postParam('kind');   // bank_mine | bank_external | asset_type | wallet_kind | category
 $action = postParam('action'); // add | delete
 
 $pdo = Database::getConnection();
@@ -82,6 +82,41 @@ if ($action === 'add') {
             $ins->execute(['user_id' => $userId, 'name' => $name]);
 
             jsonResponse(['success' => true, 'id' => (int)$pdo->lastInsertId(), 'name' => $name, 'message' => 'نوع حساب اضافه شد.']);
+        }
+
+        if ($kind === 'category') {
+            if (!tableHasColumn('categories', 'user_id')) {
+                jsonResponse(['success' => false, 'message' => 'ستون دسته‌بندی شخصی هنوز ساخته نشده. روی سرور:  bash deploy/migrate.sh --apply'], 500);
+            }
+
+            $type = postParam('type');
+            if (!in_array($type, ['income', 'expense'], true)) {
+                jsonResponse(['success' => false, 'message' => 'نوع دسته‌بندی باید درآمد یا هزینه باشد.'], 422);
+            }
+
+            // نام تکراری فقط در دامنه‌ی خودِ کاربر سنجیده می‌شود، ولی
+            // دسته‌های پیش‌فرض هم نباید دوباره ساخته شوند وگرنه کاربر
+            // دو «خوراک» می‌بیند و نمی‌فهمد کدام کدام است.
+            $dup = $pdo->prepare(
+                'SELECT id FROM categories
+                 WHERE name = :name AND type = :type AND (user_id IS NULL OR user_id = :u)'
+            );
+            $dup->execute(['name' => $name, 'type' => $type, 'u' => $userId]);
+            if ($dup->fetch()) {
+                jsonResponse(['success' => false, 'message' => 'دسته‌بندی با همین نام از قبل هست.'], 422);
+            }
+
+            $ins = $pdo->prepare(
+                'INSERT INTO categories (user_id, name, type, is_active) VALUES (:u, :name, :type, 1)'
+            );
+            $ins->execute(['u' => $userId, 'name' => $name, 'type' => $type]);
+
+            jsonResponse([
+                'success' => true,
+                'id' => (int)$pdo->lastInsertId(),
+                'name' => $name,
+                'message' => $type === 'income' ? 'دسته‌ی درآمد اضافه شد.' : 'دسته‌ی هزینه اضافه شد.',
+            ]);
         }
 
         jsonResponse(['success' => false, 'message' => 'نوع نامعتبر است.'], 422);
@@ -172,6 +207,34 @@ if ($action === 'delete') {
             $del->execute(['id' => $id, 'user_id' => $userId]);
 
             jsonResponse(['success' => true, 'message' => 'نوع حساب حذف شد.']);
+        }
+
+        if ($kind === 'category') {
+            if (!tableHasColumn('categories', 'user_id')) {
+                jsonResponse(['success' => false, 'message' => 'مورد یافت نشد.'], 404);
+            }
+
+            // user_id = :u شرط اصلی است: دسته‌ی پیش‌فرض (NULL) هرگز با
+            // این کوئری پیدا نمی‌شود، پس کاربر عادی نمی‌تواند چیزی را
+            // که مدیر ساخته پاک کند.
+            $own = $pdo->prepare('SELECT id FROM categories WHERE id = :id AND user_id = :u');
+            $own->execute(['id' => $id, 'u' => $userId]);
+            if (!$own->fetch()) {
+                jsonResponse(['success' => false, 'message' => 'این دسته‌بندی مال شما نیست یا پیش‌فرض برنامه است.'], 404);
+            }
+
+            $inUse = referenceInUseCount('transactions', 'category_id', $id, $userId);
+            if ($inUse > 0) {
+                jsonResponse([
+                    'success' => false,
+                    'message' => 'روی این دسته‌بندی ' . toPersianDigits($inUse) . ' تراکنش ثبت شده و قابل حذف نیست.',
+                ], 409);
+            }
+
+            $del = $pdo->prepare('DELETE FROM categories WHERE id = :id AND user_id = :u');
+            $del->execute(['id' => $id, 'u' => $userId]);
+
+            jsonResponse(['success' => true, 'message' => 'دسته‌بندی حذف شد.']);
         }
 
         jsonResponse(['success' => false, 'message' => 'نوع نامعتبر است.'], 422);

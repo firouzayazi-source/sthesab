@@ -46,8 +46,11 @@ if ($periodType === 'custom') {
 
 $pdo = Database::getConnection();
 
-$catChk = $pdo->prepare('SELECT id FROM categories WHERE id = :id AND type = "expense" AND is_active = 1');
-$catChk->execute(['id' => $categoryId]);
+$catChk = $pdo->prepare(
+    'SELECT id FROM categories
+     WHERE id = :id AND type = "expense" AND is_active = 1 AND ' . categoryScopeSql()
+);
+$catChk->execute(['id' => $categoryId] + categoryScopeParams($userId));
 if (!$catChk->fetch()) {
     $errors[] = 'دسته‌بندی نامعتبر است. بودجه فقط برای دسته‌های هزینه تعریف می‌شود.';
 }

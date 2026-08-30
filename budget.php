@@ -13,8 +13,12 @@ $todayStr = today();
 $budgets = budgetStatuses($userId);
 
 // یادداشت: دسته‌بندی‌ها سراسری‌اند (نه به‌ازای کاربر)، مطابق معماری فعلی
-$expenseCatsStmt = $pdo->prepare('SELECT id, name, icon, color FROM categories WHERE type = "expense" AND is_active = 1 ORDER BY name');
-$expenseCatsStmt->execute();
+$expenseCatsStmt = $pdo->prepare(
+    'SELECT id, name, icon, color FROM categories
+     WHERE type = "expense" AND is_active = 1 AND ' . categoryScopeSql() . '
+     ORDER BY name'
+);
+$expenseCatsStmt->execute(categoryScopeParams($userId));
 $expenseCategories = $expenseCatsStmt->fetchAll();
 
 $pageTitle = 'بودجه‌بندی';

@@ -43,9 +43,36 @@ try {
 
 $kinds = walletKinds($userId);
 
+// دسته‌بندی‌ها: پیش‌فرض‌های برنامه (user_id NULL) به‌علاوه‌ی شخصی‌های
+// خودِ کاربر. فقط شخصی‌ها دکمه‌ی حذف می‌گیرند.
+$myCats = ['income' => [], 'expense' => []];
+$defaultCats = ['income' => [], 'expense' => []];
+$catsReady = tableHasColumn('categories', 'user_id');
+if ($catsReady) {
+    try {
+        $st = $pdo->prepare(
+            'SELECT id, name, type, user_id FROM categories
+             WHERE is_active = 1 AND ' . categoryScopeSql() . '
+             ORDER BY type, name'
+        );
+        $st->execute(categoryScopeParams($userId));
+        foreach ($st->fetchAll() as $c) {
+            if ($c['user_id'] === null) { $defaultCats[$c['type']][] = $c; }
+            else                        { $myCats[$c['type']][] = $c; }
+        }
+    } catch (PDOException $e) {
+        $catsReady = false;
+    }
+}
+
 $pageTitle = 'فهرست‌های من';
 include __DIR__ . '/includes/header.php';
 ?>
+
+<a href="<?= APP_BASE_PATH ?>/index.php" class="page-back js-page-back">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M11 6l-6 6 6 6"/></svg>
+    <span>بازگشت</span>
+</a>
 
 <p class="ref-page-intro">
     این‌ها فهرست‌هایی هستند که بقیه‌ی برنامه از آن‌ها انتخاب می‌کند.
@@ -162,6 +189,59 @@ include __DIR__ . '/includes/header.php';
         <?php endif; ?>
     </div>
 </div>
+<?php endif; ?>
+
+<!-- ---------- دسته‌بندی درآمد و هزینه ----------
+     پیش‌فرض‌ها مال برنامه‌اند و فقط مدیر عوضشان می‌کند؛ کاربر عادی
+     می‌تواند هر چقدر دسته‌ی خودش اضافه کند و همان‌ها را پاک کند. هر
+     دسته‌ای که اینجا ساخته شود بلافاصله در فرم ثبت تراکنش، بودجه،
+     تراکنش دوره‌ای و گزارش دسته‌بندی می‌آید. -->
+<?php if ($catsReady): ?>
+<?php foreach ([
+    'expense' => ['title' => 'دسته‌بندی هزینه‌ها', 'c1' => '#dc2626', 'c2' => '#b91c1c',
+                  'sub' => 'هر خرجی که ثبت می‌کنید زیر یکی از این‌ها می‌نشیند و گزارش دسته‌بندی از رویشان ساخته می‌شود.',
+                  'ph'  => 'مثلاً: شهریه مدرسه'],
+    'income'  => ['title' => 'دسته‌بندی درآمدها', 'c1' => '#16a34a', 'c2' => '#0f766e',
+                  'sub' => 'منبع‌های درآمدتان — حقوق، اجاره، فروش و هر چیز دیگری که خودتان لازم دارید.',
+                  'ph'  => 'مثلاً: اجاره مغازه'],
+] as $ctype => $meta): ?>
+<div class="card ref-card">
+    <div class="ref-card-head">
+        <span class="ref-card-icon" style="--rc1:<?= h($meta['c1']) ?>; --rc2:<?= h($meta['c2']) ?>;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+        </span>
+        <div>
+            <h2 class="ref-card-title"><?= h($meta['title']) ?></h2>
+            <p class="ref-card-sub"><?= h($meta['sub']) ?></p>
+        </div>
+    </div>
+
+    <div class="ref-add-row">
+        <input type="text" id="newCat_<?= $ctype ?>" placeholder="<?= h($meta['ph']) ?>" maxlength="100">
+        <button type="button" class="btn btn-secondary btn-sm js-ref-add"
+                data-kind="category" data-type="<?= $ctype ?>" data-input="newCat_<?= $ctype ?>">افزودن</button>
+    </div>
+
+    <div class="ref-chip-list">
+        <?php if (empty($myCats[$ctype])): ?>
+            <span class="ref-empty">هنوز دسته‌ی شخصی‌ای اضافه نکرده‌اید.</span>
+        <?php else: ?>
+            <?php foreach ($myCats[$ctype] as $c): ?>
+                <span class="ref-chip"><?= h($c['name']) ?><button type="button" class="ref-chip-x js-ref-delete" data-kind="category" data-id="<?= (int)$c['id'] ?>" aria-label="حذف">&times;</button></span>
+            <?php endforeach; ?>
+        <?php endif; ?>
+    </div>
+
+    <?php if (!empty($defaultCats[$ctype])): ?>
+        <p class="ref-locked-title">دسته‌های پیش‌فرض برنامه — همیشه در دسترس‌اند و حذف نمی‌شوند:</p>
+        <div class="ref-chip-list">
+            <?php foreach ($defaultCats[$ctype] as $c): ?>
+                <span class="ref-chip ref-chip-locked"><?= h($c['name']) ?></span>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
+</div>
+<?php endforeach; ?>
 <?php endif; ?>
 
 <meta name="csrf-token" content="<?= Csrf::token() ?>">

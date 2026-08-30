@@ -18,7 +18,7 @@ try {
     $recurringNeedsAttention = []; // جدول هنوز ساخته نشده
 }
 
-$categories = $pdo->query('SELECT id, name, type FROM categories WHERE is_active = 1 ORDER BY type, name')->fetchAll();
+$categories = cachedCategories();
 $incomeCategories  = array_filter($categories, fn($c) => $c['type'] === 'income');
 $expenseCategories = array_filter($categories, fn($c) => $c['type'] === 'expense');
 

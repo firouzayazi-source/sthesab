@@ -66,7 +66,7 @@ $stmt = $pdo->prepare('
     LEFT JOIN transactions t
         ON t.category_id = c.id AND t.user_id = :user_id AND t.type = :type
         AND t.transaction_date BETWEEN :from_date AND :to_date
-    WHERE c.type = :type2 AND c.is_active = 1
+    WHERE c.type = :type2 AND c.is_active = 1 AND ' . categoryScopeSql('c.') . '
     GROUP BY c.id, c.name
     HAVING total > 0
     ORDER BY total DESC
@@ -74,7 +74,7 @@ $stmt = $pdo->prepare('
 $stmt->execute([
     'user_id' => $userId, 'type' => $type, 'type2' => $type,
     'from_date' => $fromDate, 'to_date' => $toDate,
-]);
+] + categoryScopeParams($userId));
 $categoryBreakdown = $stmt->fetchAll();
 
 // تراکنش‌های بدون دسته‌بندی

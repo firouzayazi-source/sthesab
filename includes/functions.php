@@ -1116,18 +1116,59 @@ function spendingInsights(int $userId, string $fromDate, string $toDate): array
  * دسته‌بندی‌ها در طول یک درخواست فقط یک‌بار از دیتابیس خوانده می‌شوند.
  * چند بخش صفحه (فرم ثبت، مودال ویرایش، …) به همین فهرست نیاز دارند.
  */
+/**
+ * شرط SQL برای «دسته‌هایی که این کاربر می‌بیند».
+ *
+ * `categories.user_id` سه حالت دارد و این تابع تنها جایی است که معنایش
+ * تعریف می‌شود — هر کوئری روی دسته‌ها باید از همین رد شود، وگرنه یک
+ * صفحه دسته‌های شخصی را می‌بیند و صفحه‌ی بغلی نه:
+ *
+ *   NULL   → دسته‌ی پیش‌فرضِ برنامه، مال همه
+ *   عددِ X → دسته‌ی شخصیِ کاربر X، فقط خودش
+ *
+ * روی نصبی که migration_user_categories هنوز اجرا نشده، ستون نیست و
+ * شرط خالی برمی‌گردد — یعنی همان رفتار قبلی.
+ *
+ * @param string $alias پیشوند جدول در کوئری (مثلاً 'c.')
+ * @return string قطعه‌ی SQL آماده‌ی چسباندن با AND — پارامتر :cat_uid
+ */
+function categoryScopeSql(string $alias = ''): string
+{
+    if (!tableHasColumn('categories', 'user_id')) { return '1=1'; }
+
+    return "({$alias}user_id IS NULL OR {$alias}user_id = :cat_uid)";
+}
+
+/** پارامترهای همراهِ categoryScopeSql — اگر ستون نباشد، خالی. */
+function categoryScopeParams(int $userId): array
+{
+    return tableHasColumn('categories', 'user_id') ? ['cat_uid' => $userId] : [];
+}
+
+/**
+ * دسته‌بندی‌های قابل استفاده‌ی کاربر جاری — پیش‌فرض‌ها به‌علاوه‌ی شخصی‌ها.
+ * در همان درخواست کش می‌شود چون چند جا لازم است (فرم ثبت، شیت فوتر، …).
+ */
 function cachedCategories(): array
 {
     static $cats = null;
-    if ($cats === null) {
-        try {
-            $cats = Database::getConnection()
-                ->query('SELECT id, name, type FROM categories WHERE is_active = 1 ORDER BY type, name')
-                ->fetchAll();
-        } catch (PDOException $e) {
-            $cats = [];
-        }
+    if ($cats !== null) { return $cats; }
+
+    // functions.php عمداً auth.php را require نمی‌کند (تست‌ها بدون آن
+    // لودش می‌کنند)، پس وجود کلاس سنجیده می‌شود.
+    $userId = class_exists('Auth') ? (int)Auth::userId() : 0;
+    try {
+        $st = Database::getConnection()->prepare(
+            'SELECT id, name, type, user_id FROM categories
+             WHERE is_active = 1 AND ' . categoryScopeSql() . '
+             ORDER BY type, name'
+        );
+        $st->execute(categoryScopeParams($userId));
+        $cats = $st->fetchAll();
+    } catch (PDOException $e) {
+        $cats = [];
     }
+
     return $cats;
 }
 
@@ -1622,7 +1663,15 @@ function tradeProfitCategoryId(PDO $pdo, string $type): ?int
 
     $name = $type === 'income' ? 'سود معاملات' : 'زیان معاملات';
     try {
-        $st = $pdo->prepare('SELECT id FROM categories WHERE name = :n AND type = :t LIMIT 1');
+        // فقط دسته‌ی پیش‌فرض (user_id IS NULL) — این دسته مال برنامه است
+        // نه یک کاربر خاص، و اگر شخصیِ کسی می‌شد بقیه دوباره‌اش را
+        // می‌ساختند و چند «سود معاملات» تکراری درست می‌شد.
+        $st = $pdo->prepare(
+            'SELECT id FROM categories
+             WHERE name = :n AND type = :t' .
+            (tableHasColumn('categories', 'user_id') ? ' AND user_id IS NULL' : '') .
+            ' LIMIT 1'
+        );
         $st->execute(['n' => $name, 't' => $type]);
         $id = $st->fetchColumn();
         if (!$id) {

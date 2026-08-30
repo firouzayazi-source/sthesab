@@ -39,8 +39,11 @@ $pdo = Database::getConnection();
 
 $categoryIdValue = null;
 if ($categoryId !== '' && (int)$categoryId > 0) {
-    $c = $pdo->prepare('SELECT id FROM categories WHERE id = :id AND type = :t AND is_active = 1');
-    $c->execute(['id' => (int)$categoryId, 't' => $type]);
+    $c = $pdo->prepare(
+        'SELECT id FROM categories
+         WHERE id = :id AND type = :t AND is_active = 1 AND ' . categoryScopeSql()
+    );
+    $c->execute(['id' => (int)$categoryId, 't' => $type] + categoryScopeParams($userId));
     if ($c->fetch()) { $categoryIdValue = (int)$categoryId; }
 }
 

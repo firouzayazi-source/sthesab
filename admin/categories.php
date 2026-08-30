@@ -8,6 +8,20 @@ Auth::requireAdmin();
 
 $pdo = Database::getConnection();
 
+/*
+ * این پنل فقط **دسته‌های پیش‌فرضِ برنامه** را مدیریت می‌کند
+ * (`categories.user_id IS NULL`) — همان‌هایی که همه‌ی کاربران می‌بینند.
+ *
+ * دسته‌های شخصیِ کاربران عمداً اینجا نمی‌آیند: هر کاربر خودش از صفحه‌ی
+ * «فهرست‌های من» می‌سازدشان و پاکشان می‌کند. اگر اینجا هم فهرست می‌شدند،
+ * مدیر می‌توانست ناخواسته دسته‌ی شخصیِ کسی را حذف کند و تراکنش‌های او
+ * بی‌دسته می‌ماند.
+ *
+ * روی نصبی که migration_user_categories هنوز اجرا نشده، ستون نیست و
+ * شرط خالی می‌ماند — یعنی همان رفتار قبلی.
+ */
+$defaultsOnly = tableHasColumn('categories', 'user_id') ? ' AND user_id IS NULL' : '';
+
 $error = '';
 $reopenModal = '';
 
@@ -31,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'نوع دسته‌بندی نامعتبر است.';
         } else {
             try {
-                $stmt = $pdo->prepare('INSERT INTO categories (name, type, icon, color, is_active) VALUES (:name, :type, :icon, :color, 1)');
+                $stmt = $pdo->prepare('INSERT INTO categories (user_id, name, type, icon, color, is_active) VALUES (NULL, :name, :type, :icon, :color, 1)');
                 $stmt->execute(['name' => $name, 'type' => $type, 'icon' => $icon, 'color' => $color]);
                 redirectWithMessage('categories.php', 'success', 'دسته‌بندی جدید اضافه شد.');
             } catch (PDOException $e) {
@@ -52,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!array_key_exists($icon, categoryIconMap())) { $icon = 'default'; }
         if (!preg_match('/^#[0-9a-fA-F]{6}$/', $color)) { $color = '#64748b'; }
 
-        $targetStmt = $pdo->prepare('SELECT id FROM categories WHERE id = :id');
+        $targetStmt = $pdo->prepare('SELECT id FROM categories WHERE id = :id' . $defaultsOnly);
         $targetStmt->execute(['id' => $targetId]);
 
         if (!$targetStmt->fetch()) {
@@ -65,7 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'نوع دسته‌بندی نامعتبر است.';
         } else {
             try {
-                $stmt = $pdo->prepare('UPDATE categories SET name = :name, type = :type, icon = :icon, color = :color WHERE id = :id');
+                $stmt = $pdo->prepare('UPDATE categories SET name = :name, type = :type, icon = :icon, color = :color WHERE id = :id' . $defaultsOnly);
                 $stmt->execute(['name' => $name, 'type' => $type, 'icon' => $icon, 'color' => $color, 'id' => $targetId]);
                 redirectWithMessage('categories.php', 'success', 'دسته‌بندی بروزرسانی شد.');
             } catch (PDOException $e) {
@@ -79,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($action === 'toggle_status') {
         $targetId = (int)postParam('category_id');
-        $targetStmt = $pdo->prepare('SELECT is_active FROM categories WHERE id = :id');
+        $targetStmt = $pdo->prepare('SELECT is_active FROM categories WHERE id = :id' . $defaultsOnly);
         $targetStmt->execute(['id' => $targetId]);
         $cat = $targetStmt->fetch();
 
@@ -88,7 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         $newStatus = (int)$cat['is_active'] === 1 ? 0 : 1;
-        $stmt = $pdo->prepare('UPDATE categories SET is_active = :status WHERE id = :id');
+        $stmt = $pdo->prepare('UPDATE categories SET is_active = :status WHERE id = :id' . $defaultsOnly);
         $stmt->execute(['status' => $newStatus, 'id' => $targetId]);
 
         redirectWithMessage('categories.php', 'success', $newStatus === 1 ? 'دسته‌بندی فعال شد.' : 'دسته‌بندی غیرفعال شد.');
@@ -105,7 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         try {
-            $stmt = $pdo->prepare('DELETE FROM categories WHERE id = :id');
+            $stmt = $pdo->prepare('DELETE FROM categories WHERE id = :id' . $defaultsOnly);
             $stmt->execute(['id' => $targetId]);
             redirectWithMessage('categories.php', 'success', 'دسته‌بندی حذف شد.');
         } catch (PDOException $e) {
@@ -115,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$categories = $pdo->query('SELECT id, name, type, icon, color, is_active, created_at FROM categories ORDER BY type, name')->fetchAll();
+$categories = $pdo->query('SELECT id, name, type, icon, color, is_active, created_at FROM categories WHERE 1=1' . $defaultsOnly . ' ORDER BY type, name')->fetchAll();
 
 $pageTitle = 'دسته‌بندی‌ها';
 include __DIR__ . '/../includes/header.php';
