@@ -20,6 +20,8 @@ $userId = Auth::userId();
 
 seedUserDefaults($userId);
 
+$people = peopleList($userId);
+
 $myBanks = [];
 $externalBanks = [];
 try {
@@ -81,6 +83,56 @@ include __DIR__ . '/includes/header.php';
 </p>
 
 <!-- ---------- بانک‌های من ---------- -->
+<!-- ---------- اشخاص ----------
+     اول می‌آید چون پرکاربردترین فهرست است: در چک، طلب و بدهی، و معامله
+     استفاده می‌شود. ورودی آزاد در آن فرم‌ها سر جایش می‌ماند؛ این فهرست
+     فقط تایپ دوباره و غلط تایپی را کم می‌کند. -->
+<?php if (tableExists('people')): ?>
+<div class="card ref-card">
+    <div class="ref-card-head">
+        <span class="ref-card-icon" style="--rc1:#e11d48; --rc2:#be123c;">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+        </span>
+        <div>
+            <h2 class="ref-card-title">اشخاص</h2>
+            <p class="ref-card-sub">همکار، مشتری، یا هر کس دیگر — در ثبت چک، طلب و بدهی، و معامله پیشنهاد می‌شوند.</p>
+        </div>
+    </div>
+
+    <div class="ref-add-row">
+        <input type="text" id="newPerson" placeholder="نام (مثلاً: علی رضایی)" maxlength="150">
+        <input type="text" id="newPersonRole" placeholder="سمت" maxlength="60" class="ref-unit-input"
+               list="personRoleSuggestions">
+        <datalist id="personRoleSuggestions">
+            <option value="همکار"></option><option value="مشتری"></option>
+            <option value="تأمین‌کننده"></option><option value="سایر"></option>
+        </datalist>
+        <button type="button" class="btn btn-secondary btn-sm js-ref-add" data-kind="person" data-input="newPerson" data-role-input="newPersonRole">افزودن</button>
+    </div>
+    <div class="ref-chip-list" id="personList">
+        <?php if (empty($people)): ?>
+            <span class="ref-empty">هنوز شخصی اضافه نکرده‌اید.</span>
+        <?php else: ?>
+            <?php foreach ($people as $p): ?>
+                <span class="ref-chip"><?= h($p['name']) ?>
+                    <?php if (trim((string)$p['role']) !== ''): ?>
+                        <small style="opacity:.6;">(<?= h($p['role']) ?>)</small>
+                    <?php endif; ?>
+                    <button type="button" class="ref-chip-x js-ref-delete" data-kind="person" data-id="<?= (int)$p['id'] ?>" aria-label="حذف">&times;</button>
+                </span>
+            <?php endforeach; ?>
+        <?php endif; ?>
+    </div>
+    <p class="hint" style="margin-top:9px;">
+        حذف یک شخص از این فهرست، چک‌ها و طلب‌های ثبت‌شده‌اش را دست نمی‌زند —
+        نام در خودِ آن رکوردها ذخیره شده.
+    </p>
+</div>
+<?php endif; ?>
+
 <div class="card ref-card">
     <div class="ref-card-head">
         <span class="ref-card-icon" style="--rc1:#8b5cf6; --rc2:#6366f1;">

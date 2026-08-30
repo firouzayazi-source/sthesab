@@ -26,6 +26,11 @@ $buyDate   = postParam('buy_date');
 $walletId  = (int)postParam('buy_wallet_id');
 $notes     = trim(postParam('notes'));
 
+// نام طرف مقابل (فروشنده). ستون ممکن است هنوز با migration نیامده باشد،
+// پس پایین‌تر مشروط به وجودش نوشته می‌شود.
+$counterparty = postParam('counterparty_name');
+$hasCp = tableHasColumn('trades', 'counterparty_name');
+
 $errors = [];
 if ($title === '' || mb_strlen($title) > 150) { $errors[] = 'عنوان معامله الزامی است.'; }
 if ($qty <= 0) { $errors[] = 'تعداد باید بزرگ‌تر از صفر باشد.'; }
@@ -62,29 +67,32 @@ try {
 
         $st = $pdo->prepare(
             'UPDATE trades SET title = :t, qty = :q, buy_total = :b, side_costs = :s,
-                    buy_date = :d, buy_wallet_id = :w, notes = :n
-             WHERE id = :id AND user_id = :u'
+                    buy_date = :d, buy_wallet_id = :w, notes = :n'
+             . ($hasCp ? ', counterparty_name = :cp' : '') .
+            ' WHERE id = :id AND user_id = :u'
         );
         $st->execute([
             't' => $title, 'q' => $qty, 'b' => $buyTotal, 's' => $sideCosts,
             'd' => $buyDate, 'w' => $walletId > 0 ? $walletId : null,
             'n' => $notes !== '' ? $notes : null,
             'id' => $tradeId, 'u' => $userId,
-        ]);
+        ] + ($hasCp ? ['cp' => $counterparty !== '' ? $counterparty : null] : []));
         // تغییر مبلغ/تعداد/هزینه‌ی جانبی، سودِ فروش‌های قبلی را عوض می‌کند
         syncTradeProfitTransactions($userId, $tradeId);
         jsonResponse(['success' => true, 'message' => 'معامله بروزرسانی شد.']);
     }
 
     $st = $pdo->prepare(
-        'INSERT INTO trades (user_id, title, qty, buy_total, side_costs, buy_date, buy_wallet_id, notes)
-         VALUES (:u, :t, :q, :b, :s, :d, :w, :n)'
+        'INSERT INTO trades (user_id, title, qty, buy_total, side_costs, buy_date, buy_wallet_id, notes'
+        . ($hasCp ? ', counterparty_name' : '') .
+        ') VALUES (:u, :t, :q, :b, :s, :d, :w, :n'
+        . ($hasCp ? ', :cp' : '') . ')'
     );
     $st->execute([
         'u' => $userId, 't' => $title, 'q' => $qty, 'b' => $buyTotal, 's' => $sideCosts,
         'd' => $buyDate, 'w' => $walletId > 0 ? $walletId : null,
         'n' => $notes !== '' ? $notes : null,
-    ]);
+    ] + ($hasCp ? ['cp' => $counterparty !== '' ? $counterparty : null] : []));
     jsonResponse(['success' => true, 'message' => 'خرید ثبت شد.']);
 } catch (PDOException $e) {
     error_log('Save Trade Error: ' . $e->getMessage());

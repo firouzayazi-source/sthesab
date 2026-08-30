@@ -91,6 +91,77 @@ if ($tradeOpenCount > 0) {
     ];
 }
 
+// ---------- چک‌های در جریان ----------
+//
+// **فقط چکِ پاس‌نشده.** چکی که پاس شده پولش از قبل در موجودی حساب نشسته
+// (walletBalances آن را با settle_wallet_id جمع می‌کند)، پس آوردنش اینجا
+// یعنی دوبار شمردنِ همان پول.
+//
+// دریافتی مثبت و صادره منفی است، و خالصشان یک ردیف می‌شود: اگر بیشتر
+// چکِ صادره داشته باشید، این قلم از دارایی کم می‌کند — که درست است،
+// چون آن پول در آینده از دستتان می‌رود.
+$chequeNet   = 0;
+$chequeCount = 0;
+if (tableExists('cheques')) {
+    try {
+        $cq = $pdo->prepare(
+            "SELECT direction, COUNT(*) AS n, COALESCE(SUM(amount), 0) AS total
+             FROM cheques
+             WHERE user_id = :u AND is_settled = 0
+             GROUP BY direction"
+        );
+        $cq->execute(['u' => $userId]);
+        foreach ($cq->fetchAll() as $r) {
+            $chequeCount += (int)$r['n'];
+            $chequeNet   += ($r['direction'] === 'received' ? 1 : -1) * (int)$r['total'];
+        }
+    } catch (PDOException $e) { $chequeCount = 0; $chequeNet = 0; }
+}
+if ($chequeCount > 0) {
+    $portfolio[] = [
+        'name'  => 'خالص چک‌های در جریان',
+        'qty'   => (float)$chequeCount,
+        'unit'  => 'چک',
+        'value' => $chequeNet,
+        'kind'  => 'cheques',
+    ];
+}
+
+// ---------- خالص طلب و بدهی ----------
+//
+// باقیمانده‌ی طلب منهای باقیمانده‌ی بدهی. «باقیمانده» یعنی آنچه هنوز
+// جابه‌جا نشده؛ پرداخت‌های انجام‌شده از قبل در موجودی حساب‌ها هستند
+// (debt_payments.wallet_id)، پس اینجا دوباره شمرده نمی‌شوند.
+//
+// یعنی اگر ۵ میلیون طلب و ۳ میلیون بدهی داشته باشید، ۲ میلیون به
+// دارایی اضافه می‌شود؛ اگر برعکس بود، همان‌قدر کم می‌شود.
+$debtNet   = 0;
+$debtCount = 0;
+if (tableExists('debts')) {
+    try {
+        $dq = $pdo->prepare(
+            'SELECT direction, amount, paid_amount FROM debts
+             WHERE user_id = :u AND is_settled = 0'
+        );
+        $dq->execute(['u' => $userId]);
+        foreach ($dq->fetchAll() as $d) {
+            $remaining = debtRemaining($d);
+            if ($remaining === 0) { continue; }
+            $debtCount++;
+            $debtNet += ($d['direction'] === 'receivable' ? 1 : -1) * $remaining;
+        }
+    } catch (PDOException $e) { $debtCount = 0; $debtNet = 0; }
+}
+if ($debtCount > 0) {
+    $portfolio[] = [
+        'name'  => 'خالص طلب و بدهی',
+        'qty'   => (float)$debtCount,
+        'unit'  => 'مورد',
+        'value' => $debtNet,
+        'kind'  => 'debts',
+    ];
+}
+
 // پولِ توی حساب‌ها هم دارایی است. به‌صورت یک قلم می‌آید تا در همین
 // نمودار دیده شود، ولی مثل بقیه‌ی قلم‌ها قابل خاموش کردن است — گاهی
 // می‌خواهید بدانید دارایی غیرنقدی‌تان چقدر است.
@@ -171,7 +242,14 @@ include __DIR__ . '/includes/header.php';
 
         <div class="category-breakdown-list" id="assetBreakdown">
             <?php foreach ($portfolio as $row): ?>
-                <?php $pct = $portfolioTotal > 0 ? round($row['value'] / $portfolioTotal * 100, 1) : 0; ?>
+                <?php
+                // درصد فقط وقتی معنا دارد که هم جمع کل مثبت باشد هم خودِ قلم.
+                // با یک خالصِ منفیِ بزرگ (بدهی بیشتر از دارایی) جمع کل منفی
+                // می‌شود و «۰٪» گمراه‌کننده بود.
+                $pct = ($portfolioTotal > 0 && $row['value'] > 0)
+                    ? round($row['value'] / $portfolioTotal * 100, 1) : 0;
+                $showPct = $portfolioTotal > 0 && $row['value'] > 0;
+                ?>
                 <div class="cat-breakdown-item asset-item"
                      data-name="<?= h($row['name']) ?>"
                      data-key="<?= h($row['key']) ?>"
@@ -185,8 +263,15 @@ include __DIR__ . '/includes/header.php';
                         // فقط عرض می‌گرفت و نام را با «…» می‌برید.
                         ?>
                         <span class="cat-breakdown-name"><?= h($row['name']) ?></span>
-                        <span class="cat-breakdown-pct"><?= $row['value'] > 0 ? toPersianDigits($pct) . '٪' : '—' ?></span>
-                        <span class="cat-breakdown-amount"><?= $row['value'] !== 0 ? formatMoney(abs($row['value'])) : '' ?></span>
+                        <span class="cat-breakdown-pct"><?= $showPct ? toPersianDigits($pct) . '٪' : '—' ?></span>
+                        <?php
+                        // مقدار منفی با علامت «−» می‌آید، وگرنه یک بدهیِ خالص
+                        // شبیه دارایی دیده می‌شد. علامت ریاضیِ منها (U+2212)
+                        // است نه خط تیره، تا در راست‌به‌چپ درست بنشیند.
+                        ?>
+                        <span class="cat-breakdown-amount<?= $row['value'] < 0 ? ' asset-amount-neg' : '' ?>">
+                            <?= $row['value'] !== 0 ? ($row['value'] < 0 ? '−' : '') . formatMoney(abs($row['value'])) : '۰' ?>
+                        </span>
                         <label class="switch switch-sm asset-toggle" title="اعمال در جمع و نمودار">
                             <input type="checkbox" class="js-asset-include" checked>
                             <span class="switch-track"><span class="switch-knob"></span></span>
@@ -194,8 +279,12 @@ include __DIR__ . '/includes/header.php';
                     </div>
                     <div class="asset-item-qty">
                         <?= formatQuantity($row['qty']) ?> <?= h($row['unit']) ?>
-                        <?php if ($row['value'] === 0): ?>
+                        <?php // «قیمت ثبت نشده» فقط برای دارایی معنا دارد؛ خالصِ صفرِ
+                              // چک یا طلب/بدهی یعنی سر به سر، نه قیمتِ نداشته. ?>
+                        <?php if ($row['value'] === 0 && $row['kind'] === 'asset'): ?>
                             <span class="asset-noprice">قیمت واحد ثبت نشده</span>
+                        <?php elseif ($row['value'] === 0): ?>
+                            <span class="asset-noprice">سر به سر</span>
                         <?php endif; ?>
                     </div>
                     <?php if ($row['value'] > 0): ?>
@@ -212,6 +301,21 @@ include __DIR__ . '/includes/header.php';
         <p class="hint" style="margin-top:12px;">
             «مجموع دارایی‌های بخش معاملات» جمعِ <?= toPersianDigits((string)$tradeOpenCount) ?> کالای فروخته‌نشده است.
             برای دیدن و فروششان به <a href="<?= APP_BASE_PATH ?>/trades.php">بخش معاملات</a> بروید.
+        </p>
+        <?php endif; ?>
+
+        <?php if ($chequeCount > 0 || $debtCount > 0): ?>
+        <p class="hint" style="margin-top:<?= $tradeOpenCount > 0 ? '6' : '12' ?>px;">
+            <?php if ($chequeCount > 0): ?>
+                «خالص چک‌های در جریان» یعنی دریافتی منهای صادره، فقط برای چک‌های
+                <b>پاس‌نشده</b> — چکِ پاس‌شده پولش از قبل در موجودی حساب‌ها هست.
+                (<a href="<?= APP_BASE_PATH ?>/cheques.php">بخش چک‌ها</a>)
+            <?php endif; ?>
+            <?php if ($debtCount > 0): ?>
+                «خالص طلب و بدهی» یعنی باقیمانده‌ی طلب منهای باقیمانده‌ی بدهی؛
+                اگر بدهی بیشتر باشد از جمع کل کم می‌شود.
+                (<a href="<?= APP_BASE_PATH ?>/debts.php">بخش طلب و بدهی</a>)
+            <?php endif; ?>
         </p>
         <?php endif; ?>
     <?php endif; ?>

@@ -2382,6 +2382,16 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             }
 
+            // سمتِ شخص (همکار / مشتری / …). اختیاری است؛ سرور خالی را
+            // «سایر» می‌گیرد.
+            var roleInputId = this.getAttribute('data-role-input');
+            if (roleInputId) {
+                var roleInput = document.getElementById(roleInputId);
+                if (roleInput && roleInput.value.trim() !== '') {
+                    fd.append('role', roleInput.value.trim());
+                }
+            }
+
             fetch(apiUrl('manage_reference.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
@@ -2906,8 +2916,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 var pct = (on && total > 0 && val > 0) ? Math.round(val / total * 1000) / 10 : 0;
                 el.classList.toggle('asset-item-off', !on);
 
+                // درصد فقط وقتی معنا دارد که جمع کل مثبت باشد. با خالصِ منفیِ
+                // بزرگ (بدهی بیشتر از دارایی) جمع منفی می‌شود و «۰٪» گمراه بود.
                 var pctEl = el.querySelector('.cat-breakdown-pct');
-                if (pctEl) { pctEl.textContent = (on && val > 0) ? toPersianDigitsJs(String(pct)) + '٪' : '—'; }
+                if (pctEl) { pctEl.textContent = (on && val > 0 && total > 0) ? toPersianDigitsJs(String(pct)) + '٪' : '—'; }
 
                 var bar = el.querySelector('.cat-breakdown-bar');
                 if (bar) { bar.style.width = (on ? pct : 0) + '%'; }

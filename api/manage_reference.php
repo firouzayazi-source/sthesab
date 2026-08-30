@@ -18,7 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 Csrf::verifyOrFail(postParam('csrf_token'));
 
 $userId = Auth::userId();
-$kind   = postParam('kind');   // bank_mine | bank_external | asset_type | wallet_kind | category
+$kind   = postParam('kind');   // bank_mine | bank_external | asset_type | wallet_kind | category | person
 $action = postParam('action'); // add | delete
 
 $pdo = Database::getConnection();
@@ -82,6 +82,33 @@ if ($action === 'add') {
             $ins->execute(['user_id' => $userId, 'name' => $name]);
 
             jsonResponse(['success' => true, 'id' => (int)$pdo->lastInsertId(), 'name' => $name, 'message' => 'نوع حساب اضافه شد.']);
+        }
+
+        if ($kind === 'person') {
+            if (!tableExists('people')) {
+                jsonResponse(['success' => false, 'message' => 'جدول اشخاص هنوز ساخته نشده. روی سرور:  bash deploy/migrate.sh --apply'], 500);
+            }
+            if (mb_strlen($name) > 150) {
+                jsonResponse(['success' => false, 'message' => 'نام شخص باید کوتاه‌تر از ۱۵۰ کاراکتر باشد.'], 422);
+            }
+
+            // سمت آزاد است (مثل «نوع حساب»)؛ اگر ندادند «سایر» می‌شود.
+            $role = postParam('role');
+            if ($role === '' || mb_strlen($role) > 60) { $role = 'سایر'; }
+
+            $stmt = $pdo->prepare('SELECT id FROM people WHERE user_id = :user_id AND name = :name');
+            $stmt->execute(['user_id' => $userId, 'name' => $name]);
+            if ($stmt->fetch()) {
+                jsonResponse(['success' => false, 'message' => 'شخصی با همین نام از قبل ثبت شده است.'], 422);
+            }
+
+            $ins = $pdo->prepare('INSERT INTO people (user_id, name, role) VALUES (:user_id, :name, :role)');
+            $ins->execute(['user_id' => $userId, 'name' => $name, 'role' => $role]);
+
+            jsonResponse([
+                'success' => true, 'id' => (int)$pdo->lastInsertId(),
+                'name' => $name, 'role' => $role, 'message' => 'شخص اضافه شد.',
+            ]);
         }
 
         if ($kind === 'category') {
@@ -207,6 +234,24 @@ if ($action === 'delete') {
             $del->execute(['id' => $id, 'user_id' => $userId]);
 
             jsonResponse(['success' => true, 'message' => 'نوع حساب حذف شد.']);
+        }
+
+        if ($kind === 'person') {
+            if (!tableExists('people')) {
+                jsonResponse(['success' => false, 'message' => 'مورد یافت نشد.'], 404);
+            }
+
+            // برخلاف بانک و نوع دارایی، اینجا «استفاده شده» مانع حذف نیست.
+            // چون نامِ شخص در خودِ رکوردِ چک/طلب/معامله ذخیره شده و این
+            // فهرست فقط کمکِ پر کردنِ فرم است، برداشتنِ یک نام از فهرست
+            // هیچ تاریخچه‌ای را خراب نمی‌کند.
+            $del = $pdo->prepare('DELETE FROM people WHERE id = :id AND user_id = :user_id');
+            $del->execute(['id' => $id, 'user_id' => $userId]);
+
+            if ($del->rowCount() === 0) {
+                jsonResponse(['success' => false, 'message' => 'مورد یافت نشد.'], 404);
+            }
+            jsonResponse(['success' => true, 'message' => 'شخص از فهرست حذف شد. رکوردهای قبلی دست‌نخورده‌اند.']);
         }
 
         if ($kind === 'category') {

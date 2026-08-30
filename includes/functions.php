@@ -327,6 +327,58 @@ function walletKinds(int $userId): array
 }
 
 /**
+ * فهرست اشخاصِ کاربر (طرف مقابلِ چک، طلب و بدهی، و معامله).
+ *
+ * مثل `walletKinds()` در همان درخواست کش می‌شود، چون چند فرم در یک
+ * صفحه (افزودن و ویرایش) همین فهرست را می‌خواهند.
+ *
+ * ⚠ این فقط فهرستِ کمکیِ پر کردنِ فرم است. آنچه در چک و طلب ذخیره
+ * می‌شود همچنان `counterparty_name` است، نه شناسه — پس حذف یک شخص از
+ * این فهرست هیچ رکوردی را خراب نمی‌کند.
+ */
+function peopleList(int $userId): array
+{
+    static $cache = [];
+    if (isset($cache[$userId])) { return $cache[$userId]; }
+    if (!tableExists('people')) { return $cache[$userId] = []; }
+
+    try {
+        $st = Database::getConnection()->prepare(
+            'SELECT id, name, role FROM people WHERE user_id = :u ORDER BY name'
+        );
+        $st->execute(['u' => $userId]);
+        $cache[$userId] = $st->fetchAll();
+    } catch (PDOException $e) {
+        $cache[$userId] = [];
+    }
+
+    return $cache[$userId];
+}
+
+/**
+ * یک `<datalist>` از اشخاص می‌سازد تا هر ورودیِ «نام طرف مقابل» با
+ * `list="..."` به آن وصل شود.
+ *
+ * چرا datalist و نه select: ورودی آزاد باید همچنان کار کند. کاربر
+ * ممکن است اسمی را یک بار وارد کند و نخواهد به فهرست اضافه‌اش کند، و
+ * رکوردهای قدیمی هم نامی دارند که در فهرست نیست.
+ */
+function peopleDatalist(int $userId, string $id = 'peopleList'): string
+{
+    $people = peopleList($userId);
+    if (empty($people)) { return ''; }
+
+    $out = '<datalist id="' . h($id) . '">';
+    foreach ($people as $p) {
+        $role = trim((string)$p['role']);
+        $out .= '<option value="' . h($p['name']) . '"'
+              . ($role !== '' && $role !== 'سایر' ? ' label="' . h($role) . '"' : '')
+              . '></option>';
+    }
+    return $out . '</datalist>';
+}
+
+/**
  * موجودی هر کیف پول را برمی‌گرداند.
  *
  * موجودی = موجودی اولیه

@@ -263,7 +263,7 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
 
             <div class="form-group">
                 <label for="add_counterparty">نام طرف حساب</label>
-                <input type="text" id="add_counterparty" name="counterparty_name" required maxlength="150" placeholder="مثلاً: علی رضایی">
+                <input type="text" id="add_counterparty" name="counterparty_name" required maxlength="150" placeholder="مثلاً: علی رضایی" list="peopleList" autocomplete="off">
             </div>
 
             <div class="form-group">
@@ -317,7 +317,7 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
 
             <div class="form-group">
                 <label for="edit_counterparty">نام طرف حساب</label>
-                <input type="text" id="edit_counterparty" name="counterparty_name" required maxlength="150">
+                <input type="text" id="edit_counterparty" name="counterparty_name" required maxlength="150" list="peopleList" autocomplete="off">
             </div>
 
             <div class="form-group">

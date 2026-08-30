@@ -88,6 +88,7 @@ MIGRATIONS=(
     migration_wallet_kinds.sql
     migration_user_categories.sql
     migration_login_throttle.sql
+    migration_people.sql
 )
 
 # این دو عمداً اجرا نمی‌شوند: migration_repair.sql جایگزین کامل هر دو است.
@@ -192,6 +193,7 @@ declare -A SENTINEL=(
     [migration_wallet_kinds.sql]="wallet_kinds"
     [migration_user_categories.sql]="categories.user_id"
     [migration_login_throttle.sql]="login_attempts"
+    [migration_people.sql]="people"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

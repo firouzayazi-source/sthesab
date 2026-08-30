@@ -235,7 +235,7 @@ function renderChequeCard(array $c, string $todayStr): void
 
             <div class="form-group">
                 <label for="add_cheque_counterparty">نام شخص <span class="req">*</span></label>
-                <input type="text" id="add_cheque_counterparty" name="counterparty_name" required maxlength="150" placeholder="از چه کسی / به چه کسی">
+                <input type="text" id="add_cheque_counterparty" name="counterparty_name" required maxlength="150" placeholder="از چه کسی / به چه کسی" list="peopleList" autocomplete="off">
             </div>
 
             <div class="form-group">
@@ -296,7 +296,7 @@ function renderChequeCard(array $c, string $todayStr): void
 
             <div class="form-group">
                 <label for="edit_cheque_counterparty">نام شخص <span class="req">*</span></label>
-                <input type="text" id="edit_cheque_counterparty" name="counterparty_name" required maxlength="150">
+                <input type="text" id="edit_cheque_counterparty" name="counterparty_name" required maxlength="150" list="peopleList" autocomplete="off">
             </div>
 
             <div class="form-group">

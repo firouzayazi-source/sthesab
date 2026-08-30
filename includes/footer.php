@@ -153,5 +153,18 @@ $moreActive = in_array($bottomPage, $morePages, true);
 
 <?php include __DIR__ . '/add_tx_sheet.php'; ?>
 
+<?php
+// فهرست اشخاص برای هر ورودیِ «نام طرف مقابل» که `list="peopleList"` دارد
+// (فرم چک، طلب و بدهی، و معامله).
+//
+// اینجا در فوتر است تا یک نسخه برای همه‌ی فرم‌های همان صفحه بس باشد —
+// چه فرم افزودن و چه فرم ویرایش. `peopleList()` نتیجه را در همان
+// درخواست کش می‌کند، پس این خط کوئری اضافه‌ای نمی‌زند اگر صفحه از قبل
+// فهرست را خوانده باشد.
+if (class_exists('Auth') && Auth::isLoggedIn()) {
+    echo peopleDatalist((int)Auth::userId());
+}
+?>
+
 </body>
 </html>

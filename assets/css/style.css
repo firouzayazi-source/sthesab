@@ -2545,6 +2545,10 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
 .asset-item-off .cat-breakdown-bar-track { opacity: .35; }
 .asset-total-note { margin-top: 8px; }
 
+/* خالصِ منفی (چکِ صادره بیشتر از دریافتی، یا بدهی بیشتر از طلب) با رنگ
+   هزینه می‌آید تا در یک نگاه معلوم باشد از جمع کم می‌کند. */
+.asset-amount-neg { color: var(--out); }
+
 /* نامِ ردیف‌های جمع‌شده («مجموع دارایی‌های بخش معاملات») از عرض یک خط
    بلندتر است و با ellipsisِ مشترک، نصفه دیده می‌شد. اینجا — برخلاف
    گزارش دسته‌بندی که ده‌ها ردیف دارد — تعداد ردیف‌ها کم است، پس رفتن

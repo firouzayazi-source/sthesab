@@ -20,6 +20,10 @@ $saleDate  = postParam('sale_date');
 $walletId  = (int)postParam('wallet_id');
 $notes     = trim(postParam('notes'));
 
+// نام خریدار. ستون ممکن است هنوز با migration نیامده باشد.
+$counterparty = trim(postParam('counterparty_name'));
+$hasCp = tableHasColumn('trade_sales', 'counterparty_name');
+
 $errors = [];
 if ($qty <= 0) { $errors[] = 'تعداد فروش باید بزرگ‌تر از صفر باشد.'; }
 if ($saleTotal <= 0) { $errors[] = 'مبلغ فروش الزامی است.'; }
@@ -64,14 +68,16 @@ try {
     }
 
     $ins = $pdo->prepare(
-        'INSERT INTO trade_sales (trade_id, user_id, qty, sale_total, sale_date, wallet_id, notes)
-         VALUES (:t, :u, :q, :s, :d, :w, :n)'
+        'INSERT INTO trade_sales (trade_id, user_id, qty, sale_total, sale_date, wallet_id, notes'
+        . ($hasCp ? ', counterparty_name' : '') .
+        ') VALUES (:t, :u, :q, :s, :d, :w, :n'
+        . ($hasCp ? ', :cp' : '') . ')'
     );
     $ins->execute([
         't' => $tradeId, 'u' => $userId, 'q' => $qty, 's' => $saleTotal,
         'd' => $saleDate, 'w' => resolveWalletId($userId, $walletId),
         'n' => $notes !== '' ? $notes : null,
-    ]);
+    ] + ($hasCp ? ['cp' => $counterparty !== '' ? $counterparty : null] : []));
 
     $pdo->commit();
 
