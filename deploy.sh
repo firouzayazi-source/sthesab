@@ -76,6 +76,32 @@ find . -type f -not -path './.git/*' -exec chmod 644 {} \;
 find . -name '*.sh' -not -path './.git/*' -exec chmod 755 {} \;
 if id -u "$APP_USER" >/dev/null 2>&1; then
     chown -R "$APP_USER":"$APP_USER" uploads
+
+    # ⚠️ پوشه‌ی نشست‌ها هم مثل uploads باید به کاربر اپ برگردد.
+    #
+    # این خط یک بار جا افتاده بود و باگی ساخت که هیچ ردی در لاگ نداشت:
+    # `session.save_path` این pool داخل خودِ پوشه‌ی اپ است
+    # (var/sessions)، پس `chown -R root:root .` بالاتر آن را هم مال root
+    # می‌کرد و PHP — که با کاربر اپ اجرا می‌شود — دیگر نمی‌توانست فایل
+    # نشست بنویسد.
+    #
+    # نتیجه‌اش این بود: هر درخواست یک نشستِ خالیِ تازه می‌گرفت، پس توکن
+    # CSRF هرگز نمی‌ماند و صفحه‌ی ورود در حلقه‌ی «نشست شما منقضی شده بود»
+    # گیر می‌کرد. کاربر اصلاً نمی‌توانست وارد شود و هیچ خطایی هم دیده
+    # نمی‌شد. هر بار اجرای این اسکریپت دوباره خرابش می‌کرد.
+    mkdir -p var/sessions
+    chown -R "$APP_USER":"$APP_USER" var
+    chmod 700 var/sessions
+
+    # و واقعاً آزموده می‌شود — مثل config.php. اگر ننویسد، سکوت بدترین
+    # حالت است چون اپ بالا می‌آید ولی هیچ‌کس نمی‌تواند وارد شود.
+    if sudo -u "$APP_USER" test -w var/sessions 2>/dev/null; then
+        :
+    else
+        red "⛔ کاربر $APP_USER نمی‌تواند در var/sessions بنویسد."
+        red "   با این وضع هیچ‌کس نمی‌تواند وارد شود («نشست شما منقضی شده بود»)."
+        red "   بررسی کنید:  ls -ld $APP_DIR/var $APP_DIR/var/sessions"
+    fi
 else
     red "کاربر $APP_USER وجود ندارد — اول deploy/vps-setup.sh را اجرا کنید."
 fi

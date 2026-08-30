@@ -320,6 +320,40 @@ T::ok(
 );
 
 // ---------------------------------------------------------------
+T::group('قاعده ۸ — deploy.sh پوشه‌های نوشتنی را به کاربر اپ برمی‌گرداند');
+
+// چرا: deploy.sh عمداً `chown -R root:root .` می‌زند تا کد را از دست
+// PHP دور نگه دارد. ولی دو پوشه باید نوشتنی بمانند و بعد از آن دوباره
+// به کاربر اپ برگردند: `uploads` و `var/sessions`.
+//
+// یک بار `var` جا افتاده بود و باگی ساخت که هیچ ردی در لاگ نداشت:
+// مسیر نشستِ این pool داخل خود پوشه‌ی اپ است، پس PHP دیگر نمی‌توانست
+// فایل نشست بنویسد. هر درخواست یک نشستِ خالیِ تازه می‌گرفت، توکن CSRF
+// هرگز نمی‌ماند، و صفحه‌ی ورود در حلقه‌ی «نشست شما منقضی شده بود» گیر
+// می‌کرد — هیچ‌کس نمی‌توانست وارد شود.
+$deploySrc = (string)@file_get_contents(__DIR__ . '/../deploy.sh');
+if ($deploySrc === '') {
+    T::skip('تست deploy.sh', 'deploy.sh وجود ندارد');
+} else {
+    $chownAt = strpos($deploySrc, 'chown -R root:root');
+    T::ok($chownAt !== false, 'deploy.sh مالکیت کد را به root می‌دهد');
+
+    // هر دو باید *بعد از* آن خط دوباره به کاربر اپ برگردند
+    foreach (['uploads', 'var'] as $dir) {
+        $restoreAt = strpos($deploySrc, 'chown -R "$APP_USER":"$APP_USER" ' . $dir);
+        T::ok(
+            $restoreAt !== false && $chownAt !== false && $restoreAt > $chownAt,
+            "«{$dir}» بعد از chown سراسری به کاربر اپ برمی‌گردد"
+        );
+    }
+
+    T::ok(
+        str_contains($deploySrc, 'test -w var/sessions'),
+        'نوشتنی بودن var/sessions واقعاً آزموده می‌شود، نه فرض'
+    );
+}
+
+// ---------------------------------------------------------------
 T::group('نحو — هر فایل PHP باید بدون خطا پارس شود');
 
 $bad = [];
