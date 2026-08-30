@@ -28,10 +28,17 @@
 #              برگرداندن واقعی. اگر نام همان دیتابیس زنده باشد، اول
 #              یک بکاپ ایمنی می‌گیرد و بعد تأیید تایپی می‌خواهد.
 #
+#   --admin    با کاربر مدیرِ دیتابیس (سوکت یونیکس) وصل می‌شود، نه با
+#              کاربر اپ. **برای حالت سنجش لازم است**، چون سنجش یک
+#              دیتابیس موقت می‌سازد و کاربر اپ طبق قانون جداسازی فقط
+#              به دیتابیس خودش دسترسی دارد — و این عمدی است.
+#              به کاربر اپ GRANT اضافه ندهید؛ همان کاری است که قانون
+#              جداسازی منع می‌کند.
+#
 # اجرا:
 #     bash deploy/restore.sh --list
-#     bash deploy/restore.sh                                  # آخرین بکاپ را می‌سنجد
-#     bash deploy/restore.sh /opt/hesab/backups/x.sql.gz      # همان فایل را می‌سنجد
+#     sudo bash deploy/restore.sh --admin                     # آخرین بکاپ را می‌سنجد
+#     sudo bash deploy/restore.sh --admin /opt/hesab/backups/x.sql.gz
 #     bash deploy/restore.sh --into hesab_db                  # بازیابی واقعی
 
 set -euo pipefail
@@ -49,11 +56,13 @@ plain() { printf '  %s\n' "$1"; }
 # ---------- خواندن آرگومان‌ها ----------
 TARGET_DB=""
 FILE=""
+ADMIN=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --list)   LIST=1; shift ;;
         --into)   TARGET_DB="${2:-}"; shift 2 ;;
         --verify) shift ;;
+        --admin)  ADMIN=1; shift ;;
         -h|--help)
             sed -n '3,40p' "$0" | sed 's/^# \{0,1\}//'
             exit 0 ;;
@@ -78,9 +87,37 @@ DB_NAME="$(read_const DB_NAME)"
 DB_USER="$(read_const DB_USER)"
 DB_PASS="$(read_const DB_PASSWORD)"
 DB_HOST="$(read_const DB_HOST)"
-[[ -n "$DB_NAME" && -n "$DB_USER" ]] || { red "اطلاعات دیتابیس از $CONFIG خوانده نشد."; exit 1; }
+# نام دیتابیس همیشه لازم است (هدفِ مقایسه)، ولی نام کاربر فقط وقتی که
+# قرار است با کاربر اپ وصل شویم. با --admin از سوکت می‌رویم.
+[[ -n "$DB_NAME" ]] || { red "نام دیتابیس از $CONFIG خوانده نشد."; exit 1; }
+if [[ $ADMIN -eq 0 && -z "$DB_USER" ]]; then
+    red "کاربر دیتابیس از $CONFIG خوانده نشد."
+    exit 1
+fi
 
-mysql_do() { mysql --default-character-set=utf8mb4 -h "${DB_HOST:-localhost}" -u "$DB_USER" -p"$DB_PASS" "$@"; }
+# ---------- کدام کاربر دیتابیس ----------
+#
+# پیش‌فرض: همان کاربر اپ (`hesab_user`). برای بازیابی واقعی روی دیتابیس
+# خودِ اپ کافی است.
+#
+# `--admin`: با کاربر مدیرِ دیتابیس از طریق سوکت یونیکس (یعنی همان
+# `sudo mysql`). این تنها راهِ درست برای حالتِ سنجش است، چون سنجش یک
+# دیتابیس موقت می‌سازد و کاربر اپ طبق **قانون جداسازی** فقط به
+# `hesab_db` دسترسی دارد.
+#
+# ⚠ وسوسه‌ی اشتباه: «خب یک GRANT به hesab_user بدهیم.» نه — همان کاری
+# است که قانون جداسازی منع می‌کند. دسترسی کاربر اپ باید دقیقاً
+# `hesab_db.*` بماند؛ کسی که دیتابیس موقت می‌سازد باید مدیر باشد، و
+# فقط برای همان چند ثانیه.
+if [[ $ADMIN -eq 1 ]]; then
+    mysql_do()  { mysql --default-character-set=utf8mb4 "$@"; }
+    dump_do()   { mysqldump --default-character-set=utf8mb4 "$@"; }
+    WHOAMI_DB="مدیر دیتابیس (سوکت یونیکس)"
+else
+    mysql_do()  { mysql --default-character-set=utf8mb4 -h "${DB_HOST:-localhost}" -u "$DB_USER" -p"$DB_PASS" "$@"; }
+    dump_do()   { mysqldump --default-character-set=utf8mb4 -h "${DB_HOST:-localhost}" -u "$DB_USER" -p"$DB_PASS" "$@"; }
+    WHOAMI_DB="$DB_USER"
+fi
 
 # ---------- پیدا کردن فایل بکاپ ----------
 if [[ -z "$FILE" ]]; then
@@ -117,9 +154,8 @@ if [[ -n "$TARGET_DB" ]]; then
         plain "اول یک بکاپ ایمنی از وضعیت فعلی گرفته می‌شود."
         SAFETY="$BACKUP_DIR/${DB_NAME}_before-restore_$(date +%Y-%m-%d_%H%M).sql.gz"
         mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR"
-        if mysqldump --default-character-set=utf8mb4 --single-transaction --quick \
-                --add-drop-table --routines --events \
-                -h "${DB_HOST:-localhost}" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" | gzip -9 > "$SAFETY"; then
+        if dump_do --single-transaction --quick --add-drop-table --routines --events \
+                "$DB_NAME" | gzip -9 > "$SAFETY"; then
             chmod 600 "$SAFETY"
             green "✓ بکاپ ایمنی: $(basename "$SAFETY")"
         else
@@ -154,14 +190,27 @@ plain "به داده‌ی زنده دست زده نمی‌شود."
 # اگر کاربر دیتابیس اجازه‌ی ساختن دیتابیس تازه را نداشته باشد (که طبق
 # قانون جداسازی محتمل است — GRANT فقط روی hesab_db.* است)، همین‌جا
 # صادقانه گفته می‌شود، نه اینکه با خطای مبهم بمیرد.
+plain "کاربر دیتابیس: $WHOAMI_DB"
+
 if ! mysql_do -e "CREATE DATABASE IF NOT EXISTS \`$TMP_DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_persian_ci" 2>/dev/null; then
     red "⛔ دیتابیس موقت ساخته نشد."
-    plain "کاربر «$DB_USER» طبق قانون جداسازی فقط به «$DB_NAME» دسترسی دارد،"
-    plain "پس نمی‌تواند دیتابیس تازه بسازد. دو راه:"
     plain ""
-    plain "  ۱. یک بار با کاربر مدیر دیتابیس اجازه بدهید:"
-    plain "     GRANT ALL ON \`${DB_NAME}_restorecheck\`.* TO '${DB_USER}'@'localhost';"
-    plain "  ۲. یا سنجش را با کاربر مدیر اجرا کنید."
+    if [[ $ADMIN -eq 1 ]]; then
+        plain "با کاربر مدیر هم نشد. یعنی یا سرویس دیتابیس بالا نیست، یا این"
+        plain "کاربر سیستمی اجازه‌ی ورود با سوکت ندارد. با sudo اجرا کنید:"
+        plain ""
+        plain "  sudo bash deploy/restore.sh --admin"
+    else
+        plain "کاربر «$DB_USER» طبق **قانون جداسازی** فقط به «$DB_NAME» دسترسی"
+        plain "دارد، پس نمی‌تواند دیتابیس تازه بسازد. این عمدی است و درست."
+        plain ""
+        plain "سنجش را با کاربر مدیر اجرا کنید — دسترسی اپ دست‌نخورده می‌ماند:"
+        plain ""
+        plain "  sudo bash deploy/restore.sh --admin"
+        plain ""
+        plain "⚠ به «$DB_USER» GRANT ندهید. گشاد کردن دسترسی کاربر اپ بیرون از"
+        plain "  «$DB_NAME» دقیقاً همان چیزی است که قانون جداسازی منع می‌کند."
+    fi
     exit 1
 fi
 
@@ -194,6 +243,17 @@ MISSING=$(comm -23 <(echo "$LIVE_T") <(echo "$TMP_T") || true)
 if [[ -n "$MISSING" ]]; then
     red "⛔ این جدول‌ها در بکاپ نیستند:"
     echo "$MISSING" | sed 's/^/    /'
+    plain ""
+    # شایع‌ترین علت اصلاً خرابی نیست: بکاپ پیش از آخرین migration گرفته
+    # شده. بدون این توضیح، کاربر فکر می‌کند بکاپ‌هایش خراب‌اند.
+    plain "شایع‌ترین علت: این بکاپ *پیش از* آخرین migration گرفته شده، پس"
+    plain "جدول‌های تازه هنوز در آن نیستند. یعنی بکاپ سالم است ولی قدیمی."
+    plain ""
+    plain "برای مطمئن شدن، یک بکاپ تازه بگیرید و دوباره بسنجید:"
+    plain "  sudo bash deploy/backup.sh"
+    plain "  sudo bash deploy/restore.sh --admin"
+    plain ""
+    plain "اگر روی بکاپِ تازه هم این پیام آمد، آن‌وقت واقعاً مشکلی هست."
     exit 1
 fi
 green "✓ همه‌ی $(echo "$LIVE_T" | wc -l) جدول در بکاپ هست."
