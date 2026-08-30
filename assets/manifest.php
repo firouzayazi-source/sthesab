@@ -22,6 +22,15 @@ $manifest = [
     'icons' => [
         ['src' => APP_BASE_PATH . '/assets/icons/icon-192.png', 'sizes' => '192x192', 'type' => 'image/png'],
         ['src' => APP_BASE_PATH . '/assets/icons/icon-512.png', 'sizes' => '512x512', 'type' => 'image/png'],
+        // اندروید آیکون را داخل شکل خودش (دایره، مربعِ گرد، …) می‌برد و
+        // لبه‌ها را می‌برد. بدون purpose=maskable سیستم آیکون را داخل یک
+        // کادر سفید کوچک می‌گذارد و روی صفحه‌ی اصلی وصله به نظر می‌رسد.
+        [
+            'src'     => APP_BASE_PATH . '/assets/icons/icon-512.png',
+            'sizes'   => '512x512',
+            'type'    => 'image/png',
+            'purpose' => 'maskable',
+        ],
     ],
 ];
 

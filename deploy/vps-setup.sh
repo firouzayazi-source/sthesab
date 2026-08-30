@@ -294,6 +294,16 @@ server {
 
     client_max_body_size 12M;
 
+    # سرویس‌ورکر باید پیش از قاعده‌ی عمومیِ .js بیاید و هرگز کش نشود.
+    # قاعده‌ی پایین «یک سال، immutable» می‌دهد که برای فایل‌های نسخه‌دار
+    # درست است ولی برای sw.js یعنی نسخه‌ی تازه ممکن است هرگز نرسد و
+    # مرورگر تا مدت‌ها با سرویس‌ورکر قدیمی کار کند.
+    # location = دقیق است و بر همه‌ی regex ها اولویت دارد.
+    location = /sw.js {
+        add_header Cache-Control "no-cache";
+        try_files \$uri =404;
+    }
+
     location ~* \.(css|js|woff2?|png|jpe?g|webp|svg|ico)\$ {
         expires 1y;
         add_header Cache-Control "public, immutable";

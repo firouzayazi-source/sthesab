@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/login_throttle.php';
 
 class Auth
 {
@@ -45,12 +46,32 @@ class Auth
      * پیام خطا عمداً برای «کاربر پیدا نشد» و «رمز غلط» یکی است تا این
      * صفحه به ابزار کشف حساب تبدیل نشود.
      */
-    public static function attemptLogin(string $identifier, string $password): array
+    public static function attemptLogin(string $identifier, string $password, ?string $ip = null): array
     {
         $identifier = trim($identifier);
 
         if ($identifier === '' || $password === '') {
             return ['success' => false, 'message' => 'نام کاربری یا ایمیل و رمز عبور را وارد کنید.'];
+        }
+
+        $ip = $ip ?? (string)($_SERVER['REMOTE_ADDR'] ?? '');
+
+        // ---------- سدِ حدس رمز ----------
+        // پیش از هر کاری سنجیده می‌شود: نه فقط چون منطقی است، بلکه چون
+        // password_verify عمداً کند است و نباید به مهاجم هدیه شود.
+        $lockedFor = LoginThrottle::lockedFor($identifier, $ip);
+        if ($lockedFor !== null) {
+            // auth.php عمداً functions.php را لازم ندارد، پس تبدیل ارقام
+            // مشروط است — بدون این، صفحه‌ی ورود در هر مسیری که فقط auth را
+            // لود کرده باشد با «تابع تعریف‌نشده» می‌خوابید.
+            $mins = function_exists('toPersianDigits')
+                ? toPersianDigits((string)$lockedFor)
+                : (string)$lockedFor;
+            return [
+                'success' => false,
+                'locked'  => true,
+                'message' => "تلاش‌های ناموفق زیاد بوده است. {$mins} دقیقه دیگر دوباره تلاش کنید.",
+            ];
         }
 
         $pdo = Database::getConnection();
@@ -83,12 +104,21 @@ class Auth
         if ($user && !isset($user['session_hours'])) { $user['session_hours'] = 1; }
 
         if (!$user || !password_verify($password, $user['password_hash'])) {
+            // نامِ ناموجود هم شمرده می‌شود، وگرنه امتحان کردن نام‌های
+            // تصادفی هیچ هزینه‌ای ندارد. پیام هم عمداً همان پیام قبلی
+            // می‌ماند تا وجود یا نبودِ حساب لو نرود.
+            LoginThrottle::recordFailure($identifier, $ip);
             return ['success' => false, 'message' => 'نام کاربری یا رمز عبور اشتباه است.'];
         }
 
         if ((int)$user['is_active'] !== 1) {
             return ['success' => false, 'message' => 'حساب کاربری شما غیرفعال شده است.'];
         }
+
+        // رمز درست بود، پس سابقه‌ی همین نام کاربری پاک می‌شود: کسی که چند
+        // بار اشتباه زده ولی بالاخره وارد شده، دفعه‌ی بعد از صفر شروع کند.
+        LoginThrottle::clear($identifier);
+        LoginThrottle::prune();
 
         session_regenerate_id(true);
 

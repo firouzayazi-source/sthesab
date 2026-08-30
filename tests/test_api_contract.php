@@ -129,6 +129,92 @@ foreach ($files as $f) {
 T::bulk(count($files), $bad, 'هیچ متغیری مستقیم داخل رشته‌ی SQL درج نشده');
 
 // ---------------------------------------------------------------
+T::group('قاعده ۵ — هر خواندنِ دسته‌بندی از categoryScopeSql رد می‌شود');
+
+// چرا: `categories.user_id` سه‌حالتی است — NULL یعنی پیش‌فرضِ برنامه و
+// عدد یعنی دسته‌ی شخصیِ همان کاربر. اگر کوئری‌ای این شرط را نگذارد،
+// دسته‌های شخصیِ بقیه را هم برمی‌دارد. یک بار در `data.php` همین شد:
+// فهرست کامل هم برای تطبیق نام استفاده می‌شد و هم با
+// `window.IMPORT_CATEGORIES` به مرورگر می‌رفت، پس نامِ دسته‌های خصوصیِ
+// همه‌ی کاربران در سورس صفحه دیده می‌شد.
+//
+// دو استثنا، هر دو عمدی:
+//   admin/categories.php  — با `user_id IS NULL` فقط پیش‌فرض‌ها را می‌بیند
+//   api/manage_reference.php — با `user_id = :u` فقط مالِ خودِ کاربر
+$catFiles = array_merge(
+    glob(__DIR__ . '/../*.php') ?: [],
+    glob(__DIR__ . '/../api/*.php') ?: [],
+    glob(__DIR__ . '/../includes/*.php') ?: []
+);
+$bad = [];
+$checked = 0;
+foreach ($catFiles as $f) {
+    // کامنت‌ها کنار گذاشته می‌شوند، وگرنه همین توضیحی که بالای یک کوئریِ
+    // ناایمن نوشته شده کافی است تا تست را گول بزند.
+    $code = '';
+    foreach (token_get_all((string)file_get_contents($f)) as $t) {
+        if (is_array($t) && in_array($t[0], [T_COMMENT, T_DOC_COMMENT], true)) { continue; }
+        $code .= is_array($t) ? $t[1] : $t;
+    }
+
+    // هر «FROM categories» جداگانه سنجیده می‌شود، نه کلِ فایل — یک کوئریِ
+    // امن در بالای فایل نباید کوئریِ ناایمنِ پایینش را بپوشاند.
+    if (!preg_match_all('/FROM\s+categories\b/i', $code, $m, PREG_OFFSET_CAPTURE)) { continue; }
+    foreach ($m[0] as [$hit, $at]) {
+        $checked++;
+        // پنجره تا پایان همان دستور PHP (اولین `;`) بریده می‌شود، نه تعداد
+        // ثابتی کاراکتر. نسخه‌ی اول ۶۰۰ کاراکتر می‌گرفت و در `data.php` به
+        // کوئریِ بعدی سرریز می‌کرد — آنجا `FROM wallets WHERE user_id = :u`
+        // بود و تست، شرطِ *کیف پول* را به حساب دسته‌بندی می‌گذاشت و سبز
+        // نشان می‌داد.
+        $end    = strpos($code, ';', $at);
+        $window = substr($code, $at, $end === false ? 600 : $end - $at);
+        // شرط باید در WHERE/AND باشد. `ORDER BY (user_id IS NULL)` یک شرطِ
+        // صافی نیست — فقط مرتب‌سازی است — ولی نسخه‌ی دومِ همین تست آن را
+        // به‌جای شرط می‌گرفت و کوئریِ ناایمن را سبز نشان می‌داد.
+        $ownership = '/\b(WHERE|AND)\s+\(?\s*[a-z_]*\.?user_id\s+(IS\s+NULL|=\s*:)/i';
+        $scoped = strpos($window, 'categoryScopeSql') !== false
+            || preg_match($ownership, $window);
+        if (!$scoped) {
+            $bad[] = basename($f) . ' — «FROM categories» بدون شرط مالکیت (بایت ' . $at . ')';
+        }
+    }
+}
+T::ok($checked >= 8, 'کوئری‌های دسته‌بندی پیدا شدند', 'بررسی‌شده: ' . $checked);
+T::bulk($checked, $bad, 'هر خواندنِ دسته‌بندی شرط مالکیت دارد');
+
+// ---------------------------------------------------------------
+T::group('قاعده ۶ — سرویس‌ورکر هیچ HTML ای کش نمی‌کند');
+
+// چرا: همه‌ی صفحه‌ها عمداً `Cache-Control: no-store, private` می‌گیرند،
+// چون سافاری روی آیفون نسخه‌ی کش‌شده را نشان می‌داد و کاربر بعد از حذف
+// یک تراکنش باز همان عدد قدیمی را می‌دید. اگر سرویس‌ورکر HTML را کش
+// کند همان باگ برمی‌گردد — این بار بدتر، چون کشِ سرویس‌ورکر با
+// تازه‌سازیِ صفحه هم پاک نمی‌شود.
+$swFile = __DIR__ . '/../sw.js';
+if (!file_exists($swFile)) {
+    T::skip('تست سرویس‌ورکر', 'sw.js وجود ندارد');
+} else {
+    $sw = (string)file_get_contents($swFile);
+
+    T::ok(file_exists(__DIR__ . '/../offline.html'), 'صفحه‌ی آفلاین وجود دارد');
+
+    // فهرست پیش‌کش نباید هیچ فایل PHP ای داشته باشد
+    $pre = [];
+    if (preg_match('/const PRECACHE\s*=\s*\[(.*?)\];/s', $sw, $mm)) {
+        preg_match_all("/rel\('([^']+)'\)/", $mm[1], $pp);
+        $pre = $pp[1];
+    }
+    T::ok(count($pre) > 0, 'فهرست پیش‌کش خوانده شد', 'تعداد: ' . count($pre));
+    $php = array_values(array_filter($pre, fn($u) => str_contains($u, '.php')));
+    T::bulk(count($pre), array_map(fn($u) => "پیش‌کشِ PHP: $u", $php), 'هیچ فایل PHP ای پیش‌کش نمی‌شود');
+
+    // درخواست ناوبری باید شاخه‌ی جدا داشته باشد و از شبکه بیاید
+    T::ok(str_contains($sw, "req.mode === 'navigate'"), 'ناوبری شاخه‌ی جداگانه دارد');
+    T::ok(str_contains($sw, 'isStaticAsset'), 'کش فقط به دارایی‌های ثابت محدود شده');
+}
+
+// ---------------------------------------------------------------
 T::group('فایل‌های خط‌فرمانی از وب اجرا نشوند');
 
 // چرا: tests/ و deploy/ داخل ریشه‌ی وب‌اند. سایت nginx این دو پوشه را

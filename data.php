@@ -19,9 +19,23 @@ $stats = ['valid' => 0, 'invalid' => 0];
 $headers = [];
 $rawRows = [];
 
-// دسته‌بندی‌ها و حساب‌ها برای تطبیق نام‌ها
+// دسته‌بندی‌ها و حساب‌ها برای تطبیق نام‌ها.
+//
+// این فهرست دو جا مصرف می‌شود و هر دو حساس‌اند: یکی تطبیق نامِ ستون
+// دسته در فایل ورودی، و یکی window.IMPORT_CATEGORIES که به مرورگر
+// می‌رود. پس باید از categoryScopeSql() رد شود، وگرنه نامِ دسته‌های
+// شخصیِ بقیه‌ی کاربران در سورس همین صفحه دیده می‌شود و یک ردیف وارد
+// شده می‌تواند category_id کاربر دیگری را بگیرد.
+$catStmt = $pdo->prepare(
+    'SELECT id, name, type FROM categories
+     WHERE is_active = 1 AND ' . categoryScopeSql() .
+    // اگر هم‌نام بودند، مالِ خودِ کاربر برنده است. ستون user_id ممکن است
+    // هنوز با migration نیامده باشد، پس مرتب‌سازی هم مشروط است.
+    (tableHasColumn('categories', 'user_id') ? ' ORDER BY (user_id IS NULL) DESC' : '')
+);
+$catStmt->execute(categoryScopeParams($userId));
 $catMap = [];
-foreach ($pdo->query('SELECT id, name, type FROM categories WHERE is_active = 1')->fetchAll() as $c) {
+foreach ($catStmt->fetchAll() as $c) {
     $catMap[mb_strtolower(trim($c['name']))] = $c;
 }
 $walletMap = [];

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>اینترنت در دسترس نیست</title>
+<!--
+  این صفحه عمداً HTML ایستا است و نه PHP: وقتی نشان داده می‌شود که اصلاً
+  شبکه‌ای نیست، پس هیچ چیزی از سرور نمی‌آید. به همین دلیل هم style داخل
+  خودش است و به style.css وابسته نیست — آن فایل ممکن است هنوز کش نشده باشد.
+  رنگ‌ها با همان توکن‌های اپ هم‌خوان‌اند ولی مستقل نوشته شده‌اند.
+-->
+<style>
+    @font-face {
+        font-family: 'Vazirmatn';
+        src: url('assets/fonts/Vazirmatn.woff2') format('woff2');
+        font-weight: 100 900;
+        font-display: swap;
+    }
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        min-height: 100dvh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        font-family: 'Vazirmatn', system-ui, -apple-system, 'Segoe UI', sans-serif;
+        background: #f6f7f9;
+        color: #14161a;
+    }
+    .box {
+        width: 100%;
+        max-width: 360px;
+        text-align: center;
+        background: #fff;
+        border: 1px solid #e6e8ec;
+        border-radius: 18px;
+        padding: 32px 22px 26px;
+    }
+    .icon {
+        width: 62px; height: 62px;
+        margin: 0 auto 16px;
+        border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        background: #fdeaea; color: #d64545;
+    }
+    h1 { margin: 0 0 8px; font-size: 17px; font-weight: 800; }
+    p  { margin: 0 0 20px; font-size: 13px; line-height: 1.9; color: #666d78; }
+    button {
+        width: 100%;
+        padding: 12px;
+        font: inherit;
+        font-weight: 700;
+        color: #fff;
+        background: #14161a;
+        border: 0;
+        border-radius: 12px;
+        cursor: pointer;
+    }
+    button:active { opacity: .85; }
+
+    @media (prefers-color-scheme: dark) {
+        body   { background: #0b0b0b; color: #f2f3f5; }
+        .box   { background: #16181c; border-color: #262a31; }
+        .icon  { background: #3a1f1f; color: #e66767; }
+        p      { color: #9aa1ac; }
+        button { background: #f2f3f5; color: #14161a; }
+    }
+</style>
+</head>
+<body>
+    <div class="box">
+        <div class="icon" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                <path d="M1 1l22 22"/>
+                <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
+                <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+                <path d="M10.71 5.05A16 16 0 0 1 22.58 9"/>
+                <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+                <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+                <path d="M12 20h.01"/>
+            </svg>
+        </div>
+        <h1>اینترنت در دسترس نیست</h1>
+        <p>
+            دفتر مالی برای نمایش اطلاعات به اینترنت نیاز دارد.
+            اتصال را بررسی کنید و دوباره تلاش کنید.
+        </p>
+        <button type="button" onclick="location.reload()">تلاش دوباره</button>
+    </div>
+
+    <script>
+        // به‌محض برگشتن شبکه، خودش صفحه را تازه می‌کند تا کاربر لازم نباشد
+        // منتظر بماند و دکمه بزند.
+        window.addEventListener('online', function () { location.reload(); });
+    </script>
+</body>
+</html>

@@ -228,9 +228,23 @@ $pdo->prepare(
 ]);
 
 if (session_status() === PHP_SESSION_NONE) { @session_start(); }
-$try = function (string $id, string $pass) {
+
+// این بخش عمداً چند بار رمز غلط می‌زند، پس به سدِ حدس رمز می‌خورد و
+// از یک جایی به بعد پیامِ «تلاش زیاد» می‌گیرد به‌جای پیامِ ورود.
+// آنچه اینجا سنجیده می‌شود *پیام ورود* است، نه سد (تست خودِ سد در
+// tests/test_login_throttle.php است) — پس شمارنده پیش از هر تلاش
+// صفر می‌شود و IP هم مخصوصِ همین تست است تا با بقیه قاطی نشود.
+$TRY_IP = '198.51.100.42';   // بازه‌ی رزروشده‌ی مستندسازی
+$try = function (string $id, string $pass) use ($pdo, $TRY_IP) {
     $_SESSION = [];
-    return Auth::attemptLogin($id, $pass);
+    if (tableExists('login_attempts')) {
+        // هر دو کلید پاک می‌شوند، نه فقط IP: شمارنده‌ی نام کاربری عمداً
+        // همه‌ی IP ها را با هم می‌بیند، پس ردیف‌های به‌جا مانده از اجرای
+        // قبلیِ همین تست (که IP دیگری داشت) هنوز قفل نگه می‌داشتند.
+        $pdo->prepare('DELETE FROM login_attempts WHERE request_ip = :ip OR username_tried = :u')
+            ->execute(['ip' => $TRY_IP, 'u' => mb_strtolower(trim($id))]);
+    }
+    return Auth::attemptLogin($id, $pass, $TRY_IP);
 };
 T::ok($try($LOGINU, 'LoginPass123')['success'], 'ورود با نام کاربری');
 T::ok($try($LOGINE, 'LoginPass123')['success'], 'ورود با ایمیل');
