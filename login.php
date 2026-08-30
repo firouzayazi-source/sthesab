@@ -46,24 +46,36 @@ if ($rememberedUsername !== null && tableHasColumn('users', 'avatar')) {
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    Csrf::verifyOrFail(postParam('csrf_token'));
-
-    $username = postParam('username');
-    $password = $_POST['password'] ?? '';
-
-    $result = Auth::attemptLogin($username, $password);
-
-    if ($result['success']) {
-        if (!$requireFullLogin) {
-            Auth::rememberUsername($username);
-        }
-        // «این دستگاه را به خاطر بسپار» — تا ۳۰ روز رمز پرسیده نمی‌شود
-        if (postParam('trust_device') === '1') {
-            Auth::trustThisDevice((int)Auth::userId());
-        }
-        header('Location: index.php');
-        exit;
+    // اینجا عمداً verifyOrFail نیست.
+    //
+    // صفحه‌ی ورود بیشتر از هر صفحه‌ی دیگری باز می‌ماند: کاربر بازش می‌کند،
+    // حواسش پرت می‌شود، بعداً برمی‌گردد و رمز را می‌زند. اگر در این فاصله
+    // نشست جمع شده باشد، توکن هم رفته و verifyOrFail یک صفحه‌ی سفید با
+    // متن خام نشان می‌داد — بن‌بستِ کامل، درست وقتی کاربر می‌خواست وارد شود.
+    //
+    // حالا فرم دوباره با توکن تازه رندر می‌شود و کاربر فقط یک بار دیگر
+    // می‌زند. امنیت کم نمی‌شود: توکنِ نامعتبر همچنان وارد نمی‌کند، فقط
+    // به‌جای مردن، راه برگشت می‌دهد.
+    if (!Csrf::validate(postParam('csrf_token'))) {
+        $error = 'نشست شما منقضی شده بود. لطفاً دوباره تلاش کنید.';
     } else {
+        $username = postParam('username');
+        $password = $_POST['password'] ?? '';
+
+        $result = Auth::attemptLogin($username, $password);
+
+        if ($result['success']) {
+            if (!$requireFullLogin) {
+                Auth::rememberUsername($username);
+            }
+            // «این دستگاه را به خاطر بسپار» — تا ۳۰ روز رمز پرسیده نمی‌شود
+            if (postParam('trust_device') === '1') {
+                Auth::trustThisDevice((int)Auth::userId());
+            }
+            header('Location: index.php');
+            exit;
+        }
+
         $error = $result['message'];
     }
 }
