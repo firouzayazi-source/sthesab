@@ -261,10 +261,7 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
             <?= Csrf::field() ?>
             <input type="hidden" name="direction" id="add_debt_direction" value="receivable">
 
-            <div class="form-group">
-                <label for="add_counterparty">نام طرف حساب</label>
-                <input type="text" id="add_counterparty" name="counterparty_name" required maxlength="150" placeholder="مثلاً: علی رضایی" list="peopleList" autocomplete="off">
-            </div>
+            <?= personPicker($userId, 'add_counterparty', 'نام طرف حساب', 'مثلاً: علی رضایی', 'required') ?>
 
             <div class="form-group">
                 <label for="add_debt_amount">مبلغ (تومان)</label>
@@ -315,10 +312,7 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
             <?= Csrf::field() ?>
             <input type="hidden" name="debt_id" id="edit_debt_id">
 
-            <div class="form-group">
-                <label for="edit_counterparty">نام طرف حساب</label>
-                <input type="text" id="edit_counterparty" name="counterparty_name" required maxlength="150" list="peopleList" autocomplete="off">
-            </div>
+            <?= personPicker($userId, 'edit_counterparty', 'نام طرف حساب', '', 'required') ?>
 
             <div class="form-group">
                 <label for="edit_debt_amount">مبلغ (تومان)</label>

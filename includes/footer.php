@@ -3,7 +3,7 @@
  * فوتر مشترک صفحات داخلی — شامل ناوبری پایین صفحه
  */
 $bottomPage = basename($_SERVER['PHP_SELF']);
-$morePages = ['profile.php', 'wallets.php', 'budget.php', 'savings.php', 'recurring.php', 'upcoming.php', 'calendar.php', 'search.php', 'data.php', 'import.php', 'cheques.php', 'debts.php', 'my-assets.php', 'category-report.php', 'references.php', 'users.php', 'categories.php', 'all-transactions.php'];
+$morePages = ['profile.php', 'wallets.php', 'budget.php', 'savings.php', 'recurring.php', 'upcoming.php', 'calendar.php', 'search.php', 'data.php', 'import.php', 'cheques.php', 'debts.php', 'my-assets.php', 'category-report.php', 'references.php', 'person.php', 'users.php', 'categories.php', 'all-transactions.php'];
 $moreActive = in_array($bottomPage, $morePages, true);
 ?>
         </div>
@@ -98,6 +98,10 @@ $moreActive = in_array($bottomPage, $morePages, true);
             <a href="<?= APP_BASE_PATH ?>/references.php" class="tool-card" style="--tc1:#8b5cf6; --tc2:#7c3aed;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1.3" fill="currentColor" stroke="none"/><circle cx="3.5" cy="12" r="1.3" fill="currentColor" stroke="none"/><circle cx="3.5" cy="18" r="1.3" fill="currentColor" stroke="none"/></svg>
                 <span>فهرست‌های من</span>
+            </a>
+            <a href="<?= APP_BASE_PATH ?>/person.php" class="tool-card" style="--tc1:#e11d48; --tc2:#be123c;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87"/></svg>
+                <span>گردش حساب اشخاص</span>
             </a>
             <a href="<?= APP_BASE_PATH ?>/data.php" class="tool-card" style="--tc1:#0ea5e9; --tc2:#0891b2;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>

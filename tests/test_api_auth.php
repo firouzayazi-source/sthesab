@@ -181,6 +181,7 @@ try {
         "INSERT INTO users (username, password_hash, full_name, role, is_active)
          VALUES (:u, :p, 'کاربر تست اندپوینت', 'user', 1)"
     )->execute(['u' => $smokeUser, 'p' => password_hash($smokePass, PASSWORD_DEFAULT)]);
+    $smokeUserId = (int)$pdo->lastInsertId();
     $pdoOk = true;
 } catch (Throwable $e) {
     T::skip('تست اندپوینت‌ها با ورود', 'اتصال به دیتابیس برقرار نشد');
@@ -300,6 +301,84 @@ if ($pdoOk) {
             T::ok(!empty($j2['success']), 'ویرایش تراکنش موفق بود', $j2['message'] ?? '');
         }
     }
+
+    // -----------------------------------------------------------
+    T::group('ورود اطلاعات: شناسه‌ی کاربر دیگر پذیرفته نشود');
+
+    // `data.php` مرحله‌ی ثبت را از روی پیلودِ JSON مرورگر انجام می‌دهد.
+    // یک بار `category_id` و `wallet_id` را همان‌طور که آمده بودند
+    // می‌نوشت — یعنی هر کاربری می‌توانست پیلود را دست‌کاری کند و
+    // تراکنشش را به دسته یا حسابِ *کاربر دیگری* بچسباند. آزموده و
+    // تأیید شده بود؛ این تست جلوی برگشتش را می‌گیرد.
+    // قربانی را خودِ تست می‌سازد. تکیه بر داده‌ی موجود یعنی تست روی یک
+    // دیتابیس خالی بی‌سروصدا رد می‌شود و هیچ چیزی را نگه نمی‌دارد.
+    $victimUser = '__test_api_victim';
+    $victimId = $foreignCat = $foreignWallet = null;
+    try {
+        $pdo->prepare('DELETE FROM users WHERE username = :u')->execute(['u' => $victimUser]);
+        $pdo->prepare(
+            "INSERT INTO users (username, password_hash, full_name, role, is_active)
+             VALUES (:u, :p, 'قربانی تست', 'user', 1)"
+        )->execute(['u' => $victimUser, 'p' => password_hash('x', PASSWORD_DEFAULT)]);
+        $victimId = (int)$pdo->lastInsertId();
+
+        $pdo->prepare(
+            "INSERT INTO categories (user_id, name, type, is_active)
+             VALUES (:u, '__test_victim_cat', 'expense', 1)"
+        )->execute(['u' => $victimId]);
+        $foreignCat = (int)$pdo->lastInsertId();
+
+        $pdo->prepare(
+            "INSERT INTO wallets (user_id, name, kind, is_active, sort_order)
+             VALUES (:u, '__test_victim_wallet', 'cash', 1, 50)"
+        )->execute(['u' => $victimId]);
+        $foreignWallet = (int)$pdo->lastInsertId();
+    } catch (PDOException $e) {
+        $foreignCat = $foreignWallet = null;
+    }
+
+    if (!$foreignCat && !$foreignWallet) {
+        T::skip('ورود اطلاعات', 'ساخت دسته/حسابِ قربانی ممکن نشد');
+    } else {
+        [, $dataPage] = $sess('/data.php');
+        preg_match('/name="csrf_token"[^>]*value="([^"]+)"/', $dataPage, $m3);
+        $dtok = $m3[1] ?? $token;
+
+        $marker = '__test_import_' . bin2hex(random_bytes(4));
+        $row = [
+            'amount' => 4321, 'type' => 'expense', 'transaction_date' => date('Y-m-d'),
+            'title' => $marker,
+        ];
+        if ($foreignCat)    { $row['category_id'] = (int)$foreignCat; }
+        if ($foreignWallet) { $row['wallet_id']   = (int)$foreignWallet; }
+
+        $sess('/data.php', [
+            'csrf_token' => $dtok, 'action' => 'commit',
+            'payload' => json_encode([$row], JSON_UNESCAPED_UNICODE),
+        ], 'POST');
+
+        $chk = $pdo->prepare('SELECT category_id, wallet_id FROM transactions WHERE title = :t');
+        $chk->execute(['t' => $marker]);
+        $stored = $chk->fetch();
+
+        if (!$stored) {
+            T::pass('ردیفِ دست‌کاری‌شده اصلاً ثبت نشد');
+        } else {
+            T::ok($foreignCat === null || (int)$stored['category_id'] !== (int)$foreignCat,
+                'دسته‌ی کاربر دیگر روی تراکنش ننشست');
+            T::ok($foreignWallet === null || (int)$stored['wallet_id'] !== (int)$foreignWallet,
+                'حساب کاربر دیگر روی تراکنش ننشست');
+        }
+        try { $pdo->prepare('DELETE FROM transactions WHERE title = :t')->execute(['t' => $marker]); }
+        catch (PDOException $e) { /* ignore */ }
+    }
+    try {
+        if ($victimId) {
+            $pdo->prepare('DELETE FROM categories WHERE user_id = :u')->execute(['u' => $victimId]);
+            $pdo->prepare('DELETE FROM wallets WHERE user_id = :u')->execute(['u' => $victimId]);
+        }
+        $pdo->prepare('DELETE FROM users WHERE username = :u')->execute(['u' => $victimUser]);
+    } catch (PDOException $e) { /* ignore */ }
 
     @unlink($jar);
     try {

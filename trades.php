@@ -345,12 +345,7 @@ include __DIR__ . '/includes/header.php';
                 <p class="hint">کارمزد، حمل، تعمیر… فقط در محاسبه‌ی سود لحاظ می‌شود، از حساب کم نمی‌شود.</p>
             </div>
 
-            <div class="form-group">
-                <label for="trade_counterparty">از چه کسی خریدم <span style="color:var(--muted);font-weight:400">(اختیاری)</span></label>
-                <input type="text" id="trade_counterparty" name="counterparty_name" maxlength="150"
-                       list="peopleList" autocomplete="off" placeholder="نام فروشنده">
-                <p class="hint">از فهرست «اشخاص» پیشنهاد می‌شود؛ نام آزاد هم می‌پذیرد.</p>
-            </div>
+            <?= personPicker($userId, 'trade_counterparty', 'از چه کسی خریدم (اختیاری)', 'نام فروشنده') ?>
 
             <div class="form-group">
                 <label for="trade_notes">توضیحات <span style="color:var(--muted);font-weight:400">(اختیاری)</span></label>
@@ -459,11 +454,7 @@ include __DIR__ . '/includes/header.php';
                 <p class="hint">اگر دست نزنید، پول به کیف پول می‌رود؛ هر وقت خواستید حساب واقعی را انتخاب کنید.</p>
             </div>
 
-            <div class="form-group">
-                <label for="sell_counterparty">به چه کسی فروختم <span style="color:var(--muted);font-weight:400">(اختیاری)</span></label>
-                <input type="text" id="sell_counterparty" name="counterparty_name" maxlength="150"
-                       list="peopleList" autocomplete="off" placeholder="نام خریدار">
-            </div>
+            <?= personPicker($userId, 'sell_counterparty', 'به چه کسی فروختم (اختیاری)', 'نام خریدار') ?>
 
             <div class="form-group">
                 <label for="sell_notes">توضیحات <span style="color:var(--muted);font-weight:400">(اختیاری)</span></label>

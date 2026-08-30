@@ -1,4 +1,71 @@
 /* ============================================================
+   انتخابگر شخص (چک، طلب و بدهی، معامله)
+   ------------------------------------------------------------
+   هر `<select class="js-person-select">` یک ورودیِ متنی را کنترل
+   می‌کند (`data-target`). انتخاب یک شخص، نامش را داخل همان ورودی
+   می‌گذارد؛ زدنِ «سایر» ورودی را باز می‌کند تا کاربر دستی بنویسد.
+
+   چیزی که به سرور می‌رود همچنان همان ورودیِ `counterparty_name` است،
+   پس هیچ اندپوینتی عوض نشده.
+
+   بیرون از DOMContentLoaded است چون فرم‌های ویرایش با
+   `syncPersonPicker()` از اسکریپت‌های درون‌صفحه‌ای پر می‌شوند و آن‌ها
+   زودتر از این فایل اجرا می‌شوند.
+   ============================================================ */
+(function () {
+    var OTHER = '__other__';
+
+    function applyChoice(sel) {
+        var input = document.getElementById(sel.getAttribute('data-target'));
+        if (!input) { return; }
+        var hint = sel.parentNode.querySelector('.js-person-hint');
+
+        if (sel.value === OTHER) {
+            input.hidden = false;
+            if (input.value && sel.dataset.knownName === input.value) { input.value = ''; }
+            input.focus();
+        } else if (sel.value === '') {
+            input.hidden = true;
+            input.value = '';
+        } else {
+            input.hidden = true;
+            input.value = sel.value;
+            sel.dataset.knownName = sel.value;
+        }
+        if (hint) { hint.hidden = sel.value !== OTHER && sel.value !== ''; }
+    }
+
+    /**
+     * فرم ویرایش را با نامِ ذخیره‌شده هماهنگ می‌کند: اگر آن نام در فهرست
+     * بود همان انتخاب می‌شود، وگرنه «سایر» با ورودیِ باز و پرشده.
+     * (روی window چون صفحه‌ها از اسکریپت درون‌خطی صدایش می‌زنند.)
+     */
+    window.syncPersonPicker = function (inputId, name) {
+        var input = document.getElementById(inputId);
+        if (!input) { return; }
+        input.value = name || '';
+
+        var sel = document.querySelector('.js-person-select[data-target="' + inputId + '"]');
+        if (!sel) { input.hidden = false; return; }
+
+        var found = false;
+        for (var i = 0; i < sel.options.length; i++) {
+            if (sel.options[i].value === name && name !== '') { found = true; break; }
+        }
+        sel.value = found ? name : OTHER;
+        sel.dataset.knownName = found ? name : '';
+        input.hidden = found;
+        var hint = sel.parentNode.querySelector('.js-person-hint');
+        if (hint) { hint.hidden = found; }
+    };
+
+    document.addEventListener('change', function (e) {
+        var sel = e.target.closest ? e.target.closest('.js-person-select') : null;
+        if (sel) { applyChoice(sel); }
+    });
+}());
+
+/* ============================================================
    ثبت سرویس‌ورکر
    ------------------------------------------------------------
    با این، اپ از آیکون صفحه‌ی اصلی گوشی مثل یک برنامه باز می‌شود،
@@ -446,7 +513,7 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.js-edit-debt').forEach(function (btn) {
         btn.addEventListener('click', function () {
             document.getElementById('edit_debt_id').value = this.getAttribute('data-id');
-            document.getElementById('edit_counterparty').value = this.getAttribute('data-counterparty');
+            syncPersonPicker('edit_counterparty', this.getAttribute('data-counterparty'));
             document.getElementById('edit_debt_amount').value = toPersianDigitsJs(Number(this.getAttribute('data-amount')).toLocaleString('en-US').replace(/,/g, '\u066C'));
             document.getElementById('edit_debt_note').value = this.getAttribute('data-note') || '';
 
@@ -2512,7 +2579,7 @@ document.addEventListener('DOMContentLoaded', function () {
     document.querySelectorAll('.js-edit-cheque').forEach(function (btn) {
         btn.addEventListener('click', function () {
             document.getElementById('edit_cheque_id').value = this.getAttribute('data-id');
-            document.getElementById('edit_cheque_counterparty').value = this.getAttribute('data-counterparty');
+            syncPersonPicker('edit_cheque_counterparty', this.getAttribute('data-counterparty'));
             document.getElementById('edit_cheque_amount').value =
                 toPersianDigitsJs(Number(this.getAttribute('data-amount')).toLocaleString('en-US').replace(/,/g, '\u066C'));
             document.getElementById('edit_sayadi').value = this.getAttribute('data-sayadi') || '';

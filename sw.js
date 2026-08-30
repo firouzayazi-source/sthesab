@@ -21,7 +21,7 @@
  * activate پاک می‌شوند.
  */
 
-const VERSION    = 'daftar-v1';
+const VERSION    = 'daftar-v2';
 const ASSET_CACHE = VERSION + '-assets';
 
 // مسیرها نسبت به خودِ این فایل حل می‌شوند، پس نصب در زیرپوشه هم کار
@@ -99,19 +99,32 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // ---------- دارایی‌های ثابت: کش، و در پس‌زمینه تازه‌سازی ----------
+    // ---------- دارایی‌های ثابت: فقط کش، بدون تازه‌سازیِ پس‌زمینه ----------
     if (!isStaticAsset(url)) { return; }     // بقیه (api/ و ...) دست‌نخورده به شبکه
 
+    // ⚠ اینجا عمداً «تازه‌سازی در پس‌زمینه» نیست.
+    //
+    // نسخه‌ی اول این کار را می‌کرد و نتیجه‌اش بدتر از نداشتنِ سرویس‌ورکر
+    // بود: در *هر* ناوبری، با اینکه همه‌چیز کش شده بود، باز فونت و
+    // style.css و app.js و chart.js دوباره از شبکه گرفته می‌شدند —
+    // حدود ۲۲۰ کیلوبایت ترافیکِ بی‌فایده در هر جابه‌جایی بین صفحه‌ها،
+    // که روی دیتای موبایل با خودِ صفحه سرِ پهنای باند دعوا می‌کرد.
+    // بدون سرویس‌ورکر، کشِ یک‌ساله‌ی مرورگر صفر درخواست می‌زد.
+    //
+    // تازه شدن لازم نیست چون آدرس این فایل‌ها نسخه دارد (`?v=...`):
+    // با هر تغییر، آدرس عوض می‌شود و خودبه‌خود کشِ تازه‌ای می‌گیرد.
+    // برای فونت و آیکون که نسخه ندارند، بالا بردن VERSION کافی است.
     event.respondWith((async () => {
         const cache  = await caches.open(ASSET_CACHE);
         const cached = await cache.match(req);
+        if (cached) { return cached; }
 
-        const fresh = fetch(req).then((res) => {
+        try {
+            const res = await fetch(req);
             if (res && res.ok && res.type === 'basic') { cache.put(req, res.clone()); }
             return res;
-        }).catch(() => null);
-
-        // اگر کش داشتیم فوراً همان، و نسخه‌ی تازه برای دفعه‌ی بعد.
-        return cached || (await fresh) || new Response('', { status: 504 });
+        } catch (e) {
+            return new Response('', { status: 504 });
+        }
     })());
 });

@@ -257,29 +257,7 @@ function chartPalette(string $tone, string $mode = 'light'): array
     return $out;
 }
 
-/**
- * رنگ قلم شماره‌ی $index در هر دو حالت روشن و شب.
- *
- * نقطه‌ی رنگ کنار هر ردیف در HTML رندر می‌شود و نمی‌داند کاربر حالت شب
- * دارد یا نه؛ پس هر دو مقدار به‌صورت متغیر CSS نوشته می‌شود و خود CSS
- * انتخاب می‌کند. آرایه‌ی نمودار هم در جاوااسکریپت بر همین اساس عوض می‌شود.
- */
-function chartColorPair(string $tone, int $index): array
-{
-    $light = chartPalette($tone, 'light');
-    $dark  = chartPalette($tone, 'dark');
-    $n     = count($light);
 
-    return [$light[$index % $n], $dark[$index % $n]];
-}
-
-/** استایل درون‌خطی نقطه‌ی رنگ — روشن و شب با هم. */
-function chartDotStyle(string $tone, int $index): string
-{
-    [$l, $d] = chartColorPair($tone, $index);
-
-    return '--dot-l:' . $l . '; --dot-d:' . $d . ';';
-}
 
 /* ============================================================
    کیف پول / حساب مالی
@@ -363,6 +341,56 @@ function peopleList(int $userId): array
  * ممکن است اسمی را یک بار وارد کند و نخواهد به فهرست اضافه‌اش کند، و
  * رکوردهای قدیمی هم نامی دارند که در فهرست نیست.
  */
+/**
+ * انتخابگر شخص: یک `<select>` از اشخاص ثبت‌شده به‌علاوه‌ی «سایر»، و
+ * زیرش همان ورودیِ متنیِ همیشگی.
+ *
+ * چرا هر دو با هم: کاربر معمولاً می‌خواهد از فهرست انتخاب کند، ولی
+ * باید بتواند اسمی را که در فهرست نیست هم بنویسد — و رکوردهای قدیمی
+ * هم نامی دارند که ممکن است در فهرست نباشد. با زدنِ «سایر»، ورودیِ
+ * متنی باز می‌شود و رفتار دقیقاً مثل قبل است.
+ *
+ * چیزی که به سرور می‌رود همچنان `counterparty_name` است — یعنی هیچ
+ * اندپوینتی لازم نیست عوض شود.
+ *
+ * @param string $inputId   شناسه‌ی ورودیِ متنی که باید پر شود
+ * @param string $extraAttr صفت‌های اضافه‌ی ورودی (مثل required)
+ */
+function personPicker(int $userId, string $inputId, string $label, string $placeholder = '', string $extraAttr = ''): string
+{
+    $people = peopleList($userId);
+    $selId  = $inputId . '_select';
+
+    $out = '<div class="form-group">';
+    $out .= '<label for="' . h($people ? $selId : $inputId) . '">' . h($label) . '</label>';
+
+    if (!empty($people)) {
+        $out .= '<select id="' . h($selId) . '" class="js-person-select" data-target="' . h($inputId) . '">';
+        $out .= '<option value="">— انتخاب کنید —</option>';
+        foreach ($people as $p) {
+            $role = trim((string)$p['role']);
+            $out .= '<option value="' . h($p['name']) . '">' . h($p['name'])
+                  . ($role !== '' ? ' (' . h($role) . ')' : '') . '</option>';
+        }
+        $out .= '<option value="__other__">سایر (نام را دستی می‌نویسم)</option>';
+        $out .= '</select>';
+    }
+
+    // بدون فهرست، ورودی از اول دیده می‌شود؛ با فهرست، تا زدنِ «سایر» پنهان است.
+    $hidden = !empty($people) ? ' hidden' : '';
+    $out .= '<input type="text" id="' . h($inputId) . '" name="counterparty_name" maxlength="150"'
+          . ($placeholder !== '' ? ' placeholder="' . h($placeholder) . '"' : '')
+          . ' list="peopleList" autocomplete="off" class="js-person-input"' . $hidden
+          . ($extraAttr !== '' ? ' ' . $extraAttr : '') . '>';
+
+    if (!empty($people)) {
+        $out .= '<p class="hint js-person-hint">از فهرست انتخاب کنید، یا «سایر» را بزنید و نام را بنویسید.'
+              . ' <a href="' . APP_BASE_PATH . '/references.php">افزودن شخص تازه</a></p>';
+    }
+
+    return $out . '</div>';
+}
+
 function peopleDatalist(int $userId, string $id = 'peopleList'): string
 {
     $people = peopleList($userId);

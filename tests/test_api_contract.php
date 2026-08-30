@@ -30,7 +30,6 @@ sort($files);
 // اگر روزی یکی از این‌ها نویسنده شد، باید از این فهرست برداشته شود.
 $csrfExempt = [
     'category_transactions.php',
-    'dashboard_stats.php',
     'day_detail.php',
     'savings_history.php',
     'transaction_attachments.php',
@@ -212,6 +211,17 @@ if (!file_exists($swFile)) {
     // درخواست ناوبری باید شاخه‌ی جدا داشته باشد و از شبکه بیاید
     T::ok(str_contains($sw, "req.mode === 'navigate'"), 'ناوبری شاخه‌ی جداگانه دارد');
     T::ok(str_contains($sw, 'isStaticAsset'), 'کش فقط به دارایی‌های ثابت محدود شده');
+
+    // دارایی کش‌شده نباید در پس‌زمینه دوباره گرفته شود.
+    //
+    // نسخه‌ی اول «stale-while-revalidate» بود و نتیجه‌اش بدتر از نداشتنِ
+    // سرویس‌ورکر شد: در هر ناوبری ۶ فایل (حدود ۲۲۰ کیلوبایت) دوباره از
+    // شبکه گرفته می‌شد، با اینکه همه کش بودند. اندازه‌گیری شد: ۶ درخواست
+    // در هر جابه‌جایی، که با این اصلاح صفر شد.
+    T::ok(
+        (bool)preg_match('/const\s+cached\s*=\s*await\s+cache\.match\(req\);\s*\n\s*if\s*\(cached\)\s*\{\s*return\s+cached;/', $sw),
+        'دارایی کش‌شده بدون درخواست تازه برگردانده می‌شود'
+    );
 }
 
 // ---------------------------------------------------------------

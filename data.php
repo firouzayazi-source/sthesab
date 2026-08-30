@@ -48,86 +48,6 @@ try {
 } catch (PDOException $e) { /* ignore */ }
 $defaultWalletId = !empty($walletMap) ? reset($walletMap) : null;
 
-/**
- * یک ردیف CSV را اعتبارسنجی و تبدیل می‌کند.
- */
-function parseImportRow(array $row, array $map, array $catMap, array $walletMap, ?int $defaultWalletId): array
-{
-    $get = function (string $key) use ($row, $map) {
-        $idx = $map[$key] ?? -1;
-        return ($idx >= 0 && isset($row[$idx])) ? trim($row[$idx]) : '';
-    };
-
-    $out = ['ok' => true, 'error' => ''];
-
-    // ---------- تاریخ ----------
-    $rawDate = toLatinDigits($get('date'));
-    $rawDate = str_replace(['/', '.'], '-', $rawDate);
-    $gDate = null;
-
-    if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})$/', $rawDate, $m)) {
-        $y = (int)$m[1]; $mo = (int)$m[2]; $d = (int)$m[3];
-        if ($y < 1900) {
-            // تاریخ شمسی
-            if ($mo >= 1 && $mo <= 12 && $d >= 1 && $d <= 31) {
-                $g = jalaliToGregorian($y, $mo, $d);
-                $gDate = sprintf('%04d-%02d-%02d', $g[0], $g[1], $g[2]);
-            }
-        } else {
-            $candidate = sprintf('%04d-%02d-%02d', $y, $mo, $d);
-            if (isValidDate($candidate)) { $gDate = $candidate; }
-        }
-    }
-    if ($gDate === null) {
-        return ['ok' => false, 'error' => 'تاریخ نامعتبر: ' . ($rawDate !== '' ? $rawDate : 'خالی')];
-    }
-    $out['transaction_date'] = $gDate;
-
-    // ---------- مبلغ ----------
-    $amount = sanitizeAmount($get('amount'));
-    if ($amount <= 0) {
-        return ['ok' => false, 'error' => 'مبلغ نامعتبر یا صفر'];
-    }
-    $out['amount'] = $amount;
-
-    // ---------- نوع ----------
-    $rawType = mb_strtolower($get('type'));
-    $incomeWords  = ['income', 'درآمد', 'دریافت', 'دریافتی', 'واریز', '+'];
-    $expenseWords = ['expense', 'هزینه', 'پرداخت', 'پرداختی', 'برداشت', '-'];
-    $type = null;
-    foreach ($incomeWords as $w)  { if ($rawType !== '' && mb_strpos($rawType, $w) !== false) { $type = 'income'; break; } }
-    if ($type === null) {
-        foreach ($expenseWords as $w) { if ($rawType !== '' && mb_strpos($rawType, $w) !== false) { $type = 'expense'; break; } }
-    }
-    if ($type === null) {
-        return ['ok' => false, 'error' => 'نوع نامشخص (باید درآمد یا هزینه باشد)'];
-    }
-    $out['type'] = $type;
-
-    // ---------- عنوان ----------
-    $title = $get('title');
-    if ($title === '') { $title = $type === 'income' ? 'درآمد واردشده' : 'هزینه واردشده'; }
-    $out['title'] = mb_substr($title, 0, 255);
-
-    // ---------- دسته‌بندی (اختیاری) ----------
-    $out['category_id'] = null;
-    $catName = mb_strtolower(trim($get('category')));
-    if ($catName !== '' && isset($catMap[$catName]) && $catMap[$catName]['type'] === $type) {
-        $out['category_id'] = (int)$catMap[$catName]['id'];
-    }
-
-    // ---------- حساب (اختیاری) ----------
-    $walletName = mb_strtolower(trim($get('wallet')));
-    $out['wallet_id'] = ($walletName !== '' && isset($walletMap[$walletName]))
-        ? $walletMap[$walletName]
-        : $defaultWalletId;
-
-    // ---------- توضیح ----------
-    $note = $get('note');
-    $out['note'] = $note !== '' ? mb_substr($note, 0, 1000) : null;
-
-    return $out;
-}
 
 // ============================================================
 // مرحله ۱ — دریافت فایل و پیش‌نمایش
@@ -173,6 +93,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && postParam('action') === 'commit') {
     if (!is_array($decoded) || empty($decoded)) {
         $errors[] = 'داده‌ای برای ثبت پیدا نشد.';
     } else {
+        // ⚠ آنچه از مرورگر می‌آید داده است، نه دستور.
+        //
+        // پیش از این `category_id` و `wallet_id` مستقیم از پیلود برداشته
+        // می‌شدند. یعنی هر کاربری می‌توانست پیلود را دست‌کاری کند و
+        // تراکنشش را به دسته یا حسابِ *کاربر دیگری* بچسباند — آزموده و
+        // تأیید شد. حالا هر دو در برابر مالکیتِ خودِ کاربر سنجیده
+        // می‌شوند و هرچه مالِ او نباشد کنار گذاشته می‌شود.
+        $ownCats = [];
+        try {
+            $cs = $pdo->prepare(
+                'SELECT id, type FROM categories
+                 WHERE is_active = 1 AND ' . categoryScopeSql()
+            );
+            $cs->execute(categoryScopeParams($userId));
+            foreach ($cs->fetchAll() as $c) { $ownCats[(int)$c['id']] = $c['type']; }
+        } catch (PDOException $e) { $ownCats = []; }
+
+        $ownWallets = [];
+        try {
+            $ws2 = $pdo->prepare('SELECT id FROM wallets WHERE user_id = :u');
+            $ws2->execute(['u' => $userId]);
+            foreach ($ws2->fetchAll() as $w) { $ownWallets[(int)$w['id']] = true; }
+        } catch (PDOException $e) { $ownWallets = []; }
+
         $inserted = 0;
         try {
             $pdo->beginTransaction();
@@ -182,11 +126,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && postParam('action') === 'commit') {
             ');
             foreach ($decoded as $r) {
                 if (!isset($r['amount'], $r['type'], $r['transaction_date'])) { continue; }
+
+                $rowType = $r['type'] === 'income' ? 'income' : 'expense';
+
+                // دسته فقط اگر مالِ خودِ کاربر (یا پیش‌فرضِ برنامه) باشد
+                // *و* جهتش با تراکنش بخواند
+                $catId = isset($r['category_id']) ? (int)$r['category_id'] : 0;
+                if ($catId <= 0 || ($ownCats[$catId] ?? null) !== $rowType) { $catId = null; }
+
+                // حساب فقط اگر مالِ خودِ کاربر باشد؛ وگرنه حساب پیش‌فرض،
+                // تا پول در هیچ‌کجا گم نشود (قاعده‌ی resolveWalletId)
+                $walId = isset($r['wallet_id']) ? (int)$r['wallet_id'] : 0;
+                if ($walId <= 0 || !isset($ownWallets[$walId])) { $walId = $defaultWalletId; }
+
                 $ins->execute([
                     'u' => $userId,
-                    'cat' => $r['category_id'] ?? null,
-                    'wal' => $r['wallet_id'] ?? null,
-                    'type' => $r['type'] === 'income' ? 'income' : 'expense',
+                    'cat' => $catId,
+                    'wal' => $walId,
+                    'type' => $rowType,
                     'amount' => (int)$r['amount'],
                     'title' => mb_substr((string)$r['title'], 0, 255),
                     'note' => !empty($r['note']) ? mb_substr((string)$r['note'], 0, 1000) : null,

@@ -117,7 +117,9 @@ include __DIR__ . '/includes/header.php';
             <span class="ref-empty">هنوز شخصی اضافه نکرده‌اید.</span>
         <?php else: ?>
             <?php foreach ($people as $p): ?>
-                <span class="ref-chip"><?= h($p['name']) ?>
+                <span class="ref-chip">
+                    <a href="<?= APP_BASE_PATH ?>/person.php?name=<?= urlencode($p['name']) ?>"
+                       style="color:inherit;text-decoration:none;" title="گردش حساب این شخص"><?= h($p['name']) ?></a>
                     <?php if (trim((string)$p['role']) !== ''): ?>
                         <small style="opacity:.6;">(<?= h($p['role']) ?>)</small>
                     <?php endif; ?>
@@ -127,6 +129,7 @@ include __DIR__ . '/includes/header.php';
         <?php endif; ?>
     </div>
     <p class="hint" style="margin-top:9px;">
+        روی نام هر شخص بزنید تا <b>گردش حسابش</b> را ببینید.
         حذف یک شخص از این فهرست، چک‌ها و طلب‌های ثبت‌شده‌اش را دست نمی‌زند —
         نام در خودِ آن رکوردها ذخیره شده.
     </p>

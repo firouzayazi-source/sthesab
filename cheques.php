@@ -233,10 +233,7 @@ function renderChequeCard(array $c, string $todayStr): void
             <?= Csrf::field() ?>
             <input type="hidden" name="direction" id="add_cheque_direction" value="received">
 
-            <div class="form-group">
-                <label for="add_cheque_counterparty">نام شخص <span class="req">*</span></label>
-                <input type="text" id="add_cheque_counterparty" name="counterparty_name" required maxlength="150" placeholder="از چه کسی / به چه کسی" list="peopleList" autocomplete="off">
-            </div>
+            <?= personPicker($userId, 'add_cheque_counterparty', 'نام شخص', 'از چه کسی / به چه کسی', 'required') ?>
 
             <div class="form-group">
                 <label for="add_cheque_amount">مبلغ (تومان) <span class="req">*</span></label>
@@ -294,10 +291,7 @@ function renderChequeCard(array $c, string $todayStr): void
             <?= Csrf::field() ?>
             <input type="hidden" name="cheque_id" id="edit_cheque_id">
 
-            <div class="form-group">
-                <label for="edit_cheque_counterparty">نام شخص <span class="req">*</span></label>
-                <input type="text" id="edit_cheque_counterparty" name="counterparty_name" required maxlength="150" list="peopleList" autocomplete="off">
-            </div>
+            <?= personPicker($userId, 'edit_cheque_counterparty', 'نام شخص', '', 'required') ?>
 
             <div class="form-group">
                 <label for="edit_cheque_amount">مبلغ (تومان) <span class="req">*</span></label>
