@@ -166,7 +166,20 @@ class Auth
 
         $lastSeen = (int)($_SESSION['last_seen'] ?? $_SESSION['login_time'] ?? time());
         if ((time() - $lastSeen) > $lifetime) {
-            self::logout();
+            // ⚠ اینجا عمداً logout() نیست.
+            //
+            // `logout()` برای وقتی است که کاربر *خودش* دکمه‌ی خروج را
+            // می‌زند، پس اعتماد این دستگاه را هم باطل می‌کند — که درست
+            // است. ولی اینجا فقط نشست منقضی شده، نه اینکه کاربر خواسته
+            // باشد برود.
+            //
+            // با logout()، هر بار که مهلت یک‌ساعته تمام می‌شد، ردیف
+            // trusted_devices پاک می‌شد و loginFromTrustedDevice چیزی
+            // برای کار کردن نداشت. یعنی «این دستگاه را ۳۰ روز به خاطر
+            // بسپار» دقیقاً با همان چیزی نابود می‌شد که قرار بود از
+            // رویش پل بزند — کاربر با وجود روشن بودنِ آن گزینه، هر یک
+            // ساعت دوباره رمز می‌خواست.
+            self::expireSession();
             return self::loginFromTrustedDevice();
         }
 
@@ -414,9 +427,27 @@ class Auth
         return (int)$row['cnt'] > 0;
     }
 
+    /**
+     * نشست را خالی می‌کند ولی «اعتماد این دستگاه» را نگه می‌دارد.
+     *
+     * برای انقضای مهلت است، نه خروجِ خواسته‌ی کاربر. نشست نابود نمی‌شود
+     * بلکه خالی می‌شود و شناسه‌اش عوض می‌شود — چون بلافاصله بعدش
+     * loginFromTrustedDevice می‌خواهد در همان نشست بنویسد، و روی نشستِ
+     * destroy شده نمی‌شود نوشت.
+     */
+    private static function expireSession(): void
+    {
+        $_SESSION = [];
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
+        }
+    }
+
     public static function logout(): void
     {
-        // اگر این دستگاه مورد اعتماد بود، اعتمادش هم باطل شود
+        // اگر این دستگاه مورد اعتماد بود، اعتمادش هم باطل شود.
+        // این فقط برای خروجِ خواسته‌ی کاربر درست است — انقضای مهلت از
+        // expireSession() رد می‌شود که به اعتماد دست نمی‌زند.
         if (!empty($_COOKIE[self::TRUSTED_COOKIE])) {
             $parts = explode(':', (string)$_COOKIE[self::TRUSTED_COOKIE], 2);
             if (count($parts) === 2) {
