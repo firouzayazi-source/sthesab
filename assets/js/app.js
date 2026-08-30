@@ -15,10 +15,21 @@
 (function () {
     var OTHER = '__other__';
 
+    /** سمتِ شخصِ انتخاب‌شده را کنار عنوان نشان می‌دهد. */
+    function showRole(sel) {
+        var badge = sel.parentNode.querySelector('.js-person-role');
+        if (!badge) { return; }
+        var opt  = sel.options[sel.selectedIndex];
+        var role = (opt && opt.getAttribute('data-role')) || '';
+        badge.textContent = role;
+        badge.hidden = role === '';
+    }
+
     function applyChoice(sel) {
         var input = document.getElementById(sel.getAttribute('data-target'));
         if (!input) { return; }
         var hint = sel.parentNode.querySelector('.js-person-hint');
+        showRole(sel);
 
         if (sel.value === OTHER) {
             input.hidden = false;
@@ -55,6 +66,7 @@
         sel.value = found ? name : OTHER;
         sel.dataset.knownName = found ? name : '';
         input.hidden = found;
+        showRole(sel);
         var hint = sel.parentNode.querySelector('.js-person-hint');
         if (hint) { hint.hidden = found; }
     };

@@ -362,17 +362,31 @@ function personPicker(int $userId, string $inputId, string $label, string $place
     $selId  = $inputId . '_select';
 
     $out = '<div class="form-group">';
+
+    // سمت (همکار / مشتری / …) کنارِ *عنوان* می‌نشیند، نه داخل منو.
+    //
+    // داخل منو، «اصغر (همکار)» هم شلوغ بود و هم روی گوشی نامِ بلند را
+    // می‌برید. حالا منو فقط نام است و سمتِ همان کسی که انتخاب شده،
+    // به‌صورت یک نشان کنار عنوان دیده می‌شود.
+    $out .= '<div class="person-label-row">';
     $out .= '<label for="' . h($people ? $selId : $inputId) . '">' . h($label) . '</label>';
+    if (!empty($people)) {
+        $out .= '<span class="person-role-badge js-person-role" hidden></span>';
+    }
+    $out .= '</div>';
 
     if (!empty($people)) {
         $out .= '<select id="' . h($selId) . '" class="js-person-select" data-target="' . h($inputId) . '">';
         $out .= '<option value="">— انتخاب کنید —</option>';
         foreach ($people as $p) {
             $role = trim((string)$p['role']);
-            $out .= '<option value="' . h($p['name']) . '">' . h($p['name'])
-                  . ($role !== '' ? ' (' . h($role) . ')' : '') . '</option>';
+            // سمت روی خودِ گزینه می‌ماند تا جاوااسکریپت بتواند کنار عنوان
+            // نشانش دهد، ولی در متنِ گزینه دیده نمی‌شود.
+            $out .= '<option value="' . h($p['name']) . '"'
+                  . ($role !== '' ? ' data-role="' . h($role) . '"' : '') . '>'
+                  . h($p['name']) . '</option>';
         }
-        $out .= '<option value="__other__">سایر (نام را دستی می‌نویسم)</option>';
+        $out .= '<option value="__other__">سایر</option>';
         $out .= '</select>';
     }
 
