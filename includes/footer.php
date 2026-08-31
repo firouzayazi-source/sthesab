@@ -3,7 +3,7 @@
  * فوتر مشترک صفحات داخلی — شامل ناوبری پایین صفحه
  */
 $bottomPage = basename($_SERVER['PHP_SELF']);
-$morePages = ['profile.php', 'wallets.php', 'budget.php', 'savings.php', 'recurring.php', 'upcoming.php', 'calendar.php', 'search.php', 'data.php', 'import.php', 'cheques.php', 'debts.php', 'my-assets.php', 'category-report.php', 'references.php', 'person.php', 'users.php', 'categories.php', 'all-transactions.php'];
+$morePages = ['profile.php', 'wallets.php', 'budget.php', 'savings.php', 'recurring.php', 'upcoming.php', 'calendar.php', 'search.php', 'data.php', 'cheques.php', 'debts.php', 'my-assets.php', 'category-report.php', 'references.php', 'person.php', 'users.php', 'categories.php', 'all-transactions.php'];
 $moreActive = in_array($bottomPage, $morePages, true);
 ?>
         </div>

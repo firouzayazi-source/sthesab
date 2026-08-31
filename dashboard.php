@@ -61,7 +61,7 @@ $weekStats  = getPeriodStats($dailyRows, $weekStart, $today);
 $monthStats = getPeriodStats($dailyRows, $monthStart, $today);
 $yearStats  = getPeriodStats($dailyRows, $yearStart, $today);
 
-// ---------- بخش گزارش با بازه دلخواه (ادغام‌شده از reports.php) ----------
+// ---------- بخش گزارش با بازه دلخواه ----------
 $customRangeSubmitted = isset($_GET['from_date']) || isset($_GET['to_date']);
 
 $fromDate = getParam('from_date', $monthStart);
