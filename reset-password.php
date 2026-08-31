@@ -65,7 +65,9 @@ if (!$check['ok']) {
 <html lang="fa" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+    <!-- viewport-fit=cover لازم است وگرنه iOS مقدار env(safe-area-inset-*)
+         را صفر می‌دهد و همه‌ی محاسبه‌های حاشیه‌ی امن بی‌اثر می‌مانند. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <title>تعیین رمز تازه | <?= h(APP_NAME) ?></title>
     <?php foreach (assetUrls(['css/style.css']) as $__u): ?>
     <link rel="stylesheet" href="<?= h($__u) ?>">

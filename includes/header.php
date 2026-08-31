@@ -24,7 +24,9 @@ if (!isset($pageTitle)) {
         })();
     </script>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+    <!-- viewport-fit=cover لازم است وگرنه iOS مقدار env(safe-area-inset-*)
+         را صفر می‌دهد و همه‌ی محاسبه‌های حاشیه‌ی امن بی‌اثر می‌مانند. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <title><?= h($pageTitle) ?> | <?= h(APP_NAME) ?></title>
     <!-- فونت داخل CSS تعریف شده، پس مرورگر تا وقتی style.css را نگرفته و
          تجزیه نکرده خبر ندارد لازمش دارد. با preload هر دو با هم دانلود

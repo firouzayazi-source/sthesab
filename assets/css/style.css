@@ -160,7 +160,12 @@ a { color: inherit; }
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 13px 16px;
+    /* حاشیه‌ی امنِ بالا به padding اضافه می‌شود، وگرنه در حالت نصب‌شده
+       روی آیفون، عنوان صفحه زیر ناچ / Dynamic Island می‌رود.
+       دلیلش apple-mobile-web-app-status-bar-style=black-translucent است
+       که عمداً گذاشته شده تا نوار وضعیت هم‌رنگ اپ باشد — ولی همان باعث
+       می‌شود وب‌ویو تا بالای صفحه کشیده شود. */
+    padding: calc(13px + env(safe-area-inset-top)) 16px 13px;
     background: var(--surface);
     border-bottom: 1px solid var(--line-soft);
 }

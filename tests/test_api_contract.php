@@ -512,6 +512,46 @@ T::ok(str_contains($routerSrc, "\$_GET['p']"),
       'روتر شکل ?p= را هم می‌فهمد (کار می‌کند حتی بدون قاعده‌ی nginx)');
 
 // ---------------------------------------------------------------
+T::group('قاعده ۱۱ — حاشیه‌ی امنِ آیفون بی‌اثر نماند');
+
+// ⚠ یک باگِ خاموشِ واقعی: style.css در پنج جا از env(safe-area-inset-*)
+// استفاده می‌کند، ولی iOS این مقادیر را **فقط** وقتی می‌دهد که متای
+// viewport شامل `viewport-fit=cover` باشد. بدون آن همه‌ی این محاسبه‌ها
+// صفر می‌شوند و هیچ خطایی هم دیده نمی‌شود — فقط نوار پایین زیر خطِ
+// خانه می‌رود و عنوان صفحه زیر ناچ.
+$css = (string)file_get_contents($root . '/assets/css/style.css');
+$usesSafeArea = str_contains($css, 'env(safe-area-inset');
+
+$pages = ['includes/header.php', 'login.php', 'setup.php',
+          'forgot-password.php', 'reset-password.php'];
+$missing = [];
+foreach ($pages as $rel) {
+    $f = $root . '/' . $rel;
+    if (!file_exists($f)) { continue; }
+    $src = (string)file_get_contents($f);
+    if (!preg_match('/<meta\s+name="viewport"[^>]*>/i', $src, $m)) {
+        $missing[] = "$rel متای viewport ندارد";
+        continue;
+    }
+    if (!str_contains($m[0], 'viewport-fit=cover')) {
+        $missing[] = "$rel متای viewport بدون viewport-fit=cover";
+    }
+}
+
+if ($usesSafeArea) {
+    T::bulk(count($pages), $missing,
+            'هر صفحه‌ای که سرآیند خودش را دارد viewport-fit=cover دارد');
+} else {
+    T::pass('CSS از safe-area استفاده نمی‌کند — این قاعده موضوعیت ندارد');
+}
+
+// نوار بالا باید حاشیه‌ی امنِ بالا را حساب کند، وگرنه زیر Dynamic Island
+// می‌رود. (status-bar-style=black-translucent عمدی است و وب‌ویو را تا
+// بالای صفحه می‌کشد.)
+T::ok(str_contains($css, 'env(safe-area-inset-top)'),
+      'نوار بالای صفحه حاشیه‌ی امنِ بالا را حساب می‌کند');
+
+// ---------------------------------------------------------------
 T::group('نحو — هر فایل PHP باید بدون خطا پارس شود');
 
 $bad = [];
