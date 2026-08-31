@@ -183,10 +183,20 @@ fi
 step "سنجش"
 
 DOMAIN="$(grep -m1 -oP '^\s*server_name\s+\K[^;]+' "$SITE_FILE" | tr ' ' '\n' | grep -v '^_$' | head -1 || true)"
+# ⚠ با --resolve ، نه با -H "Host: ...".
+#
+# روی این سرور چند سایت روی همان nginx هستند. `curl -H "Host: x" \
+# https://127.0.0.1` هیچ SNI ای نمی‌فرستد، پس nginx بلوکِ پیش‌فرضِ آن
+# سوکت را برای دست‌دادن TLS برمی‌دارد و پاسخی که می‌گیریم ممکن است
+# اصلاً از سایتِ دیگری باشد. آن‌وقت یک ۴۰۴ بی‌ربط باعث می‌شد اسکریپت
+# پیکربندیِ **درست** را برگرداند. با --resolve هم SNI و هم Host درست
+# می‌روند و ترافیک هم از سرور بیرون نمی‌رود.
 PROBE=""
 if [[ -n "$DOMAIN" ]]; then
-    PROBE="$(curl -sk --max-time 10 -H "Host: $DOMAIN" https://127.0.0.1/api/v1/ping 2>/dev/null || true)"
-    [[ -z "$PROBE" ]] && PROBE="$(curl -s --max-time 10 -H "Host: $DOMAIN" http://127.0.0.1/api/v1/ping 2>/dev/null || true)"
+    PROBE="$(curl -sk --max-time 10 -L \
+                  --resolve "${DOMAIN}:443:127.0.0.1" \
+                  --resolve "${DOMAIN}:80:127.0.0.1" \
+                  "https://${DOMAIN}/api/v1/ping" 2>/dev/null || true)"
 fi
 
 rollback() {
