@@ -848,6 +848,11 @@ textarea { resize: vertical; }
 .cat-breakdown-bar-track {
     height: 5px; background: var(--line-soft);
     border-radius: 3px; overflow: hidden; margin-top: 7px;
+    /* میله‌ی پیشرفت همیشه از چپ پر می‌شود، حتی در صفحه‌ی راست‌به‌چپ.
+       بدون این، بچه‌ی بلاکیِ داخل ترک از لبه‌ی راست شروع می‌کرد و
+       «۳۰٪ پیشرفت» به شکل ۳۰٪ سمتِ راست دیده می‌شد — خلافِ چیزی که
+       چشم از یک نوار پیشرفت انتظار دارد. */
+    direction: ltr;
 }
 .cat-breakdown-bar { height: 100%; border-radius: 3px; background: var(--dot-l); }
 [data-theme="dark"] .cat-breakdown-bar { background: var(--dot-d, var(--dot-l)); }
@@ -1420,6 +1425,7 @@ html[data-theme="dark"] .seg-item.active { background: #2b3037; color: var(--ink
     border-radius: 4px;
     overflow: hidden;
     margin-bottom: 7px;
+    direction: ltr;   /* پر شدن از چپ — توضیح کامل کنار .cat-breakdown-bar-track */
 }
 .budget-bar { height: 100%; border-radius: 4px; transition: width .3s; }
 .budget-bar-good { background: var(--in); }
