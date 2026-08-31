@@ -289,3 +289,16 @@ curl -s -H "Authorization: Bearer $TOKEN" "$BASE/dashboard"
 - منطق مشترکِ تراکنش (وب و API از یک جا): `includes/transactions.php`
 - تست: `tests/test_api_v1.php` و قاعده‌ی ۹ در `tests/test_api_contract.php`
 - قاعده‌ی nginx برای آدرس تمیز: `deploy/nginx-api.sh --apply`
+
+### ⛔ تله‌ی nginx که یک بار خوردیم
+
+قاعده باید `location /api/v1/` باشد، **هرگز `location ^~ /api/v1/`**.
+
+`^~` به nginx می‌گوید «اگر این prefix برنده شد، دیگر location های regex را نگاه نکن» —
+و `location ~ \.php$` هم یک regex است. نتیجه: nginx فایل PHP را به‌جای اجرا **خام**
+تحویل می‌دهد و `/api/v1/ping` سورس کامل `index.php` را برمی‌گرداند.
+
+`nginx -t` سبز می‌ماند و `reload` هم موفق می‌شود، پس هیچ ابزاری جلویش را نمی‌گیرد.
+`deploy/nginx-api.sh` حالا بعد از اعمال، خودِ اندپوینت را صدا می‌زند و اگر سورس یا
+چیزی جز JSON دید، پیکربندی را برمی‌گرداند. قاعده ۱۰ در `test_api_contract.php` هم
+وجود `^~` را در اسکریپت‌ها ممنوع می‌کند.

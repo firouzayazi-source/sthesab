@@ -56,14 +56,16 @@ fi
 step "وضعیت فعلی"
 info "فایل سایت: $SITE_FILE"
 
-if grep -qE '^\s*location\s+\^~\s+/api/v1/' "$SITE_FILE"; then
+if grep -qE '^\s*location\s+\^?~?\s*/api/v1/' "$SITE_FILE"; then
     green "✓ قاعده‌ی api/v1 از قبل هست — کاری لازم نیست."
     exit 0
 fi
 info "قاعده‌ی /api/v1/ وجود ندارد."
 
 BLOCK='    # ---- api/v1 : آدرس تمیز برای اپ‌های موبایل ----
-    location ^~ /api/v1/ {
+    # ⛔ هرگز ^~ : ارزیابی location های regex را متوقف می‌کند و فایل PHP
+    # به‌جای اجرا، خام تحویل داده می‌شود (سورس لو می‌رود).
+    location /api/v1/ {
         try_files $uri $uri/ /api/v1/index.php$is_args$args;
     }
 '
@@ -71,7 +73,7 @@ BLOCK='    # ---- api/v1 : آدرس تمیز برای اپ‌های موبایل
 step "چیزی که اضافه می‌شود"
 printf '%s' "$BLOCK" | sed 's/^/  /'
 info ""
-info "پیش از قاعده‌ی عمومیِ فایل‌های ثابت قرار می‌گیرد تا بر آن اولویت بگیرد."
+info "پیش از قاعده‌ی عمومیِ فایل‌های ثابت قرار می‌گیرد."
 
 if [[ $APPLY -eq 0 ]]; then
     step "نمایشی بود"
@@ -95,7 +97,8 @@ with open(path, encoding='utf-8') as fh:
 
 block = (
     '    # ---- api/v1 : آدرس تمیز برای اپ‌های موبایل ----\n'
-    '    location ^~ /api/v1/ {\n'
+    '    # هرگز ^~ : جلوی location های regex را می‌گیرد و سورس PHP لو می‌رود.\n'
+    '    location /api/v1/ {\n'
     '        try_files $uri $uri/ /api/v1/index.php$is_args$args;\n'
     '    }\n\n'
 )
@@ -136,7 +139,41 @@ else
     exit 1
 fi
 
+# ---------- سنجشِ واقعی، نه فقط «nginx -t موفق بود» ----------
+#
+# ⚠ این بخش از یک خرابیِ واقعی درآمد. نسخه‌ی اول این اسکریپت قاعده را با
+# `^~` می‌نوشت. `nginx -t` سبز بود، reload موفق بود، و اسکریپت «✅ انجام
+# شد» می‌گفت — در حالی که `^~` ارزیابیِ location های regex را متوقف
+# می‌کند و `location ~ \.php$` هرگز اجرا نمی‌شد. یعنی nginx فایل PHP را
+# به‌جای اجرا خام تحویل می‌داد: /api/v1/ping سورس index.php را برمی‌گرداند
+# و API اصلاً کار نمی‌کرد. «پیکربندی معتبر است» با «درست کار می‌کند» یکی
+# نیست، پس حالا خودِ اندپوینت صدا زده می‌شود.
+step "سنجش"
+
+DOMAIN="$(grep -m1 -oP '^\s*server_name\s+\K[^;]+' "$SITE_FILE" | tr ' ' '\n' | grep -v '^_$' | head -1 || true)"
+PROBE=""
+if [[ -n "$DOMAIN" ]]; then
+    PROBE="$(curl -sk --max-time 10 -H "Host: $DOMAIN" https://127.0.0.1/api/v1/ping 2>/dev/null || true)"
+    [[ -z "$PROBE" ]] && PROBE="$(curl -s --max-time 10 -H "Host: $DOMAIN" http://127.0.0.1/api/v1/ping 2>/dev/null || true)"
+fi
+
+rollback() {
+    red "$1"
+    cp -a "$BACKUP" "$SITE_FILE"
+    nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
+    info "به حالت قبل برگشت: $BACKUP"
+    exit 1
+}
+
+if [[ -z "$PROBE" ]]; then
+    info "پاسخی از /api/v1/ping نیامد (شاید دامنه از داخل سرور حل نمی‌شود)."
+    info "خودتان بررسی کنید:  curl -s https://${DOMAIN:-دامنه}/api/v1/ping"
+elif [[ "$PROBE" == *"<?php"* ]]; then
+    rollback "⛔ خطر: سورس PHP خام برگشت — قاعده جلوی اجرای PHP را گرفته است."
+elif [[ "$PROBE" != *'"ok"'* ]]; then
+    rollback "⛔ پاسخ /api/v1/ping آن چیزی نیست که باید: ${PROBE:0:120}"
+else
+    green "✓ /api/v1/ping پاسخ JSON درست داد."
+fi
+
 green "✅ انجام شد."
-info ""
-info "بررسی:  curl -s https://hesab.stland.ir/api/v1/ping"
-info 'باید {"ok":true,...} بدهد.'

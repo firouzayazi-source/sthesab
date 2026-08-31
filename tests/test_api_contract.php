@@ -447,6 +447,44 @@ T::ok(str_contains($apiSrc, "'ok' => true") && str_contains($apiSrc, "'ok' => fa
 T::ok(str_contains($apiSrc, "header('X-API-Version"), 'نسخه در سرآیند پاسخ می‌آید');
 
 // ---------------------------------------------------------------
+T::group('قاعده ۱۰ — قاعده‌ی nginx برای api/v1 هرگز ^~ ندارد');
+
+// ⚠ این از یک خرابیِ واقعی روی سرور درآمد.
+//
+// `^~` در nginx یعنی «اگر این prefix برنده شد، دیگر location های regex را
+// نگاه نکن». `location ~ \.php$` هم یک regex است — پس با ^~ هرگز اجرا
+// نمی‌شد و nginx فایل PHP را به‌جای اجرا، خام تحویل می‌داد:
+// /api/v1/ping متنِ کاملِ index.php را برمی‌گرداند و API اصلاً کار نمی‌کرد.
+//
+// `nginx -t` سبز بود و reload هم موفق — یعنی هیچ ابزاری جلویش را نگرفت.
+// این قاعده جلویش را می‌گیرد.
+$nginxSources = [
+    $root . '/deploy/nginx-api.sh',
+    $root . '/deploy/vps-setup.sh',
+];
+$offenders = [];
+foreach ($nginxSources as $f) {
+    if (!file_exists($f)) { continue; }
+    foreach (explode("\n", (string)file_get_contents($f)) as $n => $line) {
+        // خطِ کامنت به حساب نمی‌آید — توضیحِ «هرگز ^~ نگذارید» خودش
+        // نباید قاعده را بشکند (همان تله‌ای که در قاعده ۹ خوردیم).
+        $code = trim($line);
+        if ($code === '' || str_starts_with($code, '#')) { continue; }
+        if (preg_match('/location\s+\^~\s*\/api\/v1/', $line)) {
+            $offenders[] = basename($f) . ' خط ' . ($n + 1) . ': ^~ روی /api/v1/';
+        }
+    }
+}
+T::bulk(count($nginxSources), $offenders, 'هیچ‌کدام از اسکریپت‌های nginx روی api/v1 از ^~ استفاده نمی‌کنند');
+
+// و قاعده باید واقعاً وجود داشته باشد، وگرنه تست بالا الکی سبز می‌ماند
+$apiSh = (string)@file_get_contents($root . '/deploy/nginx-api.sh');
+T::ok((bool)preg_match('/location\s+\/api\/v1\/\s*\{/', $apiSh),
+      'قاعده‌ی prefix ساده‌ی /api/v1/ در اسکریپت هست');
+T::ok(str_contains($apiSh, '/api/v1/ping'),
+      'اسکریپت بعد از اعمال، خودِ اندپوینت را می‌سنجد');
+
+// ---------------------------------------------------------------
 T::group('نحو — هر فایل PHP باید بدون خطا پارس شود');
 
 $bad = [];
