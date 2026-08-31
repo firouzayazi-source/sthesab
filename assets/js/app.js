@@ -148,6 +148,12 @@ if ('serviceWorker' in navigator) {
 
 document.addEventListener('DOMContentLoaded', function () {
 
+    // اول از همه: حالا که این فایل واقعاً اجرا شد، صفحه دیگر «در حال
+    // آماده شدن» نیست. پیش از این، اگر app.js نمی‌رسید صفحه کامل و
+    // خوش‌ظاهر بالا می‌آمد و کاربر دکمه می‌زد و هیچ اتفاقی نمی‌افتاد،
+    // بی‌هیچ نشانه‌ای از خرابی.
+    document.documentElement.classList.remove('js-loading');
+
     // پایه‌ی آدرس API — تا فراخوانی‌ها از داخل پوشه admin/ هم درست کار کند
     function apiUrl(name) {
         var base = (typeof window.APP_BASE === 'string') ? window.APP_BASE : '';

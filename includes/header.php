@@ -5,7 +5,10 @@ if (!isset($pageTitle)) {
 // فشرده‌سازی خروجی در includes/db.php و پیش از هر خروجی فعال می‌شود
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<!-- js-loading را app.js بلافاصله برمی‌دارد. اگر برنداشت یعنی اسکریپت
+     نرسیده و صفحه با اینکه کامل به نظر می‌رسد، هیچ دکمه‌ای ندارد —
+     استایل .js-loading همین را بعد از یک مکث کوتاه نشان می‌دهد. -->
+<html lang="fa" dir="rtl" class="js-loading">
 <head>
     <script>
         /* حالت شب سه‌حالته: auto (پیش‌فرض) / light / dark

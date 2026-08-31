@@ -99,32 +99,89 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // ---------- دارایی‌های ثابت: فقط کش، بدون تازه‌سازیِ پس‌زمینه ----------
+    // ---------- دارایی‌های ثابت ----------
     if (!isStaticAsset(url)) { return; }     // بقیه (api/ و ...) دست‌نخورده به شبکه
 
-    // ⚠ اینجا عمداً «تازه‌سازی در پس‌زمینه» نیست.
-    //
-    // نسخه‌ی اول این کار را می‌کرد و نتیجه‌اش بدتر از نداشتنِ سرویس‌ورکر
-    // بود: در *هر* ناوبری، با اینکه همه‌چیز کش شده بود، باز فونت و
-    // style.css و app.js و chart.js دوباره از شبکه گرفته می‌شدند —
-    // حدود ۲۲۰ کیلوبایت ترافیکِ بی‌فایده در هر جابه‌جایی بین صفحه‌ها،
-    // که روی دیتای موبایل با خودِ صفحه سرِ پهنای باند دعوا می‌کرد.
-    // بدون سرویس‌ورکر، کشِ یک‌ساله‌ی مرورگر صفر درخواست می‌زد.
-    //
-    // تازه شدن لازم نیست چون آدرس این فایل‌ها نسخه دارد (`?v=...`):
-    // با هر تغییر، آدرس عوض می‌شود و خودبه‌خود کشِ تازه‌ای می‌گیرد.
-    // برای فونت و آیکون که نسخه ندارند، بالا بردن VERSION کافی است.
-    event.respondWith((async () => {
-        const cache  = await caches.open(ASSET_CACHE);
-        const cached = await cache.match(req);
-        if (cached) { return cached; }
-
-        try {
-            const res = await fetch(req);
-            if (res && res.ok && res.type === 'basic') { cache.put(req, res.clone()); }
-            return res;
-        } catch (e) {
-            return new Response('', { status: 504 });
-        }
-    })());
+    event.respondWith(assetResponse(req));
 });
+
+/** چند ثانیه منتظر شبکه بمانیم پیش از آنکه سراغ نسخه‌ی قبلی برویم. */
+const NET_TIMEOUT = 5000;
+
+/**
+ * دارایی ثابت: اول کش، و **هرگز صفحه را با دستِ خالی رها نکن**.
+ *
+ * ⚠ اینجا عمداً «تازه‌سازی در پس‌زمینه» نیست.
+ *
+ * نسخه‌ی اول این کار را می‌کرد و نتیجه‌اش بدتر از نداشتنِ سرویس‌ورکر بود:
+ * در *هر* ناوبری، با اینکه همه‌چیز کش شده بود، باز فونت و style.css و
+ * app.js و chart.js دوباره از شبکه گرفته می‌شدند — حدود ۲۲۰ کیلوبایت
+ * ترافیکِ بی‌فایده در هر جابه‌جایی، که روی دیتای موبایل با خودِ صفحه سرِ
+ * پهنای باند دعوا می‌کرد. تازه شدن لازم نیست چون آدرس این فایل‌ها نسخه
+ * دارد (`?v=...`): با هر تغییر، آدرس عوض می‌شود و کشِ تازه می‌گیرد.
+ *
+ * ولی همین نسخه‌دار بودن یک لبه‌ی تیز دارد و باعث یک باگ واقعی شد:
+ * **بعد از هر deploy، آدرسِ app.js عوض می‌شود، پس کش خطا می‌خورد و فایل
+ * باید از شبکه بیاید.** اگر آن یک درخواست روی اینترنت موبایل گیر می‌کرد،
+ * صفحه کامل و خوش‌ظاهر بالا می‌آمد — HTML و CSS رسیده بودند — ولی
+ * app.js اجرا نشده بود. یعنی صفحه اسکرول می‌شد و هیچ دکمه‌ای کار
+ * نمی‌کرد، بی‌آنکه هیچ نشانه‌ای از خرابی دیده شود. بستن و باز کردنِ اپ
+ * درستش می‌کرد، چون بار دوم فایل می‌رسید.
+ *
+ * حالا سه لایه هست:
+ *   ۱. کشِ دقیق (همان ?v=) — حالت عادی، بدون هیچ درخواستی.
+ *   ۲. اگر نبود: شبکه، ولی حداکثر NET_TIMEOUT ثانیه.
+ *   ۳. اگر شبکه دیر کرد یا شکست: **نسخه‌ی قبلیِ همان فایل** (با
+ *      ignoreSearch، یعنی بدون توجه به ?v=). کدِ یک نسخه عقب‌تر بی‌نهایت
+ *      بهتر از صفحه‌ی بی‌جان است، و دفعه‌ی بعد که شبکه درست باشد
+ *      خودبه‌خود به‌روز می‌شود.
+ */
+async function assetResponse(req) {
+    const cache = await caches.open(ASSET_CACHE);
+
+    const exact = await cache.match(req);
+    if (exact) { return exact; }
+
+    // نسخه‌ی قبلیِ همین فایل — تورِ نجات
+    const stale = await cache.match(req, { ignoreSearch: true });
+
+    const network = fetch(req).then(async (res) => {
+        if (res && res.ok && res.type === 'basic') {
+            await cache.put(req, res.clone());
+            await dropOtherVersions(cache, req);
+        }
+        return res;
+    });
+    // اگر مسابقه را به timeout ببازد، رد شدنش نباید unhandled بماند
+    network.catch(() => {});
+
+    if (!stale) {
+        try { return await network; }
+        catch (e) { return new Response('', { status: 504 }); }
+    }
+
+    const timeout = new Promise((resolve) => setTimeout(() => resolve(null), NET_TIMEOUT));
+    try {
+        const res = await Promise.race([network, timeout]);
+        if (res) { return res; }        // شبکه به‌موقع رسید
+    } catch (e) { /* شبکه شکست — می‌افتیم روی نسخه‌ی قبلی */ }
+
+    return stale;
+}
+
+/**
+ * نسخه‌های قدیمیِ همین فایل را از کش بردار.
+ *
+ * بدون این، کش بی‌پایان بزرگ می‌شد: هر deploy یک ?v= تازه می‌سازد و
+ * نسخه‌ی قبلی برای همیشه می‌ماند. بعد از چند به‌روزرسانی، چند مگابایتِ
+ * مرده روی گوشی کاربر جا خوش کرده بود. یکی را نگه می‌داریم (همین که
+ * تازه نشست) و بقیه می‌روند.
+ */
+async function dropOtherVersions(cache, req) {
+    const path = new URL(req.url).pathname;
+    const keys = await cache.keys();
+    await Promise.all(keys.map((key) => {
+        const u = new URL(key.url);
+        return (u.pathname === path && key.url !== req.url) ? cache.delete(key) : null;
+    }));
+}

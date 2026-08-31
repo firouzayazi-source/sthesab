@@ -2637,3 +2637,27 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
 }
 .wallet-line-total .wallet-line-name { font-weight: 700; }
 .wallet-line-total .wallet-line-bal { font-size: 15px; }
+
+/* ==========================================================================
+   صفحه‌ای که هنوز جان ندارد
+   ==========================================================================
+   `<html class="js-loading">` در header.php گذاشته می‌شود و app.js اولین
+   کاری که می‌کند برداشتنش است. پس تا وقتی این کلاس هست یعنی اسکریپت هنوز
+   نرسیده — و صفحه با اینکه کامل و خوش‌ظاهر رندر شده، هیچ دکمه‌ای ندارد.
+
+   این حالت واقعاً پیش می‌آمد: بعد از هر deploy آدرس app.js عوض می‌شود و
+   باید از شبکه بیاید؛ اگر روی اینترنت موبایل گیر می‌کرد، کاربر صفحه را
+   می‌دید، اسکرول می‌کرد، دکمه می‌زد و هیچ اتفاقی نمی‌افتاد — بی‌هیچ
+   نشانه‌ای. حالا دست‌کم پیداست که چیزی هنوز آماده نیست.
+
+   ⏱ با تأخیر ۹۰۰ میلی‌ثانیه: بارگذاری عادی چند ده میلی‌ثانیه است و نباید
+   هیچ‌وقت این حالت را ببیند. animation فقط برای همان تأخیر است. */
+@keyframes js-loading-hint { to { opacity: .45; } }
+
+.js-loading button:not([type="submit"]),
+.js-loading .tool-card,
+.js-loading [class*="js-"] {
+    opacity: 1;
+    animation: js-loading-hint .2s linear .9s forwards;
+    cursor: progress;
+}
