@@ -64,7 +64,17 @@ class Auth
      * پیام خطا عمداً برای «کاربر پیدا نشد» و «رمز غلط» یکی است تا این
      * صفحه به ابزار کشف حساب تبدیل نشود.
      */
-    public static function attemptLogin(string $identifier, string $password, ?string $ip = null): array
+    /**
+     * فقط اعتبارسنجی: سد حدس رمز، پیدا کردن کاربر، بررسی رمز و فعال بودن.
+     *
+     * عمداً **هیچ کاری با نشست نمی‌کند**. دو مشتری دارد که نیازشان فرق
+     * می‌کند: صفحه‌ی ورود وب که بعدش نشست می‌سازد، و API که به‌جای نشست
+     * توکن صادر می‌کند. اگر این دو جدا نبودند، منطق سد حدس رمز باید دو
+     * بار نوشته می‌شد و همان‌جا از هم دور می‌افتادند.
+     *
+     * در صورت موفقیت، ردیف کاربر زیر کلید 'user' برمی‌گردد.
+     */
+    public static function verifyCredentials(string $identifier, string $password, ?string $ip = null): array
     {
         $identifier = trim($identifier);
 
@@ -138,6 +148,23 @@ class Auth
         LoginThrottle::clear($identifier);
         LoginThrottle::prune();
 
+        return ['success' => true, 'message' => 'ورود موفقیت‌آمیز بود.', 'user' => $user];
+    }
+
+    /**
+     * ورود وب: اعتبارسنجی مشترک، و بعد ساختن نشست.
+     *
+     * خروجی‌اش عمداً همان شکل قبلی است (بدون کلید user) تا صفحه‌های
+     * موجود دست‌نخورده بمانند.
+     */
+    public static function attemptLogin(string $identifier, string $password, ?string $ip = null): array
+    {
+        $result = self::verifyCredentials($identifier, $password, $ip);
+        if (!($result['success'] ?? false)) {
+            return $result;
+        }
+
+        $user = $result['user'];
         session_regenerate_id(true);
 
         $_SESSION['user_id']    = (int)$user['id'];

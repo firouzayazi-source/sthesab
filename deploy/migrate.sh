@@ -88,6 +88,7 @@ MIGRATIONS=(
     migration_user_categories.sql
     migration_login_throttle.sql
     migration_people.sql
+    migration_api_tokens.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -190,6 +191,7 @@ declare -A SENTINEL=(
     [migration_user_categories.sql]="categories.user_id"
     [migration_login_throttle.sql]="login_attempts"
     [migration_people.sql]="people"
+    [migration_api_tokens.sql]="api_tokens"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

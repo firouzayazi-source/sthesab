@@ -378,6 +378,75 @@ if ($deploySrc === '') {
 }
 
 // ---------------------------------------------------------------
+T::group('قاعده ۹ — api/v1 هویت را از توکن می‌گیرد، نه از نشست');
+
+// اپی که روی گوشی کاربر نصب شده را نمی‌شود مجبور به به‌روزرسانی کرد.
+// اگر یک هندلر در v1 بررسی هویت را جا بیندازد، داده‌ی یک کاربر به دست
+// دیگری می‌رسد و تا وقتی همه اپشان را عوض نکنند قابل جبران نیست.
+
+$v1Files = glob($root . '/api/v1/routes/*.php');
+T::ok(count($v1Files) > 0, 'فایل‌های مسیر v1 پیدا شدند', 'تعداد: ' . count($v1Files));
+
+// فقط این دو عمداً بی‌نیاز از توکن‌اند: ping برای سنجش دسترسی، و login
+// که خودش توکن می‌سازد.
+$openHandlers = ['v1Ping', 'v1AuthLogin'];
+
+$missing = [];
+$handlers = 0;
+foreach ($v1Files as $f) {
+    $src = (string)file_get_contents($f);
+    // بدنه‌ی هر تابع v1... را جدا می‌کنیم تا بررسی هر کدام مستقل باشد
+    preg_match_all('/function\s+(v1\w+)\s*\([^)]*\)\s*:\s*void\s*\{/', $src, $m, PREG_OFFSET_CAPTURE);
+    foreach ($m[1] as $i => $hit) {
+        $name = $hit[0];
+        $handlers++;
+        if (in_array($name, $openHandlers, true)) { continue; }
+
+        $start = $m[0][$i][1];
+        $end   = isset($m[0][$i + 1]) ? $m[0][$i + 1][1] : strlen($src);
+        $body  = substr($src, $start, $end - $start);
+
+        if (!str_contains($body, 'Api::requireUser()')) {
+            $missing[] = basename($f) . " › {$name} توکن را نمی‌سنجد";
+        }
+    }
+}
+T::bulk($handlers, $missing, 'هر هندلر v1 هویت را می‌سنجد');
+
+// شناسه‌ی کاربر باید از توکن بیاید. Auth::userId() نشست را می‌خواند و در
+// درخواستِ API همیشه null است — استفاده‌اش یعنی باگِ خاموش.
+// ⚠ کامنت‌ها با توکنایزر حذف می‌شوند. بدون این، همین قاعده روی
+// توضیحی که *چرا نباید* از Auth::userId() استفاده کرد شکست می‌خورد —
+// یک بار همین‌جا واقعاً اتفاق افتاد.
+$stripComments = static function (string $file): string {
+    $out = '';
+    foreach (token_get_all((string)file_get_contents($file)) as $t) {
+        if (is_array($t) && in_array($t[0], [T_COMMENT, T_DOC_COMMENT], true)) { continue; }
+        $out .= is_array($t) ? $t[1] : $t;
+    }
+    return $out;
+};
+
+$sessionUse = [];
+foreach (array_merge($v1Files, [$root . '/api/v1/index.php']) as $f) {
+    $src = $stripComments($f);
+    if (str_contains($src, 'Auth::userId()')) {
+        $sessionUse[] = basename($f) . ' از Auth::userId() استفاده می‌کند';
+    }
+    // cachedCategories() هم کاربر را از نشست می‌گیرد
+    if (str_contains($src, 'cachedCategories(')) {
+        $sessionUse[] = basename($f) . ' از cachedCategories() استفاده می‌کند (وابسته به نشست)';
+    }
+}
+T::bulk(count($v1Files) + 1, $sessionUse, 'v1 به نشست وابسته نیست');
+
+// پاکت پاسخ باید یک شکل بماند؛ مشتری روی همین حساب می‌کند.
+$apiSrc = (string)file_get_contents($root . '/includes/api.php');
+T::ok(str_contains($apiSrc, "'ok' => true") && str_contains($apiSrc, "'ok' => false"),
+      'پاکت پاسخ کلید ok دارد');
+T::ok(str_contains($apiSrc, "header('X-API-Version"), 'نسخه در سرآیند پاسخ می‌آید');
+
+// ---------------------------------------------------------------
 T::group('نحو — هر فایل PHP باید بدون خطا پارس شود');
 
 $bad = [];

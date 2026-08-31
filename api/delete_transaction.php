@@ -1,7 +1,11 @@
 <?php
+/**
+ * حذف تراکنش — لایه‌ی وب. منطق در includes/transactions.php است.
+ */
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/transactions.php';
 
 Auth::initSession();
 
@@ -17,33 +21,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 Csrf::verifyOrFail(postParam('csrf_token'));
 
-$transactionId = (int)postParam('transaction_id');
+$result = txDelete(Auth::userId(), (int)postParam('transaction_id'));
 
-if ($transactionId <= 0) {
-    jsonResponse(['success' => false, 'message' => 'شناسه تراکنش نامعتبر است.'], 422);
-}
-
-$pdo = Database::getConnection();
-
-$checkStmt = $pdo->prepare('SELECT id, user_id FROM transactions WHERE id = :id');
-$checkStmt->execute(['id' => $transactionId]);
-$tx = $checkStmt->fetch();
-
-if (!$tx) {
-    jsonResponse(['success' => false, 'message' => 'تراکنش مورد نظر یافت نشد.'], 404);
-}
-
-// کنترل دسترسی سمت سرور: هر کاربر (حتی ادمین) فقط اجازه حذف تراکنش خودش را دارد
-if ((int)$tx['user_id'] !== Auth::userId()) {
-    jsonResponse(['success' => false, 'message' => 'شما اجازه حذف این تراکنش را ندارید.'], 403);
-}
-
-try {
-    $deleteStmt = $pdo->prepare('DELETE FROM transactions WHERE id = :id AND user_id = :user_id');
-    $deleteStmt->execute(['id' => $transactionId, 'user_id' => Auth::userId()]);
-
-    jsonResponse(['success' => true, 'message' => 'تراکنش با موفقیت حذف شد.']);
-} catch (PDOException $e) {
-    error_log('Delete Transaction Error: ' . $e->getMessage());
-    jsonResponse(['success' => false, 'message' => 'خطایی در حذف تراکنش رخ داد.'], 500);
-}
+jsonResponse(
+    ['success' => $result['ok'], 'message' => $result['message']],
+    $result['ok'] ? 200 : $result['status']
+);
