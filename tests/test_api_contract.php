@@ -501,6 +501,11 @@ T::ok(str_contains($apiSh, 'MODE="repair"'),
 T::ok(str_contains($apiSh, '--resolve'),
       'سنجشِ اسکریپت با --resolve انجام می‌شود نه با Host دستی');
 
+// reload غیرهمزمان است: کارگرهای قدیمی تا ~۱۵۰ms با پیکربندی قبلی جواب
+// می‌دهند. سنجشِ فوری، پیکربندیِ درست را «خراب» می‌دید و برمی‌گرداند.
+T::ok((bool)preg_match('/for\s+_?\w*\s+in\s+\$\(seq/', $apiSh),
+      'سنجش بعد از reload تکرار می‌شود، نه یک بار');
+
 // تورِ نجاتِ اپ: ?p= باید همیشه کار کند، حتی بدون قاعده‌ی nginx
 $routerSrc = (string)@file_get_contents($root . '/api/v1/index.php');
 T::ok(str_contains($routerSrc, "\$_GET['p']"),

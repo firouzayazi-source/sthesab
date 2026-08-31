@@ -191,13 +191,21 @@ DOMAIN="$(grep -m1 -oP '^\s*server_name\s+\K[^;]+' "$SITE_FILE" | tr ' ' '\n' | 
 # اصلاً از سایتِ دیگری باشد. آن‌وقت یک ۴۰۴ بی‌ربط باعث می‌شد اسکریپت
 # پیکربندیِ **درست** را برگرداند. با --resolve هم SNI و هم Host درست
 # می‌روند و ترافیک هم از سرور بیرون نمی‌رود.
-PROBE=""
-if [[ -n "$DOMAIN" ]]; then
-    PROBE="$(curl -sk --max-time 10 -L \
-                  --resolve "${DOMAIN}:443:127.0.0.1" \
-                  --resolve "${DOMAIN}:80:127.0.0.1" \
-                  "https://${DOMAIN}/api/v1/ping" 2>/dev/null || true)"
-fi
+# ⚠ و **با صبر**، نه بلافاصله.
+#
+# `systemctl reload nginx` به‌محضِ فرستادنِ سیگنال برمی‌گردد؛ خودِ nginx
+# غیرهمزمان بارگذاری می‌کند و تا صدها میلی‌ثانیه بعد، پروسه‌های کارگرِ
+# قدیمی هنوز با پیکربندیِ قبلی جواب می‌دهند. سنجشِ فوری همان پاسخِ
+# قدیمی را می‌گرفت و اسکریپت پیکربندیِ **درست** را برمی‌گرداند — دو بار
+# روی سرور واقعی همین شد. با nginx واقعی اندازه‌گیری شد: تا ۱۵۰ms پاسخِ
+# قدیمی می‌آمد.
+probe_once() {
+    [[ -z "$DOMAIN" ]] && return 1
+    curl -sk --max-time 10 -L \
+         --resolve "${DOMAIN}:443:127.0.0.1" \
+         --resolve "${DOMAIN}:80:127.0.0.1" \
+         "https://${DOMAIN}/api/v1/ping" 2>/dev/null || true
+}
 
 rollback() {
     red "$1"
@@ -207,15 +215,26 @@ rollback() {
     exit 1
 }
 
-if [[ -z "$PROBE" ]]; then
+PROBE=""
+OK=0
+for _ in $(seq 1 20); do          # حداکثر حدود ۱۰ ثانیه
+    PROBE="$(probe_once)"
+    # سورس خام یعنی خطر — همان‌جا برگرد، صبر کردن کمکی نمی‌کند
+    if [[ "$PROBE" == *"<?php"* ]]; then
+        rollback "⛔ خطر: سورس PHP خام برگشت — قاعده جلوی اجرای PHP را گرفته است."
+    fi
+    if [[ "$PROBE" == *'"ok"'* ]]; then OK=1; break; fi
+    sleep 0.5
+done
+
+if [[ $OK -eq 1 ]]; then
+    green "✓ /api/v1/ping پاسخ JSON درست داد."
+elif [[ -z "$PROBE" ]]; then
     info "پاسخی از /api/v1/ping نیامد (شاید دامنه از داخل سرور حل نمی‌شود)."
     info "خودتان بررسی کنید:  curl -s https://${DOMAIN:-دامنه}/api/v1/ping"
-elif [[ "$PROBE" == *"<?php"* ]]; then
-    rollback "⛔ خطر: سورس PHP خام برگشت — قاعده جلوی اجرای PHP را گرفته است."
-elif [[ "$PROBE" != *'"ok"'* ]]; then
-    rollback "⛔ پاسخ /api/v1/ping آن چیزی نیست که باید: ${PROBE:0:120}"
+    info "قاعده اعمال شده و دست‌نخورده ماند."
 else
-    green "✓ /api/v1/ping پاسخ JSON درست داد."
+    rollback "⛔ پاسخ /api/v1/ping بعد از ۱۰ ثانیه هنوز درست نیست: ${PROBE:0:120}"
 fi
 
 green "✅ انجام شد."
