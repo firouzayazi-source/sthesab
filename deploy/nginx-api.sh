@@ -56,11 +56,28 @@ fi
 step "وضعیت فعلی"
 info "فایل سایت: $SITE_FILE"
 
-if grep -qE '^\s*location\s+\^?~?\s*/api/v1/' "$SITE_FILE"; then
-    green "✓ قاعده‌ی api/v1 از قبل هست — کاری لازم نیست."
+# سه حالت ممکن است:
+#   ۱. قاعده‌ی درست هست            → کاری لازم نیست
+#   ۲. قاعده‌ی معیوبِ ^~ هست       → باید ترمیم شود (نه اینکه رد شویم!)
+#   ۳. هیچ قاعده‌ای نیست            → درج می‌شود
+#
+# ⚠ حالت ۲ عمداً جدا شمرده می‌شود. نسخه‌ی قبلیِ همین اسکریپت هر شکلی از
+# قاعده را «از قبل هست» می‌دید و بی‌سروصدا بیرون می‌آمد — یعنی سروری که
+# قاعده‌ی معیوب داشت و سورس PHP اش لو می‌رفت، با اجرای این اسکریپت هم
+# درست نمی‌شد.
+MODE=""
+if grep -qE '^\s*location\s+\^~\s+/api/v1/' "$SITE_FILE"; then
+    MODE="repair"
+    red "⚠ قاعده‌ی معیوب پیدا شد: location ^~ /api/v1/"
+    info "با ^~ ، nginx فایل PHP را به‌جای اجرا خام تحویل می‌دهد (سورس لو می‌رود)."
+    info "این اسکریپت آن را به prefix ساده تبدیل می‌کند."
+elif grep -qE '^\s*location\s+/api/v1/' "$SITE_FILE"; then
+    green "✓ قاعده‌ی درستِ api/v1 از قبل هست — کاری لازم نیست."
     exit 0
+else
+    MODE="insert"
+    info "قاعده‌ی /api/v1/ وجود ندارد."
 fi
-info "قاعده‌ی /api/v1/ وجود ندارد."
 
 BLOCK='    # ---- api/v1 : آدرس تمیز برای اپ‌های موبایل ----
     # ⛔ هرگز ^~ : ارزیابی location های regex را متوقف می‌کند و فایل PHP
@@ -70,10 +87,15 @@ BLOCK='    # ---- api/v1 : آدرس تمیز برای اپ‌های موبایل
     }
 '
 
-step "چیزی که اضافه می‌شود"
-printf '%s' "$BLOCK" | sed 's/^/  /'
-info ""
-info "پیش از قاعده‌ی عمومیِ فایل‌های ثابت قرار می‌گیرد."
+if [[ "$MODE" == "repair" ]]; then
+    step "چیزی که ترمیم می‌شود"
+    info "فقط ^~ از همان خط برداشته می‌شود؛ بقیه‌ی فایل دست نمی‌خورد."
+else
+    step "چیزی که اضافه می‌شود"
+    printf '%s' "$BLOCK" | sed 's/^/  /'
+    info ""
+    info "پیش از قاعده‌ی عمومیِ فایل‌های ثابت قرار می‌گیرد."
+fi
 
 if [[ $APPLY -eq 0 ]]; then
     step "نمایشی بود"
@@ -88,12 +110,22 @@ cp -a "$SITE_FILE" "$BACKUP"
 chmod 600 "$BACKUP"
 info "نسخه‌ی پشتیبان: $BACKUP"
 
-python3 - "$SITE_FILE" <<'PY'
+python3 - "$SITE_FILE" "$MODE" <<'PY'
 import re, sys
 
-path = sys.argv[1]
+path, mode = sys.argv[1], sys.argv[2]
 with open(path, encoding='utf-8') as fh:
     text = fh.read()
+
+# ترمیم: فقط ^~ را برمی‌داریم و بقیه‌ی فایل دست نمی‌خورد
+if mode == 'repair':
+    fixed = re.sub(r'(^[ \t]*location\s+)\^~\s+(/api/v1/)', r'\1\2', text, flags=re.M)
+    if fixed == text:
+        sys.stderr.write('قاعده‌ی معیوب پیدا شد ولی جایگزین نشد.\n')
+        sys.exit(2)
+    with open(path, 'w', encoding='utf-8') as fh:
+        fh.write(fixed)
+    sys.exit(0)
 
 block = (
     '    # ---- api/v1 : آدرس تمیز برای اپ‌های موبایل ----\n'
