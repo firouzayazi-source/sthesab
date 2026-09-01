@@ -40,6 +40,8 @@ dependencies:
   local_auth: ^3.0.2
   local_auth_android: ^2.0.10
   local_auth_darwin: ^2.0.4
+  flutter_localizations:
+    sdk: flutter
 
 dev_dependencies:
   flutter_test:

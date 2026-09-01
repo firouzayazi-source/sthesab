@@ -9,6 +9,7 @@ import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'api/api_client.dart';
 import 'api/auth_store.dart';
@@ -26,6 +27,37 @@ const kBaseUrl = String.fromEnvironment(
 );
 
 void main() {
+  // در نسخه‌ی release، خطای ساختِ ویجت هیچ پیامی روی صفحه ندارد: فلاتر
+  // یک مستطیل خاکستری/سفیدِ خالی می‌کشد. یک بار همین اتفاق افتاد و
+  // کاربر فقط «صفحه‌ی سفید» دید — نه پیامی، نه سرنخی، و تشخیصش یک
+  // رفت‌وبرگشت کامل طول کشید.
+  //
+  // این جای خطا را نمی‌گیرد؛ فقط کاری می‌کند که خطا **دیده شود**.
+  ErrorWidget.builder = (details) => Directionality(
+        textDirection: TextDirection.rtl,
+        child: Container(
+          color: const Color(0xFFFDF6F6),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('خطایی در نمایش این بخش رخ داد.',
+                  style: TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold,
+                      color: Color(0xFF8A1C1C))),
+              const SizedBox(height: 10),
+              Text(
+                '${details.exception}',
+                textAlign: TextAlign.center,
+                textDirection: TextDirection.ltr,
+                style: const TextStyle(fontSize: 12, color: Color(0xFF5A3A3A)),
+              ),
+            ],
+          ),
+        ),
+      );
+
   final api = ApiClient(baseUrl: kBaseUrl);
   runApp(DaftarApp(auth: AuthStore(api: api), lock: AppLock()));
 }
@@ -90,6 +122,23 @@ class _DaftarAppState extends State<DaftarApp> with WidgetsBindingObserver {
       // کل اپ راست‌به‌چپ است — نه فقط متن‌ها، بلکه چیدمان هم.
       locale: const Locale('fa', 'IR'),
       supportedLocales: const [Locale('fa', 'IR')],
+      // ⛔ این سه خط با `locale` بالا یک بسته‌اند و جدا کردنشان اپ را
+      // **کاملاً** می‌خواباند.
+      //
+      // `MaterialApp` بدون این‌ها فقط مترجمِ انگلیسی دارد، و آن مترجم
+      // `fa` را پشتیبانی نمی‌کند. نتیجه‌اش «متنِ انگلیسی» نیست — نتیجه‌اش
+      // این است که هر `Scaffold` و `TextField` با
+      // «No MaterialLocalizations found» خطا می‌دهد. در نسخه‌ی release
+      // این خطا هیچ پیامی روی صفحه ندارد: کاربر فقط یک **صفحه‌ی سفید**
+      // می‌بیند و هیچ سرنخی از علتش نیست.
+      //
+      // یک بار واقعاً همین شد و روی گوشی کاربر دیده شد. تستِ رگرسیونش
+      // `test/app_boot_test.dart` است که خودِ `DaftarApp` را pump می‌کند.
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
       builder: (context, child) => Directionality(
         textDirection: TextDirection.rtl,
         child: child ?? const SizedBox.shrink(),
