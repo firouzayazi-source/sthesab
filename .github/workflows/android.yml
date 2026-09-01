@@ -1,99 +1,120 @@
-# ساخت APK اندروید روی GitHub.
+# ساخت APK اندروید — پوسته‌ی TWA روی همان PWA.
 #
-# ⚠ این فایل باید در **ریشه‌ی مخزن** باشد، نه داخل `mobile/`.
-# گیت‌هاب فقط `.github/workflows/` ریشه را می‌خواند؛ همین فایل اگر یک
-# پله پایین‌تر بود، بی‌هیچ خطایی نادیده گرفته می‌شد و زبانه‌ی Actions
-# خالی می‌ماند. خودِ اپ در `mobile/` است، پس هر گام `working-directory`
-# دارد.
+# ⚠ این فایل باید در **ریشه‌ی مخزن** باشد، نه در `mobile/`.
+# گیت‌هاب فقط `.github/workflows/` ریشه را می‌خواند؛ یک پله پایین‌تر
+# بی‌هیچ خطایی نادیده گرفته می‌شود و زبانه‌ی Actions خالی می‌ماند.
 #
-# چرا CI و نه ساخت محلی: ساختِ اندروید به Android SDK نیاز دارد که فقط
-# از dl.google.com می‌آید، و آن میزبان در محیطِ توسعه‌ی ما توسط سیاست
-# شبکه مسدود است. رانرهای گیت‌هاب هم دسترسی دارند و هم SDK از پیش
-# نصب‌شده. هیچ کامپیوتری لازم نیست؛ از مرورگر گوشی هم می‌شود اجرا و
-# دانلود کرد.
+# اپ هیچ کد برنامه‌ای ندارد: خودِ سایت اجرا می‌شود و کروم رندرش می‌کند.
+# پس این ساخت فقط یک پوسته‌ی چندصد کیلوبایتی می‌سازد و هر تغییرِ سایت
+# بدون APK تازه به کاربر می‌رسد.
 
 name: ساخت APK اندروید
 
 on:
-  # دستی، از زبانه‌ی Actions
   workflow_dispatch:
-    inputs:
-      base_url:
-        description: 'آدرس سرور'
-        required: true
-        default: 'https://hesab.stland.ir'
   push:
-    # ⚠ فقط تغییرِ خودِ اپ. بدون این فیلتر، هر اصلاح PHP هم یک ساخت
-    # چندده‌دقیقه‌ای راه می‌انداخت که خروجی‌اش با قبلی مو نمی‌زد.
     paths:
       - 'mobile/**'
+      - '.well-known/assetlinks.json'
       - '.github/workflows/android.yml'
-
-defaults:
-  run:
-    working-directory: mobile
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
-    # برای ساختن Release لازم است. جز همین، هیچ دسترسی نوشتنی‌ای
-    # داده نمی‌شود.
+    # فقط برای ساختن Release. جز همین، دسترسی نوشتنی‌ای داده نمی‌شود.
     permissions:
       contents: write
 
     steps:
       - uses: actions/checkout@v4
 
+      # ⛔ پیش از هر کار سنگینی سنجیده می‌شود.
+      #
+      # بدون کلید، گریدل یک APK **امضانشده** می‌سازد که نه نصب می‌شود و
+      # نه اثر انگشتش با assetlinks می‌خواند — و این را کاربر تازه روی
+      # گوشی می‌فهمید. شکستِ صریح در ثانیه‌ی اول بهتر از فایلِ خراب در
+      # دقیقه‌ی دهم است.
+      - name: بررسی وجود کلید امضا
+        env:
+          KS: ${{ secrets.KEYSTORE_BASE64 }}
+          PW: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$KS" ] || [ -z "$PW" ]; then
+            echo "::error::دو Secret لازم است و تنظیم نشده‌اند: KEYSTORE_BASE64 و KEYSTORE_PASSWORD."
+            echo "::error::در مخزن → Settings → Secrets and variables → Actions اضافه‌شان کنید."
+            exit 1
+          fi
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - uses: subosito/flutter-action@v2
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
         with:
-          # همان نسخه‌ای که پروژه با آن ساخته و آزموده شده
-          flutter-version: '3.47.2'
-          channel: stable
-          cache: true
+          gradle-version: '8.11.1'
 
-      - name: دریافت وابستگی‌ها
-        run: flutter pub get
-
-      # ⚠ ساخت قبل از سنجش انجام نمی‌شود. اگر تحلیل یا تست بشکند،
-      # APK ای ساخته نمی‌شود — بهتر از فرستادنِ فایلی که خراب است.
-      - name: تحلیل ایستا
-        run: flutter analyze
-
-      - name: تست‌ها
-        run: flutter test
-
-      - name: ساخت APK
+      - name: بازکردن کلید امضا
+        env:
+          KS: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          flutter build apk --release \
-            --dart-define=BASE_URL=${{ inputs.base_url || 'https://hesab.stland.ir' }}
+          echo "$KS" | base64 -d > "$RUNNER_TEMP/daftar-release.jks"
+          # ⚠ کلید بیرون از پوشه‌ی کار ساخته می‌شود تا حتی اگر روزی
+          # گامی کل پوشه را artifact کند، کلید همراهش نرود.
+          test -s "$RUNNER_TEMP/daftar-release.jks" || {
+            echo "::error::کلید باز نشد — احتمالاً KEYSTORE_BASE64 ناقص کپی شده."
+            exit 1
+          }
 
-      # نامِ فایل شماره‌ی اجرا را دارد تا نسخه‌ها با هم قاطی نشوند
-      - name: نام‌گذاری
+      - name: ساخت APK امضاشده
+        working-directory: mobile
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/daftar-release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        run: gradle assembleRelease --no-daemon
+
+      # ⛔ سنجشِ نتیجه، نه فقط «ساخت موفق بود».
+      #
+      # اثر انگشتِ APK ساخته‌شده باید دقیقاً همانی باشد که در
+      # `.well-known/assetlinks.json` نوشته‌ایم. اگر نخواند، اپ نصب
+      # می‌شود ولی با نوار آدرس بالا می‌آید — یعنی خرابیِ بی‌صدا، چون
+      # ساخت سبز بوده. این گام همان را جلو می‌گیرد.
+      - name: سنجش اثر انگشت در برابر assetlinks
+        working-directory: mobile
         run: |
-          mv build/app/outputs/flutter-apk/app-release.apk \
-             "daftar-${{ github.run_number }}.apk"
+          APK=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
+          test -n "$APK" || { echo "::error::APK ساخته نشد."; exit 1; }
 
-      # ⚠ دو راهِ تحویل، و دومی برای گوشی است.
-      #
-      # artifact همیشه به شکل **zip** دانلود می‌شود، حتی وقتی داخلش یک
-      # فایل بیشتر نیست. روی گوشی یعنی کاربر باید zip را باز کند تا به
-      # APK برسد — کاری که اندروید بدون یک اپِ فایل‌منیجر انجام نمی‌دهد
-      # و روی خیلی گوشی‌ها بن‌بست است.
-      #
-      # Release فایل را خام پیوست می‌کند، پس لینکِ دانلود مستقیم به APK
-      # می‌رسد و اندروید همان‌جا پیشنهاد نصب می‌دهد.
+          BUILT=$(keytool -printcert -jarfile "$APK" \
+                  | grep -m1 'SHA256:' | sed 's/.*SHA256: *//' | tr -d ' ')
+          WANTED=$(python3 -c "import json;print(json.load(open('../.well-known/assetlinks.json'))[0]['target']['sha256_cert_fingerprints'][0])")
+
+          echo "ساخته‌شده: $BUILT"
+          echo "assetlinks: $WANTED"
+          if [ "$BUILT" != "$WANTED" ]; then
+            echo "::error::اثر انگشت APK با assetlinks.json نمی‌خواند."
+            echo "::error::اپ نصب می‌شود ولی نوار آدرس بالای صفحه می‌ماند."
+            echo "::error::یا کلیدِ داخل Secrets عوض شده، یا assetlinks.json به‌روز نیست."
+            exit 1
+          fi
+          echo "✓ اثر انگشت می‌خواند."
+
+          cp "$APK" "$GITHUB_WORKSPACE/daftar-${{ github.run_number }}.apk"
+          ls -lh "$GITHUB_WORKSPACE/daftar-${{ github.run_number }}.apk"
+
       - uses: actions/upload-artifact@v4
         with:
           name: daftar-apk-${{ github.run_number }}
-          path: mobile/daftar-*.apk
+          path: daftar-*.apk
           retention-days: 30
 
+      # artifact همیشه zip دانلود می‌شود، حتی با یک فایل. روی گوشی یعنی
+      # کاربر باید zip را باز کند — کاری که اندروید بدون فایل‌منیجر
+      # نمی‌کند. Release فایل را خام می‌دهد و اندروید همان‌جا نصب را
+      # پیشنهاد می‌کند.
       - name: انتشار برای دانلود مستقیم
         env:
           GH_TOKEN: ${{ github.token }}
@@ -102,6 +123,8 @@ jobs:
             "daftar-${{ github.run_number }}.apk" \
             --title "نسخه ${{ github.run_number }}" \
             --notes "ساخته‌شده از ${{ github.sha }}
+
+          پوسته‌ی TWA روی hesab.stland.ir — همان سایت، تمام‌صفحه.
 
           برای نصب: فایل APK زیر را روی گوشی اندروید باز کنید.
           اگر اندروید اجازه نداد، در همان پیام «تنظیمات» را بزنید و

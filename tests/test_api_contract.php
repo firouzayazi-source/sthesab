@@ -552,6 +552,75 @@ T::ok(str_contains($css, 'env(safe-area-inset-top)'),
       'نوار بالای صفحه حاشیه‌ی امنِ بالا را حساب می‌کند');
 
 // ---------------------------------------------------------------
+T::group('قاعده ۱۲ — پیوندِ اپ اندروید با سایت نشکند');
+
+// اپ اندروید یک پوسته‌ی TWA است و «تأیید»ش به سه چیزِ به‌هم‌گره‌خورده
+// بند است: نامِ بسته، اثر انگشتِ کلید، و در دسترس بودنِ assetlinks.json
+// روی دامنه. اگر یکی عوض شود و بقیه نه، اپ **نصب می‌شود ولی با نوار
+// آدرس بالا** — یعنی خرابیِ کاملاً بی‌صدا: ساخت سبز است، نصب موفق است،
+// و فقط کاربر می‌فهمد.
+//
+// اثر انگشت را خودِ workflow بعد از ساخت با APK می‌سنجد (اینجا APK ای
+// نداریم). چیزی که اینجا سنجیده می‌شود هم‌خوانیِ خودِ فایل‌هاست.
+
+$alPath = __DIR__ . '/../.well-known/assetlinks.json';
+$gradlePath = __DIR__ . '/../mobile/app/build.gradle.kts';
+
+if (!file_exists($gradlePath)) {
+    T::pass('اپ اندروید در مخزن نیست — این قاعده موضوعیت ندارد');
+} else {
+    T::ok(file_exists($alPath), '.well-known/assetlinks.json وجود دارد');
+
+    $al = json_decode((string)file_get_contents($alPath), true);
+    T::ok(is_array($al) && isset($al[0]['target']), 'assetlinks.json ساختار درستی دارد');
+
+    $gradle = (string)file_get_contents($gradlePath);
+    preg_match('/applicationId\s*=\s*"([^"]+)"/', $gradle, $mApp);
+    preg_match('/"hostName"\]\s*=\s*"([^"]+)"/', $gradle, $mHost);
+    preg_match('/"launchUrl"\]\s*=\s*"([^"]+)"/', $gradle, $mUrl);
+
+    T::ok(($mApp[1] ?? '') !== '' && ($mApp[1] ?? '') === ($al[0]['target']['package_name'] ?? ''),
+          'نام بسته در gradle و assetlinks یکی است');
+
+    // آدرسِ باز شونده باید روی همان دامنه‌ای باشد که intent-filter
+    // تأییدش می‌کند؛ وگرنه اپ صفحه‌ای را باز می‌کند که برایش تأیید ندارد.
+    T::ok(($mHost[1] ?? '') !== '' && str_contains($mUrl[1] ?? '', $mHost[1] ?? "\0"),
+          'launchUrl روی همان دامنه‌ی hostName است');
+
+    // اثر انگشت باید شکل درستِ SHA-256 داشته باشد (۳۲ بایتِ هگزِ
+    // دونقطه‌دار). یک رشته‌ی کوتاه یا جاافتاده اینجا گرفته می‌شود، نه
+    // بعد از نصب روی گوشی.
+    $fp = $al[0]['target']['sha256_cert_fingerprints'][0] ?? '';
+    T::ok((bool)preg_match('/^([0-9A-F]{2}:){31}[0-9A-F]{2}$/', $fp),
+          'اثر انگشت شکل درستِ SHA-256 دارد');
+
+    // ⚠ nginx فایل‌های نقطه‌دار را می‌بندد ولی .well-known را عمداً
+    // استثنا کرده. اگر آن استثنا روزی برداشته شود، تأیید TWA بی‌سروصدا
+    // می‌شکند و هیچ‌کس ربطش را پیدا نمی‌کند.
+    $vps = (string)@file_get_contents(__DIR__ . '/../deploy/vps-setup.sh');
+    T::ok(str_contains($vps, 'well-known'),
+          'قاعده‌ی nginx مسیر .well-known را باز گذاشته است');
+
+    // و mobile/ نباید هیچ کد برنامه‌ای داشته باشد: هر منطقی که آنجا
+    // برود، نسخه‌ی دومِ همین سایت را شروع می‌کند.
+    // ⚠ با glob نوشته نشود: `**` در glob پی‌اچ‌پی بازگشتی نیست و
+    //     `mobile/**/*.kt` هیچ‌وقت فایلِ چند پوشه پایین‌تر را پیدا
+    //     نمی‌کند — یعنی این بررسی همیشه سبز می‌ماند. یک بار همین شد و
+    //     آزمون جهش گرفتش.
+    $code = [];
+    $it = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator(__DIR__ . '/../mobile',
+            FilesystemIterator::SKIP_DOTS)
+    );
+    foreach ($it as $f) {
+        if (preg_match('/\.(java|kt|dart)$/i', $f->getFilename())) {
+            $code[] = $f->getFilename();
+        }
+    }
+    T::bulk(1, $code, 'پوشه‌ی mobile/ کد برنامه ندارد (پوسته می‌ماند)');
+}
+
+// ---------------------------------------------------------------
 T::group('نحو — هر فایل PHP باید بدون خطا پارس شود');
 
 $bad = [];

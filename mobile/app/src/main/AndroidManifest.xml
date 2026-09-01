@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  دفتر مالی — پوسته‌ی TWA روی همان PWA.
+
+  اینجا هیچ کد برنامه‌ای نیست و عمداً هم نیست: کل اپ همان سایت است.
+  چیزی که این فایل می‌گوید فقط این است که «کروم، این آدرس را تمام‌صفحه
+  و بدون نوار آدرس باز کن».
+
+  به همین دلیل هر قابلیتی که به سایت اضافه شود، همان لحظه در اپ هم هست
+  و هیچ APK تازه‌ای لازم ندارد.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- برای بررسی اینکه شبکه هست یا نه (کتابخانه استفاده می‌کند) -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
+    <!-- اندروید ۱۱ به بالا: بدون این، اپ نمی‌تواند ببیند کدام مرورگر
+         نصب است و TWA بی‌سروصدا به حالت مرورگر معمولی می‌افتد. -->
+    <queries>
+        <intent>
+            <action android:name="android.support.customtabs.action.CustomTabsService"/>
+        </intent>
+    </queries>
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="true"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Daftar">
+
+        <activity
+            android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"
+            android:exported="true"
+            android:label="@string/app_name">
+
+            <!-- آدرسی که باز می‌شود؛ مقدارش از build.gradle.kts می‌آید -->
+            <meta-data
+                android:name="android.support.customtabs.trusted.DEFAULT_URL"
+                android:value="${launchUrl}"/>
+
+            <!-- رنگ نوار وضعیت، هم‌رنگ theme_color در manifest.php -->
+            <meta-data
+                android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR"
+                android:resource="@color/colorPrimary"/>
+            <meta-data
+                android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR"
+                android:resource="@color/colorPrimary"/>
+
+            <!-- ⚠ صفحه‌ی راه‌اندازیِ تصویری عمداً اضافه نشده.
+                 کتابخانه برای آن به یک FileProvider و فایل filepaths.xml
+                 هم نیاز دارد تا تصویر را به کروم بدهد — سه قطعه‌ی به‌هم‌
+                 وابسته که هیچ‌کدامشان را اینجا نمی‌شود آزمود. به‌جایش
+                 زمینه‌ی تم تیره است، پس تا آمدنِ اولین فریمِ کروم یک
+                 صفحه‌ی تیره دیده می‌شود، نه سفیدیِ ناگهانی. -->
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+
+            <!-- ⚠ این بخش همان چیزی است که «تأیید» را ممکن می‌کند.
+                 اندروید فایل https://hesab.stland.ir/.well-known/assetlinks.json
+                 را می‌خواند و اثر انگشت امضای این اپ را با آن می‌سنجد.
+                 اگر نخواند یا نخواند، نوار آدرس بالای صفحه می‌ماند. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https" android:host="${hostName}"/>
+            </intent-filter>
+        </activity>
+
+        <!-- سرویسی که کروم برای نگه داشتن اتصال TWA لازم دارد -->
+        <service
+            android:name="com.google.androidbrowserhelper.trusted.DelegationService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.support.customtabs.trusted.TRUSTED_WEB_ACTIVITY_SERVICE"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </service>
+    </application>
+</manifest>
