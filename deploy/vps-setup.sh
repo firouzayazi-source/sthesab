@@ -333,6 +333,10 @@ server {
     # deploy/ ابزار خط فرمان دارد (از جمله بازنشانی رمز) — از وب مسدود
     location ^~ /deploy/ { deny all; return 404; }
     location ^~ /tests/  { deny all; return 404; }
+    # mobile/ سورس اپ فلاتر است. deploy.sh کل مخزن را روی سرور می‌ریزد،
+    # پس این پوشه هم آنجاست؛ سروِ شدنش از وب فقط پهنای باند می‌برد و
+    # ساختار داخلی اپ را بی‌دلیل نشان می‌دهد.
+    location ^~ /mobile/ { deny all; return 404; }
 
     location ~ ^/(config|includes|\.git)/ { deny all; return 404; }
     location ~ /\.(?!well-known)  { deny all; return 404; }

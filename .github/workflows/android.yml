@@ -1,0 +1,108 @@
+# ساخت APK اندروید روی GitHub.
+#
+# ⚠ این فایل باید در **ریشه‌ی مخزن** باشد، نه داخل `mobile/`.
+# گیت‌هاب فقط `.github/workflows/` ریشه را می‌خواند؛ همین فایل اگر یک
+# پله پایین‌تر بود، بی‌هیچ خطایی نادیده گرفته می‌شد و زبانه‌ی Actions
+# خالی می‌ماند. خودِ اپ در `mobile/` است، پس هر گام `working-directory`
+# دارد.
+#
+# چرا CI و نه ساخت محلی: ساختِ اندروید به Android SDK نیاز دارد که فقط
+# از dl.google.com می‌آید، و آن میزبان در محیطِ توسعه‌ی ما توسط سیاست
+# شبکه مسدود است. رانرهای گیت‌هاب هم دسترسی دارند و هم SDK از پیش
+# نصب‌شده. هیچ کامپیوتری لازم نیست؛ از مرورگر گوشی هم می‌شود اجرا و
+# دانلود کرد.
+
+name: ساخت APK اندروید
+
+on:
+  # دستی، از زبانه‌ی Actions
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'آدرس سرور'
+        required: true
+        default: 'https://hesab.stland.ir'
+  push:
+    # ⚠ فقط تغییرِ خودِ اپ. بدون این فیلتر، هر اصلاح PHP هم یک ساخت
+    # چندده‌دقیقه‌ای راه می‌انداخت که خروجی‌اش با قبلی مو نمی‌زد.
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/android.yml'
+
+defaults:
+  run:
+    working-directory: mobile
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    # برای ساختن Release لازم است. جز همین، هیچ دسترسی نوشتنی‌ای
+    # داده نمی‌شود.
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          # همان نسخه‌ای که پروژه با آن ساخته و آزموده شده
+          flutter-version: '3.47.2'
+          channel: stable
+          cache: true
+
+      - name: دریافت وابستگی‌ها
+        run: flutter pub get
+
+      # ⚠ ساخت قبل از سنجش انجام نمی‌شود. اگر تحلیل یا تست بشکند،
+      # APK ای ساخته نمی‌شود — بهتر از فرستادنِ فایلی که خراب است.
+      - name: تحلیل ایستا
+        run: flutter analyze
+
+      - name: تست‌ها
+        run: flutter test
+
+      - name: ساخت APK
+        run: |
+          flutter build apk --release \
+            --dart-define=BASE_URL=${{ inputs.base_url || 'https://hesab.stland.ir' }}
+
+      # نامِ فایل شماره‌ی اجرا را دارد تا نسخه‌ها با هم قاطی نشوند
+      - name: نام‌گذاری
+        run: |
+          mv build/app/outputs/flutter-apk/app-release.apk \
+             "daftar-${{ github.run_number }}.apk"
+
+      # ⚠ دو راهِ تحویل، و دومی برای گوشی است.
+      #
+      # artifact همیشه به شکل **zip** دانلود می‌شود، حتی وقتی داخلش یک
+      # فایل بیشتر نیست. روی گوشی یعنی کاربر باید zip را باز کند تا به
+      # APK برسد — کاری که اندروید بدون یک اپِ فایل‌منیجر انجام نمی‌دهد
+      # و روی خیلی گوشی‌ها بن‌بست است.
+      #
+      # Release فایل را خام پیوست می‌کند، پس لینکِ دانلود مستقیم به APK
+      # می‌رسد و اندروید همان‌جا پیشنهاد نصب می‌دهد.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daftar-apk-${{ github.run_number }}
+          path: mobile/daftar-*.apk
+          retention-days: 30
+
+      - name: انتشار برای دانلود مستقیم
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "build-${{ github.run_number }}" \
+            "daftar-${{ github.run_number }}.apk" \
+            --title "نسخه ${{ github.run_number }}" \
+            --notes "ساخته‌شده از ${{ github.sha }}
+
+          برای نصب: فایل APK زیر را روی گوشی اندروید باز کنید.
+          اگر اندروید اجازه نداد، در همان پیام «تنظیمات» را بزنید و
+          «نصب از منابع ناشناس» را برای مرورگر روشن کنید."
