@@ -6,7 +6,21 @@ plugins {
 
 android {
     namespace = "ir.stland.daftar"
-    compileSdk = flutter.compileSdkVersion
+    // ⚠ عمداً `flutter.compileSdkVersion` نیست.
+    //
+    // فلاتر ۳.۴۷ روی ۳۶ است، ولی `flutter_secure_storage` ۱۱ صریحاً
+    // ۳۷ می‌خواهد و ساخت با پیام
+    // «Dependency ':flutter_secure_storage' requires ... version 37 or later»
+    // در `:app:checkReleaseAarMetadata` می‌ایستد. آن پکیج جای توکن است،
+    // پس پایین آوردنش برای عبور از این خطا، امنیت را قربانی راحتی می‌کرد.
+    //
+    // بالا بردن compileSdk فقط یعنی «اجازه‌ی دیدنِ APIهای تازه‌تر»؛ به
+    // `minSdk` و `targetSdk` دست نمی‌زند، پس نه دستگاهی از دست می‌رود و
+    // نه رفتار زمانِ اجرا عوض می‌شود.
+    //
+    // وقتی فلاتر خودش به ۳۷ رسید، این خط برداشته شود و به
+    // `flutter.compileSdkVersion` برگردد.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
