@@ -168,6 +168,19 @@ a { color: inherit; }
     padding: calc(13px + env(safe-area-inset-top)) 16px 13px;
     background: var(--surface);
     border-bottom: 1px solid var(--line-soft);
+    /* ⛔ چسبندگی روی موبایل هم لازم است، نه فقط دسکتاپ.
+       در مرورگر، نوارِ خودِ سافاری بالای صفحه است و محتوا هرگز زیر
+       ساعت نمی‌رود. ولی در حالت **نصب‌شده** (`apple-mobile-web-app-capable`
+       + `status-bar-style=black-translucent`) وب‌ویو تا بالای صفحه کشیده
+       می‌شود و هیچ نوارِ مرورگری نیست: با اولین اسکرول، همین نوار بالا
+       می‌رفت و کارت و عنوان می‌رفتند **زیر Dynamic Island**، جایی که iOS
+       ساعت و باتری را روی صفحه می‌کشد. یعنی باگ فقط روی گوشیِ نصب‌شده
+       دیده می‌شد و در وب هرگز.
+       حالا نوار می‌ماند و padding بالایش (که حاشیه‌ی امن را دارد) همیشه
+       پشتِ ساعت یک پس‌زمینه‌ی مات می‌گذارد. */
+    position: sticky;
+    top: 0;
+    z-index: 100;
 }
 .page-title { font-size: 17px; font-weight: 700; letter-spacing: -.2px; flex: 1; }
 .topbar-user { display: flex; align-items: center; gap: 9px; }
@@ -1070,8 +1083,15 @@ textarea { resize: vertical; }
 @media (max-width: 900px) {
     /* منوی کناری کنار می‌رود؛ ناوبری پایین جایگزین آن است */
     .sidebar, .sidebar-overlay, .menu-toggle { display: none !important; }
-    .page-content { padding: 14px 14px 84px; }
-    .topbar { padding: 12px 14px; }
+    /* ⛔ کفِ صفحه باید از **سرِ** نوارِ شناور بگذرد، و حاشیه‌ی امن هم
+       در آن حساب شود. نوار از کفِ پنجره این‌قدر بالا می‌ایستد:
+           14px (فاصله از کف) + env(safe-area-inset-bottom) + 62px (ارتفاع)
+       در مرورگر حاشیه‌ی امن صفر است ⇒ ۷۶px، و ۹۶پیکسلِ قبلی کافی بود.
+       روی آیفونِ نصب‌شده حاشیه ۳۴px است ⇒ ۱۱۰px، و همان ۹۶ یعنی
+       **۱۴ پیکسل از آخرین ردیف زیر نوار گیر می‌کرد**. دقیقاً به همین دلیل
+       «در وب درست بود ولی در اپ نه». اندازه‌گیری شده. */
+    .page-content { padding: 14px 14px calc(96px + env(safe-area-inset-bottom)); }
+    .topbar { padding: calc(12px + env(safe-area-inset-top)) 14px 12px; }
 
     /* جلوگیری از زوم خودکار iOS: فونت ورودی حداقل ۱۶px */
     input[type="text"], input[type="password"], input[type="email"],
@@ -1111,8 +1131,6 @@ textarea { resize: vertical; }
 
 @media (min-width: 901px) {
     .bottom-nav, .more-sheet-overlay { display: none !important; }
-    /* روی دسکتاپ چسبندگی هزینه‌ای ندارد */
-    .topbar { position: sticky; top: 0; z-index: 100; }
     .table-wrapper { overflow-x: auto; }
 }
 
@@ -1821,7 +1839,12 @@ html[data-theme="dark"] .bottom-nav-fab {
     background: linear-gradient(160deg, #8db2ff, #6f9bff);
     color: #0e101b;
 }
-.page-content { padding-bottom: 96px; }
+/* ⚠ اینجا پیش از این `.page-content { padding-bottom: 96px }` بود و چون
+   **بعد از** قاعده‌ی موبایل می‌آمد، هر مقداری که آنجا نوشته می‌شد را
+   خنثی می‌کرد — بی‌آنکه معلوم باشد. فاصله‌ی کف حالا فقط یک جا تعریف
+   می‌شود: داخل @media (max-width:900px)، همان‌جا که نوار شناور هست.
+   روی دسکتاپ نوار `display:none` است، پس آنجا این فاصله فقط جای خالی
+   می‌گرفت. */
 
 /* ---------- چیپ فیلتر: فعال = آبی کم‌رنگ ---------- */
 .filter-chip {
