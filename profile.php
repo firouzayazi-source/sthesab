@@ -25,7 +25,6 @@ $stmt->execute(['id' => $userId]);
 $me = $stmt->fetch();
 
 if ($me) {
-    $me['session_hours'] = $me['session_hours'] ?? 1;
     $me['avatar'] = $me['avatar'] ?? null;
     $me['email']  = $me['email'] ?? null;
     unset($me['password_hash']);   // لازم نیست در این صفحه باشد
@@ -44,12 +43,9 @@ $hasEmailColumn = usersHaveEmailColumn($pdo);
 $tradesOn = tradesEnabled($pdo, $userId);
 $tradesColumnReady = usersHaveColumn($pdo, 'trades_enabled');
 
-$sessionOptions = [
-    1   => 'یک ساعت',
-    8   => 'هشت ساعت',
-    24  => 'یک روز',
-    168 => 'یک هفته',
-];
+// فهرست از خودِ Auth می‌آید تا با اعتبارسنجیِ اندپوینت یکی بماند.
+$sessionOptions = Auth::SESSION_WINDOWS;
+$sessionMinutes = Auth::sessionMinutesFor($userId);
 
 $pageTitle = 'حساب کاربری من';
 include __DIR__ . '/includes/header.php';
@@ -199,13 +195,17 @@ include __DIR__ . '/includes/header.php';
     <form id="sessionForm" autocomplete="off">
         <?= Csrf::field() ?>
         <div class="form-group">
-            <label for="pf_session_hours">تا چه مدت بدون فعالیت وارد بمانم؟</label>
-            <select id="pf_session_hours" name="session_hours">
+            <label for="pf_session_minutes">بعد از چقدر بی‌فعالیتی دوباره رمز بپرسد؟</label>
+            <select id="pf_session_minutes" name="session_minutes">
                 <?php foreach ($sessionOptions as $val => $label): ?>
-                    <option value="<?= (int)$val ?>" <?= (int)($me['session_hours'] ?? 1) === $val ? 'selected' : '' ?>><?= h($label) ?></option>
+                    <option value="<?= (int)$val ?>" <?= $sessionMinutes === (int)$val ? 'selected' : '' ?>><?= h($label) ?></option>
                 <?php endforeach; ?>
             </select>
-            <p class="hint">مهلت از آخرین فعالیت شما حساب می‌شود، نه از زمان ورود.</p>
+            <p class="hint">
+                مهلت از آخرین فعالیت شما حساب می‌شود، نه از زمان ورود — یعنی
+                تا وقتی از برنامه استفاده می‌کنید، هر بار از نو شروع می‌شود و
+                رمز پرسیده نمی‌شود.
+            </p>
         </div>
         <div id="sessionMessage" class="form-message" hidden></div>
         <button type="submit" class="btn btn-secondary btn-block btn-sm" id="sessionSubmitBtn">ذخیره</button>

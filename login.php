@@ -68,7 +68,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$requireFullLogin) {
                 Auth::rememberUsername($username);
             }
-            // «این دستگاه را به خاطر بسپار» — تا ۳۰ روز رمز پرسیده نمی‌شود
+            // «این دستگاه را به خاطر بسپار». مدتش دیگر ثابت نیست: از تنظیم
+            // «بعد از چقدر بی‌فعالیتی دوباره رمز بپرسد» در پروفایل می‌آید
+            // و با هر استفاده از نو شروع می‌شود (کشویی).
             if (postParam('trust_device') === '1') {
                 Auth::trustThisDevice((int)Auth::userId());
             }
@@ -134,7 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <label class="switch" style="margin:4px 0 16px;">
                     <input type="checkbox" name="trust_device" value="1" checked>
                     <span class="switch-track"><span class="switch-knob"></span></span>
-                    <span class="switch-text">این دستگاه را ۳۰ روز به خاطر بسپار</span>
+                    <span class="switch-text">این دستگاه را به خاطر بسپار</span>
                 </label>
                 <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ورود…">ورود</button>
                 <a href="forgot-password.php" class="link-back" style="display:block;text-align:center;margin-top:14px">رمز عبور را فراموش کرده‌ام</a>
@@ -156,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <label class="switch" style="margin:4px 0 16px;">
                     <input type="checkbox" name="trust_device" value="1" checked>
                     <span class="switch-track"><span class="switch-knob"></span></span>
-                    <span class="switch-text">این دستگاه را ۳۰ روز به خاطر بسپار</span>
+                    <span class="switch-text">این دستگاه را به خاطر بسپار</span>
                 </label>
                 <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ورود…">ورود</button>
                 <a href="forgot-password.php" class="link-back" style="display:block;text-align:center;margin-top:14px">رمز عبور را فراموش کرده‌ام</a>

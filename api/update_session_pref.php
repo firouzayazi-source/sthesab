@@ -10,16 +10,27 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') { jsonResponse(['success' => false, '
 Csrf::verifyOrFail(postParam('csrf_token'));
 
 $userId = Auth::userId();
-$hours = (int)postParam('session_hours');
-if (!in_array($hours, [1, 8, 24, 168], true)) { $hours = 1; }
+
+// ⚠ فهرست مجاز از خودِ Auth می‌آید، نه از یک آرایه‌ی تکراری اینجا.
+//   دو فهرست جدا دیر یا زود از هم دور می‌افتند و آن‌وقت گزینه‌ای که در
+//   پروفایل دیده می‌شود، هنگام ذخیره بی‌سروصدا به پیش‌فرض برمی‌گردد.
+$minutes = (int)postParam('session_minutes');
+if (!Auth::isValidSessionWindow($minutes)) { $minutes = 0; }
 
 try {
-    $upd = Database::getConnection()->prepare('UPDATE users SET session_hours = :h WHERE id = :id');
-    $upd->execute(['h' => $hours, 'id' => $userId]);
-    $_SESSION['session_hours'] = $hours;
-    $_SESSION['last_seen'] = time();
+    $upd = Database::getConnection()->prepare('UPDATE users SET session_minutes = :m WHERE id = :id');
+    $upd->execute(['m' => $minutes, 'id' => $userId]);
+
+    $_SESSION['session_minutes'] = $minutes;
+    $_SESSION['last_seen']       = time();
+
+    // مهلتِ تازه باید همین حالا روی کوکیِ همین دستگاه هم بنشیند، وگرنه
+    // کاربر «یک ماه» را انتخاب می‌کند و کوکی‌اش با سررسیدِ قدیمی می‌ماند
+    // — تا ورودِ بعدی هیچ اثری نمی‌بیند.
+    Auth::refreshTrustForCurrentDevice();
+
     jsonResponse(['success' => true, 'message' => 'ذخیره شد.']);
 } catch (PDOException $e) {
     error_log('Session Pref Error: ' . $e->getMessage());
-    jsonResponse(['success' => false, 'message' => 'ابتدا migration_p3.sql را اجرا کنید.'], 500);
+    jsonResponse(['success' => false, 'message' => 'ابتدا migration_session_window.sql را اجرا کنید.'], 500);
 }

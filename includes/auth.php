@@ -20,7 +20,7 @@ class Auth
 
             ini_set('session.use_strict_mode', '1');
 
-            // مهلت را *اپ* تعیین می‌کند (isLoggedIn روی session_hours)، نه PHP.
+            // مهلت را *اپ* تعیین می‌کند (isLoggedIn روی session_minutes)، نه PHP.
             //
             // پیش‌فرض PHP برای جمع‌آوری فایل نشست ۲۴ دقیقه است، در حالی که
             // کاربر در پروفایل می‌تواند «تا یک هفته وارد بمانم» را انتخاب
@@ -32,10 +32,15 @@ class Auth
             // نامعتبر است» می‌گرفت — یک صفحه‌ی سفید و بن‌بست. روی گوشی که
             // اپ ساعت‌ها باز می‌ماند این حالت شایع است.
             //
-            // عدد برابرِ بزرگ‌ترین گزینه‌ی session_hours است (۱۶۸ ساعت).
+            // عدد برابرِ بزرگ‌ترین گزینه‌ی محدودِ SESSION_WINDOWS است
+            // (یک ماه). گزینه‌ی «بدون مهلت» از این هم بلندتر است، ولی
+            // نیازی به بالا بردن این عدد ندارد: اگر PHP فایل نشست را جمع
+            // کند، همان درخواستِ بعدی از کوکیِ دستگاه دوباره وارد می‌شود
+            // و کاربر چیزی نمی‌بیند.
+            //
             // این pool مسیر نشست خودش را دارد (`session.save_path` در
             // hesab.conf)، پس این مقدار روی هیچ سرویس دیگری اثر ندارد.
-            ini_set('session.gc_maxlifetime', (string)(168 * 3600));
+            ini_set('session.gc_maxlifetime', (string)(30 * 86400));
 
             session_name('DAFTAR_SESSION');
             session_start();
@@ -106,12 +111,13 @@ class Auth
 
         // از کامل‌ترین کوئری شروع می‌شود و اگر ستونی هنوز با migration
         // اضافه نشده باشد، به نسخه‌ی ساده‌تر می‌افتد.
+        // ⚠ مهلتِ نشست عمداً اینجا خوانده نمی‌شود.
+        //   `sessionMinutesFor()` جدا و با محافظِ خودش می‌خواندش، تا
+        //   افزودنِ هر ستونِ تازه، این زنجیره‌ی جایگزین را شکننده‌تر نکند.
         $user = null;
         $queries = [
-            'SELECT id, full_name, username, password_hash, role, is_active, session_hours
+            'SELECT id, full_name, username, password_hash, role, is_active
              FROM users WHERE username = :id OR (email IS NOT NULL AND email = :id2) LIMIT 1',
-            'SELECT id, full_name, username, password_hash, role, is_active, session_hours
-             FROM users WHERE username = :id LIMIT 1',
             'SELECT id, full_name, username, password_hash, role, is_active
              FROM users WHERE username = :id LIMIT 1',
         ];
@@ -126,10 +132,9 @@ class Auth
                 $user = $stmt->fetch();
                 break;
             } catch (PDOException $e) {
-                continue;   // ستون email یا session_hours هنوز نیست
+                continue;   // ستون email هنوز نیست
             }
         }
-        if ($user && !isset($user['session_hours'])) { $user['session_hours'] = 1; }
 
         if (!$user || !password_verify($password, $user['password_hash'])) {
             // نامِ ناموجود هم شمرده می‌شود، وگرنه امتحان کردن نام‌های
@@ -167,15 +172,83 @@ class Auth
         $user = $result['user'];
         session_regenerate_id(true);
 
-        $_SESSION['user_id']    = (int)$user['id'];
-        $_SESSION['full_name']  = $user['full_name'];
-        $_SESSION['username']   = $user['username'];
-        $_SESSION['role']          = $user['role'];
-        $_SESSION['session_hours'] = (int)($user['session_hours'] ?? 1);
-        $_SESSION['login_time']    = time();
-        $_SESSION['last_seen']     = time();
+        $_SESSION['user_id']         = (int)$user['id'];
+        $_SESSION['full_name']       = $user['full_name'];
+        $_SESSION['username']        = $user['username'];
+        $_SESSION['role']            = $user['role'];
+        $_SESSION['session_minutes'] = self::sessionMinutesFor((int)$user['id']);
+        $_SESSION['login_time']      = time();
+        $_SESSION['last_seen']       = time();
 
         return ['success' => true, 'message' => 'ورود موفقیت‌آمیز بود.'];
+    }
+
+    /* ============================================================
+       مهلت ماندن در حساب
+       ============================================================ */
+
+    /**
+     * گزینه‌های مهلت، به دقیقه. کلید ۰ یعنی «بدون مهلت».
+     *
+     * این فهرست **تنها مرجع** است: پروفایل، اندپوینت ذخیره و
+     * اعتبارسنجی همه از همین می‌خوانند. اگر گزینه‌ای اینجا نباشد،
+     * ذخیره هم نمی‌شود.
+     */
+    public const SESSION_WINDOWS = [
+        0     => 'بدون مهلت — تا وقتی خودم خارج نشوم',
+        1     => 'یک دقیقه',
+        5     => 'پنج دقیقه',
+        15    => 'پانزده دقیقه',
+        30    => 'نیم ساعت',
+        60    => 'یک ساعت',
+        480   => 'هشت ساعت',
+        1440  => 'یک روز',
+        10080 => 'یک هفته',
+        43200 => 'یک ماه',
+    ];
+
+    /** مهلتِ کوکیِ «بدون مهلت». ده سال، یعنی عملاً هرگز. */
+    private const FOREVER_SECONDS = 10 * 365 * 86400;
+
+    public static function isValidSessionWindow(int $minutes): bool
+    {
+        return array_key_exists($minutes, self::SESSION_WINDOWS);
+    }
+
+    /**
+     * مهلتِ انتخابیِ کاربر، به دقیقه. ۰ یعنی بدون مهلت.
+     *
+     * عمداً از کوئریِ ورود جدا است: آن کوئری چند نسخه‌ی جایگزین دارد
+     * تا روی نصبی که هنوز migration نخورده هم کار کند، و اضافه کردن
+     * ستون تازه به هر سه نسخه، همان منطق شکننده را شکننده‌تر می‌کرد.
+     */
+    public static function sessionMinutesFor(int $userId): int
+    {
+        try {
+            $stmt = Database::getConnection()->prepare(
+                'SELECT session_minutes FROM users WHERE id = :id LIMIT 1'
+            );
+            $stmt->execute(['id' => $userId]);
+            $val = $stmt->fetchColumn();
+        } catch (PDOException $e) {
+            return 0;   // ستون هنوز نیست → بدون مهلت، مثل پیش‌فرض
+        }
+        if ($val === false || $val === null) { return 0; }
+        $minutes = (int)$val;
+        return self::isValidSessionWindow($minutes) ? $minutes : 0;
+    }
+
+    /** مهلتِ کاربرِ جاری، از نشست. */
+    public static function sessionMinutes(): int
+    {
+        $minutes = (int)($_SESSION['session_minutes'] ?? 0);
+        return self::isValidSessionWindow($minutes) ? $minutes : 0;
+    }
+
+    /** مهلتِ کوکیِ دستگاه، به ثانیه — بر اساس انتخاب کاربر. */
+    private static function trustSeconds(int $minutes): int
+    {
+        return $minutes === 0 ? self::FOREVER_SECONDS : $minutes * 60;
     }
 
     public static function isLoggedIn(): bool
@@ -185,11 +258,23 @@ class Auth
             return self::loginFromTrustedDevice();
         }
 
+        $minutes = self::sessionMinutes();
+
+        // ۰ = بدون مهلت. نشست هرگز با بی‌فعالیتی منقضی نمی‌شود، ولی
+        // کوکیِ دستگاه باید همچنان کشویی بماند: کاربری که نشستش زنده
+        // می‌ماند هرگز از loginFromTrustedDevice رد نمی‌شود، و بدون این
+        // خط کوکی‌اش بی‌سروصدا به سررسیدِ اولش می‌رسید.
+        if ($minutes === 0) {
+            self::slideTrustedCookie();
+            if (time() - (int)($_SESSION['last_seen'] ?? 0) > 60) {
+                $_SESSION['last_seen'] = time();
+            }
+            return true;
+        }
+
         // مهلت بر اساس آخرین فعالیت است، نه زمان ورود —
         // یعنی تا وقتی کار می‌کنی بیرونت نمی‌اندازد.
-        $hours = (int)($_SESSION['session_hours'] ?? 1);
-        if ($hours < 1) { $hours = 1; }
-        $lifetime = $hours * 3600;
+        $lifetime = $minutes * 60;
 
         $lastSeen = (int)($_SESSION['last_seen'] ?? $_SESSION['login_time'] ?? time());
         if ((time() - $lastSeen) > $lifetime) {
@@ -215,6 +300,8 @@ class Auth
             $_SESSION['last_seen'] = time();
         }
 
+        self::slideTrustedCookie();
+
         return true;
     }
 
@@ -223,7 +310,89 @@ class Auth
        ============================================================ */
 
     private const TRUSTED_COOKIE = 'daftar_device';
-    private const TRUSTED_DAYS   = 30;
+
+    /**
+     * کوکی و ردیفِ دستگاه را از «الان» دوباره تا مهلتِ کامل جلو می‌برد.
+     *
+     * ⛔ **هر سه تکه باید با هم جلو بروند، وگرنه بی‌سروصدا می‌شکند:**
+     *   ۱. `expires_at` در دیتابیس  (وگرنه سرور ردش می‌کند)
+     *   ۲. `expires` روی کوکی        (وگرنه مرورگر خودش دورش می‌اندازد)
+     *   ۳. `last_used_at`            (فقط برای نمایش در فهرست دستگاه‌ها)
+     *
+     * نسخه‌ی قبلی فقط تکه‌ی سوم را به‌روز می‌کرد، پس مهلت **ثابت** بود:
+     * کاربری که هر روز اپ را باز می‌کرد هم دقیقاً ۳۰ روز بعد از ورود
+     * دوباره رمز می‌خواست. هیچ خطایی هم دیده نمی‌شد.
+     *
+     * @return bool آیا واقعاً تمدید شد
+     */
+    private static function slideTrustedDevice(int $deviceId, int $minutes): bool
+    {
+        $seconds = self::trustSeconds($minutes);
+        $expires = date('Y-m-d H:i:s', time() + $seconds);
+
+        try {
+            $upd = Database::getConnection()->prepare(
+                'UPDATE trusted_devices SET expires_at = :e, last_used_at = NOW() WHERE id = :id'
+            );
+            $upd->execute(['e' => $expires, 'id' => $deviceId]);
+        } catch (PDOException $e) {
+            return false;
+        }
+
+        // کوکی با همان مقدار، فقط با سررسیدِ تازه
+        if (!empty($_COOKIE[self::TRUSTED_COOKIE]) && !headers_sent()) {
+            self::putTrustedCookie((string)$_COOKIE[self::TRUSTED_COOKIE], $seconds);
+        }
+        return true;
+    }
+
+    /**
+     * تمدید کوکی برای نشستِ زنده — حداکثر روزی یک بار.
+     *
+     * بدون سقف، هر بارگذاری صفحه یک UPDATE می‌زد. با سقف، بدترین حالت
+     * یک کوئری در روز است و مهلت هم عملاً همیشه تازه می‌ماند.
+     */
+    private static function slideTrustedCookie(): void
+    {
+        if (empty($_COOKIE[self::TRUSTED_COOKIE])) { return; }
+        if (empty($_SESSION['trusted_device_id']))  { return; }
+
+        $last = (int)($_SESSION['trust_slid_at'] ?? 0);
+        if (time() - $last < 86400) { return; }
+
+        if (self::slideTrustedDevice((int)$_SESSION['trusted_device_id'], self::sessionMinutes())) {
+            $_SESSION['trust_slid_at'] = time();
+        }
+    }
+
+    /**
+     * بعد از عوض شدنِ مهلت، کوکیِ همین دستگاه را فوراً هم‌تراز می‌کند.
+     *
+     * بدون این، کاربر «یک ماه» را انتخاب می‌کرد ولی کوکی با سررسیدِ
+     * قبلی می‌ماند و تغییر تا ورودِ بعدی هیچ اثری نداشت — یعنی تنظیمی
+     * که کار نمی‌کند، بدترین حالتِ ممکن.
+     */
+    public static function refreshTrustForCurrentDevice(): void
+    {
+        if (empty($_SESSION['trusted_device_id'])) { return; }
+        if (self::slideTrustedDevice((int)$_SESSION['trusted_device_id'], self::sessionMinutes())) {
+            $_SESSION['trust_slid_at'] = time();
+        }
+    }
+
+    /** نوشتن کوکی دستگاه با سررسید مشخص — تنها جای ساختِ این کوکی. */
+    private static function putTrustedCookie(string $value, int $seconds): void
+    {
+        $secure = defined('APP_FORCE_HTTPS') && APP_FORCE_HTTPS;
+        setcookie(self::TRUSTED_COOKIE, $value, [
+            'expires'  => time() + $seconds,
+            'path'     => '/',
+            'domain'   => '',
+            'secure'   => $secure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    }
 
     /**
      * برای این دستگاه یک توکن بلندمدت صادر می‌کند.
@@ -240,7 +409,10 @@ class Auth
         }
 
         $hash = hash('sha256', $validator);
-        $expires = date('Y-m-d H:i:s', time() + (self::TRUSTED_DAYS * 86400));
+
+        // مهلت از انتخابِ خودِ کاربر می‌آید، نه از یک عددِ ثابت.
+        $seconds = self::trustSeconds(self::sessionMinutesFor($userId));
+        $expires = date('Y-m-d H:i:s', time() + $seconds);
 
         $label = self::deviceLabel();
 
@@ -251,19 +423,13 @@ class Auth
                 VALUES (:u, :s, :h, :l, :e, NOW())
             ');
             $stmt->execute(['u' => $userId, 's' => $selector, 'h' => $hash, 'l' => $label, 'e' => $expires]);
+            $_SESSION['trusted_device_id'] = (int)$pdo->lastInsertId();
+            $_SESSION['trust_slid_at']     = time();
         } catch (PDOException $e) {
             return; // جدول هنوز ساخته نشده
         }
 
-        $secure = defined('APP_FORCE_HTTPS') && APP_FORCE_HTTPS;
-        setcookie(self::TRUSTED_COOKIE, $selector . ':' . $validator, [
-            'expires'  => time() + (self::TRUSTED_DAYS * 86400),
-            'path'     => '/',
-            'domain'   => '',
-            'secure'   => $secure,
-            'httponly' => true,
-            'samesite' => 'Lax',
-        ]);
+        self::putTrustedCookie($selector . ':' . $validator, $seconds);
     }
 
     /**
@@ -286,7 +452,7 @@ class Auth
             $pdo = Database::getConnection();
             $stmt = $pdo->prepare('
                 SELECT td.id, td.user_id, td.token_hash, td.expires_at,
-                       u.full_name, u.username, u.role, u.is_active, u.session_hours
+                       u.full_name, u.username, u.role, u.is_active
                 FROM trusted_devices td
                 JOIN users u ON u.id = td.user_id
                 WHERE td.selector = :s LIMIT 1
@@ -316,19 +482,24 @@ class Auth
             return false;
         }
 
-        session_regenerate_id(true);
-        $_SESSION['user_id']       = (int)$row['user_id'];
-        $_SESSION['full_name']     = $row['full_name'];
-        $_SESSION['username']      = $row['username'];
-        $_SESSION['role']          = $row['role'];
-        $_SESSION['session_hours'] = (int)($row['session_hours'] ?? 1);
-        $_SESSION['login_time']    = time();
-        $_SESSION['last_seen']     = time();
+        $userId  = (int)$row['user_id'];
+        $minutes = self::sessionMinutesFor($userId);
 
-        try {
-            $upd = Database::getConnection()->prepare('UPDATE trusted_devices SET last_used_at = NOW() WHERE id = :id');
-            $upd->execute(['id' => (int)$row['id']]);
-        } catch (PDOException $e) { /* ignore */ }
+        session_regenerate_id(true);
+        $_SESSION['user_id']           = $userId;
+        $_SESSION['full_name']         = $row['full_name'];
+        $_SESSION['username']          = $row['username'];
+        $_SESSION['role']              = $row['role'];
+        $_SESSION['session_minutes']   = $minutes;
+        $_SESSION['login_time']        = time();
+        $_SESSION['last_seen']         = time();
+        $_SESSION['trusted_device_id'] = (int)$row['id'];
+
+        // ⛔ اینجا مهلت **کشویی** می‌شود: سررسید از همین لحظه دوباره
+        //    کامل می‌شود، هم در دیتابیس هم روی کوکی. پیش از این فقط
+        //    last_used_at به‌روز می‌شد و سررسید دست‌نخورده می‌ماند.
+        self::slideTrustedDevice((int)$row['id'], $minutes);
+        $_SESSION['trust_slid_at'] = time();
 
         return true;
     }

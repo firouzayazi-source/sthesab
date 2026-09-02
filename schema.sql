@@ -13,6 +13,9 @@ CREATE TABLE IF NOT EXISTS `users` (
     `email` VARCHAR(190) NULL COMMENT 'برای بازیابی رمز',
     `password_hash` VARCHAR(255) NOT NULL,
     `role` ENUM('admin', 'user') NOT NULL DEFAULT 'user',
+    -- بعد از چند دقیقه بی‌فعالیتی دوباره رمز پرسیده شود. ۰ = هرگز.
+    -- مقدارهای مجاز در Auth::SESSION_WINDOWS تعریف شده‌اند.
+    `session_minutes` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0 = بدون مهلت',
     `is_active` TINYINT(1) NOT NULL DEFAULT 1,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
