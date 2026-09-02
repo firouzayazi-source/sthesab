@@ -2666,3 +2666,90 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
     animation: js-loading-hint .2s linear .9s forwards;
     cursor: progress;
 }
+
+/* ============================================================
+   ماندن در حساب — کلید + چیپ
+   ============================================================
+   منوی کشویی با ده گزینه روی گوشی شلوغ بود و کاربر برای دیدنِ
+   انتخاب‌ها باید یک لایه باز می‌کرد. حالا بیشترِ کاربران فقط یک کلید
+   می‌بینند؛ چیپ‌ها وقتی ظاهر می‌شوند که کسی واقعاً مهلت بخواهد. */
+
+.stay-hero {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.stay-hero-text  { flex: 1; min-width: 0; }
+.stay-hero-title { display: block; font-weight: 700; font-size: 14.5px; color: var(--ink); }
+.stay-hero-sub   { display: block; margin-top: 4px; font-size: 12.5px; color: var(--muted); line-height: 1.7; }
+/* کلید هم‌تراز با **عنوان** بنشیند، نه با وسطِ بلوکِ متن. با
+   align-items:center کلید کنارِ خطِ دومِ توضیح می‌افتاد و انگار به آن
+   خط مربوط بود. */
+.stay-hero-switch { flex-shrink: 0; margin-top: 1px; }
+
+/* بازشدن نرم به‌جای ظاهر شدنِ ناگهانی. grid-template-rows تنها راهی
+   است که ارتفاعِ نامعلوم را بدون عددِ جادویی انیمیت می‌کند.
+   ⚠ فرزند باید **یکی** باشد (`.stay-choices-inner`): فرزندِ دوم به ردیفِ
+   ضمنیِ auto می‌رفت و 0fr جمعش نمی‌کرد. */
+.stay-choices {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition: grid-template-rows .28s ease, opacity .2s ease, margin-top .28s ease;
+    margin-top: 0;
+}
+.stay-choices-inner { overflow: hidden; min-height: 0; }
+.stay-choices.is-open {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    margin-top: 18px;
+}
+
+.stay-choices-label {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 10px;
+}
+
+.stay-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.stay-chip {
+    flex: 1 1 auto;
+    min-width: 78px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    color: var(--ink-soft);
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background .15s ease, color .15s ease, border-color .15s ease, transform .1s ease;
+}
+.stay-chip:active { transform: scale(.96); }
+.stay-chip.active {
+    background: var(--brand);
+    border-color: var(--brand);
+    color: var(--brand-on);
+}
+html[data-theme="dark"] .stay-chip.active { box-shadow: none; }
+
+/* خلاصه‌ی زنده — کاربر بدون ذخیره کردن می‌بیند انتخابش یعنی چه */
+.stay-note {
+    margin: 14px 0 0;
+    padding: 10px 12px;
+    background: var(--line-soft);
+    border-radius: var(--r-sm);
+    font-size: 12.5px;
+    line-height: 1.8;
+    color: var(--muted);
+}
+.stay-note strong { color: var(--ink); font-weight: 700; }

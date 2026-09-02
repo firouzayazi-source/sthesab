@@ -1999,14 +1999,97 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    var sessionForm = document.getElementById('sessionForm');
-    if (sessionForm) {
-        sessionForm.addEventListener('submit', function (e) {
-            e.preventDefault();
-            submitJson(sessionForm, apiUrl('update_session_pref.php'),
-                document.getElementById('sessionMessage'),
-                document.getElementById('sessionSubmitBtn'));
+    // ماندن در حساب — کلید «همیشه» + چیپ‌های مهلت
+    //
+    // ⚠ دکمه‌ی «ذخیره» عمداً برداشته شد و هر ضربه بلافاصله ذخیره می‌شود.
+    //   با دکمه، کاربر گزینه را می‌زد و می‌رفت و تغییر اعمال نمی‌شد —
+    //   یعنی تنظیمی که کار نمی‌کند. اشتباه زدن هم بی‌هزینه است: یک ضربه‌ی
+    //   دیگر برش می‌گرداند.
+    var stayBox = document.getElementById('stayBox');
+    if (stayBox) {
+        var stayToggle  = document.getElementById('stayForever');
+        var stayChoices = document.getElementById('stayChoices');
+        var stayNote    = document.getElementById('stayNote');
+        var stayMsg     = document.getElementById('sessionMessage');
+        var stayChips   = stayBox.querySelectorAll('.stay-chip');
+        // متنِ بخشِ «دستگاه‌های مورد اعتماد» هم همین عدد را می‌گوید؛ اگر
+        // به‌روز نشود، کاربر بلافاصله دو حرفِ متناقض روی یک صفحه می‌بیند.
+        var stayDevWin  = document.getElementById('deviceWindow');
+
+        // آخرین مهلتِ زمان‌دارِ انتخاب‌شده، تا خاموش کردنِ کلید همان را
+        // برگرداند نه یک پیش‌فرضِ دلخواه. بدون این، کاربری که «۸ ساعت»
+        // داشت و کلید را روشن و دوباره خاموش می‌کرد، ناگهان روی «۱ دقیقه»
+        // می‌افتاد.
+        var lastTimed = parseInt(stayBox.getAttribute('data-current'), 10) || 60;
+
+        function stayLabelFor(minutes) {
+            var chip = stayBox.querySelector('.stay-chip[data-minutes="' + minutes + '"]');
+            return chip ? chip.textContent.trim() : minutes + ' دقیقه';
+        }
+
+        function stayRender(minutes) {
+            stayChips.forEach(function (c) {
+                c.classList.toggle('active', parseInt(c.getAttribute('data-minutes'), 10) === minutes);
+            });
+            if (minutes === 0) {
+                stayChoices.classList.remove('is-open');
+                stayNote.innerHTML = 'تا وقتی خودتان <strong>خارج</strong> نشوید، رمز پرسیده نمی‌شود.';
+                if (stayDevWin) { stayDevWin.textContent = 'تا وقتی خودتان خارج نشوید'; }
+            } else {
+                stayChoices.classList.add('is-open');
+                stayNote.innerHTML = 'اگر <strong>' + stayLabelFor(minutes) +
+                    '</strong> از برنامه استفاده نکنید، دوباره رمز می‌پرسد. ' +
+                    'هر بار استفاده، این مهلت را از نو شروع می‌کند.';
+                if (stayDevWin) {
+                    stayDevWin.textContent = 'تا ' + stayLabelFor(minutes) + ' پس از آخرین استفاده';
+                }
+            }
+        }
+
+        function staySave(minutes) {
+            var fd = new FormData();
+            fd.append('session_minutes', minutes);
+            var token = stayBox.querySelector('input[name="csrf_token"]');
+            if (token) { fd.append('csrf_token', token.value); }
+
+            fetch(apiUrl('update_session_pref.php'), {
+                method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!stayMsg) { return; }
+                    stayMsg.hidden = false;
+                    stayMsg.classList.remove('success', 'error');
+                    stayMsg.classList.add('show', d.success ? 'success' : 'error');
+                    stayMsg.textContent = d.message || (d.success ? 'ذخیره شد.' : 'خطا');
+                    if (d.success) {
+                        setTimeout(function () { stayMsg.hidden = true; }, 2200);
+                    }
+                })
+                .catch(function () {
+                    if (!stayMsg) { return; }
+                    stayMsg.hidden = false;
+                    stayMsg.classList.add('show', 'error');
+                    stayMsg.textContent = 'خطا در ارتباط با سرور.';
+                });
+        }
+
+        stayToggle.addEventListener('change', function () {
+            var minutes = stayToggle.checked ? 0 : lastTimed;
+            stayRender(minutes);
+            staySave(minutes);
         });
+
+        stayChips.forEach(function (chip) {
+            chip.addEventListener('click', function () {
+                var minutes = parseInt(chip.getAttribute('data-minutes'), 10);
+                lastTimed = minutes;
+                stayRender(minutes);
+                staySave(minutes);
+            });
+        });
+
+        stayRender(parseInt(stayBox.getAttribute('data-current'), 10) || 0);
     }
 
     document.querySelectorAll('.js-revoke-device').forEach(function (btn) {

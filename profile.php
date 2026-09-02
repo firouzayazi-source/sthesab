@@ -192,29 +192,72 @@ include __DIR__ . '/includes/header.php';
 <div class="card">
     <h2 class="card-title">ورود و امنیت</h2>
 
-    <form id="sessionForm" autocomplete="off">
+    <?php
+    // ⚠ «بدون مهلت» عمداً از فهرست چیپ‌ها بیرون کشیده شده و کلیدِ بالا
+    //    شده. بیشترِ کاربران همان را می‌خواهند و نباید مجبور شوند بین ده
+    //    گزینه دنبالش بگردند؛ بقیه هم تا کلید را خاموش نکنند چیزی
+    //    نمی‌بینند. منوی کشویی با ده گزینه روی گوشی شلوغ بود.
+    $stayForever = ($sessionMinutes === 0);
+    $timedOptions = array_filter(
+        $sessionOptions,
+        static fn($k) => (int)$k !== 0,
+        ARRAY_FILTER_USE_KEY
+    );
+    // برچسب‌های کوتاه‌تر برای چیپ‌ها: «هشت ساعت» در چیپ جا نمی‌شود.
+    $chipLabels = [
+        1 => '۱ دقیقه', 5 => '۵ دقیقه', 15 => '۱۵ دقیقه', 30 => '۳۰ دقیقه',
+        60 => '۱ ساعت', 480 => '۸ ساعت', 1440 => '۱ روز',
+        10080 => '۱ هفته', 43200 => '۱ ماه',
+    ];
+    ?>
+    <div class="stay" id="stayBox" data-current="<?= (int)$sessionMinutes ?>">
         <?= Csrf::field() ?>
-        <div class="form-group">
-            <label for="pf_session_minutes">بعد از چقدر بی‌فعالیتی دوباره رمز بپرسد؟</label>
-            <select id="pf_session_minutes" name="session_minutes">
-                <?php foreach ($sessionOptions as $val => $label): ?>
-                    <option value="<?= (int)$val ?>" <?= $sessionMinutes === (int)$val ? 'selected' : '' ?>><?= h($label) ?></option>
-                <?php endforeach; ?>
-            </select>
-            <p class="hint">
-                مهلت از آخرین فعالیت شما حساب می‌شود، نه از زمان ورود — یعنی
-                تا وقتی از برنامه استفاده می‌کنید، هر بار از نو شروع می‌شود و
-                رمز پرسیده نمی‌شود.
-            </p>
+
+        <label class="stay-hero">
+            <span class="stay-hero-text">
+                <span class="stay-hero-title">همیشه وارد بمانم</span>
+                <span class="stay-hero-sub">بدون مهلت — تا خودتان خارج نشوید.</span>
+            </span>
+            <span class="switch stay-hero-switch">
+                <input type="checkbox" id="stayForever" <?= $stayForever ? 'checked' : '' ?>>
+                <span class="switch-track"><span class="switch-knob"></span></span>
+            </span>
+        </label>
+
+        <?php /* ⚠ همه‌ی محتوا داخل **یک** فرزند است. `grid-template-rows: 0fr`
+                 فقط ردیف‌های صریح را جمع می‌کند؛ با دو فرزند، دومی به ردیفِ
+                 ضمنیِ auto می‌افتاد و بسته بودنِ بخش یک حفره‌ی خالیِ بلند
+                 می‌ساخت — دقیقاً همان شلوغی‌ای که این طراحی برای حذفش بود. */ ?>
+        <div class="stay-choices<?= $stayForever ? '' : ' is-open' ?>" id="stayChoices">
+            <div class="stay-choices-inner">
+                <div class="stay-choices-label">بعد از چقدر بی‌فعالیتی رمز بپرسد؟</div>
+                <div class="stay-chips">
+                    <?php foreach ($timedOptions as $val => $label): ?>
+                        <button type="button" class="stay-chip<?= $sessionMinutes === (int)$val ? ' active' : '' ?>"
+                                data-minutes="<?= (int)$val ?>">
+                            <?= h($chipLabels[(int)$val] ?? $label) ?>
+                        </button>
+                    <?php endforeach; ?>
+                </div>
+            </div>
         </div>
+
+        <p class="stay-note" id="stayNote"></p>
         <div id="sessionMessage" class="form-message" hidden></div>
-        <button type="submit" class="btn btn-secondary btn-block btn-sm" id="sessionSubmitBtn">ذخیره</button>
-    </form>
+    </div>
 
     <div class="devices-block">
         <h3 class="ref-manager-title">دستگاه‌های مورد اعتماد</h3>
+        <?php /* ⚠ اینجا پیش از این «تا ۳۰ روز» ثابت نوشته شده بود. عمر کوکیِ
+                 دستگاه مورد اعتماد حالا **همان** مهلتِ بالاست، پس عددِ ثابت
+                 دروغ می‌شد: کاربری که «۱ ساعت» انتخاب کرده بود همچنان
+                 «۳۰ روز» می‌خواند. متن از خودِ تنظیم ساخته می‌شود و
+                 `#deviceWindow` با هر تغییر در جاوااسکریپت هم به‌روز می‌شود. */ ?>
         <p class="hint" style="margin-bottom:12px;">
-            روی این دستگاه‌ها تا ۳۰ روز رمز پرسیده نمی‌شود. هنگام ورود، گزینه‌ی
+            روی این دستگاه‌ها <span id="deviceWindow"><?= $stayForever
+                ? 'تا وقتی خودتان خارج نشوید'
+                : 'تا ' . h($chipLabels[$sessionMinutes] ?? $sessionOptions[$sessionMinutes] ?? ($sessionMinutes . ' دقیقه')) . ' پس از آخرین استفاده' ?></span>
+            رمز پرسیده نمی‌شود. هنگام ورود، گزینه‌ی
             «این دستگاه را به خاطر بسپار» را بزنید.
         </p>
 
