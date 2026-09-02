@@ -57,6 +57,20 @@ android {
 }
 
 dependencies {
+    // ⚠ این خط حل‌کننده‌ی یک شکستِ واقعی است، نه احتیاط.
+    //
+    // `androidbrowserhelper` نسخه‌ی قدیمیِ `kotlin-stdlib-jdk7/jdk8:1.6.21`
+    // را می‌آورد و `appcompat` نسخه‌ی `kotlin-stdlib:1.8.22` را. از کاتلین
+    // ۱.۸ به بعد محتویاتِ آن دو داخل خودِ `kotlin-stdlib` ادغام شده، پس
+    // بودنِ هر دو یعنی هر کلاس دو بار — و ساخت با
+    // `checkReleaseDuplicateClasses` می‌ایستد.
+    //
+    // BOM همه‌ی artifact های کاتلین را روی یک نسخه هم‌تراز می‌کند؛ آنجا
+    // `-jdk7`/`-jdk8` پوسته‌های خالی‌اند و تکراری نمی‌سازند. راه دیگر
+    // exclude کردنِ دستیِ آن دو بود که شکننده‌تر است: با هر ارتقای
+    // کتابخانه باید دوباره وارسی می‌شد.
+    implementation(platform("org.jetbrains.kotlin:kotlin-bom:1.9.24"))
+
     // کل کارِ TWA در همین کتابخانه است و ما هیچ کد جاوا/کاتلینی
     // نمی‌نویسیم — اپ فقط یک اعلان در manifest است.
     implementation("com.google.androidbrowserhelper:androidbrowserhelper:2.5.0")
