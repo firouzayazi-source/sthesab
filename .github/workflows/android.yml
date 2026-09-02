@@ -57,23 +57,90 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: بازکردن کلید امضا
+      # ⛔ کلید همین‌جا کامل سنجیده می‌شود، پیش از ساختِ چنددقیقه‌ای.
+      #
+      # یک بار ساخت تا آخرین گام رفت و آنجا با «keystore password was
+      # incorrect» ایستاد. آن پیام گمراه‌کننده است: **کلیدِ خراب هم همین
+      # را می‌دهد**، چون بررسی سلامتِ فایل با همان رمز انجام می‌شود. پس
+      # از روی آن نمی‌شد فهمید مشکل از رمز است یا از base64 ناقص.
+      #
+      # اینجا آن دو از هم جدا می‌شوند و هر کدام پیام خودش را می‌گیرد.
+      - name: بازکردن و سنجش کلید امضا
         env:
           KS: ${{ secrets.KEYSTORE_BASE64 }}
+          PW: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
-          echo "$KS" | base64 -d > "$RUNNER_TEMP/daftar-release.jks"
+          KEYSTORE="$RUNNER_TEMP/daftar-release.jks"
+
           # ⚠ کلید بیرون از پوشه‌ی کار ساخته می‌شود تا حتی اگر روزی
           # گامی کل پوشه را artifact کند، کلید همراهش نرود.
-          test -s "$RUNNER_TEMP/daftar-release.jks" || {
-            echo "::error::کلید باز نشد — احتمالاً KEYSTORE_BASE64 ناقص کپی شده."
+          #
+          # فاصله و شکستِ خط از base64 حذف می‌شود: کپی کردنِ ۵۸۰۰ کاراکتر
+          # از یک فایل روی گوشی معمولاً چند جای خط را می‌شکند و آن‌وقت
+          # `base64 -d` یا خطا می‌دهد یا فایلِ ناقص می‌سازد.
+          printf '%s' "$KS" | tr -d '[:space:]' | base64 -d > "$KEYSTORE" 2>/dev/null || true
+
+          if [ ! -s "$KEYSTORE" ]; then
+            echo "::error::KEYSTORE_BASE64 اصلاً باز نشد. محتوای فایل را کامل کپی کنید."
             exit 1
-          }
+          fi
+
+          # رمز ممکن است هنگام کپی، فاصله یا خطِ اضافه گرفته باشد. نسخه‌ی
+          # پاک‌شده هم امتحان می‌شود، ولی اگر همان جواب داد صریحاً گفته
+          # می‌شود تا Secret اصلاح شود — نه اینکه بی‌سروصدا درست کار کند
+          # و دفعه‌ی بعد جای دیگری بشکند.
+          PW_TRIM=$(printf '%s' "$PW" | tr -d '[:space:]')
+          echo "::add-mask::$PW_TRIM"
+
+          USED=""
+          if keytool -list -keystore "$KEYSTORE" -storepass "$PW" -alias daftar >/dev/null 2>&1; then
+            USED="$PW"
+          elif keytool -list -keystore "$KEYSTORE" -storepass "$PW_TRIM" -alias daftar >/dev/null 2>&1; then
+            USED="$PW_TRIM"
+            echo "::warning::KEYSTORE_PASSWORD فاصله یا خطِ اضافه داشت. کار کرد، ولی بهتر است Secret را دوباره و بدون فاصله ثبت کنید."
+          fi
+
+          if [ -z "$USED" ]; then
+            # ⚠ تشخیص روی پیامِ **رمز** انجام می‌شود، نه روی پیام‌های
+            #    خرابی. علتش این است که خرابیِ فایل چند شکل دارد و هر
+            #    کدام پیام خودش را می‌دهد (EOFException برای فایلِ نصفه،
+            #    «Unrecognized keystore format» برای فایلِ بی‌ربط، …) ولی
+            #    رمزِ غلط فقط یک پیام دارد. نسخه‌ی اول برعکس بود و
+            #    فایلِ نصفه را «رمز نادرست» گزارش می‌کرد — یعنی همان
+            #    ابهامی که این گام برای رفعش نوشته شده بود.
+            ERR=$(keytool -list -keystore "$KEYSTORE" -storepass "$PW" 2>&1 || true)
+            if echo "$ERR" | grep -qi 'password was incorrect'; then
+              echo "::error::KEYSTORE_PASSWORD نادرست است."
+              echo "::error::همان رشته‌ی ۲۴ کاراکتری باشد، بدون فاصله‌ی ابتدا یا انتها."
+            else
+              echo "::error::فایل کلید سالم نیست — KEYSTORE_BASE64 ناقص یا خراب کپی شده."
+              echo "::error::باید یک خطِ پیوسته و کامل باشد (حدود ۵۸۰۰ کاراکتر)."
+              echo "::error::پیام ابزار: $(echo "$ERR" | head -1)"
+            fi
+            exit 1
+          fi
+
+          # اثر انگشت هم همین‌جا سنجیده می‌شود، نه بعد از ساخت: اگر کلید
+          # با assetlinks نخواند، ساختنِ APK اتلاف وقت است.
+          BUILT=$(keytool -list -v -keystore "$KEYSTORE" -storepass "$USED" -alias daftar \
+                  | grep -m1 'SHA256:' | sed 's/.*SHA256: *//' | tr -d ' ')
+          WANTED=$(python3 -c "import json;print(json.load(open('.well-known/assetlinks.json'))[0]['target']['sha256_cert_fingerprints'][0])")
+
+          if [ "$BUILT" != "$WANTED" ]; then
+            echo "::error::اثر انگشتِ کلید با assetlinks.json نمی‌خواند."
+            echo "::error::کلید: $BUILT"
+            echo "::error::انتظار: $WANTED"
+            echo "::error::یا کلیدِ داخل Secrets عوض شده، یا assetlinks.json به‌روز نیست."
+            exit 1
+          fi
+          echo "✓ کلید سالم است و اثر انگشتش با assetlinks می‌خواند."
+
+          echo "KEYSTORE_PASSWORD=$USED" >> "$GITHUB_ENV"
 
       - name: ساخت APK امضاشده
         working-directory: mobile
         env:
           KEYSTORE_FILE: ${{ runner.temp }}/daftar-release.jks
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         run: gradle assembleRelease --no-daemon
 
       # ⛔ سنجشِ نتیجه، نه فقط «ساخت موفق بود».
