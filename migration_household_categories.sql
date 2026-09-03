@@ -26,7 +26,14 @@
 -- ---------- ۱. آیا seedِ دست‌نخوردهٔ مغازه است؟ ----------
 -- شرط: دقیقاً همان ۱۱ نام، نه یکی بیشتر نه یکی کمتر (به‌جز دو دسته‌ی
 -- معاملات که برنامه خودش بعداً می‌سازد).
-SET @shop_names := 'فروش گوشی,خدمات,فروش لوازم جانبی,سایر درآمدها,خرید کالا,اجاره,حقوق,تبلیغات,حمل‌ونقل,قبوض,سایر هزینه‌ها';
+--
+-- ⛔ فهرست عمداً به‌شکلِ `IN (...)` با رشته‌های ثابت نوشته شده، نه
+--    `FIND_IN_SET(name, @vars)`. یک متغیرِ کاربری همان «قابلیتِ تبدیلِ
+--    ۲» را دارد که یک ستون دارد، پس روی دیتابیسی که ستونش
+--    `utf8mb4_persian_ci` است و اتصالش `utf8mb4_general_ci`، مقایسه با
+--    خطای «Illegal mix of collations» می‌میرد. رشته‌ی ثابت قابلیتِ ۴
+--    دارد و همیشه به collation ستون تبدیل می‌شود.
+--    روی سرور واقعی همین اتفاق افتاد و migration وسطِ کار ایستاد.
 
 SET @defaults_total := (
     SELECT COUNT(*) FROM `categories`
@@ -36,7 +43,9 @@ SET @defaults_total := (
 SET @shop_matched := (
     SELECT COUNT(*) FROM `categories`
     WHERE `user_id` IS NULL
-      AND FIND_IN_SET(`name`, @shop_names) > 0
+      AND `name` IN ('فروش گوشی', 'خدمات', 'فروش لوازم جانبی', 'سایر درآمدها',
+                     'خرید کالا', 'اجاره', 'حقوق', 'تبلیغات', 'حمل‌ونقل',
+                     'قبوض', 'سایر هزینه‌ها')
 );
 
 -- ۱۱ تا از ۱۱ تا، و هیچ دسته‌ی پیش‌فرضِ دیگری وجود نداشته باشد.
@@ -51,7 +60,10 @@ SET @is_pristine_shop := (@defaults_total = 11 AND @shop_matched = 11);
 SET @shop_used := (
     SELECT COUNT(*) FROM `transactions` t
     JOIN `categories` c ON c.id = t.category_id
-    WHERE c.user_id IS NULL AND FIND_IN_SET(c.name, @shop_names) > 0
+    WHERE c.user_id IS NULL
+      AND c.name IN ('فروش گوشی', 'خدمات', 'فروش لوازم جانبی', 'سایر درآمدها',
+                     'خرید کالا', 'اجاره', 'حقوق', 'تبلیغات', 'حمل‌ونقل',
+                     'قبوض', 'سایر هزینه‌ها')
 );
 
 -- ---------- ۳. «حقوق» اول اصلاح شود، بعد درج ----------

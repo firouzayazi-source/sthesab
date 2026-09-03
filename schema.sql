@@ -31,6 +31,13 @@ CREATE TABLE IF NOT EXISTS `categories` (
     `user_id` INT UNSIGNED NULL,
     `name` VARCHAR(100) NOT NULL,
     `type` ENUM('income', 'expense') NOT NULL,
+    -- ⚠ این دو ستون را `migration_category_icons.sql` هم می‌سازد (برای
+    --   نصب‌های قدیمی)، ولی اینجا هم لازم‌اند: seedِ همین فایل مقدارشان
+    --   را می‌نویسد و بدونشان روی نصبِ **تازه** با
+    --   «Unknown column 'icon'» می‌مرد و دیتابیس بدونِ هیچ دسته‌بندی‌ای
+    --   بالا می‌آمد. تعریفشان باید دقیقاً با همان فایل یکی بماند.
+    `icon` VARCHAR(24) NOT NULL DEFAULT 'default',
+    `color` VARCHAR(7) NOT NULL DEFAULT '#64748b',
     `is_active` TINYINT(1) NOT NULL DEFAULT 1,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`)
