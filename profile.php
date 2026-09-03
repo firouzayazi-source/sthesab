@@ -3,6 +3,7 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/user_data.php';
+require_once __DIR__ . '/includes/plan.php';
 
 Auth::initSession();
 Auth::requireLogin();
@@ -363,6 +364,14 @@ $remind      = $remindReady ? reminderPrefs($userId) : ['email_on' => true, 'day
             </p>
             <button type="button" class="btn btn-danger btn-block" id="deleteAccountBtn">حذف حساب من</button>
         </div>
+
+        <?php if (plansAvailable()): $__p = userPlan((int)Auth::userId()); ?>
+        <p class="hint version-line" style="margin-top:14px;">
+            <a href="<?= APP_BASE_PATH ?>/pro.php">
+                <?= $__p['is_pro'] ? 'اشتراک فعال — مدیریت' : 'اشتراک و حمایت' ?>
+            </a>
+        </p>
+        <?php endif; ?>
 
         <p class="hint version-line">
             نسخه: <?= h(appVersion()) ?> ·

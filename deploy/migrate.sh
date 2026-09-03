@@ -96,6 +96,7 @@ MIGRATIONS=(
     migration_asset_prices.sql
     migration_installments.sql
     migration_wallet_encrypt.sql
+    migration_plans.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -211,6 +212,7 @@ declare -A SENTINEL=(
     # این ستون را نمی‌سازد بلکه **پهن‌تر** می‌کند تا مقدارِ رمزشده جا شود.
     # شاهدش هم باید طول باشد نه وجود، وگرنه همیشه «هست» می‌گفت.
     [migration_wallet_encrypt.sql]="wallets.card_number>=255"
+    [migration_plans.sql]="payments"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

@@ -533,6 +533,39 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // ---------- اعلام پرداخت اشتراک ----------
+    (function () {
+        var form = document.getElementById('payForm');
+        if (!form) { return; }
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var msg = document.getElementById('payMessage');
+            var sub = document.getElementById('paySubmit');
+            msg.hidden = true; msg.classList.remove('show', 'error', 'success');
+            sub.disabled = true;
+
+            fetch(apiUrl('submit_payment.php'), {
+                method: 'POST', body: new FormData(form),
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                msg.hidden = false;
+                msg.classList.add('show', d.success ? 'success' : 'error');
+                msg.textContent = d.message || (d.success ? 'ثبت شد.' : 'ثبت نشد.');
+                // تازه‌سازی تا فهرستِ «پرداخت‌های شما» همان لحظه به‌روز شود —
+                // بدون آن کاربر فکر می‌کند ثبت نشده و دوباره می‌فرستد.
+                if (d.success) { setTimeout(function () { window.location.reload(); }, 1200); }
+            })
+            .catch(function () {
+                msg.hidden = false;
+                msg.classList.add('show', 'error');
+                msg.textContent = 'خطا در ارتباط با سرور.';
+            })
+            .finally(function () { sub.disabled = false; });
+        });
+    })();
+
     // ---------- حذف حساب ----------
     // ⛔ عمداً بعد از موفقیت هیچ چیزی روی صفحه نشان داده نمی‌شود بلکه
     //    مستقیم به صفحه‌ی ورود می‌رود: نشستِ کاربر همان لحظه باطل شده و
