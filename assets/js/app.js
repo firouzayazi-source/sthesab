@@ -2709,7 +2709,7 @@ document.addEventListener('DOMContentLoaded', function () {
             fd.append('csrf_token', csrf());
             fetch(apiUrl('revoke_device.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (r) { return r.json(); })
-                .then(function (d) { if (d.success) { window.location.href = 'logout.php'; } else { alert(d.message || 'خطا'); } })
+                .then(function (d) { if (d.success) { window.location.href = (window.APP_BASE || '') + '/logout.php'; } else { alert(d.message || 'خطا'); } })
                 .catch(function () { alert('خطا در ارتباط با سرور.'); });
         });
     }

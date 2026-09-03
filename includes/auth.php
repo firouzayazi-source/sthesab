@@ -599,7 +599,17 @@ class Auth
     public static function requireLogin(): void
     {
         if (!self::isLoggedIn()) {
-            header('Location: login.php');
+            // ⛔ مسیر باید مطلق باشد. `Location: login.php` نسبی است و
+            // مرورگر نسبت به **آدرسِ همان درخواست** حلش می‌کند — پس روی
+            // `/admin/users.php` می‌شد `/admin/login.php` که وجود ندارد.
+            // آن‌وقت `try_files $uri =404` در قاعده‌ی php سایت، درخواست
+            // را اصلاً به PHP نمی‌رساند و کاربر صفحه‌ی ۴۰۴ خودِ nginx را
+            // می‌دید: بی‌قالب، بی‌منو، و **بدون هیچ ردی در لاگ PHP**.
+            // بدترین حالتش این بود: مدیر تنظیماتی را ذخیره می‌کرد،
+            // نشستش همان لحظه منقضی شده بود، و به‌جای صفحه‌ی ورود یک
+            // ۴۰۴ خام می‌گرفت — بی‌آنکه بفهمد ذخیره شد یا نه.
+            $base = defined('APP_BASE_PATH') ? APP_BASE_PATH : '';
+            header('Location: ' . $base . '/login.php');
             exit;
         }
     }

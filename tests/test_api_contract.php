@@ -788,6 +788,92 @@ foreach (['api', 'includes', 'admin', 'deploy', 'tests', 'config', '.'] as $dir)
 T::bulk($scanned, $badTag, 'هیچ کامنتی تگِ پایانِ PHP ندارد');
 
 // ---------------------------------------------------------------
+// ⛔ قاعده ۱۶ — لینک یا ریدایرکتِ داخلی باید به فایلی برسد که هست.
+//
+// قاعده‌ی nginx این است: `location ~ \.php$` شاملِ
+// `include snippets/fastcgi-php.conf` می‌شود که خودش `try_files $uri =404`
+// دارد — یعنی آدرسی که فایلش روی دیسک نباشد اصلاً به PHP **نمی‌رسد**.
+// نتیجه‌اش صفحه‌ی ۴۰۴ خودِ nginx است: بدون قالب، بدون منو، و بدون هیچ
+// ردی در لاگِ PHP. یعنی این خرابی **بی‌صداست** و هیچ‌کدام از تست‌های
+// دیگر نمی‌بیندش — نه `php -l` (فایل نحوش درست است)، نه تست‌های رفتاری
+// (آن صفحه‌ها اصلاً صدا زده نمی‌شوند).
+//
+// دو راهِ افتادن در آن، و هر دو یک بار در همین پروژه ممکن بوده:
+//   ۱. صفحه‌ای حذف شود ولی لینکش در منو بماند (مثل حذفِ
+//      `admin/all-transactions.php`).
+//   ۲. `redirectWithMessage()` بعد از ذخیره به صفحه‌ای برود که نیست —
+//      آن‌وقت کاربر «ذخیره» می‌زند و ۴۰۴ می‌بیند، و چون خودِ ذخیره
+//      انجام شده، هیچ خطایی هم در کار نیست که راهنمایی‌اش کند.
+T::group('قاعده ۱۶ — هر لینک و ریدایرکتِ داخلی باید فایل داشته باشد');
+
+$root      = realpath(__DIR__ . '/..');
+$linkFiles = [];
+foreach (['.', 'admin', 'includes'] as $d) {
+    foreach (glob($root . '/' . $d . '/*.php') as $p) { $linkFiles[realpath($p)] = true; }
+}
+foreach (glob($root . '/assets/js/*.js') as $p) { $linkFiles[realpath($p)] = true; }
+
+$deadLinks  = [];
+$linkChecks = 0;
+foreach (array_keys($linkFiles) as $p) {
+    $src = file_get_contents($p);
+    $targets = [];
+
+    // href="…" / action="…" و ریدایرکت‌های سمت سرور و مرورگر
+    foreach ([
+        '~\b(?:href|action)\s*=\s*"([^"]*)"~',
+        "~\\bredirectWithMessage\\(\\s*'([^']*)'~",
+        "~\\bheader\\(\\s*'Location:\\s*([^']*)'~",
+        "~\\blocation(?:\\.href)?\\s*=\\s*'([^']*)'~",
+    ] as $re) {
+        if (preg_match_all($re, $src, $m)) {
+            foreach ($m[1] as $t) { $targets[] = $t; }
+        }
+    }
+
+    foreach ($targets as $t) {
+        // تنها مسیرِ ثابتِ APP_BASE_PATH شناخته می‌شود؛ بقیه‌ی مقدارهای
+        // پویا (متغیر، الحاق رشته، اکوی PHP) عمداً سنجیده نمی‌شوند —
+        // هشدارِ الکی از نبودِ تست بدتر است.
+        $t = str_replace('<?= APP_BASE_PATH ?>', '', $t);
+        $t = preg_replace('~[?#].*$~', '', $t);
+        if ($t === '' || $t === '/') { continue; }
+        if (str_contains($t, '<?') || str_contains($t, '$') || str_contains($t, '{')) { continue; }
+        if (str_contains($t, "'") || str_contains($t, ' . ')) { continue; }  // الحاقِ رشته
+        if (preg_match('~^(?:[a-z]+:|//|#)~i', $t)) { continue; }
+        // فقط آدرسِ فایل؛ مسیرهای بدون پسوند کارِ nginx و try_files است.
+        if (!preg_match('~\.[a-z0-9]{2,5}$~i', $t)) { continue; }
+
+        $linkChecks++;
+
+        // ⛔ فایلِ مشترک (includes/ و assets/js/) روی صفحه‌هایی با عمقِ
+        // مختلف اجرا می‌شود و مرورگر مسیرِ نسبی را نسبت به **آدرسِ
+        // صفحه** حل می‌کند، نه محلِ خودِ فایل. پس مسیرِ نسبی آنجا
+        // «گاهی درست» است و همین بدترین حالت است: از ریشه کار می‌کند و
+        // از `/admin/` نه. مطلق بنویسید (`APP_BASE_PATH` یا
+        // `window.APP_BASE`). حل کردنش نسبت به ریشه در همین تست، خودِ
+        // تست را نسبت به این باگ کور می‌کرد.
+        $shared = str_starts_with($p, $root . '/includes/')
+               || str_starts_with($p, $root . '/assets/');
+        if ($shared && !str_starts_with($t, '/')) {
+            $deadLinks[] = str_replace($root . '/', '', $p)
+                         . ' → ' . $t . ' (مسیرِ نسبی در فایلِ مشترک)';
+            continue;
+        }
+
+        $abs = str_starts_with($t, '/')
+            ? $root . $t
+            : dirname($p) . '/' . $t;
+
+        if (!is_file($abs)) {
+            $deadLinks[] = str_replace($root . '/', '', $p) . ' → ' . $t;
+        }
+    }
+}
+T::ok($linkChecks >= 30, 'لینک‌های ثابت پیدا شدند', 'سنجیده شد: ' . $linkChecks);
+T::bulk($linkChecks, $deadLinks, 'هر لینک و ریدایرکتِ داخلی فایلِ موجود دارد');
+
+// ---------------------------------------------------------------
 T::group('نحو — هر فایل PHP باید بدون خطا پارس شود');
 
 $bad = [];
