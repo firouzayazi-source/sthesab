@@ -160,16 +160,25 @@ if ('serviceWorker' in navigator) {
       پارسر بی‌صداست — مبلغِ «مانده» را به‌جای مبلغِ تراکنش برمی‌دارد و
       کاربر تازه در گزارشِ آخر ماه می‌فهمد.
 
-   ⛔ واحد پول: پیامکِ بانک تقریباً همیشه ریال است و اپ تومان. اگر
-      واحد در متن **نبود**، عمداً هیچ حدسی زده نمی‌شود: عدد همان‌طور
-      می‌ماند و پیام به کاربر می‌گوید بررسی کند. حدس زدن یعنی احتمالِ
-      ده‌برابر یا یک‌دهمِ مبلغ، بی‌هیچ خطایی.
+   ⛔ واحد پول: پیامکِ بانکِ ایرانی عملاً همیشه ریال است و اپ تومان.
+      «تومان» و «تومن»ِ صریح از تقسیم معاف‌اند (بلوبانک تومان
+      می‌نویسد)؛ در هر حالتِ دیگر — از جمله وقتی واحد اصلاً در متن
+      نیست — عدد بر ۱۰ تقسیم می‌شود و پیام روی صفحه می‌گوید که ریال
+      فرض شده. نسخه‌ی قبلی در نبودِ واحد دست نمی‌زد تا «حدس نزند»، ولی
+      آن هم خودش یک حدس بود — فقط ساکت‌تر و عملاً همیشه غلط.
    ============================================================ */
 (function () {
     'use strict';
 
-    var OUT_WORDS = ['برداشت', 'خرید', 'خريد', 'پرداخت', 'انتقال به', 'کسر', 'بدهکار', 'حواله', 'قسط'];
-    var IN_WORDS  = ['واریز', 'واريز', 'دریافت', 'دريافت', 'وصول', 'بستانکار', 'عودت', 'انتقال از'];
+    // ⚠ بانک‌های تازه ادبیاتِ خودشان را دارند و با فهرستِ رسمی گرفته
+    //   نمی‌شوند. بلوبانک به‌جای «برداشت» می‌نویسد «پرید» و به‌جای
+    //   «واریز» می‌نویسد «نشست». پیامکش کاملاً معتبر است ولی پارسر
+    //   هیچ کلمه‌ی جهتی پیدا نمی‌کرد و می‌گفت «تراکنش نیست» — یعنی
+    //   قابلیت برای کاربرِ آن بانک اصلاً کار نمی‌کرد.
+    var OUT_WORDS = ['برداشت', 'خرید', 'خريد', 'پرداخت', 'انتقال به', 'کسر',
+                     'بدهکار', 'حواله', 'قسط', 'پرید', 'کم شد'];
+    var IN_WORDS  = ['واریز', 'واريز', 'دریافت', 'دريافت', 'وصول', 'بستانکار',
+                     'عودت', 'انتقال از', 'نشست', 'اضافه شد'];
     // اعدادی که کنارِ این کلمه‌ها می‌آیند مبلغِ تراکنش **نیستند**.
     var NOT_AMOUNT = ['مانده', 'موجودی', 'موجودي', 'باقیمانده', 'باقيمانده', 'اعتبار', 'سقف'];
 
@@ -289,19 +298,41 @@ if ('serviceWorker' in navigator) {
             var unit = /^[\s:：]*(ریال|ريال)/.test(after) ? 'rial'
                      : (/^[\s:：]*(تومان|تومن)/.test(after) ? 'toman' : null);
             var grouped = /[,،٬]/.test(m[0]);
-            var near = (dirAt !== -1 && at > dirAt && at - dirAt <= 24)
-                    || before.indexOf('مبلغ') !== -1;
+            // ⛔ آنچه مبلغ را از بقیه‌ی عددها جدا می‌کند **فاصله** است،
+            //    نه اینکه قبل یا بعدِ کلمه‌ی جهت باشد.
+            //
+            //    بانک‌های سنتی می‌نویسند «برداشت ۵۰۰,۰۰۰» ولی بلوبانک
+            //    می‌نویسد «۵۰۰,۰۰۰ تومان پرید» — عدد پیش از کلمه‌ی جهت.
+            //    پس شرطِ یک‌طرفه‌ی قبلی برای آن بانک کار نمی‌کرد.
+            //
+            //    ⚠ دو راهِ ساده‌تر را آزمودم و هر دو غلط بودند:
+            //      • دوطرفه‌ی هم‌ارزش → در «کارمزد ۵,۰۰۰ ریال، واریز
+            //        ۴۵,۰۰۰,۰۰۰ ریال» کارمزد برنده می‌شد (زودتر در متن).
+            //      • «بعد همیشه مقدم بر قبل» → در «۲۵۰,۰۰۰ تومان پرید.
+            //        کارمزد ۵,۰۰۰ تومان» کارمزد برنده می‌شد.
+            //    فاصله هر دو را درست جواب می‌دهد، چون در هر دو متن مبلغِ
+            //    اصلی به کلمه‌ی جهت **چسبیده** و کارمزد یک عبارت دورتر
+            //    است.
+            var dist = dirAt === -1 ? 9999
+                     : (at > dirAt ? at - dirAt : dirAt - (at + len));
+            if (dist < 0) { dist = 0; }
+            var near = dirAt !== -1 && dist <= 24;
+            // «مبلغ ۵۰۰۰۰۰» حتی اگر از کلمه‌ی جهت دور باشد، خودش
+            // صریح‌ترین نشانه است.
+            if (before.indexOf('مبلغ') !== -1) { near = true; dist = 0; }
 
             if (!grouped && !unit && !near) { continue; }
 
-            cands.push({ value: val, at: at, unit: unit, grouped: grouped, near: near });
+            cands.push({ value: val, at: at, unit: unit, grouped: grouped,
+                         near: near, dist: dist });
         }
         if (!cands.length) { return null; }
 
-        // اولویت: کنارِ کلمه‌ی جهت/«مبلغ» → کنارِ واحد پول →
+        // اولویت: نزدیکِ کلمه‌ی جهت → نزدیک‌تر → کنارِ واحد پول →
         // سه‌رقم‌جداشده → زودتر در متن.
         return cands.slice().sort(function (a, b) {
             if (a.near !== b.near)     { return a.near ? -1 : 1; }
+            if (a.dist !== b.dist)     { return a.dist - b.dist; }
             if (!!a.unit !== !!b.unit) { return a.unit ? -1 : 1; }
             if (a.grouped !== b.grouped) { return a.grouped ? -1 : 1; }
             return a.at - b.at;
@@ -340,8 +371,23 @@ if ('serviceWorker' in navigator) {
         var hit = findAmount(text, dirAt, dateHit);
         if (!hit) { return fail('مبلغی در این متن پیدا نشد.'); }
 
+        // ⛔ نبودِ واحد یعنی **ریال**، نه «نمی‌دانم».
+        //
+        //    نسخه‌ی قبلی عمداً حدس نمی‌زد و عدد را دست‌نخورده می‌گذاشت.
+        //    استدلالش درست بود (حدسِ غلط یعنی ده‌برابر شدنِ مبلغ) ولی
+        //    فرضش غلط بود: پیامکِ بانکِ ایرانی عملاً همیشه ریال است، پس
+        //    «دست نزدن» هم خودش یک حدس بود — و همان حدسِ اشتباه، فقط
+        //    ساکت‌تر. کاربر هر بار باید یک صفر دستی کم می‌کرد.
+        //
+        //    حالا فقط «تومان» و «تومن» صریح از تقسیم معاف‌اند. وقتی
+        //    واحد در متن نبود، `currency` مقدارِ جدای `rial_assumed`
+        //    می‌گیرد تا پیامِ روی صفحه بگوید فرض شده و کاربر بتواند
+        //    بسنجد — تفاوتش با نسخه‌ی قبل این است که عددِ **محتمل‌تر**
+        //    در فیلد می‌نشیند، نه عددِ ده‌برابر.
         var amount = hit.value;
-        if (hit.unit === 'rial') { amount = Math.round(amount / 10); }
+        var currency = hit.unit === 'toman' ? 'toman'
+                     : (hit.unit === 'rial' ? 'rial' : 'rial_assumed');
+        if (currency !== 'toman') { amount = Math.round(amount / 10); }
 
         var noteM = text.match(/(?:بابت|پذیرنده|شرح)[:：\s]+([^\n\r]{2,40})/);
 
@@ -349,7 +395,7 @@ if ('serviceWorker' in navigator) {
             ok: true,
             type: type,
             amount: amount,
-            currency: hit.unit,
+            currency: currency,
             date: dateHit ? dateHit.iso : null,
             card4: findCardTail(text),
             note: noteM ? noteM[1].trim() : null,
@@ -652,6 +698,37 @@ document.addEventListener('DOMContentLoaded', function () {
             return true;
         }
 
+        // ---- «چسباندن و خواندن»: یک تپ به‌جای نگه‌داشتن و چسباندن ----
+        //
+        // ⛔ خواندنِ خودکارِ خودِ پیامک ممکن نیست — نه PWA و نه TWA به
+        //    SMS دسترسی دارند. این نزدیک‌ترین چیز به آن است.
+        //
+        // ⚠ دکمه فقط وقتی نشان داده می‌شود که API واقعاً باشد **و**
+        //   بافتِ صفحه امن باشد (`isSecureContext`): روی http دکمه
+        //   می‌آمد و با زدنش هیچ اتفاقی نمی‌افتاد.
+        var readBtn = document.getElementById('smsPasteRead');
+        if (readBtn && window.isSecureContext
+            && navigator.clipboard && navigator.clipboard.readText) {
+            readBtn.hidden = false;
+            readBtn.addEventListener('click', function () {
+                navigator.clipboard.readText().then(function (txt) {
+                    if (!txt || !txt.trim()) {
+                        msg.classList.remove('ok');
+                        msg.classList.add('warn');
+                        msg.textContent = 'چیزی در کلیپ‌بورد نبود. اول پیامک را کپی کنید.';
+                        return;
+                    }
+                    ta.value = txt;
+                    go.click();
+                }).catch(function () {
+                    // اجازه داده نشد — راهِ دستی سرِ جایش است.
+                    msg.classList.remove('ok');
+                    msg.classList.add('warn');
+                    msg.textContent = 'اجازه‌ی خواندن کلیپ‌بورد داده نشد؛ پیامک را دستی بچسبانید.';
+                });
+            });
+        }
+
         go.addEventListener('click', function () {
             var r = window.parseBankSms(ta.value);
             msg.classList.remove('ok', 'warn');
@@ -664,7 +741,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             var done = [];
             setAmount(r.amount);
-            done.push(r.currency === 'rial' ? 'مبلغ (از ریال)' : 'مبلغ');
+            done.push(r.currency === 'toman' ? 'مبلغ' : 'مبلغ (از ریال)');
 
             if (r.type && quickAddToggle) { quickAddToggle.setType(r.type); done.push('نوع'); }
             if (r.date && setDate(r.date)) { done.push('تاریخ'); }
@@ -682,10 +759,14 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             }
 
-            msg.classList.add(r.currency ? 'ok' : 'warn');
-            msg.textContent = r.currency
-                ? done.join('، ') + ' پر شد.'
-                : done.join('، ') + ' پر شد — واحد پول در پیامک نبود، مبلغ را بررسی کنید.';
+            // ⚠ وقتی واحد در متن نبود و ریال **فرض** شده، پیام زرد است
+            //   نه سبز: مبلغ محتمل‌ترین حالت را دارد ولی کاربر باید یک
+            //   نگاه بیندازد. سبزِ الکی یعنی هیچ‌وقت نگاه نمی‌کند.
+            var assumed = r.currency === 'rial_assumed';
+            msg.classList.add(assumed ? 'warn' : 'ok');
+            msg.textContent = assumed
+                ? done.join('، ') + ' پر شد — واحد در پیامک نبود و ریال فرض شد؛ مبلغ را ببینید.'
+                : done.join('، ') + ' پر شد.';
 
             if (titleEl && !titleEl.value) { titleEl.focus(); }
         });

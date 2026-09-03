@@ -39,6 +39,17 @@ $__cardTails = walletCardTails((int)Auth::userId());
                 <textarea id="smsPasteText" rows="3"
                           placeholder="پیامک بانک را اینجا بچسبانید…"></textarea>
                 <div class="sms-paste-actions">
+                    <?php /* ⛔ «خودکار خواندنِ پیامک» روی وب ممکن نیست: نه
+                             PWA و نه TWA به SMS دسترسی دارند و هیچ API ای
+                             هم برایش نیست (Web OTP فقط کدِ ورودِ همان
+                             دامنه را می‌دهد، نه پیامکِ بانک). نزدیک‌ترین
+                             چیز به «خودکار» همین است: یک دکمه که خودش
+                             کلیپ‌بورد را می‌خواند و بلافاصله پارس می‌کند —
+                             کاربر پیامک را کپی می‌کند و یک تپ. اگر
+                             مرورگر اجازه‌ی خواندنِ کلیپ‌بورد ندهد، دکمه
+                             اصلاً نشان داده نمی‌شود تا دکمه‌ی بی‌کار
+                             نباشد. */ ?>
+                    <button type="button" class="btn btn-primary btn-sm" id="smsPasteRead" hidden>چسباندن و خواندن</button>
                     <button type="button" class="btn btn-secondary btn-sm" id="smsPasteApply">خواندن</button>
                     <span class="sms-paste-msg" id="smsPasteMsg"></span>
                 </div>
