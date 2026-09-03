@@ -98,6 +98,7 @@ MIGRATIONS=(
     migration_wallet_encrypt.sql
     migration_plans.sql
     migration_sms_login.sql
+    migration_more_categories.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -215,6 +216,8 @@ declare -A SENTINEL=(
     [migration_wallet_encrypt.sql]="wallets.card_number>=255"
     [migration_plans.sql]="payments"
     [migration_sms_login.sql]="sms_codes"
+    # شاهدش داده است نه ساختار — توضیحش در sentinel_present.
+    [migration_more_categories.sql]="app_settings~setting_key=more_categories_seeded"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟
@@ -235,6 +238,21 @@ sentinel_present() {
                              FROM information_schema.columns
                              WHERE table_schema=DATABASE() AND table_name='$t' AND column_name='$c';")
         [[ -n "$len" && "$len" -ge "$need" ]]
+        return
+    fi
+
+    # ⛔ شکلِ چهارم: `جدول~ستون=مقدار` — برای migration ای که **داده**
+    #    اضافه می‌کند، نه ساختار. شاهدِ ساختاری برایش وجود ندارد.
+    #
+    #    ⚠ و شاهدش عمداً خودِ آن داده نیست: اگر شاهد «دسته‌ی خودرو هست»
+    #      می‌بود، کاربری که آن دسته را حذف می‌کند باعث می‌شد --apply
+    #      دوباره اجرایش کند و کارِ خودش را پس بزند. پس migration یک
+    #      نشانه‌ی جدا در `app_settings` می‌گذارد و شاهد همان است.
+    if [[ "$spec" == *"~"* ]]; then
+        local rest="${spec#*~}" t="${spec%%~*}"
+        local c="${rest%%=*}" v="${rest#*=}" n
+        n=$(mysql_q -N -e "SELECT COUNT(*) FROM \`$t\` WHERE \`$c\` = '$v';" 2>/dev/null)
+        [[ -n "$n" && "$n" -ge 1 ]]
         return
     fi
 
