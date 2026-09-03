@@ -708,13 +708,25 @@ button.status-badge:active { transform: scale(.96); }
 /* ============================================================
    ۱۲. مودال
    ============================================================ */
+/* ⛔ حاشیه‌ی امن اینجا هم لازم است، نه فقط در نوار بالا و پایین.
+   شیت‌ها از قبل `env(safe-area-inset-bottom)` داشتند ولی مودال‌ها نه —
+   و مودال روی گوشیِ نصب‌شده تا لبه‌ی صفحه می‌رفت، پس ردیفِ دکمه‌ها زیرِ
+   خطِ خانه می‌افتاد و سرآیند زیرِ ناچ. در مرورگر بی‌عیب بود چون آنجا
+   `env(...)` صفر است — همان دامی که قاعده‌ی ۱۳ برایش نوشته شد. */
 .modal-overlay {
     position: fixed; inset: 0;
     background: rgba(21,23,28,.5);
     z-index: 300;
     display: none;
     align-items: center; justify-content: center;
-    padding: 16px;
+    padding: calc(16px + env(safe-area-inset-top)) 16px
+             calc(16px + env(safe-area-inset-bottom));
+    /* اگر مودالی از فضای امن هم بلندتر شد، خودِ لایه اسکرول شود.
+       با `align-items: center` تنها، بالای مودالِ بلند بیرون از لایه
+       می‌افتد و **قابل اسکرول هم نیست** — یعنی سرآیند و دکمه‌ی بستن
+       برای همیشه از دسترس خارج می‌شوند. */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
 }
 .modal-overlay.show { display: flex; }
 .modal-box {
@@ -722,8 +734,13 @@ button.status-badge:active { transform: scale(.96); }
     border-radius: var(--r-lg);
     padding: 18px;
     width: 100%; max-width: 430px;
-    max-height: 88vh; overflow-y: auto;
+    /* ⚠ `88vh` نه: `vh` روی iOS کلِ صفحه را می‌شمارد، هم فضای ناچ هم
+       نوارِ مرورگر. `100%` یعنی جعبه‌ی محتوای همین لایه — که حاشیه‌ی
+       امن و padding از آن کم شده — پس عددِ جادویی لازم نیست و روی هر
+       گوشی‌ای درست درمی‌آید. */
+    max-height: 100%; overflow-y: auto;
     box-shadow: var(--sh-lg);
+    flex-shrink: 0;
 }
 .modal-header {
     display: flex; align-items: center; justify-content: space-between;
