@@ -107,7 +107,7 @@ if (tableExists('cheques')) {
         $cq = $pdo->prepare(
             "SELECT direction, COUNT(*) AS n, COALESCE(SUM(amount), 0) AS total
              FROM cheques
-             WHERE user_id = :u AND is_settled = 0
+             WHERE user_id = :u AND " . chequeActiveSql() . "
              GROUP BY direction"
         );
         $cq->execute(['u' => $userId]);

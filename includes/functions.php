@@ -487,6 +487,46 @@ function tableHasColumn(string $table, string $column): bool
  * همان کوئری می‌رفت.
  */
 /**
+ * ⛔ تنها جایی که «چکِ در جریان» تعریف می‌شود.
+ *
+ * مثل `categoryScopeSql()`: هر کوئری‌ای که چکِ باز می‌خواهد باید از
+ * همین رد شود. اگر جایی جا بماند، همان یک صفحه عددِ دیگری نشان می‌دهد
+ * و کسی ربطش را پیدا نمی‌کند.
+ *
+ * ⚠ چرا `is_settled = 0` به‌تنهایی غلط است: چکِ **برگشت‌خورده** و
+ *   **خرج‌شده** هم `is_settled = 0` دارند (پاس نشده‌اند)، ولی دیگر در
+ *   جریان نیستند. بدترین حالتش چکِ برگشتی است: به‌ازای آن یک ردیف
+ *   `debts` ساخته می‌شود، پس اگر همچنان «چکِ در جریان» شمرده شود همان
+ *   پول **دو بار** در دارایی و در آینده‌ی مالی می‌آید — دقیقاً همان
+ *   دوبار شمردنی که CLAUDE.md درباره‌ی چکِ پاس‌شده هشدار می‌دهد.
+ *
+ * @param string $alias پیشوندِ جدول (خالی یا مثلاً 'c')
+ */
+function chequeActiveSql(string $alias = ''): string
+{
+    $p = $alias !== '' ? $alias . '.' : '';
+    // روی نصبی که migration_cheque_status هنوز نیامده، رفتارِ قبلی.
+    if (!tableHasColumn('cheques', 'status')) {
+        return "{$p}is_settled = 0";
+    }
+    return "{$p}is_settled = 0 AND {$p}status = 'pending'";
+}
+
+/**
+ * برچسبِ فارسیِ وضعیتِ چک، و کلاسِ نشانش.
+ * یک جا تعریف می‌شود تا «برگشت خورد» در دو صفحه دو اسم نگیرد.
+ */
+function chequeStatusMeta(string $status): array
+{
+    return [
+        'pending'  => ['label' => 'در انتظار',  'class' => 'debt-badge-pending'],
+        'cleared'  => ['label' => 'پاس شد',     'class' => 'status-active'],
+        'bounced'  => ['label' => 'برگشت خورد', 'class' => 'debt-badge-overdue'],
+        'endorsed' => ['label' => 'خرج شد',     'class' => 'status-badge-muted'],
+    ][$status] ?? ['label' => 'در انتظار', 'class' => 'debt-badge-pending'];
+}
+
+/**
  * ⚠ تنها مرجعِ «چند روز قبل یادآوری کن».
  *   مثل Auth::SESSION_WINDOWS: فهرستِ دوم نسازید — وگرنه گزینه‌ای که
  *   کاربر در پروفایل می‌بیند هنگام ذخیره بی‌سروصدا به پیش‌فرض برمی‌گردد.
@@ -1111,7 +1151,7 @@ function financialEvents(int $userId, string $fromDate, string $toDate): array
         $stmt = $pdo->prepare('
             SELECT id, direction, counterparty_name, amount, due_date
             FROM cheques
-            WHERE user_id = :u AND is_settled = 0 AND due_date IS NOT NULL AND due_date BETWEEN :f AND :t
+            WHERE user_id = :u AND ' . chequeActiveSql() . ' AND due_date IS NOT NULL AND due_date BETWEEN :f AND :t
         ');
         $stmt->execute(['u' => $userId, 'f' => $fromDate, 't' => $toDate]);
         foreach ($stmt->fetchAll() as $c) {

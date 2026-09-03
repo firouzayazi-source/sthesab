@@ -92,6 +92,7 @@ MIGRATIONS=(
     migration_session_window.sql
     migration_household_categories.sql
     migration_reminders.sql
+    migration_cheque_status.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -201,6 +202,7 @@ declare -A SENTINEL=(
     # ایدمپوتنت است و اجرای دوباره‌اش بی‌خطر.
     [migration_household_categories.sql]=""
     [migration_reminders.sql]="notification_prefs"
+    [migration_cheque_status.sql]="cheques.status"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

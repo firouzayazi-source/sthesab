@@ -14,7 +14,7 @@ if (Auth::isLoggedIn()) {
                 (SELECT COUNT(*) FROM debts
                  WHERE user_id = :u1 AND is_settled = 0 AND due_date <= :s1) AS debt_cnt,
                 (SELECT COUNT(*) FROM cheques
-                 WHERE user_id = :u2 AND is_settled = 0 AND due_date IS NOT NULL AND due_date <= :s2) AS cheque_cnt
+                 WHERE user_id = :u2 AND ' . chequeActiveSql() . ' AND due_date IS NOT NULL AND due_date <= :s2) AS cheque_cnt
         ');
         $stmt->execute(['u1' => $uid, 's1' => $soon, 'u2' => $uid, 's2' => $soon]);
         $row = $stmt->fetch();

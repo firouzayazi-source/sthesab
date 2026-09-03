@@ -577,6 +577,22 @@ textarea { resize: vertical; }
 .status-inactive { background: var(--line-soft); color: var(--muted); }
 .debt-badge-overdue { background: var(--out-wash); color: var(--out); }
 .debt-badge-pending { background: var(--warn-wash); color: var(--warn-ink); }
+/* چکِ خرج‌شده: از جریان خارج شده ولی نه پاس شده نه برگشتی — پس نه سبز
+   نه قرمز. خاکستریِ خنثی. */
+.status-badge-muted { background: var(--line-soft); color: var(--muted); }
+
+/* نشانِ وضعیتِ چک دکمه است (جایِ عوض کردنِ وضعیت)، ولی باید دقیقاً مثلِ
+   نشانِ معمولی دیده شود — وگرنه دو شکلِ متفاوت برای یک چیز می‌شد.
+   ⚠ هدفِ لمس با padding منفی بزرگ می‌شود، نه با بزرگ کردنِ خودِ نشان. */
+button.status-badge {
+    border: none;
+    font-family: inherit;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    padding: 9px 10px;
+    margin: -6px 0;
+}
+button.status-badge:active { transform: scale(.96); }
 
 .empty-row {
     text-align: center; color: var(--muted-2);

@@ -605,7 +605,9 @@ document.addEventListener('DOMContentLoaded', function () {
         var hintEl = document.getElementById(modalId + 'Hint');
         if (!modal || !form) { return; }
 
-        checkboxEl.checked = false;   // تا وقتی سرور تأیید نکرده، تیک نمی‌ماند
+        // تا وقتی سرور تأیید نکرده، تیک نمی‌ماند. بازکننده ممکن است
+        // چک‌باکس نباشد (نشانِ وضعیتِ چک یک دکمه است).
+        if (checkboxEl && checkboxEl.type === 'checkbox') { checkboxEl.checked = false; }
 
         settleAsk[modalId] = { id: checkboxEl.getAttribute('data-id'), opts: opts };
 
@@ -625,6 +627,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 fd.append(pending.opts.idField, pending.id);
                 fd.append('wallet_id', selEl ? selEl.value : '');
                 fd.append('csrf_token', csrf());
+                // قلاب برای فرم‌هایی که فیلدِ بیشتری دارند (وضعیتِ چک).
+                // مسیرِ طلب/بدهی چیزی نمی‌فرستد و دست‌نخورده می‌ماند.
+                if (typeof pending.opts.extraFields === 'function') {
+                    pending.opts.extraFields(fd);
+                }
                 if (btnEl) { btnEl.disabled = true; }
 
                 var fail = function (text) {
@@ -2810,6 +2817,69 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     var chequeSettleModal = document.getElementById('chequeSettle');
+    // ---------- وضعیتِ چک: پاس / برگشت / خرج ----------
+    // نشانِ وضعیت خودش دکمه است، پس کنترلِ تازه‌ای به کارت اضافه نشد.
+    document.querySelectorAll('.js-cheque-status').forEach(function (badge) {
+        badge.addEventListener('click', function () {
+            if (!chequeSettleModal) { return; }
+
+            var cur       = badge.getAttribute('data-status') || 'pending';
+            var direction = badge.getAttribute('data-direction');
+            var chips     = document.querySelectorAll('#chequeOutcomes .stay-chip');
+            var walletG   = document.getElementById('chequeWalletGroup');
+            var endorseG  = document.getElementById('chequeEndorseGroup');
+            var bounceH   = document.getElementById('chequeBounceHint');
+            var endorseIn = document.getElementById('chequeEndorsedTo');
+            var backChip  = document.getElementById('chequeBackToPending');
+            var titleEl   = document.getElementById('chequeSettleTitle');
+            var hiddenSt  = document.getElementById('chequeSettleStatus');
+
+            if (titleEl) { titleEl.textContent = 'وضعیت چک ' + (badge.getAttribute('data-name') || ''); }
+            if (endorseIn) { endorseIn.value = badge.getAttribute('data-endorsed') || ''; }
+
+            // «در انتظار» فقط برای چکی معنا دارد که از حالت پایه بیرون
+            // رفته — برای چکِ تازه‌ثبت‌شده گزینه‌ی بی‌معنایی است.
+            if (backChip) { backChip.hidden = (cur === 'pending'); }
+
+            function pick(status) {
+                if (hiddenSt) { hiddenSt.value = status; }
+                chips.forEach(function (c) {
+                    c.classList.toggle('active', c.getAttribute('data-status') === status);
+                });
+                if (walletG)  { walletG.hidden  = (status !== 'cleared'); }
+                if (endorseG) { endorseG.hidden = (status !== 'endorsed'); }
+                // پیامِ «طلب ساخته می‌شود» فقط برای چکِ **دریافتی** درست
+                // است؛ چکِ صادره‌ی برگشتی طلبی برای شما نمی‌سازد.
+                if (bounceH) {
+                    bounceH.hidden = !(status === 'bounced' && direction === 'received');
+                }
+            }
+
+            // پیش‌فرض: کاری که کاربر معمولاً می‌خواهد. برای چکی که هنوز
+            // در جریان است «پاس شد»؛ برای چکی که از جریان خارج شده،
+            // برگرداندن به «در انتظار».
+            pick(cur === 'pending' ? 'cleared' : 'pending');
+
+            chips.forEach(function (chip) {
+                if (chip.getAttribute('data-wired')) { return; }
+                chip.setAttribute('data-wired', '1');
+                chip.addEventListener('click', function () {
+                    pick(chip.getAttribute('data-status'));
+                });
+            });
+
+            askSettleWallet('chequeSettle', badge, {
+                hint: 'اگر پاس شده، مبلغش در موجودی حساب انتخابی اعمال می‌شود.',
+                url: apiUrl('toggle_cheque_settled.php'),
+                idField: 'cheque_id',
+                extraFields: function (fd) {
+                    fd.append('status', hiddenSt ? hiddenSt.value : 'cleared');
+                    if (endorseIn) { fd.append('endorsed_to', endorseIn.value.trim()); }
+                }
+            });
+        });
+    });
+
     document.querySelectorAll('.js-toggle-cheque').forEach(function (cb) {
         cb.addEventListener('change', function () {
             var el = this;

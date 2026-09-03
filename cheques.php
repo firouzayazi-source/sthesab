@@ -18,8 +18,19 @@ if (!in_array($view, ['active', 'archive'], true)) {
 }
 $search = getParam('search', '');
 
-$conditions = ['ch.user_id = :user_id', 'ch.is_settled = :settled'];
-$params = ['user_id' => $userId, 'settled' => $view === 'archive' ? 1 : 0];
+// ⛔ «فعال» یعنی **در جریان**، نه فقط «پاس نشده».
+//    چکِ برگشت‌خورده و خرج‌شده هم `is_settled = 0` دارند ولی کارشان
+//    تمام است؛ اگر در فهرستِ فعال می‌ماندند، صفحه پر می‌شد از چک‌هایی
+//    که دیگر کاری با آن‌ها نیست و جمعِ بالای صفحه هم غلط می‌شد.
+$conditions = ['ch.user_id = :user_id'];
+$params = ['user_id' => $userId];
+if ($view === 'archive') {
+    $conditions[] = tableHasColumn('cheques', 'status')
+        ? "ch.status <> 'pending'"
+        : 'ch.is_settled = 1';
+} else {
+    $conditions[] = chequeActiveSql('ch');
+}
 
 if ($search !== '') {
     $conditions[] = '(ch.counterparty_name LIKE :s_name OR CAST(ch.amount AS CHAR) LIKE :s_amount OR ch.sayadi_number LIKE :s_sayadi OR ch.cheque_number LIKE :s_num)';
@@ -58,7 +69,7 @@ $issued   = array_values(array_filter($allCheques, fn($c) => $c['direction'] ===
 $totalsStmt = $pdo->prepare('
     SELECT direction, COALESCE(SUM(amount), 0) AS total
     FROM cheques
-    WHERE user_id = :user_id AND is_settled = 0
+    WHERE user_id = :user_id AND ' . chequeActiveSql() . '
     GROUP BY direction
 ');
 $totalsStmt->execute(['user_id' => $userId]);
@@ -125,13 +136,32 @@ function renderChequeCard(array $c, string $todayStr): void
             <div class="debt-amount"><?= formatMoney($c['amount']) ?><small> تومان</small></div>
         </div>
         <div class="debt-card-footer">
-            <?php if ((int)$c['is_settled']): ?>
-                <span class="status-badge status-active">پاس شد<?= !empty($c['settle_wallet_name']) ? ' · ' . h($c['settle_wallet_name']) : '' ?></span>
-            <?php elseif ($isOverdue): ?>
-                <span class="status-badge debt-badge-overdue">سررسید گذشته</span>
-            <?php else: ?>
-                <span class="status-badge debt-badge-pending">در انتظار</span>
-            <?php endif; ?>
+            <?php
+            // ⛔ نشانِ وضعیت خودش دکمه شد، به‌جای افزودنِ کنترلِ تازه.
+            //    چک چهار سرنوشت دارد (در انتظار / پاس / برگشت / خرج) و
+            //    چک‌مارکِ دوحالته فقط دوتایش را می‌داد؛ ولی گذاشتنِ یک
+            //    منوی جدا کنارِ هر کارت، صفحه‌ای را که ده‌ها چک دارد
+            //    شلوغ می‌کرد. حالا همان نشانی که کاربر برای خواندنِ
+            //    وضعیت نگاهش می‌کند، جای عوض کردنش هم هست.
+            $cStatus = $c['status'] ?? ((int)$c['is_settled'] ? 'cleared' : 'pending');
+            $meta = chequeStatusMeta($cStatus);
+            $badgeLabel = $meta['label'];
+            if ($cStatus === 'cleared' && !empty($c['settle_wallet_name'])) {
+                $badgeLabel .= ' · ' . $c['settle_wallet_name'];
+            } elseif ($cStatus === 'endorsed' && !empty($c['endorsed_to'])) {
+                $badgeLabel .= ' · ' . $c['endorsed_to'];
+            } elseif ($cStatus === 'pending' && $isOverdue) {
+                $badgeLabel = 'سررسید گذشته';
+                $meta['class'] = 'debt-badge-overdue';
+            }
+            ?>
+            <button type="button" class="status-badge <?= h($meta['class']) ?> js-cheque-status"
+                    data-id="<?= (int)$c['id'] ?>"
+                    data-status="<?= h($cStatus) ?>"
+                    data-direction="<?= h($c['direction']) ?>"
+                    data-name="<?= h($c['counterparty_name']) ?>"
+                    data-endorsed="<?= h($c['endorsed_to'] ?? '') ?>"
+                    title="برای تغییر وضعیت بزنید"><?= h($badgeLabel) ?></button>
             <div class="debt-actions">
                 <button type="button" class="btn btn-secondary btn-sm js-edit-cheque"
                     data-id="<?= (int)$c['id'] ?>"
@@ -167,7 +197,7 @@ function renderChequeCard(array $c, string $todayStr): void
         <input type="hidden" name="view" value="<?= h($view) ?>">
         <div class="filter-bar">
             <div class="filter-chip <?= $view === 'active' ? 'active' : '' ?>" data-group="view" data-filter="active">در جریان</div>
-            <div class="filter-chip <?= $view === 'archive' ? 'active' : '' ?>" data-group="view" data-filter="archive">بایگانی (پاس‌شده)</div>
+            <div class="filter-chip <?= $view === 'archive' ? 'active' : '' ?>" data-group="view" data-filter="archive">بایگانی</div>
         </div>
         <div class="debt-search-bar" style="display:flex; gap:8px; margin-top:10px;">
             <input type="text" name="search" placeholder="جستجو: نام، مبلغ، شماره صیادی..." value="<?= h($search) ?>">
@@ -349,10 +379,24 @@ function renderChequeCard(array $c, string $todayStr): void
         </div>
         <form id="chequeSettleForm" autocomplete="off">
             <input type="hidden" id="chequeSettleRecordId" value="">
+            <input type="hidden" id="chequeSettleStatus" value="cleared">
 
             <p class="hint" id="chequeSettleHint" style="margin-bottom:14px;"></p>
 
+            <?php /* چهار سرنوشتِ ممکن. «در انتظار» فقط وقتی نشان داده
+                     می‌شود که چک از حالتِ پایه بیرون رفته باشد — برای
+                     چکی که تازه ثبت شده گزینه‌ی بی‌معنایی است. */ ?>
             <div class="form-group">
+                <label>چه اتفاقی افتاد؟</label>
+                <div class="stay-chips cheque-outcomes" id="chequeOutcomes">
+                    <button type="button" class="stay-chip active" data-status="cleared">پاس شد</button>
+                    <button type="button" class="stay-chip" data-status="bounced">برگشت خورد</button>
+                    <button type="button" class="stay-chip" data-status="endorsed">خرج شد</button>
+                    <button type="button" class="stay-chip" data-status="pending" id="chequeBackToPending" hidden>در انتظار</button>
+                </div>
+            </div>
+
+            <div class="form-group" id="chequeWalletGroup">
                 <label for="chequeSettleWallet">واریز به / برداشت از حساب</label>
                 <select id="chequeSettleWallet" name="wallet_id">
                     <?php foreach ($walletList as $w): ?>
@@ -361,6 +405,20 @@ function renderChequeCard(array $c, string $todayStr): void
                 </select>
                 <p class="hint">این مبلغ در موجودی همان حساب اعمال می‌شود. در گزارش درآمد و هزینه شمرده نمی‌شود.</p>
             </div>
+
+            <?php /* گیرنده‌ی چکِ خرج‌شده — همان datalist اشخاص که بقیه‌ی
+                     فرم‌ها استفاده می‌کنند، پس ورودیِ آزاد هم کار می‌کند. */ ?>
+            <div class="form-group" id="chequeEndorseGroup" hidden>
+                <label for="chequeEndorsedTo">به چه کسی واگذار شد؟</label>
+                <input type="text" id="chequeEndorsedTo" name="endorsed_to" list="peopleList"
+                       maxlength="150" placeholder="نام شخص (اختیاری)">
+                <p class="hint">چک از جریان خارج می‌شود ولی پولی به حساب شما اضافه نمی‌شود.</p>
+            </div>
+
+            <p class="hint" id="chequeBounceHint" hidden>
+                چکِ دریافتیِ برگشت‌خورده به‌صورت خودکار در «طلب و بدهی» به‌عنوان
+                <strong>طلب</strong> ثبت می‌شود، تا مبلغش گم نشود.
+            </p>
 
             <div id="chequeSettleMessage" class="form-message" hidden></div>
 

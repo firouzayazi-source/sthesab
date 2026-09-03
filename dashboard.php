@@ -166,7 +166,7 @@ try {
     $chRemStmt = $pdo->prepare('
         SELECT id, direction, counterparty_name, amount, due_date
         FROM cheques
-        WHERE user_id = :user_id AND is_settled = 0 AND due_date IS NOT NULL AND due_date <= :soon
+        WHERE user_id = :user_id AND ' . chequeActiveSql() . ' AND due_date IS NOT NULL AND due_date <= :soon
         ORDER BY due_date ASC
         LIMIT 5
     ');
