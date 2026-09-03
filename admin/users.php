@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/signup.php';
 
 Auth::initSession();
 Auth::requireAdmin();
@@ -60,50 +61,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $role = 'user';
         }
 
-        if ($fullName === '' || $username === '' || $password === '') {
-            $error = 'تمام فیلدهای الزامی را پر کنید.';
-        } elseif (mb_strlen($fullName) > 100) {
-            $error = 'نام و نام خانوادگی نباید بیشتر از ۱۰۰ کاراکتر باشد.';
-        } elseif (mb_strlen($username) > 50) {
-            $error = 'نام کاربری نباید بیشتر از ۵۰ کاراکتر باشد.';
-        } elseif (!preg_match('/^[a-zA-Z0-9_.]+$/', $username)) {
-            $error = 'نام کاربری فقط می‌تواند شامل حروف انگلیسی، عدد، نقطه و آندرلاین باشد.';
-        } elseif (mb_strlen($password) < 6) {
-            $error = 'رمز عبور باید حداقل ۶ کاراکتر باشد.';
-        } elseif ($password !== $passwordConfirm) {
-            $error = 'رمز عبور و تکرار آن یکسان نیستند.';
-        } else {
-            $checkStmt = $pdo->prepare('SELECT id FROM users WHERE username = :username');
-            $checkStmt->execute(['username' => $username]);
-            if ($checkStmt->fetch()) {
-                $error = 'این نام کاربری قبلاً استفاده شده است.';
-            } elseif ($emailErr !== '') {
-                $error = $emailErr;
+        // ⛔ اعتبارسنجی و ساخت از همان مسیری می‌روند که ثبت‌نامِ
+        //    خودسرویس می‌رود (`includes/signup.php`). پیش از این هر دو
+        //    نسخه‌ی خودشان را داشتند و قاعده‌ای مثل «کاربر تازه باید کیف
+        //    پول داشته باشد» می‌توانست از یکی بیفتد.
+        $error = validateNewUser($pdo, $fullName, $username, $emailIn, $password, $passwordConfirm);
+        if ($error === '' && $emailErr !== '') { $error = $emailErr; }
+
+        if ($error === '') {
+            $res = createUserAccount($pdo, $fullName, $username, $emailIn, $password, $role);
+            if (!$res['ok']) {
+                $error = $res['error'] ?? 'خطایی در ساخت کاربر رخ داد.';
+            } elseif (($res['error'] ?? '') !== '') {
+                redirectWithMessage('users.php', 'error',
+                    'کاربر ساخته شد، ولی ایمیل ثبت نشد: ' . $res['error']);
             } else {
-                try {
-                    $hash = password_hash($password, PASSWORD_DEFAULT);
-                    $stmt = $pdo->prepare('INSERT INTO users (full_name, username, password_hash, role, is_active) VALUES (:full_name, :username, :password_hash, :role, 1)');
-                    $stmt->execute([
-                        'full_name'     => $fullName,
-                        'username'      => $username,
-                        'password_hash' => $hash,
-                        'role'          => $role,
-                    ]);
-                    $newId = (int)$pdo->lastInsertId();
-                    // بدون این، کاربرِ تازه هیچ حسابی ندارد و اولین
-                    // تراکنشش در هیچ حسابی نمی‌نشیند.
-                    ensureDefaultWallet($newId);
-                    if ($emailErr === '') { $emailErr = $saveEmail($newId); }
-                    if ($emailErr !== '') {
-                        // کاربر ساخته شد ولی ایمیل ثبت نشد — صریح بگو
-                        redirectWithMessage('users.php', 'error',
-                            'کاربر ساخته شد، ولی ایمیل ثبت نشد: ' . $emailErr);
-                    }
-                    redirectWithMessage('users.php', 'success', 'کاربر جدید با موفقیت ساخته شد.');
-                } catch (PDOException $e) {
-                    error_log('Create User Error: ' . $e->getMessage());
-                    $error = 'خطایی در ساخت کاربر رخ داد.';
-                }
+                redirectWithMessage('users.php', 'success', 'کاربر جدید با موفقیت ساخته شد.');
             }
         }
 
@@ -244,6 +217,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $requireFullLogin = postParam('require_full_login') === '1' ? '1' : '0';
         setSetting('require_full_login', $requireFullLogin);
         redirectWithMessage('users.php', 'success', 'تنظیمات ورود بروزرسانی شد.');
+    } elseif ($action === 'update_signup_setting') {
+        // ⛔ پیش‌فرض خاموش است و فقط از همین‌جا روشن می‌شود. یک نصبِ
+        //    خصوصی نباید با به‌روزرسانی، بی‌خبر به روی اینترنت باز شود.
+        setSetting(SIGNUP_SETTING, postParam('allow_signup') === '1' ? '1' : '0');
+
+        $sup = trim(postParam('support_email'));
+        if ($sup !== '' && !filter_var($sup, FILTER_VALIDATE_EMAIL)) {
+            redirectWithMessage('users.php', 'error', 'ایمیل پشتیبانی معتبر نیست.');
+        }
+        setSetting('support_email', $sup);
+
+        redirectWithMessage('users.php', 'success', 'تنظیمات ثبت‌نام بروزرسانی شد.');
     }
 }
 
@@ -256,6 +241,8 @@ $users = $pdo->query($hasEmailColumn
     : 'SELECT id, full_name, username, role, is_active, created_at FROM users ORDER BY created_at ASC'
 )->fetchAll();
 $requireFullLoginSetting = getSetting('require_full_login', '0') === '1';
+$signupOn      = signupEnabled();
+$supportEmail  = getSetting('support_email', '');
 
 $pageTitle = 'مدیریت کاربران';
 include __DIR__ . '/../includes/header.php';
@@ -275,6 +262,37 @@ include __DIR__ . '/../includes/header.php';
             <span class="switch-text">الزام به وارد کردن نام کاربری هنگام ورود</span>
         </label>
         <button type="submit" class="btn btn-secondary btn-sm">ذخیره تنظیمات</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2 class="card-title">ثبت‌نام و پشتیبانی</h2>
+    <?php /* ⛔ ثبت‌نام پیش‌فرض خاموش است. یک دفترِ خصوصی نباید با یک
+             به‌روزرسانی و بی‌خبر، به روی اینترنت باز شود — کسی که
+             می‌خواهد اپ را بفروشد خودش روشنش می‌کند. */ ?>
+    <p class="hint" style="margin-bottom:12px;">
+        با روشن کردن این گزینه، هر کسی می‌تواند از صفحه‌ی ورود برای خودش
+        حساب بسازد. تا وقتی خاموش است، آدرس ثبت‌نام اصلاً وجود ندارد و
+        فقط شما می‌توانید کاربر بسازید.
+    </p>
+    <form method="POST">
+        <?= Csrf::field() ?>
+        <input type="hidden" name="action" value="update_signup_setting">
+        <label class="switch" style="margin-bottom:14px;">
+            <input type="checkbox" name="allow_signup" value="1" <?= $signupOn ? 'checked' : '' ?>>
+            <span class="switch-track"><span class="switch-knob"></span></span>
+            <span class="switch-text">ثبت‌نام آزاد برای همه</span>
+        </label>
+
+        <div class="form-group">
+            <label for="support_email">ایمیل پشتیبانی (اختیاری)</label>
+            <input type="email" id="support_email" name="support_email" maxlength="190"
+                   value="<?= h($supportEmail) ?>" placeholder="support@example.com"
+                   autocapitalize="none" autocorrect="off" spellcheck="false">
+            <p class="hint">در صفحه‌ی حریم خصوصی و پروفایل به کاربران نشان داده می‌شود.</p>
+        </div>
+
+        <button type="submit" class="btn btn-secondary btn-sm">ذخیره</button>
     </form>
 </div>
 

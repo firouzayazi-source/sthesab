@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/signup.php';
 
 Auth::initSession();
 
@@ -140,6 +141,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </label>
                 <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ورود…">ورود</button>
                 <a href="forgot-password.php" class="link-back" style="display:block;text-align:center;margin-top:14px">رمز عبور را فراموش کرده‌ام</a>
+                <?php /* فقط وقتی مدیر ثبت‌نام را روشن کرده باشد. اگر
+                         خاموش است این لینک اصلاً نیست — همان‌طور که خودِ
+                         صفحه‌اش هم ۴۰۴ می‌دهد. */ ?>
+                <?php if (signupEnabled()): ?>
+                    <a href="<?= APP_BASE_PATH ?>/register.php" class="link-back" style="display:block;text-align:center;margin-top:10px">حساب ندارم — می‌خواهم بسازم</a>
+                <?php endif; ?>
             </form>
         <?php else: ?>
             <!-- ورود کامل (نام کاربری + رمز عبور) -->
@@ -162,6 +169,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </label>
                 <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ورود…">ورود</button>
                 <a href="forgot-password.php" class="link-back" style="display:block;text-align:center;margin-top:14px">رمز عبور را فراموش کرده‌ام</a>
+                <?php /* فقط وقتی مدیر ثبت‌نام را روشن کرده باشد. اگر
+                         خاموش است این لینک اصلاً نیست — همان‌طور که خودِ
+                         صفحه‌اش هم ۴۰۴ می‌دهد. */ ?>
+                <?php if (signupEnabled()): ?>
+                    <a href="<?= APP_BASE_PATH ?>/register.php" class="link-back" style="display:block;text-align:center;margin-top:10px">حساب ندارم — می‌خواهم بسازم</a>
+                <?php endif; ?>
             </form>
         <?php endif; ?>
     </div>
