@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/user_data.php';
 
 Auth::initSession();
 Auth::requireLogin();
@@ -331,6 +332,74 @@ $remind      = $remindReady ? reminderPrefs($userId) : ['email_on' => true, 'day
 
 <div class="card">
     <a href="logout.php" class="btn btn-secondary btn-block" onclick="return confirm('از حساب خارج می‌شوید؟')">خروج از حساب</a>
+</div>
+
+<?php /* ---------- داده‌ی شما مالِ شماست ----------
+         ⛔ این بخش برای فروش پیش‌نیاز است، نه تزئین: کاربری که حس کند
+         داده‌اش گروگان است پول نمی‌دهد. «هر وقت خواستی همه‌اش را ببر و
+         هر وقت خواستی پاکش کن» تنها چیزی است که این حس را از بین
+         می‌برد. عمداً هم‌جا با خروج آمده، نه قایم در ته یک منو. */ ?>
+<div class="card collapsible-card collapsed">
+    <div class="collapsible-header">
+        <h2 class="card-title" style="margin-bottom:0;">داده‌ی من</h2>
+        <span class="collapse-chevron">▾</span>
+    </div>
+    <div class="collapsible-body">
+
+        <form method="post" action="<?= APP_BASE_PATH ?>/api/export_data.php" style="margin-top:14px;">
+            <?= Csrf::field() ?>
+            <button type="submit" class="btn btn-secondary btn-block">دریافت خروجی کامل</button>
+        </form>
+        <p class="hint" style="margin-top:8px;">
+            یک فایل JSON با همه‌ی تراکنش‌ها، حساب‌ها، چک‌ها، طلب و بدهی،
+            بودجه، پس‌انداز، دارایی و معاملات — بدون رمز عبور.
+        </p>
+
+        <div class="danger-zone">
+            <h3 class="danger-title">حذف حساب</h3>
+            <p class="hint">
+                حساب و <strong>همه‌ی</strong> داده‌اش برای همیشه پاک می‌شود.
+                راه برگشتی ندارد؛ اگر لازمش دارید اول خروجی بگیرید.
+            </p>
+            <button type="button" class="btn btn-danger btn-block" id="deleteAccountBtn">حذف حساب من</button>
+        </div>
+
+        <p class="hint version-line">
+            نسخه: <?= h(appVersion()) ?> ·
+            <a href="<?= APP_BASE_PATH ?>/privacy.php">حریم خصوصی</a>
+            <?php $__sup = getSetting('support_email', ''); if ($__sup !== ''): ?>
+                · <a href="mailto:<?= h($__sup) ?>">پشتیبانی</a>
+            <?php endif; ?>
+        </p>
+    </div>
+</div>
+
+<div class="modal-overlay" id="deleteAccountModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>حذف حساب</h3>
+            <button type="button" class="modal-close" data-modal-close>&times;</button>
+        </div>
+        <form id="deleteAccountForm" autocomplete="off">
+            <?= Csrf::field() ?>
+            <p class="hint" style="margin-bottom:14px;">
+                همه‌ی داده‌ی شما پاک می‌شود و قابل بازگشت نیست.
+            </p>
+            <div class="form-group">
+                <label for="del_password">رمز عبور فعلی</label>
+                <input type="password" id="del_password" name="password" required>
+            </div>
+            <div class="form-group">
+                <label for="del_confirm">برای تأیید بنویسید: <strong>حذف حساب</strong></label>
+                <input type="text" id="del_confirm" name="confirm" required placeholder="حذف حساب">
+            </div>
+            <div id="deleteAccountMessage" class="form-message" hidden></div>
+            <div class="modal-actions">
+                <button type="submit" class="btn btn-danger" id="deleteAccountSubmit">حذف برای همیشه</button>
+                <button type="button" class="btn btn-secondary" data-modal-close>انصراف</button>
+            </div>
+        </form>
+    </div>
 </div>
 
 <!-- ---------- تنظیم تصویر پروفایل ----------

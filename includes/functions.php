@@ -2235,6 +2235,25 @@ function usersHaveEmailColumn(PDO $pdo): bool
 }
 
 /**
+ * چند مدیرِ فعالِ **دیگر** وجود دارد؟
+ *
+ * ⛔ قاعده‌ی دامنه است نه جزئیاتِ یک صفحه: نصب هرگز نباید بی‌مدیر
+ *    بماند، وگرنه تنها راهِ برگشت خط فرمان است. پیش از این فقط داخل
+ *    `admin/users.php` تعریف شده بود و `api/delete_account.php`
+ *    نمی‌توانست از آن استفاده کند — یعنی همان قاعده باید بار دوم
+ *    نوشته می‌شد و دو نسخه‌اش دیر یا زود از هم دور می‌افتادند.
+ */
+function countOtherActiveAdmins(PDO $pdo, int $excludeUserId): int
+{
+    $stmt = $pdo->prepare(
+        'SELECT COUNT(*) AS cnt FROM users
+         WHERE role = "admin" AND is_active = 1 AND id != :id'
+    );
+    $stmt->execute(['id' => $excludeUserId]);
+    return (int)$stmt->fetch()['cnt'];
+}
+
+/**
  * ⛔ تنها جایی که «دسترسیِ این کاربر باطل شود» تعریف می‌شود.
  *
  * رمز عوض شدن یعنی یکی از دو چیز: یا کاربر خودش خواسته، یا حسابش لو

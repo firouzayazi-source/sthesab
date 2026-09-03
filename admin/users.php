@@ -9,13 +9,6 @@ Auth::requireAdmin();
 $pdo = Database::getConnection();
 $currentUserId = Auth::userId();
 
-function countOtherActiveAdmins(PDO $pdo, int $excludeUserId): int
-{
-    $stmt = $pdo->prepare('SELECT COUNT(*) AS cnt FROM users WHERE role = "admin" AND is_active = 1 AND id != :id');
-    $stmt->execute(['id' => $excludeUserId]);
-    return (int)$stmt->fetch()['cnt'];
-}
-
 $error = '';
 $reopenModal = '';
 

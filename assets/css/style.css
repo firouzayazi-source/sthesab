@@ -453,6 +453,25 @@ textarea { resize: vertical; }
 .btn-sm { padding: 8px 13px; font-size: 12.5px; }
 .btn:disabled { opacity: .55; }
 
+/* ---------- کارِ برگشت‌ناپذیر ----------
+   عمداً پر و قرمز است، نه یک دکمه‌ی معمولی با متنِ ترسناک: کاری که
+   بازگشت ندارد باید *پیش از* خوانده شدنِ متن هم فرق داشته باشد. */
+.btn-danger { background: var(--out); color: #fff; border-color: var(--out); }
+.btn-danger:hover { filter: brightness(.94); }
+
+.danger-zone {
+    margin-top: 18px; padding-top: 16px;
+    border-top: 1px solid var(--line);
+}
+.danger-title { font-size: 14px; font-weight: 700; color: var(--out); margin-bottom: 6px; }
+.danger-zone .btn { margin-top: 12px; }
+
+.version-line { margin-top: 16px; text-align: center; font-size: 11.5px; }
+.privacy-p { font-size: 13.5px; line-height: 2; color: var(--ink-soft); margin-bottom: 12px; }
+.privacy-p:last-child { margin-bottom: 0; }
+.privacy-p a { color: var(--gold); }
+.version-line a { color: var(--muted); text-decoration: underline; }
+
 .delete-btn {
     background: none; border: none;
     color: var(--out); font-size: 12.5px; font-weight: 600;

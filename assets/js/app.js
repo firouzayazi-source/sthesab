@@ -533,6 +533,50 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // ---------- حذف حساب ----------
+    // ⛔ عمداً بعد از موفقیت هیچ چیزی روی صفحه نشان داده نمی‌شود بلکه
+    //    مستقیم به صفحه‌ی ورود می‌رود: نشستِ کاربر همان لحظه باطل شده و
+    //    ماندن روی صفحه‌ای که دیگر داده‌ای پشتش نیست فقط خطای بی‌ربط
+    //    می‌سازد.
+    (function () {
+        var btn  = document.getElementById('deleteAccountBtn');
+        var form = document.getElementById('deleteAccountForm');
+        if (!btn || !form) { return; }
+
+        btn.addEventListener('click', function () { openModal('deleteAccountModal'); });
+
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var msg = document.getElementById('deleteAccountMessage');
+            var sub = document.getElementById('deleteAccountSubmit');
+            msg.hidden = true;
+            msg.classList.remove('show', 'error');
+            sub.disabled = true;
+
+            fetch(apiUrl('delete_account.php'), {
+                method: 'POST',
+                body: new FormData(form),
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.success) {
+                    window.location.href = d.redirect || 'login.php';
+                    return;
+                }
+                msg.hidden = false;
+                msg.classList.add('show', 'error');
+                msg.textContent = d.message || 'حذف انجام نشد.';
+            })
+            .catch(function () {
+                msg.hidden = false;
+                msg.classList.add('show', 'error');
+                msg.textContent = 'خطا در ارتباط با سرور.';
+            })
+            .finally(function () { sub.disabled = false; });
+        });
+    })();
+
     // ---------- «از پیامک بانک» و پیشنهادِ عنوان‌های قبلی ----------
     (function () {
         var box = document.getElementById('smsPasteBox');

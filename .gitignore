@@ -4,7 +4,10 @@ config/config.php
 # بکاپ‌های config که deploy/mail-setup.sh می‌سازد. اینها همان رمزهای
 # SMTP و دیتابیس را دارند؛ اگر ignore نشوند یک «git add -A» بی‌دقت
 # کافی است تا وارد مخزن شوند.
-config/config.php.bak.*
+# ⚠ الگو عمداً بدون نقطه است: encrypt-cards.php نامِ
+#   `config.php.bak-20260903-095335` می‌سازد و `config.php.bak.*`
+#   آن را نمی‌گرفت. این فایل هم رمز دیتابیس دارد هم کلید رمزنگاری.
+config/config.php.bak*
 config/*.bak
 
 # داده‌های کاربر
