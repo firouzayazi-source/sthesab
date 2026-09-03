@@ -15,13 +15,40 @@ require_once __DIR__ . '/../includes/user_data.php';
 
 Auth::initSession();
 
+/**
+ * ⛔ شکست نباید کاربر را در یک صفحه‌ی JSON خامِ بی‌راهِ‌برگشت رها کند.
+ *
+ *    این اندپوینت با یک فرمِ معمولی صدا زده می‌شود، نه با fetch؛ پس
+ *    خروجیِ `jsonResponse` یعنی مرورگر به یک صفحه‌ی سفید با یک خطِ
+ *    JSON می‌رود که نه دکمه‌ای دارد، نه منویی، و در اپِ نصب‌شده حتی
+ *    دکمه‌ی بازگشت هم نیست. همان چیزی که کاربر گزارش کرد.
+ *    حالا برمی‌گردد به `backup.php` با پیامِ روشن.
+ */
+function exportFail(string $message, int $status = 400): void
+{
+    // ⚠ `Csrf::isJsonRequest()` خصوصی است، پس همان شرط اینجا تکرار
+    //   می‌شود: هر دو سرآیند لازم‌اند چون `fetch` های `app.js`
+    //   `X-Requested-With` می‌فرستند ولی `Accept: application/json` نه.
+    $isAjax = strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest'
+           || str_contains((string)($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json');
+
+    if ($isAjax) {
+        header('Content-Type: application/json; charset=utf-8');
+        jsonResponse(['success' => false, 'message' => $message], $status);
+    }
+    redirectWithMessage('../backup.php', 'error', $message);
+}
+
+// ⚠ اینجا عمداً ۴۰۱ است، نه هدایت به صفحه‌ی ورود: قاعده‌ی `api/` این
+//   است که هر اندپوینت بدونِ ورود ۴۰۱ بدهد، و `test_api_auth` هر ۵۹
+//   تا را با هم می‌سنجد. کاربرِ واقعی هم به اینجا نمی‌رسد، چون
+//   `backup.php` خودش `requireLogin()` دارد.
 if (!Auth::isLoggedIn()) {
     header('Content-Type: application/json; charset=utf-8');
     jsonResponse(['success' => false, 'message' => 'ابتدا وارد شوید.'], 401);
 }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    header('Content-Type: application/json; charset=utf-8');
-    jsonResponse(['success' => false, 'message' => 'درخواست نامعتبر است.'], 405);
+    exportFail('درخواست نامعتبر است.', 405);
 }
 Csrf::verifyOrFail(postParam('csrf_token'));
 
@@ -31,13 +58,11 @@ try {
     $data = exportUserData($userId);
 } catch (Throwable $e) {
     error_log('Export Data Error: ' . $e->getMessage());
-    header('Content-Type: application/json; charset=utf-8');
-    jsonResponse(['success' => false, 'message' => 'خروجی گرفته نشد.'], 500);
+    exportFail('خروجی گرفته نشد. اگر تکرار شد به پشتیبانی خبر بدهید.', 500);
 }
 
 if (!$data) {
-    header('Content-Type: application/json; charset=utf-8');
-    jsonResponse(['success' => false, 'message' => 'کاربر یافت نشد.'], 404);
+    exportFail('کاربر یافت نشد.', 404);
 }
 
 $json = json_encode(
@@ -45,12 +70,14 @@ $json = json_encode(
     JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT
 );
 
-// ⚠ نامِ فایل تاریخِ شمسی می‌گیرد چون کاربر با همان تاریخ فکر می‌کند،
-//   ولی با **ارقام لاتین**: یک نامِ حاوی ارقامِ فارسی در سرآیندِ
-//   `filename=` غیرمجاز است و مرورگر بی‌سروصدا کنارش می‌گذارد و فایل
-//   را «download» ذخیره می‌کند. با کروم آزموده و دیده شد.
-//   `/` هم به `-` تبدیل می‌شود تا روی ویندوز باز شود.
-$name = 'daftar-mali-' . str_replace('/', '-', toLatinDigits(toJalali(date('Y-m-d')))) . '.json';
+// نامِ فایل: فقط تاریخِ شمسیِ همان روز و پسوندِ اختصاصیِ برنامه —
+// `1405-06-12.sthesab`. کوتاه است تا در فهرستِ دانلود خوانده شود.
+//
+// ⚠ ارقام **لاتین**اند: نامِ حاوی ارقامِ فارسی در سرآیندِ `filename=`
+//   غیرمجاز است و مرورگر بی‌سروصدا کنارش می‌گذارد و فایل را «download»
+//   ذخیره می‌کند. با کروم آزموده و دیده شد. `/` هم به `-` می‌رود تا
+//   روی ویندوز باز شود.
+$name = backupFileName();
 
 // ⛔ گزیپِ خروجی که در db.php روشن شده باید اینجا خاموش شود، وگرنه
 //    مرورگر فایل را دوبار فشرده می‌گیرد و چیزی که ذخیره می‌شود قابل
@@ -60,7 +87,7 @@ if (function_exists('ob_get_level')) {
 }
 header_remove('Content-Encoding');
 
-header('Content-Type: application/json; charset=utf-8');
+header('Content-Type: application/octet-stream');
 header('Content-Disposition: attachment; filename="' . $name . '"');
 header('Content-Length: ' . strlen($json));
 header('Cache-Control: no-store, private');

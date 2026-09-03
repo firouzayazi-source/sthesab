@@ -1183,14 +1183,24 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // ---------- شیت ثبت تراکنش (دکمه + در ناوبری پایین) ----------
-    var addTxBtn = document.getElementById('addTxBtn');
+    // ---------- شیت ثبت تراکنش ----------
+    //
+    // ⛔ به **کلاس** بسته است، نه به یک شناسه — و این اصلاحِ یک باگِ
+    //    واقعی است: تنها راهِ باز کردنِ این شیت دکمه‌ی + داخلِ نوارِ
+    //    پایین بود، و آن نوار بالای ۹۰۰ پیکسل `display:none` می‌شود.
+    //    یعنی روی دسکتاپ **هیچ راهی** برای ثبت تراکنش وجود نداشت —
+    //    هسته‌ی اپ، کاملاً از کار افتاده، بی‌هیچ خطایی. حالا دکمه‌ی
+    //    نوارِ پایین (موبایل) و دکمه‌ی نوارِ بالا (دسکتاپ) هر دو همین
+    //    کلاس را دارند، پس ورودیِ سومی که فردا اضافه شود هم بدون
+    //    دست زدن به این فایل کار می‌کند.
     var addTxSheet = document.getElementById('addTxSheet');
-    if (addTxBtn && addTxSheet) {
-        addTxBtn.addEventListener('click', function () {
-            addTxSheet.classList.add('show');
-            var amt = document.getElementById('amount');
-            if (amt) setTimeout(function () { amt.focus(); }, 120);
+    if (addTxSheet) {
+        document.querySelectorAll('.js-add-tx').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                addTxSheet.classList.add('show');
+                var amt = document.getElementById('amount');
+                if (amt) setTimeout(function () { amt.focus(); }, 120);
+            });
         });
     }
 
@@ -2629,49 +2639,53 @@ document.addEventListener('DOMContentLoaded', function () {
     // جابه‌جا کند — کاربر فکر می‌کند دارد فهرست شیت را می‌بندد ولی
     // صفحه‌ی پشت سُر می‌خورد و جای خودش را گم می‌کند. با برگشتن به
     // صفحه، اسکرول دقیقاً از همان‌جا ادامه پیدا می‌کند.
-    var scrollLock = { count: 0, y: 0 };
+    var scrollLock = { count: 0 };
+
+    // ⛔ قفلِ اسکرول **هیچ چیزی را جابه‌جا نمی‌کند** — و این کلِ نکته است.
+    //
+    //    نسخه‌ی قبلی `body` را `position: fixed` با `top: -Y` می‌کرد.
+    //    راهِ رایجی است، ولی روی آیفون نوارِ پایین را بالا می‌آورد: با
+    //    بازِ شدنِ شیت، صفحه دیگر اسکرول‌شدنی نبود، سافاری نوارهای
+    //    خودش را دوباره باز می‌کرد، پنجره‌ی دیداری کوتاه می‌شد و هر
+    //    عنصرِ `fixed`ی که به کفِ صفحه چسبیده بود با آن بالا می‌پرید.
+    //    یک بار هم تلاش کردم با کشیدنِ `min-height` بدنه درستش کنم —
+    //    **کار نکرد**، چون فرضش غلط بود: عنصرِ `fixed` نسبت به پنجره
+    //    جای می‌گیرد، نه نسبت به جعبه‌ی `body`.
+    //
+    //    راهِ درست، برداشتنِ صورت‌مسئله است: هیچ ویژگیِ چیدمانی روی
+    //    `body` عوض نمی‌شود، پس هیچ چیزی هم نمی‌تواند تکان بخورد.
+    //    اسکرولِ پس‌زمینه به‌جایش با دو چیز بسته می‌شود:
+    //      • `overflow: hidden` روی html و body (ماوس و کیبورد)
+    //      • جلوگیری از `touchmove` روی خودِ لایه (لمس روی iOS، که
+    //        `overflow: hidden` به‌تنهایی جلویش را نمی‌گیرد)
+    //    و چون صفحه هرگز جابه‌جا نمی‌شود، بازگرداندنِ موقعیتِ اسکرول
+    //    هم لازم نیست — یعنی پرشِ هنگام بستن هم از بین می‌رود.
     function lockBodyScroll() {
         if (scrollLock.count++ > 0) return;
-        scrollLock.y = window.scrollY || window.pageYOffset || 0;
-        document.body.style.position = 'fixed';
-        document.body.style.top = '-' + scrollLock.y + 'px';
-        document.body.style.left = '0';
-        document.body.style.right = '0';
-        document.body.style.width = '100%';
-
-        // ⛔ بدونِ این خط، جعبه‌ی `body` از کفِ پنجره **کوتاه‌تر** می‌شود.
-        //
-        //    body با `top: -Y` بالا کشیده می‌شود ولی ارتفاعش هنوز به
-        //    اندازه‌ی محتواست، پس لبه‌ی پایینش می‌رود روی `-Y + محتوا` —
-        //    که معمولاً بالاتر از کفِ پنجره است. دو خرابیِ دیده‌شده روی
-        //    آیفون دقیقاً از همین می‌آمدند و هر دو **در مرورگر دسکتاپ
-        //    بازتولید نمی‌شوند**، چون کروم فرزندِ `fixed` را همیشه نسبت
-        //    به پنجره می‌چیند:
-        //
-        //      ۱. یک نوارِ سفید زیرِ صفحه ظاهر می‌شد — زمینه‌ی `html`
-        //         که از زیرِ لبه‌ی کوتاه‌شده‌ی body بیرون می‌زد.
-        //      ۲. نوارِ پایین «جابه‌جا» می‌شد: با شیتِ باز، به‌جای ۴۸px
-        //         روی **۱۰۷px** از کفِ صفحه می‌نشست (اندازه‌گیری شده روی
-        //         اسکرین‌شاتِ واقعیِ آیفون ۱۵ پرو). چون `bottom: 14px`
-        //         آن نسبت به همان لبه‌ی کوتاه حساب می‌شد، نه کفِ پنجره.
-        //
-        //    با کشیدنِ ارتفاع تا `Y + ارتفاعِ پنجره`، لبه‌ی پایینِ body
-        //    دقیقاً روی کفِ پنجره می‌نشیند و هر دو از بین می‌روند.
-        //    عمداً `px` است نه `vh`: روی iOS مقدارِ `vh` نوارِ مرورگر را
-        //    نادیده می‌گیرد و همین‌جا دوباره اختلاف می‌ساخت.
-        document.body.style.minHeight = (scrollLock.y + window.innerHeight) + 'px';
+        document.documentElement.classList.add('is-locked');
     }
     function unlockBodyScroll() {
         if (scrollLock.count === 0) return;
         if (--scrollLock.count > 0) return;
-        document.body.style.position = '';
-        document.body.style.top = '';
-        document.body.style.left = '';
-        document.body.style.right = '';
-        document.body.style.width = '';
-        document.body.style.minHeight = '';
-        window.scrollTo(0, scrollLock.y);
+        document.documentElement.classList.remove('is-locked');
     }
+
+    // لمس روی پس‌زمینه‌ی لایه نباید صفحه‌ی زیرش را بلغزاند، ولی لمس روی
+    // بخشِ اسکرول‌شونده‌ی خودِ شیت باید کار کند. پس فقط وقتی جلویش
+    // گرفته می‌شود که هیچ نیای اسکرول‌شونده‌ای در مسیرِ لمس نباشد.
+    // `passive: false` لازم است، وگرنه `preventDefault` نادیده می‌ماند.
+    document.addEventListener('touchmove', function (e) {
+        if (!document.documentElement.classList.contains('is-locked')) return;
+        var node = e.target;
+        while (node && node !== document.body) {
+            if (node.scrollHeight > node.clientHeight + 1) {
+                var st = window.getComputedStyle(node).overflowY;
+                if (st === 'auto' || st === 'scroll') return;
+            }
+            node = node.parentElement;
+        }
+        e.preventDefault();
+    }, { passive: false });
 
     // هر لایه‌ای که با کلاس show باز/بسته می‌شود، خودکار قفل را می‌گیرد
     // و پس می‌دهد — بدون اینکه لازم باشد هر جای کد یادش باشد.

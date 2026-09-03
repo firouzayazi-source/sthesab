@@ -1337,9 +1337,48 @@ button.status-badge:active { transform: scale(.96); }
     .data-table td.empty-row::before { content: none; }
 }
 
+/* نامِ فایلِ بکاپ — قبل از زدنِ دکمه دیده می‌شود تا کاربر بداند دنبالِ
+   چه فایلی در فهرستِ دانلود بگردد. `ltr` چون نامِ فایل لاتین است. */
+.backup-file {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--bg); border: 1px dashed var(--line);
+    border-radius: var(--r-md); padding: 13px 15px;
+    color: var(--ink-soft);
+}
+.backup-file-name {
+    direction: ltr; font-weight: 700; font-size: 15px;
+    color: var(--ink); letter-spacing: .2px;
+}
+
+/* ⛔ قفلِ اسکرول وقتی لایه‌ای باز است.
+   عمداً هیچ `position`، `top` یا `height`ی عوض نمی‌شود: هر تغییرِ
+   چیدمانی روی `body` روی آیفون نوارِ پایینِ شناور را جابه‌جا می‌کرد.
+   `overscroll-behavior` جلوی «کشیدنِ زنجیره‌ای» را می‌گیرد تا رسیدن به
+   ته شیت، صفحه‌ی زیرش را نلغزاند. */
+html.is-locked, html.is-locked body {
+    overflow: hidden;
+    overscroll-behavior: none;
+}
+
+/* دکمه‌ی «ثبت تراکنش» نوارِ بالا — فقط دسکتاپ.
+   روی موبایل همان دکمه‌ی + نوارِ پایین کار را می‌کند و دو دکمه‌ی
+   هم‌کار فقط شلوغی است. */
+.topbar-add { display: none; }
+
 @media (min-width: 901px) {
     .bottom-nav, .more-sheet-overlay { display: none !important; }
     .table-wrapper { overflow-x: auto; }
+
+    .topbar-add {
+        display: inline-flex; align-items: center; gap: 6px;
+        background: var(--brand); color: #fff;
+        border: none; border-radius: var(--r-pill);
+        padding: 8px 15px; font: inherit; font-size: 13px; font-weight: 600;
+        cursor: pointer; white-space: nowrap;
+        box-shadow: 0 4px 12px -5px rgba(27,37,89,.5);
+    }
+    .topbar-add:hover { filter: brightness(1.08); }
+    .topbar-add:active { transform: scale(.97); }
 }
 
 @media (max-width: 420px) {

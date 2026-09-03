@@ -252,6 +252,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         //    `git pull` بی‌خبر باز شود.
         setSetting(SMS_LOGIN_SETTING, postParam('allow_sms_login') === '1' ? '1' : '0');
 
+        // ---------- تنظیماتِ پنلِ پیامک ----------
+        $smsMethodIn = postParam('sms_method');
+        if (!array_key_exists($smsMethodIn, smsProviders())) { $smsMethodIn = ''; }
+        setSetting('sms_method', $smsMethodIn);
+
+        // ⚠ ورودیِ خالی یعنی «دست نزن»، نه «پاک کن» — همان قاعده‌ی
+        //   `saveUserEmail`. فرم مقدارِ فعلیِ رمز و کلید را نشان نمی‌دهد
+        //   (نباید هم بدهد)، پس ذخیره‌ی ساده نباید آن‌ها را خالی کند.
+        //   پاک کردنِ عمدی با تایپِ یک خط تیره انجام می‌شود.
+        foreach (['sms_api_key', 'sms_sender', 'sms_user', 'sms_pass'] as $k) {
+            $v = trim(postParam($k));
+            if ($v === '')  { continue; }
+            if ($v === '-') { $v = ''; }
+            setSetting($k, $v);
+        }
+
         redirectWithMessage('users.php', 'success', 'تنظیمات ثبت‌نام بروزرسانی شد.');
     }
 }
@@ -270,6 +286,12 @@ $supportEmail  = getSetting('support_email', '');
 $smsLoginOn    = SmsLogin::switchedOn();
 $smsTableReady = SmsLogin::tableReady();
 $smsConfigured = Sms::isConfigured();
+$smsMethod     = Sms::method();
+$smsMissing    = $smsMethod === '' ? '' : Sms::missingFor($smsMethod);
+// فقط «ثبت شده یا نه» به صفحه می‌رود، نه خودِ مقدار — کلید و رمزِ پنل
+// نباید در سورسِ صفحه دیده شوند.
+$smsHas = [];
+foreach (SMS_SETTING_KEYS as $k => $const) { $smsHas[$k] = smsSetting($k, $const) !== ''; }
 $planOn        = planEnforced();
 $planPrice     = planMonthlyPrice();
 $planCard      = getSetting(PLAN_CARD_SETTING, '');
@@ -414,10 +436,6 @@ include __DIR__ . '/../includes/header.php';
         <p class="hint" style="margin-bottom:14px;">
             <?php if (!$smsTableReady): ?>
                 ⛔ جدولش هنوز ساخته نشده. اول <code>migration_sms_login</code> را اجرا کنید.
-            <?php elseif (!$smsConfigured): ?>
-                ⛔ پنل پیامک تنظیم نشده (<code>SMS_METHOD</code> در <code>config/config.php</code>)،
-                پس روشن کردنِ این کلید هیچ کدی نمی‌فرستد. کاوه‌نگار، sms.ir و
-                ملی‌پیامک پشتیبانی می‌شوند.
             <?php else: ?>
                 کاربرانی که شماره موبایلشان را در پروفایل ثبت کرده‌اند می‌توانند
                 بدون رمز، با کد پیامکی وارد شوند. هر پیامک هزینه دارد، پس سقفِ
@@ -425,6 +443,63 @@ include __DIR__ . '/../includes/header.php';
                 برای هر شماره گذاشته شده است.
             <?php endif; ?>
         </p>
+
+        <?php /* ⛔ تنظیمِ پنل از همین‌جا، نه فقط از `config.php`.
+                 کسی که می‌خواهد پنلِ کاوه‌نگارش را وصل کند نباید مجبور
+                 باشد با SSH یک فایل PHP را ویرایش کند — وگرنه این
+                 قابلیت عملاً وصل نمی‌شود. ولی هر کلیدی که در
+                 `config.php` مقدار داشته باشد همچنان **برنده** است. */ ?>
+        <div class="form-group">
+            <label for="sms_method">پنل پیامک</label>
+            <select id="sms_method" name="sms_method">
+                <?php foreach (smsProviders() as $key => $prov): ?>
+                    <option value="<?= h($key) ?>" <?= $smsMethod === $key ? 'selected' : '' ?>>
+                        <?= h($prov['label']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <p class="hint">
+                <?php if ($smsMethod === ''): ?>
+                    هنوز پنلی وصل نیست. هر کدام را که حساب دارید انتخاب کنید و
+                    مشخصاتش را زیر همین بنویسید.
+                <?php elseif ($smsMissing !== ''): ?>
+                    ⛔ <?= h($smsMissing) ?> تا وارد نشود، هیچ پیامکی نمی‌رود.
+                <?php elseif ($smsMethod === 'log'): ?>
+                    ⛔ این حالت هیچ پیامکی نمی‌فرستد و کدها را در
+                    <code>var/sms.log</code> می‌نویسد. فقط برای آزمایش.
+                <?php else: ?>
+                    ✓ آماده است.
+                <?php endif; ?>
+            </p>
+        </div>
+
+        <div class="form-group">
+            <label for="sms_api_key">کلید API <span class="hint">(کاوه‌نگار و sms.ir)</span></label>
+            <input type="text" id="sms_api_key" name="sms_api_key" autocomplete="off"
+                   dir="ltr" placeholder="<?= $smsHas['sms_api_key'] ? '••••••  (ثبت شده)' : 'کلید پنل را اینجا بچسبانید' ?>">
+        </div>
+        <div class="form-group">
+            <label for="sms_sender">شماره خط <span class="hint">(sms.ir لازم دارد)</span></label>
+            <input type="text" id="sms_sender" name="sms_sender" autocomplete="off"
+                   dir="ltr" placeholder="<?= $smsHas['sms_sender'] ? '••••••  (ثبت شده)' : 'مثلاً 30002100' ?>">
+        </div>
+        <div class="form-group">
+            <label for="sms_user">نام کاربری پنل <span class="hint">(ملی‌پیامک)</span></label>
+            <input type="text" id="sms_user" name="sms_user" autocomplete="off"
+                   dir="ltr" placeholder="<?= $smsHas['sms_user'] ? '••••••  (ثبت شده)' : '' ?>">
+        </div>
+        <div class="form-group">
+            <label for="sms_pass">رمز پنل <span class="hint">(ملی‌پیامک)</span></label>
+            <input type="password" id="sms_pass" name="sms_pass" autocomplete="new-password"
+                   dir="ltr" placeholder="<?= $smsHas['sms_pass'] ? '••••••  (ثبت شده)' : '' ?>">
+            <p class="hint">
+                خالی گذاشتنِ این چهار فیلد یعنی «دست نزن» — مقدارِ قبلی می‌ماند.
+                برای پاک کردن، یک خط تیره <code>-</code> بنویسید.
+                این مقدارها در دیتابیس ذخیره می‌شوند و در بکاپ هم می‌آیند؛
+                اگر نمی‌خواهید، به‌جایش در <code>config/config.php</code> بگذاریدشان
+                که آنجا برنده است و در دامپ نمی‌آید.
+            </p>
+        </div>
 
         <button type="submit" class="btn btn-secondary btn-sm">ذخیره</button>
     </form>

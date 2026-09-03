@@ -19,6 +19,55 @@
  *   کدی که فرستاده نشده ولی «موفق» گزارش شده.
  */
 
+require_once __DIR__ . '/functions.php';
+
+/**
+ * ⛔ تنظیمات از دو جا می‌آید و ترتیبش عمدی است: **اول `config.php`،
+ *    بعد پنل مدیر.**
+ *
+ *    دلیلش این است که `config.php` روی سرور دستِ مالکِ نصب است و در
+ *    گیت هم نمی‌آید؛ اگر پنل رویش می‌نوشت، کسی که به پنل مدیر دسترسی
+ *    پیدا کند می‌توانست پیامک‌ها را به پنلِ خودش ببرد. پس هر کلیدی که
+ *    در `config.php` مقدار داشته باشد **برنده است** و پنل فقط جای
+ *    خالی‌ها را پر می‌کند.
+ *
+ *    و چرا اصلاً پنل: چون خواستنِ ویرایشِ `config.php` با SSH از کسی
+ *    که فقط می‌خواهد پنلِ کاوه‌نگارش را وصل کند، یعنی این قابلیت عملاً
+ *    وصل نمی‌شود.
+ *
+ * ⚠ کلیدِ پنل در `app_settings` می‌نشیند، یعنی **در بکاپِ دیتابیس هم
+ *   می‌آید**. اگر این برایتان قابل قبول نیست، همان را در `config.php`
+ *   بگذارید که در دامپ نیست.
+ */
+function smsSetting(string $key, string $constName): string
+{
+    if (defined($constName) && (string)constant($constName) !== '') {
+        return (string)constant($constName);
+    }
+    return (string)getSetting($key, '');
+}
+
+/** کلیدهای پنل که مدیر می‌تواند از صفحه‌ی «مدیریت کاربران» تنظیمشان کند. */
+const SMS_SETTING_KEYS = [
+    'sms_method'  => 'SMS_METHOD',
+    'sms_api_key' => 'SMS_API_KEY',
+    'sms_sender'  => 'SMS_SENDER',
+    'sms_user'    => 'SMS_USER',
+    'sms_pass'    => 'SMS_PASS',
+];
+
+/** پنل‌هایی که پشتیبانی می‌شوند و اینکه هرکدام چه می‌خواهد. */
+function smsProviders(): array
+{
+    return [
+        ''            => ['label' => 'خاموش',        'needs' => []],
+        'kavenegar'   => ['label' => 'کاوه‌نگار',     'needs' => ['sms_api_key']],
+        'smsir'       => ['label' => 'sms.ir',       'needs' => ['sms_api_key', 'sms_sender']],
+        'melipayamak' => ['label' => 'ملی‌پیامک',     'needs' => ['sms_user', 'sms_pass']],
+        'log'         => ['label' => 'فقط ثبت در فایل (توسعه)', 'needs' => []],
+    ];
+}
+
 class Sms
 {
     /** آخرین خطا، برای نشان دادن به مدیر (نه به کاربرِ ورود). */
@@ -34,13 +83,31 @@ class Sms
 
     public static function isConfigured(): bool
     {
-        $m = defined('SMS_METHOD') ? (string)SMS_METHOD : '';
-        return $m !== '';
+        return self::method() !== '';
     }
 
     public static function method(): string
     {
-        return defined('SMS_METHOD') ? (string)SMS_METHOD : '';
+        return smsSetting('sms_method', 'SMS_METHOD');
+    }
+
+    /** آیا این پنل هر چیزی که لازم دارد را دارد؟ '' یعنی آماده است. */
+    public static function missingFor(string $method): string
+    {
+        $providers = smsProviders();
+        if (!isset($providers[$method])) { return 'پنل ناشناخته است.'; }
+
+        $labels = [
+            'sms_api_key' => 'کلید API',
+            'sms_sender'  => 'شماره خط',
+            'sms_user'    => 'نام کاربری پنل',
+            'sms_pass'    => 'رمز پنل',
+        ];
+        $missing = [];
+        foreach ($providers[$method]['needs'] as $need) {
+            if (smsSetting($need, SMS_SETTING_KEYS[$need]) === '') { $missing[] = $labels[$need]; }
+        }
+        return $missing === [] ? '' : implode(' و ', $missing) . ' وارد نشده است.';
     }
 
     /**
@@ -51,7 +118,7 @@ class Sms
         self::$lastError = '';
 
         if (!self::isConfigured()) {
-            self::$lastError = 'ارسال پیامک تنظیم نشده است (SMS_METHOD در config.php).';
+            self::$lastError = 'پنل پیامک تنظیم نشده است (در «مدیریت کاربران» یا config.php).';
             return false;
         }
         if ($to === '') {
@@ -66,7 +133,7 @@ class Sms
                 case 'smsir':       return self::sendSmsIr($to, $text);
                 case 'melipayamak': return self::sendMeliPayamak($to, $text);
                 default:
-                    self::$lastError = 'SMS_METHOD نامعتبر است: ' . self::method();
+                    self::$lastError = 'پنل پیامکِ ناشناخته: ' . self::method();
                     return false;
             }
         } catch (Throwable $e) {
@@ -98,12 +165,13 @@ class Sms
 
     private static function sendKavenegar(string $to, string $text): bool
     {
-        $key = defined('SMS_API_KEY') ? (string)SMS_API_KEY : '';
-        if ($key === '') { self::$lastError = 'SMS_API_KEY تنظیم نشده است.'; return false; }
+        $key = smsSetting('sms_api_key', 'SMS_API_KEY');
+        if ($key === '') { self::$lastError = 'کلید API کاوه‌نگار تنظیم نشده است.'; return false; }
 
         $url  = 'https://api.kavenegar.com/v1/' . rawurlencode($key) . '/sms/send.json';
         $body = ['receptor' => $to, 'message' => $text];
-        if (defined('SMS_SENDER') && SMS_SENDER !== '') { $body['sender'] = (string)SMS_SENDER; }
+        $sender = smsSetting('sms_sender', 'SMS_SENDER');
+        if ($sender !== '') { $body['sender'] = $sender; }
 
         $res = self::post($url, http_build_query($body), ['Content-Type: application/x-www-form-urlencoded']);
         if ($res === null) { return false; }
@@ -120,11 +188,11 @@ class Sms
 
     private static function sendSmsIr(string $to, string $text): bool
     {
-        $key = defined('SMS_API_KEY') ? (string)SMS_API_KEY : '';
-        if ($key === '') { self::$lastError = 'SMS_API_KEY تنظیم نشده است.'; return false; }
+        $key = smsSetting('sms_api_key', 'SMS_API_KEY');
+        if ($key === '') { self::$lastError = 'کلید API sms.ir تنظیم نشده است.'; return false; }
 
         $payload = json_encode([
-            'lineNumber'  => defined('SMS_SENDER') ? (string)SMS_SENDER : '',
+            'lineNumber'  => smsSetting('sms_sender', 'SMS_SENDER'),
             'messageText' => $text,
             'mobiles'     => [$to],
         ], JSON_UNESCAPED_UNICODE);
@@ -146,10 +214,10 @@ class Sms
 
     private static function sendMeliPayamak(string $to, string $text): bool
     {
-        $user = defined('SMS_USER') ? (string)SMS_USER : '';
-        $pass = defined('SMS_PASS') ? (string)SMS_PASS : '';
+        $user = smsSetting('sms_user', 'SMS_USER');
+        $pass = smsSetting('sms_pass', 'SMS_PASS');
         if ($user === '' || $pass === '') {
-            self::$lastError = 'SMS_USER یا SMS_PASS تنظیم نشده است.';
+            self::$lastError = 'نام کاربری یا رمزِ ملی‌پیامک تنظیم نشده است.';
             return false;
         }
 
@@ -157,7 +225,7 @@ class Sms
             'username' => $user,
             'password' => $pass,
             'to'       => $to,
-            'from'     => defined('SMS_SENDER') ? (string)SMS_SENDER : '',
+            'from'     => smsSetting('sms_sender', 'SMS_SENDER'),
             'text'     => $text,
         ]), ['Content-Type: application/x-www-form-urlencoded']);
         if ($res === null) { return false; }

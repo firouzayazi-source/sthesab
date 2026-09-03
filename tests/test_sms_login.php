@@ -92,6 +92,13 @@ if (!SmsLogin::tableReady()) {
 
 $originalSetting = getSetting(SMS_LOGIN_SETTING, '0');
 
+// ⚠ پنل حالا می‌تواند از پنلِ مدیر هم بیاید، نه فقط از `config.php`.
+//   سرورِ توسعه‌ی پایین‌ترِ همین فایل یک **پروسه‌ی جدا**ست و `define`
+//   این تست را نمی‌بیند؛ پس تنظیمِ دیتابیس را خودمان می‌گذاریم تا آن
+//   پروسه هم پنلی داشته باشد، و آخرِ کار برش می‌گردانیم.
+$originalSmsMethod = getSetting('sms_method', '');
+setSetting('sms_method', 'log');
+
 // ⛔ مهم‌ترین بررسیِ این فایل.
 $pdo->prepare('DELETE FROM app_settings WHERE setting_key = :k')
     ->execute(['k' => SMS_LOGIN_SETTING]);
@@ -118,7 +125,8 @@ $victimId = (int)$pdo->lastInsertId();
 
 $otherPhone = '0913' . random_int(1000000, 9999999);
 
-register_shutdown_function(function () use ($pdo, $victimId, $originalSetting, $phone, $otherPhone) {
+register_shutdown_function(function () use ($pdo, $victimId, $originalSetting, $originalSmsMethod, $phone, $otherPhone) {
+    setSetting('sms_method', $originalSmsMethod);
     $pdo->prepare('DELETE FROM sms_codes WHERE phone IN (:p, :o)')
         ->execute(['p' => $phone, 'o' => $otherPhone]);
     $pdo->prepare('DELETE FROM login_attempts WHERE username_tried IN (:p, :o)')
@@ -353,20 +361,20 @@ if (!is_resource($srv)) {
     T::ok(!str_contains($login, 'sms-login.php'),
         'لینکش در صفحه‌ی ورود نیست');
 
-    // ⚠ سرورِ توسعه پروسه‌ی جداست و `SMS_METHOD` را از config واقعی
-    //   می‌خواند، نه از `define` این تست. پس اگر آنجا خالی باشد صفحه
-    //   حتی با کلیدِ روشن هم ۴۰۴ می‌دهد — و **این درست است**: کلیدِ
-    //   روشن بدونِ پنل نباید صفحه‌ای باز کند که هیچ کدی نمی‌فرستد.
     setSetting(SMS_LOGIN_SETTING, '1');
     [$c2, ] = $get('/sms-login.php');
-    $panelInConfig = defined('SMS_METHOD') && SMS_METHOD !== '' && SMS_METHOD !== 'log'
-        ? true
-        : (bool)preg_match("/define\(\s*'SMS_METHOD'\s*,\s*'[^']+'/", (string)@file_get_contents(__DIR__ . '/../config/config.php'));
-    if ($panelInConfig) {
-        T::same(200, $c2, 'با کلیدِ روشن و پنلِ تنظیم‌شده، صفحه باز می‌شود');
-    } else {
-        T::same(404, $c2, '⛔ کلیدِ روشن ولی پنلِ تنظیم‌نشده = صفحه بسته می‌ماند');
-    }
+    T::same(200, $c2, 'با کلیدِ روشن و پنلِ تنظیم‌شده، صفحه باز می‌شود');
+
+    [, $login2] = $get('/login.php');
+    T::ok(str_contains($login2, 'sms-login.php'),
+        'و لینکش در صفحه‌ی ورود ظاهر می‌شود');
+
+    // ⛔ کلیدِ روشن ولی **پنلِ تنظیم‌نشده** نباید صفحه‌ای باز کند که
+    //    هیچ کدی نمی‌فرستد — دو شرطِ جدا، و هر دو لازم.
+    setSetting('sms_method', '');
+    [$c3, ] = $get('/sms-login.php');
+    T::same(404, $c3, '⛔ کلیدِ روشن ولی پنلِ تنظیم‌نشده = صفحه بسته می‌ماند');
+    setSetting('sms_method', 'log');
 
     proc_terminate($srv);
     proc_close($srv);

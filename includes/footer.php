@@ -3,7 +3,7 @@
  * فوتر مشترک صفحات داخلی — شامل ناوبری پایین صفحه
  */
 $bottomPage = basename($_SERVER['PHP_SELF']);
-$morePages = ['profile.php', 'wallets.php', 'budget.php', 'savings.php', 'recurring.php', 'upcoming.php', 'calendar.php', 'search.php', 'data.php', 'cheques.php', 'debts.php', 'my-assets.php', 'category-report.php', 'references.php', 'person.php', 'users.php', 'categories.php', 'insights.php'];
+$morePages = ['profile.php', 'wallets.php', 'budget.php', 'savings.php', 'recurring.php', 'upcoming.php', 'calendar.php', 'search.php', 'data.php', 'cheques.php', 'debts.php', 'my-assets.php', 'category-report.php', 'references.php', 'person.php', 'users.php', 'categories.php', 'insights.php', 'backup.php'];
 $moreActive = in_array($bottomPage, $morePages, true);
 ?>
         </div>
@@ -22,7 +22,7 @@ $moreActive = in_array($bottomPage, $morePages, true);
         <span>تراکنش‌ها</span>
     </a>
 
-    <button type="button" class="bottom-nav-center" id="addTxBtn" aria-label="ثبت تراکنش جدید">
+    <button type="button" class="bottom-nav-center js-add-tx" id="addTxBtn" aria-label="ثبت تراکنش جدید">
         <span class="bottom-nav-fab">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
         </span>

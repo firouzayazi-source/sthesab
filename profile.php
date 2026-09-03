@@ -369,12 +369,14 @@ $remind      = $remindReady ? reminderPrefs($userId) : ['email_on' => true, 'day
     </div>
     <div class="collapsible-body">
 
-        <form method="post" action="<?= APP_BASE_PATH ?>/api/export_data.php" style="margin-top:14px;">
-            <?= Csrf::field() ?>
-            <button type="submit" class="btn btn-secondary btn-block">دریافت خروجی کامل</button>
-        </form>
+        <?php /* ⛔ لینک است، نه فرمِ مستقیم: صفحه‌ی بکاپ دکمه‌ی بازگشت
+                 دارد و هر شکستی هم به همان‌جا برمی‌گردد، نه به یک
+                 صفحه‌ی JSONِ بی‌راهِ‌برگشت. */ ?>
+        <a href="<?= APP_BASE_PATH ?>/backup.php" class="btn btn-secondary btn-block" style="margin-top:14px;">
+            گرفتن بکاپ
+        </a>
         <p class="hint" style="margin-top:8px;">
-            یک فایل JSON با همه‌ی تراکنش‌ها، حساب‌ها، چک‌ها، طلب و بدهی،
+            یک فایل با همه‌ی تراکنش‌ها، حساب‌ها، چک‌ها، طلب و بدهی،
             بودجه، پس‌انداز، دارایی و معاملات — بدون رمز عبور.
         </p>
 
