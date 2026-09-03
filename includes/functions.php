@@ -1146,19 +1146,39 @@ function safeToSpend(int $userId, int $daysAhead = 30): array
     }
 
     $to = date('Y-m-d', strtotime("+{$daysAhead} days"));
-    $events = financialEvents($userId, today(), $to);
+
+    // ⛔ پنجره باید از **گذشته** شروع شود، نه از امروز.
+    //
+    //    نسخه‌ی قبلی از today() شروع می‌کرد، پس چکِ سررسیدگذشته و
+    //    بدهیِ عقب‌افتاده در «تعهدها» شمرده نمی‌شدند. یعنی «پول قابل
+    //    خرج» دقیقاً وقتی خوش‌بین بود که کاربر در دردسر است — و آن
+    //    تعهدها قطعی‌ترین چیزی هستند که آدم دارد؛ پرداختشان دیر شده،
+    //    نه اینکه منتفی شده باشد. روی داده‌ی دمو، ۴٬۰۰۰٬۰۰۰ بدهیِ
+    //    سررسیدگذشته در همان صفحه به‌صورت کارتِ سرخ دیده می‌شد ولی از
+    //    عددِ بالای صفحه کم نمی‌شد.
+    //
+    //    ۹۰ روز همان بازه‌ای است که upcoming.php برای فهرستش می‌گیرد،
+    //    پس عددِ بالای صفحه و فهرستِ زیرش از یک چیز حرف می‌زنند.
+    $from   = date('Y-m-d', strtotime('-90 days'));
+    $events = financialEvents($userId, $from, $to);
+    $today  = today();
 
     $commitments = 0;
+    $overdue     = 0;
     foreach ($events as $e) {
-        if ($e['direction'] === 'out') {
-            $commitments += $e['amount'];
-        }
+        if ($e['direction'] !== 'out') { continue; }
+        $commitments += $e['amount'];
+        if ($e['date'] < $today) { $overdue += $e['amount']; }
     }
 
     return [
         'available' => $balance - $commitments,
         'balance' => $balance,
         'commitments' => $commitments,
+        // سهمِ سررسیدگذشته جدا برمی‌گردد تا صفحه بتواند بگوید «از این
+        // مبلغ، این‌قدر سررسیدش گذشته» — بدون آن، کاربر نمی‌فهمد چرا
+        // عدد ناگهان کوچک شد.
+        'overdue' => $overdue,
     ];
 }
 
@@ -1189,21 +1209,66 @@ function humanDaysUntil(string $date): string
 /**
  * مقایسه‌ی ماه جاری با ماه قبل (شمسی) — درآمد، هزینه، و درصد تغییر.
  */
+/**
+ * پنجره‌ی مقایسه‌ی ماه — **هم‌روز**، نه ناتمام در برابر کامل.
+ *
+ * ⛔ نسخه‌ی قبلیِ monthComparison() ماهِ جاری را از اولِ ماه تا *امروز*
+ *    می‌خواند ولی ماهِ قبل را **کامل**. یعنی روزِ ۱۱ ام، ۱۱ روز با ۳۱
+ *    روز مقایسه می‌شد و اپ می‌گفت «هزینه ۵۹٪ کم شده» در حالی که آهنگِ
+ *    خرج دقیقاً همان بود. تقریباً ۲۹ روز از هر ۳۱ روز این عدد دروغ
+ *    می‌گفت — و بدترین حالتش این است که کاربر به آن اعتماد کند و
+ *    خیالش راحت شود.
+ *
+ * ⚠ ماهِ قبل ممکن است کوتاه‌تر از روزِ امروز باشد (اسفندِ غیرکبیسه ۲۹
+ *   روز است و امروز می‌تواند فروردینِ ۳۰ باشد). پس روزِ پایانی با طولِ
+ *   همان ماه بریده می‌شود، وگرنه بازه به ماهِ بعدش سرریز می‌کرد و
+ *   خرجِ فروردین جزوِ اسفند شمرده می‌شد.
+ *
+ * عمداً **تابعِ خالص** است و به دیتابیس یا «امروز» وابسته نیست: شاخه‌ی
+ * ماهِ کوتاه فقط چند روز در سال رخ می‌دهد و اگر داخلِ کوئری می‌ماند،
+ * تست فقط در همان چند روز می‌توانست بگیردش.
+ */
+function monthComparisonWindow(int $jy, int $jm, int $jd): array
+{
+    $pJy = $jy; $pJm = $jm - 1;
+    if ($pJm < 1) { $pJm = 12; $pJy--; }
+
+    $prevLen = jalaliMonthLength($pJy, $pJm);
+    $prevDay = min($jd, $prevLen);
+
+    $g = jalaliToGregorian($pJy, $pJm, 1);
+    $prevStart = sprintf('%04d-%02d-%02d', $g[0], $g[1], $g[2]);
+    $g = jalaliToGregorian($pJy, $pJm, $prevDay);
+    $prevEnd = sprintf('%04d-%02d-%02d', $g[0], $g[1], $g[2]);
+    $g = jalaliToGregorian($jy, $jm, 1);
+    $curStart = sprintf('%04d-%02d-%02d', $g[0], $g[1], $g[2]);
+
+    return [
+        'cur_start'  => $curStart,
+        'prev_start' => $prevStart,
+        'prev_end'   => $prevEnd,
+        'prev_year'  => $pJy,
+        'prev_month' => $pJm,
+        'prev_day'   => $prevDay,
+        'prev_len'   => $prevLen,
+    ];
+}
+
 function monthComparison(int $userId): array
 {
     $pdo = Database::getConnection();
     $today = today();
 
-    [$jy, $jm, ] = gregorianToJalali((int)date('Y'), (int)date('m'), (int)date('d'));
+    [$jy, $jm, $jd] = gregorianToJalali((int)date('Y'), (int)date('m'), (int)date('d'));
 
     $curStartG = jalaliToGregorian($jy, $jm, 1);
     $curStart = sprintf('%04d-%02d-%02d', $curStartG[0], $curStartG[1], $curStartG[2]);
 
-    $pJy = $jy; $pJm = $jm - 1;
-    if ($pJm < 1) { $pJm = 12; $pJy--; }
-    $prevStartG = jalaliToGregorian($pJy, $pJm, 1);
-    $prevStart = sprintf('%04d-%02d-%02d', $prevStartG[0], $prevStartG[1], $prevStartG[2]);
-    $prevEnd = date('Y-m-d', strtotime($curStart . ' -1 day'));
+    $w = monthComparisonWindow($jy, $jm, $jd);
+    $pJy = $w['prev_year']; $pJm = $w['prev_month'];
+    $prevStart = $w['prev_start'];
+    $prevEnd   = $w['prev_end'];
+    $prevDay   = $w['prev_day'];
 
     $q = $pdo->prepare('
         SELECT
@@ -1237,6 +1302,11 @@ function monthComparison(int $userId): array
         'prev_expense' => (int)$prev['expense'],
         'income_change' => $pct($cur['income'], $prev['income']),
         'expense_change' => $pct($cur['expense'], $prev['expense']),
+        // برای اینکه صفحه بتواند صادقانه بگوید مقایسه با چه چیزی است.
+        // بدون این، «۷٪ بیشتر» معلوم نیست نسبت به چه بازه‌ای است.
+        'elapsed_days'  => $jd,
+        'total_days'    => jalaliMonthLength($jy, $jm),
+        'prev_day'      => $prevDay,
     ];
 }
 

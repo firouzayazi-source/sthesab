@@ -322,6 +322,28 @@ include __DIR__ . '/includes/header.php';
         <h2 class="card-title" style="margin-bottom:0;">مقایسه با ماه قبل</h2>
         <span class="collapse-chevron">▾</span>
     </div>
+
+    <?php
+    // ⛔ این خط عمداً **بیرون** از بدنه‌ی جمع‌شونده است.
+    //    کارت پیش‌فرض بسته است، پس تنها سیگنالِ «این ماه برای من عادی
+    //    است؟» تا وقتی کاربر بازش نکند دیده نمی‌شد. حالا یک جمله همیشه
+    //    پیداست و — مهم‌تر — صریح می‌گوید مقایسه با چه بازه‌ای است،
+    //    وگرنه «۷٪ بیشتر» معلوم نیست نسبت به چه.
+    $cmpDelta = $comparison['expense_change'];
+    ?>
+    <p class="compare-summary">
+        روز <strong><?= toPersianDigits($comparison['elapsed_days']) ?></strong>
+        از <?= toPersianDigits($comparison['total_days']) ?> —
+        تا همین روزِ <?= h($comparison['prev_label']) ?>
+        <strong><?= formatMoney($comparison['prev_expense']) ?></strong> خرج کرده بودید،
+        این ماه <strong><?= formatMoney($comparison['current_expense']) ?></strong>
+        <?php if ($comparison['prev_expense'] > 0): ?>
+            <span class="compare-summary-delta <?= $cmpDelta <= 0 ? 'delta-up' : 'delta-down' ?>">
+                (<?= $cmpDelta >= 0 ? '▲' : '▼' ?> <?= toPersianDigits(abs($cmpDelta)) ?>٪)
+            </span>
+        <?php endif; ?>
+    </p>
+
     <div class="collapsible-body">
         <div class="compare-row">
             <div class="compare-label">درآمد</div>

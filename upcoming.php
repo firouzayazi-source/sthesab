@@ -53,6 +53,13 @@ include __DIR__ . '/includes/header.php';
     </div>
     <p class="hint" style="color:#8d939e; margin-top:11px;">
         این عدد موجودی بانکی شما نیست؛ موجودی منهای پرداخت‌های قطعی پیش‌رو است.
+        <?php if (!empty($sts['overdue'])): ?>
+            <?php /* بدون این خط، کاربر می‌دید عدد از موجودی کمتر است ولی
+                     نمی‌فهمید چرا — تعهدهای سررسیدگذشته در فهرستِ
+                     «۳۰ روز آینده» پیدا نمی‌شوند. */ ?>
+            <br>از این مبلغ، <strong><?= formatMoney($sts['overdue']) ?></strong> تومان
+            سررسیدش گذشته است.
+        <?php endif; ?>
     </p>
 </div>
 <?php endif; ?>
