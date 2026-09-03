@@ -42,9 +42,9 @@ if (!isset($pageTitle)) {
     <?php foreach (assetUrls(['js/jalali-datepicker.js', 'js/app.js']) as $__u): ?>
     <script defer src="<?= h($__u) ?>"></script>
     <?php endforeach; ?>
-    <link rel="apple-touch-icon" href="<?= APP_BASE_PATH ?>/assets/icons/icon-180.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="<?= APP_BASE_PATH ?>/assets/icons/icon-32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="<?= APP_BASE_PATH ?>/assets/icons/icon-16.png">
+    <link rel="apple-touch-icon" href="<?= iconUrl('icon-180.png') ?>">
+    <link rel="icon" type="image/png" sizes="32x32" href="<?= iconUrl('icon-32.png') ?>">
+    <link rel="icon" type="image/png" sizes="16x16" href="<?= iconUrl('icon-16.png') ?>">
     <link rel="manifest" href="<?= APP_BASE_PATH ?>/assets/manifest.php">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">

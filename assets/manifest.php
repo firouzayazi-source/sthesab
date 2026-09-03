@@ -7,6 +7,11 @@
  * باز کردن از آیکون صفحه اصلی می‌شد.
  */
 require_once __DIR__ . '/../includes/auth.php';
+// ⚠ `auth.php` فقط db و سدِ ورود را می‌آورد، نه `functions.php` — و
+//   `iconUrl()` آنجاست. بدونِ این خط، مانیفست ۵۰۰ می‌دهد و **هیچ ردی
+//   روی صفحه ندارد**: سایت درست بالا می‌آید و فقط «افزودن به صفحه‌ی
+//   اصلی» بی‌سروصدا از کار می‌افتد.
+require_once __DIR__ . '/../includes/functions.php';
 
 header('Content-Type: application/manifest+json; charset=utf-8');
 
@@ -20,13 +25,18 @@ $manifest = [
     'theme_color'      => '#0b0b0b',
     'orientation'      => 'portrait',
     'icons' => [
-        ['src' => APP_BASE_PATH . '/assets/icons/icon-192.png', 'sizes' => '192x192', 'type' => 'image/png'],
-        ['src' => APP_BASE_PATH . '/assets/icons/icon-512.png', 'sizes' => '512x512', 'type' => 'image/png'],
+        ['src' => iconUrl('icon-192.png'), 'sizes' => '192x192', 'type' => 'image/png'],
+        ['src' => iconUrl('icon-512.png'), 'sizes' => '512x512', 'type' => 'image/png'],
         // اندروید آیکون را داخل شکل خودش (دایره، مربعِ گرد، …) می‌برد و
         // لبه‌ها را می‌برد. بدون purpose=maskable سیستم آیکون را داخل یک
         // کادر سفید کوچک می‌گذارد و روی صفحه‌ی اصلی وصله به نظر می‌رسد.
+        //
+        // ⛔ و این **فایلِ جدایی** است، نه همان icon-512. فقط ۸۰٪ مرکزی
+        //    تضمین‌شده است و در آیکونِ عادی دورترین گوشه‌ی لوگو روی
+        //    ۴۳.۸٪ می‌افتد — یعنی میله‌ی بلندِ نمودار با ماسکِ دایره‌ای
+        //    بریده می‌شد. در این نسخه لوگو وسط‌چین و روی ۳۷.۱٪ است.
         [
-            'src'     => APP_BASE_PATH . '/assets/icons/icon-512.png',
+            'src'     => iconUrl('icon-512-maskable.png'),
             'sizes'   => '512x512',
             'type'    => 'image/png',
             'purpose' => 'maskable',

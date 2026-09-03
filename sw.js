@@ -21,7 +21,7 @@
  * activate پاک می‌شوند.
  */
 
-const VERSION    = 'daftar-v2';
+const VERSION    = 'daftar-v3';
 const ASSET_CACHE = VERSION + '-assets';
 
 // مسیرها نسبت به خودِ این فایل حل می‌شوند، پس نصب در زیرپوشه هم کار

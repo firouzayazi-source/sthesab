@@ -395,6 +395,106 @@ if ($pdoOk) {
 }
 
 // ---------------------------------------------------------------
+// ⛔ مانیفستِ PWA هم باید واقعاً جواب بدهد، نه فقط «نحوش درست باشد».
+//
+// یک بار `assets/manifest.php` تابعی از `functions.php` را صدا زد در
+// حالی که فقط `auth.php` را لود می‌کرد (و آن `functions.php` را
+// نمی‌آورد). نتیجه ۵۰۰ بود و **هیچ ردی روی صفحه نداشت**: سایت درست
+// بالا می‌آمد و فقط «افزودن به صفحه‌ی اصلی» بی‌سروصدا از کار می‌افتاد.
+// `php -l` این را نمی‌گیرد و هیچ تستِ دیگری این فایل را صدا نمی‌زد.
+T::group('مانیفستِ PWA و آیکون‌هایش');
+
+[$mCode, $mBody] = $req('/assets/manifest.php', 'GET');
+T::same(200, $mCode, 'assets/manifest.php پاسخ ۲۰۰ می‌دهد');
+
+$manifest = json_decode($mBody, true);
+T::ok(is_array($manifest) && isset($manifest['icons']), 'و JSON معتبر با فهرست آیکون برمی‌گرداند');
+
+if (is_array($manifest) && !empty($manifest['icons'])) {
+    $missing = [];
+    $maskable = 0;
+    foreach ($manifest['icons'] as $ic) {
+        $src = (string)($ic['src'] ?? '');
+        if (($ic['purpose'] ?? '') === 'maskable') { $maskable++; }
+        // ⚠ `?v=` را باید برداشت: آدرسِ نسخه‌دار است، فایل نه.
+        $path = parse_url($src, PHP_URL_PATH) ?? '';
+        if (!is_file($root . $path)) { $missing[] = $src; }
+    }
+    T::bulk(count($manifest['icons']), $missing, 'فایلِ هر آیکونِ مانیفست روی دیسک هست');
+    T::same(1, $maskable, 'دقیقاً یک آیکونِ maskable معرفی شده');
+
+    // ⛔ آدرسِ آیکون باید `?v=` داشته باشد، وگرنه کشِ «یک سال،
+    //    immutable» ِ nginx آیکونِ تازه را تا یک سال به کاربرِ فعلی
+    //    نمی‌رساند — بی‌هیچ خطایی و بی‌آنکه تازه‌سازی کمکی کند.
+    $unversioned = [];
+    foreach ($manifest['icons'] as $ic) {
+        if (!str_contains((string)($ic['src'] ?? ''), '?v=')) { $unversioned[] = $ic['src'] ?? '?'; }
+    }
+    T::bulk(count($manifest['icons']), $unversioned, 'آدرسِ هر آیکون نسخه‌دار است');
+
+    // ⛔ و مهم‌تر از **نامِ** فایلِ maskable، این است که واقعاً maskable
+    //    باشد: اندروید آن را داخل شکلِ خودش می‌برد و فقط دایره‌ی مرکزی
+    //    با شعاعِ ۴۰٪ تضمین‌شده است. آیکونِ عادی این شرط را ندارد
+    //    (دورترین گوشه‌ی لوگو روی ۴۳.۸٪) و اگر روزی کسی این ورودی را
+    //    دوباره به آن برگرداند، میله‌ی بلندِ نمودار بریده می‌شود —
+    //    بی‌آنکه هیچ فایلی گم شده باشد یا تستی قرمز شود. پس خودِ
+    //    **تصویر** سنجیده می‌شود، نه نامش.
+    $maskSrc = '';
+    foreach ($manifest['icons'] as $ic) {
+        if (($ic['purpose'] ?? '') === 'maskable') { $maskSrc = (string)($ic['src'] ?? ''); }
+    }
+    $maskFile = $root . (parse_url($maskSrc, PHP_URL_PATH) ?? '');
+    if (function_exists('imagecreatefrompng') && is_file($maskFile)) {
+        $img = @imagecreatefrompng($maskFile);
+        if ($img) {
+            $w = imagesx($img); $h = imagesy($img);
+            $x0 = $w; $y0 = $h; $x1 = -1; $y1 = -1;
+            for ($y = 0; $y < $h; $y++) {
+                for ($x = 0; $x < $w; $x++) {
+                    $c = imagecolorat($img, $x, $y);
+                    // پیکسلِ طلاییِ لوگو: روشن و به‌وضوح گرم‌تر از زمینه‌ی خاکستری.
+                    if ((($c >> 16) & 255) > 110 && (($c >> 16) & 255) > (($c & 255) + 35)) {
+                        if ($x < $x0) { $x0 = $x; }
+                        if ($x > $x1) { $x1 = $x; }
+                        if ($y < $y0) { $y0 = $y; }
+                        if ($y > $y1) { $y1 = $y; }
+                    }
+                }
+            }
+            imagedestroy($img);
+            $far = 0.0;
+            foreach ([[$x0, $y0], [$x1, $y0], [$x0, $y1], [$x1, $y1]] as $c) {
+                $dx  = $c[0] / $w - 0.5;
+                $dy  = $c[1] / $h - 0.5;
+                $far = max($far, sqrt($dx * $dx + $dy * $dy));
+            }
+            T::ok($x1 > 0, 'لوگو داخلِ آیکونِ maskable پیدا شد');
+            T::ok($far <= 0.40,
+                '⛔ لوگوی maskable داخلِ ناحیه‌ی امنِ ۸۰٪ می‌ماند',
+                sprintf('دورترین گوشه: %.1f%% (سقف: ۴۰٪)', $far * 100));
+        }
+    }
+}
+
+// و همان قاعده برای صفحه‌هایی که سرآیندِ خودشان را دارند.
+$pageIcons = [];
+foreach (['/login.php', '/forgot-password.php'] as $p) {
+    [, $html] = $req($p, 'GET');
+    if (preg_match_all('~assets/icons/[A-Za-z0-9._?=-]+~', $html, $m)) {
+        foreach ($m[0] as $u) { $pageIcons[$u] = true; }
+    }
+}
+$badIcons = [];
+foreach (array_keys($pageIcons) as $u) {
+    if (!str_contains($u, '?v=')) { $badIcons[] = $u . ' (بدون نسخه)'; }
+    $f = $root . '/' . explode('?', $u)[0];
+    if (!is_file($f)) { $badIcons[] = $u . ' (فایل نیست)'; }
+}
+T::ok(count($pageIcons) >= 2, 'آیکون‌های صفحه‌ی ورود پیدا شدند',
+    'پیدا شد: ' . count($pageIcons));
+T::bulk(count($pageIcons), $badIcons, 'آیکون‌های داخلِ صفحه هم نسخه‌دار و موجودند');
+
+// ---------------------------------------------------------------
 if ($pid) { @exec("kill $pid 2>/dev/null"); }
 @unlink($log);
 

@@ -95,9 +95,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php foreach (assetUrls(['css/style.css']) as $__u): ?>
     <link rel="stylesheet" href="<?= h($__u) ?>">
     <?php endforeach; ?>
-    <link rel="apple-touch-icon" href="<?= APP_BASE_PATH ?>/assets/icons/icon-180.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="<?= APP_BASE_PATH ?>/assets/icons/icon-32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="<?= APP_BASE_PATH ?>/assets/icons/icon-16.png">
+    <link rel="apple-touch-icon" href="<?= iconUrl('icon-180.png') ?>">
+    <link rel="icon" type="image/png" sizes="32x32" href="<?= iconUrl('icon-32.png') ?>">
+    <link rel="icon" type="image/png" sizes="16x16" href="<?= iconUrl('icon-16.png') ?>">
     <link rel="manifest" href="<?= APP_BASE_PATH ?>/assets/manifest.php">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -111,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <img src="<?= APP_BASE_PATH ?>/uploads/avatars/<?= h($loginAvatar) ?>" alt=""
                      class="auth-avatar" width="76" height="76">
             <?php else: ?>
-                <img src="<?= APP_BASE_PATH ?>/assets/icons/icon-192.png" alt=""
+                <img src="<?= iconUrl('icon-192.png') ?>" alt=""
                      class="auth-avatar auth-avatar-app" width="76" height="76">
             <?php endif; ?>
             <h1><?= h(APP_NAME) ?></h1>

@@ -1938,6 +1938,21 @@ function cachedCategories(): array
  *
  * `?v=` از زمان تغییر فایل ساخته می‌شود، پس کش یک‌ساله امن است.
  */
+/**
+ * ⛔ آدرسِ آیکون هم باید `?v=` بگیرد — وگرنه آیکونِ تازه هرگز نمی‌رسد.
+ *
+ * سایتِ nginx به همه‌ی `.png` کشِ «یک سال، immutable» می‌دهد. برای
+ * فایلی که آدرسش نسخه دارد درست است، ولی آیکون‌ها با آدرسِ ثابت صدا
+ * زده می‌شدند: با عوض کردنِ فایل، مرورگرِ کسی که یک بار سایت را باز
+ * کرده تا **یک سال** همان آیکونِ قدیمی را نشان می‌داد — بی‌هیچ خطایی،
+ * و بدونِ اینکه تازه‌سازیِ صفحه کاری بکند. `immutable` یعنی مرورگر
+ * حتی درخواستِ شرطی هم نمی‌فرستد.
+ */
+function iconUrl(string $file): string
+{
+    return APP_BASE_PATH . '/assets/icons/' . $file . '?v=' . assetVersion(['icons/' . $file]);
+}
+
 function assetUrls(array $relativePaths): array
 {
     $ver  = assetVersion($relativePaths);

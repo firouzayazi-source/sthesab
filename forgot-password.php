@@ -56,14 +56,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $mailReady) {
     <?php foreach (assetUrls(['css/style.css']) as $__u): ?>
     <link rel="stylesheet" href="<?= h($__u) ?>">
     <?php endforeach; ?>
-    <link rel="apple-touch-icon" href="<?= APP_BASE_PATH ?>/assets/icons/icon-180.png">
-    <link rel="icon" type="image/png" sizes="32x32" href="<?= APP_BASE_PATH ?>/assets/icons/icon-32.png">
+    <link rel="apple-touch-icon" href="<?= iconUrl('icon-180.png') ?>">
+    <link rel="icon" type="image/png" sizes="32x32" href="<?= iconUrl('icon-32.png') ?>">
     <meta name="theme-color" content="#0b0b0b">
 </head>
 <body class="auth-body">
     <div class="auth-box">
         <div class="auth-logo">
-            <img src="<?= APP_BASE_PATH ?>/assets/icons/icon-192.png" alt="" class="brand-icon brand-icon-img" width="64" height="64">
+            <img src="<?= iconUrl('icon-192.png') ?>" alt="" class="brand-icon brand-icon-img" width="64" height="64">
             <h1><?= h(APP_NAME) ?></h1>
             <p class="auth-subtitle">بازیابی رمز عبور</p>
         </div>
