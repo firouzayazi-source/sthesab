@@ -55,7 +55,24 @@ const SMS_SETTING_KEYS = [
     'sms_user'    => 'SMS_USER',
     'sms_pass'    => 'SMS_PASS',
     'sms_pattern' => 'SMS_PATTERN',
+    'sms_text'    => 'SMS_TEXT',
 ];
+
+/**
+ * متنِ پیامکِ کدِ ورود در حالتِ **متن آزاد**.
+ *
+ * ⚠ در حالتِ الگو اصلاً استفاده نمی‌شود — متن را خودِ الگو دارد.
+ * `{code}` جای کد و `{ttl}` جای مهلت (دقیقه) می‌نشیند.
+ */
+function smsCodeText(string $code, int $ttlMinutes): string
+{
+    $tpl = smsSetting('sms_text', 'SMS_TEXT');
+    if ($tpl === '') {
+        $app = defined('APP_NAME') ? APP_NAME : 'دفتر مالی';
+        $tpl = "کد ورود به {$app}: {code}\nتا {ttl} دقیقه اعتبار دارد.";
+    }
+    return str_replace(['{code}', '{ttl}'], [$code, (string)$ttlMinutes], $tpl);
+}
 
 /** پنل‌هایی که پشتیبانی می‌شوند و اینکه هرکدام چه می‌خواهد. */
 function smsProviders(): array
@@ -95,6 +112,26 @@ class Sms
     /** آیا این پنل هر چیزی که لازم دارد را دارد؟ '' یعنی آماده است. */
     public static function missingFor(string $method): string
     {
+        $key = smsSetting('sms_api_key', 'SMS_API_KEY');
+
+        // ⚠ ملی‌پیامک شرطش «یا/یا» است، نه فهرستِ ثابت: یا کلیدِ حسابِ
+        //   جدید، یا نام کاربری و رمزِ حسابِ قدیمی. با فهرستِ ثابت،
+        //   حسابِ جدید همیشه «ناقص» گزارش می‌شد در حالی که کار می‌کرد.
+        if ($method === 'melipayamak') {
+            $user = smsSetting('sms_user', 'SMS_USER');
+            $pass = smsSetting('sms_pass', 'SMS_PASS');
+            if ($user !== '' && $pass === '' && $key === '') {
+                return 'رمز عبور پنل وارد نشده است.';
+            }
+            if ($user === '' && $key === '') {
+                return 'کلید API وارد نشده است.';
+            }
+            if (smsSetting('sms_pattern', 'SMS_PATTERN') === '') {
+                return 'کد بادی الگو وارد نشده است — برای کد ورود عملاً لازم است.';
+            }
+            return '';
+        }
+
         $providers = smsProviders();
         if (!isset($providers[$method])) { return 'پنل ناشناخته است.'; }
 
@@ -163,10 +200,47 @@ class Sms
      */
     private static function sendMeliPattern(string $to, string $code, string $bodyId): bool
     {
+        $key  = smsSetting('sms_api_key', 'SMS_API_KEY');
         $user = smsSetting('sms_user', 'SMS_USER');
+
+        // ⛔ ملی‌پیامک **دو نوع حساب** دارد و مسیرشان یکی نیست. نبودِ
+        //    این تفکیک همان چیزی بود که پیامک را نمی‌فرستاد:
+        //
+        //    • حسابِ جدید فقط یک «کلید وب‌سرویس» می‌دهد و از کنسول کار
+        //      می‌کند: `console.melipayamak.com/api/send/shared/{key}`.
+        //    • حسابِ قدیمی نام کاربری و رمزِ پنل دارد و از REST قدیمی:
+        //      `rest.payamak-panel.com/.../BaseServiceNumber`.
+        //
+        //    ⚠ «نام کاربری» پر باشد یعنی روشِ قدیمی. پس اگر کلید دارید
+        //      آن فیلد را خالی بگذارید — پر بودنش مسیر را عوض می‌کند.
+        if ($user === '') {
+            if ($key === '') {
+                self::$lastError = 'کلید API ملی‌پیامک تنظیم نشده است.';
+                return false;
+            }
+            $res = self::post(
+                'https://console.melipayamak.com/api/send/shared/' . rawurlencode($key),
+                json_encode(['bodyId' => (int)$bodyId, 'to' => $to, 'args' => [$code]],
+                            JSON_UNESCAPED_UNICODE),
+                ['Content-Type: application/json', 'Accept: application/json']
+            );
+            if ($res === null) { return false; }
+
+            // کنسول شناسه‌ی پیام را در `recId` برمی‌گرداند. صفر یا نبودنش
+            // یعنی نرفته، حتی اگر کدِ HTTP دویست باشد.
+            $json = json_decode($res['body'], true);
+            if ((int)($json['recId'] ?? 0) <= 0) {
+                self::$lastError = 'پاسخ ملی‌پیامک: '
+                    . ($json['status'] ?? $json['message'] ?? $res['body']);
+                return false;
+            }
+            return true;
+        }
+
         $pass = smsSetting('sms_pass', 'SMS_PASS');
-        if ($user === '' || $pass === '') {
-            self::$lastError = 'نام کاربری یا رمزِ ملی‌پیامک تنظیم نشده است.';
+        if ($pass === '') { $pass = $key; }   // روشِ قدیمی: رمز در همان فیلدِ کلید
+        if ($pass === '') {
+            self::$lastError = 'رمزِ پنلِ ملی‌پیامک تنظیم نشده است.';
             return false;
         }
 
@@ -349,10 +423,35 @@ class Sms
 
     private static function sendMeliPayamak(string $to, string $text): bool
     {
+        $key  = smsSetting('sms_api_key', 'SMS_API_KEY');
         $user = smsSetting('sms_user', 'SMS_USER');
         $pass = smsSetting('sms_pass', 'SMS_PASS');
-        if ($user === '' || $pass === '') {
-            self::$lastError = 'نام کاربری یا رمزِ ملی‌پیامک تنظیم نشده است.';
+        if ($pass === '') { $pass = $key; }
+
+        // حسابِ جدید (فقط کلید): متنِ آزاد از کنسول می‌رود.
+        if ($user === '') {
+            if ($key === '') {
+                self::$lastError = 'کلید API ملی‌پیامک تنظیم نشده است.';
+                return false;
+            }
+            $res = self::post(
+                'https://console.melipayamak.com/api/send/simple/' . rawurlencode($key),
+                json_encode(['from' => smsSetting('sms_sender', 'SMS_SENDER'),
+                             'to' => $to, 'text' => $text], JSON_UNESCAPED_UNICODE),
+                ['Content-Type: application/json', 'Accept: application/json']
+            );
+            if ($res === null) { return false; }
+            $json = json_decode($res['body'], true);
+            if ((int)($json['recId'] ?? 0) <= 0) {
+                self::$lastError = 'پاسخ ملی‌پیامک: '
+                    . ($json['status'] ?? $json['message'] ?? $res['body']);
+                return false;
+            }
+            return true;
+        }
+
+        if ($pass === '') {
+            self::$lastError = 'رمزِ پنلِ ملی‌پیامک تنظیم نشده است.';
             return false;
         }
 

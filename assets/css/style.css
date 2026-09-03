@@ -1349,6 +1349,22 @@ button.status-badge:active { transform: scale(.96); }
     .data-table td.empty-row::before { content: none; }
 }
 
+/* ---------- تنظیماتِ پیامک ---------- */
+/* ⛔ `.card` یک `display` دارد و با ویژگیِ `hidden` هم‌وزن است، پس هر
+   کدام دیرتر بیاید برنده می‌شود — یعنی `hidden` بی‌اثر می‌ماند و کارت
+   با اینکه پنهان علامت خورده دیده می‌شود. این را در مرورگر دیدم، نه
+   با خواندنِ کد. یک قاعده‌ی صریح جلویش را می‌گیرد. */
+.sms-conn[hidden] { display: none; }
+
+.req { color: var(--out); font-weight: 700; }
+.sms-test {
+    margin-top: 18px; padding-top: 16px;
+    border-top: 1px dashed var(--line);
+}
+.sms-test-row { display: flex; gap: 8px; align-items: stretch; }
+.sms-test-row input { flex: 1; }
+.sms-test-row .btn { white-space: nowrap; }
+
 /* ---------- گیتِ اشتراک ---------- */
 /* ⛔ قفل، نه پنهان‌سازی. کاربری که نمی‌داند چیزی هست هرگز برایش پول
    نمی‌دهد؛ آنچه می‌فروشد دیدنِ همان چیزی است که ندارد. */

@@ -252,23 +252,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         //    `git pull` بی‌خبر باز شود.
         setSetting(SMS_LOGIN_SETTING, postParam('allow_sms_login') === '1' ? '1' : '0');
 
-        // ---------- تنظیماتِ پنلِ پیامک ----------
+        redirectWithMessage('users.php', 'success', 'تنظیمات ثبت‌نام بروزرسانی شد.');
+    } elseif ($action === 'update_sms_setting') {
+        // ⛔ ورود با پیامک پیش‌فرض خاموش است و فقط از همین‌جا روشن
+        //    می‌شود: یک راهِ ورودِ تازه به هر حسابی است و نباید با یک
+        //    `git pull` بی‌خبر باز شود.
+        setSetting(SMS_LOGIN_SETTING, postParam('allow_sms_login') === '1' ? '1' : '0');
+
         $smsMethodIn = postParam('sms_method');
         if (!array_key_exists($smsMethodIn, smsProviders())) { $smsMethodIn = ''; }
         setSetting('sms_method', $smsMethodIn);
+        setSetting('sms_text', trim(postParam('sms_text')));
 
+        redirectWithMessage('users.php', 'success', 'تنظیمات ورود با پیامک ذخیره شد.');
+    } elseif ($action === 'update_sms_conn') {
         // ⚠ ورودیِ خالی یعنی «دست نزن»، نه «پاک کن» — همان قاعده‌ی
-        //   `saveUserEmail`. فرم مقدارِ فعلیِ رمز و کلید را نشان نمی‌دهد
-        //   (نباید هم بدهد)، پس ذخیره‌ی ساده نباید آن‌ها را خالی کند.
-        //   پاک کردنِ عمدی با تایپِ یک خط تیره انجام می‌شود.
-        foreach (['sms_api_key', 'sms_sender', 'sms_user', 'sms_pass', 'sms_pattern'] as $k) {
-            $v = trim(postParam($k));
-            if ($v === '')  { continue; }
+        //   `saveUserEmail`. فرم مقدارِ فعلیِ کلید را نشان نمی‌دهد (نباید
+        //   هم بدهد)، پس ذخیره‌ی ساده نباید آن را خالی کند.
+        //
+        // ⚠ ولی «نام کاربری» و «کد بادی» و «شماره خط» مقدارشان روی فرم
+        //   **دیده می‌شود**، پس برای آن‌ها خالی واقعاً یعنی خالی —
+        //   وگرنه کاربری که می‌خواهد از روشِ قدیمی به کلیدِ API برود
+        //   نمی‌توانست نام کاربری را بردارد و مسیر عوض نمی‌شد.
+        foreach (['sms_api_key' => false, 'sms_pass' => false,
+                  'sms_user' => true, 'sms_pattern' => true, 'sms_sender' => true] as $k => $visible) {
+            // ⚠ مستقیم از `$_POST` خوانده می‌شود نه `postParam()`:
+            //   آن تابع «نبود» و «خالی» را یکی می‌کند، و اینجا فرقشان
+            //   مهم است — فیلدی که اصلاً در این فرم نیست نباید پاک شود.
+            if (!isset($_POST[$k])) { continue; }
+            $v = trim((string)$_POST[$k]);
             if ($v === '-') { $v = ''; }
+            if ($v === '' && !$visible) { continue; } // مخفی و خالی = دست نزن
             setSetting($k, $v);
         }
-
-        redirectWithMessage('users.php', 'success', 'تنظیمات ثبت‌نام بروزرسانی شد.');
+        redirectWithMessage('users.php', 'success', 'تنظیمات پیامک ذخیره شد.');
+    } elseif ($action === 'sms_test') {
+        // ⛔ «پیامک ارسال نشد» بدونِ دیدنِ خطای پنل یعنی حدس زدن. این
+        //    دکمه همان خطای خامِ پنل را نشان می‌دهد — تنها راهِ فهمیدنِ
+        //    اینکه مشکل از کلید است، از الگو، یا از اعتبارِ حساب.
+        $to = SmsLogin::normalizePhone(postParam('test_phone'));
+        if ($to === null) {
+            redirectWithMessage('users.php', 'error', 'شماره آزمایشی معتبر نیست.');
+        }
+        $ok = Sms::sendCode($to, '12345', smsCodeText('12345', 3));
+        redirectWithMessage('users.php', $ok ? 'success' : 'error',
+            $ok ? 'پیامک آزمایشی به پنل تحویل داده شد. اگر نرسید، از خودِ پنل وضعیت ارسال را ببینید.'
+                : 'ارسال نشد — ' . (Sms::$lastError ?: 'پنل دلیلی نگفت.'));
     }
 }
 
@@ -358,6 +387,258 @@ include __DIR__ . '/../includes/header.php';
 
         <button type="submit" class="btn btn-secondary btn-sm">ذخیره</button>
     </form>
+</div>
+
+<?php /* ⛔ این کارت **پیش از** کارت‌های اتصال می‌آید و دلیلش فقط
+         ترتیبِ خواندن نیست: اسکریپتِ تعویضِ کارت به همین `select`
+         بسته است و اگر بعد از آن بیاید، `getElementById` تهی
+         برمی‌گرداند و تعویض بی‌صدا کار نمی‌کند. یک بار همین شد و
+         در مرورگر دیده شد، نه با خواندنِ کد. */ ?>
+<div class="card">
+    <h2 class="card-title">ورود با پیامک</h2>
+    <form method="POST">
+        <?= Csrf::field() ?>
+        <input type="hidden" name="action" value="update_sms_setting">
+        <?php /* ⛔ ورود با پیامک: یک راهِ ورودِ دوم به هر حسابی است، پس
+                 پیش‌فرض خاموش. و کلیدی که کار نمی‌کند از نبودنش بدتر
+                 است — پس اگر پنلِ پیامک تنظیم نشده باشد همین‌جا صریح
+                 گفته می‌شود، نه اینکه کاربر روشنش کند و هیچ کدی نرسد. */ ?>
+        <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
+        <label class="switch" style="margin-bottom:8px;">
+            <input type="checkbox" name="allow_sms_login" value="1" <?= $smsLoginOn ? 'checked' : '' ?>>
+            <span class="switch-track"><span class="switch-knob"></span></span>
+            <span class="switch-text">ورود با کد پیامکی</span>
+        </label>
+        <p class="hint" style="margin-bottom:14px;">
+            <?php if (!$smsTableReady): ?>
+                ⛔ جدولش هنوز ساخته نشده. اول <code>migration_sms_login</code> را اجرا کنید.
+            <?php else: ?>
+                کاربرانی که شماره موبایلشان را در پروفایل ثبت کرده‌اند می‌توانند
+                بدون رمز، با کد پیامکی وارد شوند. هر پیامک هزینه دارد، پس سقفِ
+                <?= toPersianDigits(SmsLogin::MAX_PER_PHONE) ?> درخواست در ساعت
+                برای هر شماره گذاشته شده است.
+            <?php endif; ?>
+        </p>
+
+        <?php /* ⛔ تنظیمِ پنل از همین‌جا، نه فقط از `config.php`.
+                 کسی که می‌خواهد پنلش را وصل کند نباید مجبور باشد با SSH
+                 یک فایل PHP را ویرایش کند — وگرنه این قابلیت عملاً وصل
+                 نمی‌شود. ولی هر کلیدی که در `config.php` مقدار داشته
+                 باشد همچنان **برنده** است. */ ?>
+        <div class="form-group">
+            <label for="sms_method">سرویس پیامک</label>
+            <select id="sms_method" name="sms_method">
+                <?php foreach (smsProviders() as $key => $prov): ?>
+                    <option value="<?= h($key) ?>" <?= $smsMethod === $key ? 'selected' : '' ?>>
+                        <?= h($prov['label']) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+            <p class="hint">
+                <?php if ($smsMethod === ''): ?>
+                    هنوز پنلی وصل نیست. هر کدام را که حساب دارید انتخاب کنید و
+                    مشخصاتش را در کارتِ زیر بنویسید.
+                <?php elseif ($smsMissing !== ''): ?>
+                    ⛔ <?= h($smsMissing) ?>
+                <?php elseif ($smsMethod === 'log'): ?>
+                    ⛔ این حالت هیچ پیامکی نمی‌فرستد و کدها را در
+                    <code>var/sms.log</code> می‌نویسد. فقط برای آزمایش.
+                <?php else: ?>
+                    ✓ آماده است.
+                <?php endif; ?>
+            </p>
+        </div>
+
+        <?php /* ⚠ متنِ آزاد فقط وقتی استفاده می‌شود که الگو نداشته
+                 باشید. با الگو، متن را خودِ پنل دارد و این فیلد
+                 بی‌اثر است — پس برچسبش همین را می‌گوید. */ ?>
+        <div class="form-group">
+            <label for="sms_text">متن پیامک <span class="hint">(فقط حالت متن آزاد)</span></label>
+            <input type="text" id="sms_text" name="sms_text" autocomplete="off" maxlength="200"
+                   value="<?= h(smsSetting('sms_text', 'SMS_TEXT')) ?>"
+                   placeholder="کد ورود شما: {code}">
+            <p class="hint">
+                در متن، <code>{code}</code> جای کد و <code>{ttl}</code> جای
+                مهلت (دقیقه) می‌نشیند.
+            </p>
+        </div>
+        <button type="submit" class="btn btn-secondary btn-block">ذخیرهٔ تنظیمات</button>
+    </form>
+</div>
+
+<?php /* ⛔ کارتِ اتصال **مخصوصِ همان پنل** است، نه یک فهرستِ درهمِ همه‌ی
+         فیلدها. با فهرستِ درهم، کاربرِ ملی‌پیامک نمی‌فهمد «شماره خط» به
+         او ربط دارد یا نه، و کاربرِ کاوه‌نگار سه فیلدِ بی‌ربط می‌بیند.
+         هر کارت فقط چیزهای همان پنل را دارد و با انتخابِ بالا عوض
+         می‌شود. */ ?>
+<div class="card sms-conn" data-for="melipayamak" <?= $smsMethod === 'melipayamak' ? '' : 'hidden' ?>>
+    <h2 class="card-title">اتصال به ملی‌پیامک</h2>
+    <form method="POST">
+        <?= Csrf::field() ?>
+        <input type="hidden" name="action" value="update_sms_conn">
+
+        <p class="hint" style="margin-bottom:16px;">
+            دو نوع حساب دارد: <strong>حساب جدید</strong> فقط یک «کلید API»
+            می‌دهد — «نام کاربری» را خالی بگذارید. <strong>حساب قدیمی</strong>
+            نام کاربری و رمز عبور پنل دارد — هر دو را پر کنید و رمز را در
+            فیلد کلید بگذارید. در هر دو حالت «کد بادی الگو» لازم است.
+        </p>
+
+        <div class="form-group">
+            <label for="mp_key">کلید API (یا رمز عبور پنل، در روش قدیمی) <span class="req">*</span></label>
+            <input type="text" id="mp_key" name="sms_api_key" autocomplete="off" dir="ltr"
+                   placeholder="<?= $smsHas['sms_api_key'] ? 'ثبت شده — خالی بگذارید تا تغییر نکند' : 'کلید وب‌سرویس را بچسبانید' ?>">
+            <p class="hint">
+                از بخش «تنظیمات» کنسول ملی‌پیامک، گزینهٔ کلید وب‌سرویس. اگر
+                حساب قدیمی دارید، به‌جای کلید رمز عبور پنل را بگذارید و
+                «نام کاربری» را هم پر کنید.
+            </p>
+        </div>
+
+        <div class="form-group">
+            <label for="mp_user">نام کاربری <span class="hint">(فقط روش قدیمی)</span></label>
+            <input type="text" id="mp_user" name="sms_user" autocomplete="off" dir="ltr"
+                   value="<?= h(smsSetting('sms_user', 'SMS_USER')) ?>" placeholder="">
+            <p class="hint">
+                ⓘ اگر کلید API دارید این را خالی بگذارید — پر بودنش یعنی از
+                وب‌سرویس قدیمی با رمز عبور استفاده کن.
+            </p>
+        </div>
+
+        <div class="form-group">
+            <label for="mp_body">کد بادی الگو <span class="hint">(bodyId)</span></label>
+            <input type="text" id="mp_body" name="sms_pattern" autocomplete="off" dir="ltr"
+                   value="<?= h(smsSetting('sms_pattern', 'SMS_PATTERN')) ?>" placeholder="">
+            <p class="hint">
+                از بخش «خدمات پایه» کنسول، شمارهٔ الگوی تأییدشده. برای کد
+                ورود عملاً لازم است.
+            </p>
+        </div>
+
+        <div class="form-group">
+            <label for="mp_line">شمارهٔ خط اختصاصی <span class="hint">(اختیاری)</span></label>
+            <input type="text" id="mp_line" name="sms_sender" autocomplete="off" dir="ltr"
+                   value="<?= h(smsSetting('sms_sender', 'SMS_SENDER')) ?>" placeholder="">
+            <p class="hint">فقط اگر الگو ندارید و می‌خواهید متن آزاد از خط خودتان بفرستید.</p>
+        </div>
+
+        <button type="submit" class="btn btn-secondary btn-block">ذخیرهٔ تنظیمات</button>
+    </form>
+
+
+
+    <?php /* ⛔ بدونِ این، «پیامک ارسال نشد» یعنی حدس زدن. اینجا خطای
+             خامِ پنل دیده می‌شود — تنها راهِ فهمیدنِ اینکه مشکل از کلید
+             است، از الگو، یا از اعتبارِ حساب. */ ?>
+    <form method="POST" class="sms-test">
+        <?= Csrf::field() ?>
+        <input type="hidden" name="action" value="sms_test">
+        <label for="test_melipayamak">ارسال آزمایشی</label>
+        <div class="sms-test-row">
+            <input type="tel" id="test_melipayamak" name="test_phone" dir="ltr"
+                   inputmode="tel" placeholder="۰۹۱۲۳۴۵۶۷۸۹">
+            <button type="submit" class="btn btn-secondary btn-sm">بفرست</button>
+        </div>
+        <p class="hint">کد ۱۲۳۴۵ فرستاده می‌شود. اگر نرود، متنِ خطای پنل همین‌جا نشان داده می‌شود.</p>
+    </form>
+</div>
+
+<div class="card sms-conn" data-for="kavenegar" <?= $smsMethod === 'kavenegar' ? '' : 'hidden' ?>>
+    <h2 class="card-title">اتصال به کاوه‌نگار</h2>
+    <form method="POST">
+        <?= Csrf::field() ?>
+        <input type="hidden" name="action" value="update_sms_conn">
+        <div class="form-group">
+            <label for="kv_key">کلید API <span class="req">*</span></label>
+            <input type="text" id="kv_key" name="sms_api_key" autocomplete="off" dir="ltr"
+                   placeholder="<?= $smsHas['sms_api_key'] ? 'ثبت شده — خالی بگذارید تا تغییر نکند' : 'کلید پنل را بچسبانید' ?>">
+        </div>
+        <div class="form-group">
+            <label for="kv_tpl">نام الگو <span class="hint">(verify/lookup)</span></label>
+            <input type="text" id="kv_tpl" name="sms_pattern" autocomplete="off" dir="ltr"
+                   value="<?= h(smsSetting('sms_pattern', 'SMS_PATTERN')) ?>">
+            <p class="hint">الگوی تأییدشده در کاوه‌نگار. برای کد ورود عملاً لازم است.</p>
+        </div>
+        <div class="form-group">
+            <label for="kv_line">شمارهٔ خط اختصاصی <span class="hint">(اختیاری)</span></label>
+            <input type="text" id="kv_line" name="sms_sender" autocomplete="off" dir="ltr"
+                   value="<?= h(smsSetting('sms_sender', 'SMS_SENDER')) ?>">
+        </div>
+        <button type="submit" class="btn btn-secondary btn-block">ذخیرهٔ تنظیمات</button>
+    </form>
+    <?php /* ⛔ بدونِ این، «پیامک ارسال نشد» یعنی حدس زدن. اینجا خطای
+             خامِ پنل دیده می‌شود — تنها راهِ فهمیدنِ اینکه مشکل از کلید
+             است، از الگو، یا از اعتبارِ حساب. */ ?>
+    <form method="POST" class="sms-test">
+        <?= Csrf::field() ?>
+        <input type="hidden" name="action" value="sms_test">
+        <label for="test_kavenegar">ارسال آزمایشی</label>
+        <div class="sms-test-row">
+            <input type="tel" id="test_kavenegar" name="test_phone" dir="ltr"
+                   inputmode="tel" placeholder="۰۹۱۲۳۴۵۶۷۸۹">
+            <button type="submit" class="btn btn-secondary btn-sm">بفرست</button>
+        </div>
+        <p class="hint">کد ۱۲۳۴۵ فرستاده می‌شود. اگر نرود، متنِ خطای پنل همین‌جا نشان داده می‌شود.</p>
+    </form>
+</div>
+
+<div class="card sms-conn" data-for="smsir" <?= $smsMethod === 'smsir' ? '' : 'hidden' ?>>
+    <h2 class="card-title">اتصال به sms.ir</h2>
+    <form method="POST">
+        <?= Csrf::field() ?>
+        <input type="hidden" name="action" value="update_sms_conn">
+        <div class="form-group">
+            <label for="ir_key">کلید API <span class="req">*</span></label>
+            <input type="text" id="ir_key" name="sms_api_key" autocomplete="off" dir="ltr"
+                   placeholder="<?= $smsHas['sms_api_key'] ? 'ثبت شده — خالی بگذارید تا تغییر نکند' : 'کلید پنل را بچسبانید' ?>">
+        </div>
+        <div class="form-group">
+            <label for="ir_tpl">شناسهٔ الگو <span class="hint">(templateId)</span></label>
+            <input type="text" id="ir_tpl" name="sms_pattern" autocomplete="off" dir="ltr"
+                   value="<?= h(smsSetting('sms_pattern', 'SMS_PATTERN')) ?>">
+            <p class="hint">⚠ نام پارامتر داخل الگو باید <code>CODE</code> باشد.</p>
+        </div>
+        <div class="form-group">
+            <label for="ir_line">شمارهٔ خط <span class="req">*</span></label>
+            <input type="text" id="ir_line" name="sms_sender" autocomplete="off" dir="ltr"
+                   value="<?= h(smsSetting('sms_sender', 'SMS_SENDER')) ?>">
+        </div>
+        <button type="submit" class="btn btn-secondary btn-block">ذخیرهٔ تنظیمات</button>
+    </form>
+    <?php /* ⛔ بدونِ این، «پیامک ارسال نشد» یعنی حدس زدن. اینجا خطای
+             خامِ پنل دیده می‌شود — تنها راهِ فهمیدنِ اینکه مشکل از کلید
+             است، از الگو، یا از اعتبارِ حساب. */ ?>
+    <form method="POST" class="sms-test">
+        <?= Csrf::field() ?>
+        <input type="hidden" name="action" value="sms_test">
+        <label for="test_smsir">ارسال آزمایشی</label>
+        <div class="sms-test-row">
+            <input type="tel" id="test_smsir" name="test_phone" dir="ltr"
+                   inputmode="tel" placeholder="۰۹۱۲۳۴۵۶۷۸۹">
+            <button type="submit" class="btn btn-secondary btn-sm">بفرست</button>
+        </div>
+        <p class="hint">کد ۱۲۳۴۵ فرستاده می‌شود. اگر نرود، متنِ خطای پنل همین‌جا نشان داده می‌شود.</p>
+    </form>
+</div>
+
+<script>
+/* کارتِ اتصال با انتخابِ سرویس عوض می‌شود — بی‌آنکه صفحه دوباره بارگذاری
+   شود. اگر جاوااسکریپت نرسد، کارتِ سرویسِ ذخیره‌شده از سمت سرور باز است،
+   پس فرم همچنان کار می‌کند. */
+(function () {
+    var sel = document.getElementById('sms_method');
+    if (!sel) { return; }
+    sel.addEventListener('change', function () {
+        document.querySelectorAll('.sms-conn').forEach(function (c) {
+            c.hidden = c.getAttribute('data-for') !== sel.value;
+        });
+    });
+})();
+</script>
+
+<?php /* از اینجا به بعد کارتِ اشتراک است — فرمِ خودش را دارد. */ ?>
+<div class="card">
+    <h2 class="card-title">اشتراک و پرداخت‌ها</h2>
 
     <?php if ($pending): ?>
         <h3 class="danger-title" style="color:var(--ink); margin-top:20px;">
@@ -421,103 +702,6 @@ include __DIR__ . '/../includes/header.php';
                    value="<?= h($supportEmail) ?>" placeholder="support@example.com"
                    autocapitalize="none" autocorrect="off" spellcheck="false">
             <p class="hint">در صفحه‌ی حریم خصوصی و پروفایل به کاربران نشان داده می‌شود.</p>
-        </div>
-
-        <?php /* ⛔ ورود با پیامک: یک راهِ ورودِ دوم به هر حسابی است، پس
-                 پیش‌فرض خاموش. و کلیدی که کار نمی‌کند از نبودنش بدتر
-                 است — پس اگر پنلِ پیامک تنظیم نشده باشد همین‌جا صریح
-                 گفته می‌شود، نه اینکه کاربر روشنش کند و هیچ کدی نرسد. */ ?>
-        <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
-        <label class="switch" style="margin-bottom:8px;">
-            <input type="checkbox" name="allow_sms_login" value="1" <?= $smsLoginOn ? 'checked' : '' ?>>
-            <span class="switch-track"><span class="switch-knob"></span></span>
-            <span class="switch-text">ورود با کد پیامکی</span>
-        </label>
-        <p class="hint" style="margin-bottom:14px;">
-            <?php if (!$smsTableReady): ?>
-                ⛔ جدولش هنوز ساخته نشده. اول <code>migration_sms_login</code> را اجرا کنید.
-            <?php else: ?>
-                کاربرانی که شماره موبایلشان را در پروفایل ثبت کرده‌اند می‌توانند
-                بدون رمز، با کد پیامکی وارد شوند. هر پیامک هزینه دارد، پس سقفِ
-                <?= toPersianDigits(SmsLogin::MAX_PER_PHONE) ?> درخواست در ساعت
-                برای هر شماره گذاشته شده است.
-            <?php endif; ?>
-        </p>
-
-        <?php /* ⛔ تنظیمِ پنل از همین‌جا، نه فقط از `config.php`.
-                 کسی که می‌خواهد پنلِ کاوه‌نگارش را وصل کند نباید مجبور
-                 باشد با SSH یک فایل PHP را ویرایش کند — وگرنه این
-                 قابلیت عملاً وصل نمی‌شود. ولی هر کلیدی که در
-                 `config.php` مقدار داشته باشد همچنان **برنده** است. */ ?>
-        <div class="form-group">
-            <label for="sms_method">پنل پیامک</label>
-            <select id="sms_method" name="sms_method">
-                <?php foreach (smsProviders() as $key => $prov): ?>
-                    <option value="<?= h($key) ?>" <?= $smsMethod === $key ? 'selected' : '' ?>>
-                        <?= h($prov['label']) ?>
-                    </option>
-                <?php endforeach; ?>
-            </select>
-            <p class="hint">
-                <?php if ($smsMethod === ''): ?>
-                    هنوز پنلی وصل نیست. هر کدام را که حساب دارید انتخاب کنید و
-                    مشخصاتش را زیر همین بنویسید.
-                <?php elseif ($smsMissing !== ''): ?>
-                    ⛔ <?= h($smsMissing) ?> تا وارد نشود، هیچ پیامکی نمی‌رود.
-                <?php elseif ($smsMethod === 'log'): ?>
-                    ⛔ این حالت هیچ پیامکی نمی‌فرستد و کدها را در
-                    <code>var/sms.log</code> می‌نویسد. فقط برای آزمایش.
-                <?php else: ?>
-                    ✓ آماده است.
-                <?php endif; ?>
-            </p>
-        </div>
-
-        <div class="form-group">
-            <label for="sms_api_key">کلید API <span class="hint">(کاوه‌نگار و sms.ir)</span></label>
-            <input type="text" id="sms_api_key" name="sms_api_key" autocomplete="off"
-                   dir="ltr" placeholder="<?= $smsHas['sms_api_key'] ? '••••••  (ثبت شده)' : 'کلید پنل را اینجا بچسبانید' ?>">
-        </div>
-        <div class="form-group">
-            <label for="sms_sender">شماره خط <span class="hint">(sms.ir لازم دارد)</span></label>
-            <input type="text" id="sms_sender" name="sms_sender" autocomplete="off"
-                   dir="ltr" placeholder="<?= $smsHas['sms_sender'] ? '••••••  (ثبت شده)' : 'مثلاً 30002100' ?>">
-        </div>
-        <div class="form-group">
-            <label for="sms_user">نام کاربری پنل <span class="hint">(ملی‌پیامک)</span></label>
-            <input type="text" id="sms_user" name="sms_user" autocomplete="off"
-                   dir="ltr" placeholder="<?= $smsHas['sms_user'] ? '••••••  (ثبت شده)' : '' ?>">
-        </div>
-        <?php /* ⛔ الگو (خدمات پایه) — مهم‌ترین فیلدِ این فرم برای کسی که
-                 خطِ اختصاصی ندارد. پیامکِ کدِ ورود از مسیرِ الگو ارزان‌تر
-                 است، به خط نیاز ندارد و شبانه‌روزی می‌رود؛ متنِ آزاد
-                 ممکن است اصلاً تحویل نشود. */ ?>
-        <div class="form-group">
-            <label for="sms_pattern">کد الگو / خدمات پایه <span class="hint">(توصیه‌شده)</span></label>
-            <input type="text" id="sms_pattern" name="sms_pattern" autocomplete="off"
-                   dir="ltr" placeholder="<?= $smsHas['sms_pattern'] ? '••••••  (ثبت شده)' : 'مثلاً 12345' ?>">
-            <p class="hint">
-                ملی‌پیامک: شناسه‌ی «خدمات پایه»‌ای که در پنل ساخته‌اید (همان
-                <code>bodyId</code>) — <strong>نه شماره خط</strong>.
-                کاوه‌نگار: نام الگو. sms.ir: شناسه‌ی الگو (نام پارامترش باید
-                <code>CODE</code> باشد).
-                متنِ الگو باید یک جای خالی برای کد داشته باشد، مثل:
-                «کد ورود شما: %code%».
-                خالی بگذارید تا پیامک متن‌آزاد با شماره خط برود.
-            </p>
-        </div>
-
-        <div class="form-group">
-            <label for="sms_pass">رمز پنل <span class="hint">(ملی‌پیامک)</span></label>
-            <input type="password" id="sms_pass" name="sms_pass" autocomplete="new-password"
-                   dir="ltr" placeholder="<?= $smsHas['sms_pass'] ? '••••••  (ثبت شده)' : '' ?>">
-            <p class="hint">
-                خالی گذاشتنِ این چهار فیلد یعنی «دست نزن» — مقدارِ قبلی می‌ماند.
-                برای پاک کردن، یک خط تیره <code>-</code> بنویسید.
-                این مقدارها در دیتابیس ذخیره می‌شوند و در بکاپ هم می‌آیند؛
-                اگر نمی‌خواهید، به‌جایش در <code>config/config.php</code> بگذاریدشان
-                که آنجا برنده است و در دامپ نمی‌آید.
-            </p>
         </div>
 
         <button type="submit" class="btn btn-secondary btn-sm">ذخیره</button>
