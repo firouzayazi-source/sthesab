@@ -139,7 +139,18 @@ function unassignedVars(string $file): array
         $k = $end + 1;
         while ($k < $n && is_array($tokens[$k])
                && in_array($tokens[$k][0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) { $k++; }
-        if (($tokens[$k] ?? null) !== '=') { continue; }
+        $isAssign = ($tokens[$k] ?? null) === '=';
+
+        // ⛔ یا قبلش `as` است: `foreach ($rows as [$a, $b])` هم تخصیص است،
+        //    ولی بعدِ براکتش «=» نمی‌آید بلکه «)». بدون این شرط، ابزار برای
+        //    یک اصطلاحِ کاملاً معمولیِ PHP هشدار الکی می‌داد و آدم را وادار
+        //    می‌کرد کدِ بدتر بنویسد تا تست سبز شود.
+        $p = $start - 1;
+        while ($p >= 0 && is_array($tokens[$p])
+               && in_array($tokens[$p][0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) { $p--; }
+        $isForeach = is_array($tokens[$p] ?? null) && $tokens[$p][0] === T_AS;
+
+        if (!$isAssign && !$isForeach) { continue; }
 
         for ($j = $start; $j < $end; $j++) {
             if (is_array($tokens[$j]) && $tokens[$j][0] === T_VARIABLE) {

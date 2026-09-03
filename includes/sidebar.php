@@ -144,9 +144,9 @@ if (Auth::isLoggedIn()) {
             </a>
         </li>
         <li>
-            <a href="<?= APP_BASE_PATH ?>/admin/all-transactions.php" class="<?= $currentPage === 'all-transactions.php' ? 'active' : '' ?>">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>
-                <span>تراکنش همه کاربران</span>
+            <a href="<?= APP_BASE_PATH ?>/admin/insights.php" class="<?= $currentPage === 'insights.php' ? 'active' : '' ?>">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+                <span>آمار استفاده</span>
             </a>
         </li>
         <?php endif; ?>

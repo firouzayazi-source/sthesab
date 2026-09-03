@@ -3,7 +3,7 @@
  * فوتر مشترک صفحات داخلی — شامل ناوبری پایین صفحه
  */
 $bottomPage = basename($_SERVER['PHP_SELF']);
-$morePages = ['profile.php', 'wallets.php', 'budget.php', 'savings.php', 'recurring.php', 'upcoming.php', 'calendar.php', 'search.php', 'data.php', 'cheques.php', 'debts.php', 'my-assets.php', 'category-report.php', 'references.php', 'person.php', 'users.php', 'categories.php', 'all-transactions.php'];
+$morePages = ['profile.php', 'wallets.php', 'budget.php', 'savings.php', 'recurring.php', 'upcoming.php', 'calendar.php', 'search.php', 'data.php', 'cheques.php', 'debts.php', 'my-assets.php', 'category-report.php', 'references.php', 'person.php', 'users.php', 'categories.php', 'insights.php'];
 $moreActive = in_array($bottomPage, $morePages, true);
 ?>
         </div>
@@ -146,9 +146,9 @@ $moreActive = in_array($bottomPage, $morePages, true);
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                 <span>دسته‌بندی‌ها</span>
             </a>
-            <a href="<?= APP_BASE_PATH ?>/admin/all-transactions.php" class="tool-card" style="--tc1:#525252; --tc2:#404040;">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>
-                <span>تراکنش همه</span>
+            <a href="<?= APP_BASE_PATH ?>/admin/insights.php" class="tool-card" style="--tc1:#525252; --tc2:#404040;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
+                <span>آمار استفاده</span>
             </a>
         </div>
     </div>

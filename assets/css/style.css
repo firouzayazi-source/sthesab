@@ -488,6 +488,14 @@ textarea { resize: vertical; }
     border-bottom: 1px solid var(--line-soft);
 }
 .pay-row:last-child { border-bottom: none; }
+
+/* ---------- ردیف‌های آمار مدیر ---------- */
+.funnel-row { margin-bottom: 13px; }
+.funnel-row:last-child { margin-bottom: 0; }
+.funnel-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 10px; margin-bottom: 5px; font-size: 13px;
+}
 .version-line a { color: var(--muted); text-decoration: underline; }
 
 .delete-btn {
