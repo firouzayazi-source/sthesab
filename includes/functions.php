@@ -1,4 +1,8 @@
 <?php
+// رمزنگاریِ ستون‌های حساسِ حساب. بدون کلید، همه‌ی توابعش عبورِ ساده
+// می‌کنند، پس بارگذاری‌اش روی نصب‌های بدون کلید هم بی‌خطر است.
+require_once __DIR__ . '/crypto.php';
+
 function h(?string $string): string
 {
     return htmlspecialchars($string ?? '', ENT_QUOTES, 'UTF-8');
@@ -676,7 +680,12 @@ function walletCardTails(int $userId): array
 
     $out = [];
     foreach ($st->fetchAll() as $r) {
-        $digits = preg_replace('/\D/', '', (string)$r['card_number']);
+        // ⚠ رمزگشایی **پیش از** برداشتنِ ارقام. بدون آن، `preg_replace`
+        //   روی متنِ base64 اجرا می‌شد و چهار رقمِ تصادفی بیرون می‌داد —
+        //   یعنی «از پیامک بانک» حساب را اشتباه انتخاب می‌کرد، بی‌هیچ
+        //   خطایی.
+        $card = Crypto::decrypt((string)$r['card_number']);
+        $digits = preg_replace('/\D/', '', (string)$card);
         if (strlen($digits) >= 4) { $out[(int)$r['id']] = substr($digits, -4); }
     }
     return $out;
@@ -1007,7 +1016,20 @@ function walletBalances(int $userId): array
     if ($tradeJoins !== '') { $params['u5'] = $userId; $params['u6'] = $userId; }
     $stmt->execute($params + $linkParams);
 
-    return $stmt->fetchAll();
+    $rows = $stmt->fetchAll();
+
+    // ⛔ ستون‌های حساس رمزشده‌اند و اینجا باز می‌شوند. `walletBalances()`
+    //    تنها راهِ خواندنِ حساب‌هاست، پس همین یک جا کافی است — ولی هر
+    //    کوئریِ تازه‌ای که این ستون‌ها را بیاورد هم باید از
+    //    `Crypto::decryptRow()` رد شود، وگرنه کاربر رشته‌ی `enc:v1:…` را
+    //    داخل فرمِ خودش می‌بیند و با ذخیره کردنش شماره‌اش را نابود می‌کند.
+    if ($cardCols !== '' && Crypto::available()) {
+        foreach ($rows as $i => $r) {
+            $rows[$i] = Crypto::decryptRow($r, Crypto::WALLET_FIELDS);
+        }
+    }
+
+    return $rows;
 }
 
 function totalBalance(int $userId): int

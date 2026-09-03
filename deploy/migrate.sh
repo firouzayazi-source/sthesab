@@ -95,6 +95,7 @@ MIGRATIONS=(
     migration_cheque_status.sql
     migration_asset_prices.sql
     migration_installments.sql
+    migration_wallet_encrypt.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -207,6 +208,9 @@ declare -A SENTINEL=(
     [migration_cheque_status.sql]="cheques.status"
     [migration_asset_prices.sql]="asset_types.current_price"
     [migration_installments.sql]="debts.installment_count"
+    # این ستون را نمی‌سازد بلکه **پهن‌تر** می‌کند تا مقدارِ رمزشده جا شود.
+    # شاهدش هم باید طول باشد نه وجود، وگرنه همیشه «هست» می‌گفت.
+    [migration_wallet_encrypt.sql]="wallets.card_number>=255"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟
@@ -214,6 +218,22 @@ declare -A SENTINEL=(
 sentinel_present() {
     local spec="${SENTINEL[$1]-}"
     [[ -n "$spec" ]] || return 2
+
+    # ⛔ شکلِ سوم: `جدول.ستون>=طول` — برای migration ای که ستون را
+    #    **پهن‌تر** می‌کند، نه اینکه بسازد. بدون این، شاهدِ چنین
+    #    migration ای همیشه «هست» می‌شد (ستون که از قبل وجود دارد) و
+    #    --verify دقیقاً همان دروغی را می‌گفت که برای گرفتنش ساخته شده:
+    #    ثبت‌شده ولی اعمال‌نشده. همان چیزی که یک بار با users.avatar شد.
+    if [[ "$spec" == *">="* ]]; then
+        local need="${spec##*>=}" path="${spec%%>=*}"
+        local t="${path%%.*}" c="${path#*.}" len
+        len=$(mysql_q -N -e "SELECT COALESCE(MAX(CHARACTER_MAXIMUM_LENGTH), 0)
+                             FROM information_schema.columns
+                             WHERE table_schema=DATABASE() AND table_name='$t' AND column_name='$c';")
+        [[ -n "$len" && "$len" -ge "$need" ]]
+        return
+    fi
+
     local tbl="${spec%%.*}" col=""
     [[ "$spec" == *.* ]] && col="${spec#*.}"
     local n

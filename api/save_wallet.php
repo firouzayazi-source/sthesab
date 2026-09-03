@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/crypto.php';
 
 Auth::initSession();
 header('Content-Type: application/json; charset=utf-8');
@@ -143,11 +144,13 @@ try {
             'id' => $walletId, 'u' => $userId,
         ];
         if ($hasCardCols) {
+            // ⛔ سه ستونِ حساس رمز می‌شوند. بدون کلید، `encrypt()` همان
+            //    ورودی را برمی‌گرداند و رفتار دقیقاً مثل قبل است.
             $params += [
-                'bcode'  => $bankCode !== ''  ? $bankCode  : null,
-                'cardno' => $cardNum !== ''   ? $cardNum   : null,
-                'accno'  => $accountNo !== '' ? $accountNo : null,
-                'iban'   => $iban !== ''      ? $iban      : null,
+                'bcode'  => $bankCode !== ''  ? $bankCode : null,
+                'cardno' => Crypto::encrypt($cardNum !== ''   ? $cardNum   : null),
+                'accno'  => Crypto::encrypt($accountNo !== '' ? $accountNo : null),
+                'iban'   => Crypto::encrypt($iban !== ''      ? $iban      : null),
             ];
         }
         $stmt->execute($params);
@@ -174,10 +177,10 @@ try {
     ];
     if ($hasCardCols) {
         $params += [
-            'bcode'  => $bankCode !== ''  ? $bankCode  : null,
-            'cardno' => $cardNum !== ''   ? $cardNum   : null,
-            'accno'  => $accountNo !== '' ? $accountNo : null,
-            'iban'   => $iban !== ''      ? $iban      : null,
+            'bcode'  => $bankCode !== ''  ? $bankCode : null,
+            'cardno' => Crypto::encrypt($cardNum !== ''   ? $cardNum   : null),
+            'accno'  => Crypto::encrypt($accountNo !== '' ? $accountNo : null),
+            'iban'   => Crypto::encrypt($iban !== ''      ? $iban      : null),
         ];
     }
     $stmt->execute($params);

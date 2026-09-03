@@ -175,6 +175,22 @@ if [[ -n "$TARGET_DB" ]]; then
         exit 1
     fi
     green "✅ بازیابی روی «$TARGET_DB» انجام شد."
+
+    # ⛔ شماره کارت/حساب/شبا ممکن است رمزشده باشند، و کلیدشان در
+    #    config/config.php است — نه در بکاپِ دیتابیس. بازیابی روی سروری
+    #    که کلیدِ دیگری دارد، این ستون‌ها را برای همیشه ناخوانا می‌کند و
+    #    **هیچ خطایی هم نمی‌دهد**: بقیه‌ی اپ کاملاً سالم کار می‌کند و
+    #    فقط شماره‌ها خالی می‌شوند.
+    enc_count=$(mysql_do "$TARGET_DB" -N -e \
+        "SELECT COUNT(*) FROM wallets WHERE card_number LIKE 'enc:v1:%'" 2>/dev/null || echo 0)
+    if [[ "${enc_count:-0}" != "0" ]]; then
+        echo
+        info "⚠  این بکاپ شماره‌های رمزشده دارد ($enc_count حساب)."
+        plain "   بدونِ همان APP_ENCRYPTION_KEY که موقع بکاپ در config بود،"
+        plain "   شماره کارت و شبا خوانده نمی‌شوند — بی‌هیچ خطایی."
+        plain "   بررسی:  php deploy/encrypt-cards.php"
+    fi
+
     plain "حالا یک بار وضعیت migration ها را ببینید:  bash deploy/migrate.sh"
     exit 0
 fi
