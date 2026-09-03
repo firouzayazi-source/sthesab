@@ -2750,6 +2750,22 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
     margin-top: 18px;
 }
 
+/* یادآوری سررسید — همان مکانیزمِ باز شدن، پس همان قاعده‌ها.
+   ⚠ فرزند باید یکی باشد؛ دلیلش بالا توضیح داده شده. */
+.remind-days {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition: grid-template-rows .28s ease, opacity .2s ease, margin-top .28s ease;
+    margin-top: 0;
+}
+.remind-days-inner { overflow: hidden; min-height: 0; }
+.remind-days.is-open { grid-template-rows: 1fr; opacity: 1; margin-top: 16px; }
+/* چهار بازه باید در یک ردیف جا شوند. `.stay-chip` پایه `min-width:78px`
+   دارد که برای ۹ چیپِ «ماندن در حساب» درست است، ولی اینجا چیپِ چهارم را
+   به خطِ دوم می‌انداخت و تک‌افتاده تمامِ عرض را می‌گرفت. */
+.remind-days .stay-chip { min-width: 0; padding: 10px 6px; }
+
 .stay-choices-label {
     font-size: 12.5px;
     font-weight: 600;

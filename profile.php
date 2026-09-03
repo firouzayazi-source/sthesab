@@ -179,6 +179,51 @@ include __DIR__ . '/includes/header.php';
 </div>
 <?php endif; ?>
 
+<?php
+// یادآوریِ سررسید — فقط وقتی نشان داده می‌شود که هم جدولش آمده باشد و
+// هم سرور واقعاً بتواند ایمیل بفرستد. کلیدی که کار نمی‌کند بدتر از
+// نبودنش است: کاربر روشنش می‌کند و بعد چکش برگشت می‌خورد.
+$remindReady = tableExists('notification_prefs');
+require_once __DIR__ . '/includes/mailer.php';
+$mailReady   = Mailer::isConfigured();
+$remind      = $remindReady ? reminderPrefs($userId) : ['email_on' => true, 'days_before' => 3];
+?>
+<?php if ($remindReady): ?>
+<div class="card">
+    <h2 class="card-title">یادآوری سررسید</h2>
+    <label class="switch" style="margin-bottom:0;">
+        <input type="checkbox" id="remindToggle" <?= $remind['email_on'] ? 'checked' : '' ?>>
+        <span class="switch-track"><span class="switch-knob"></span></span>
+        <span class="switch-text">خلاصه‌ی روزانه با ایمیل</span>
+    </label>
+
+    <div class="remind-days<?= $remind['email_on'] ? ' is-open' : '' ?>" id="remindDays">
+        <div class="remind-days-inner">
+            <div class="stay-choices-label">چند روز قبل خبر بدهد؟</div>
+            <div class="stay-chips">
+                <?php foreach (REMINDER_DAYS as $d): ?>
+                    <button type="button" class="stay-chip<?= $remind['days_before'] === $d ? ' active' : '' ?>"
+                            data-days="<?= $d ?>"><?= toPersianDigits((string)$d) ?> روز</button>
+                <?php endforeach; ?>
+            </div>
+        </div>
+    </div>
+
+    <p class="hint">
+        اگر چک، طلب، بدهی یا پرداخت دوره‌ای نزدیک باشد، یک ایمیل خلاصه
+        می‌گیرید. وقتی چیزی در راه نیست، ایمیلی هم فرستاده نمی‌شود.
+        <?php if (!$mailReady): ?>
+            <br><strong>ارسال ایمیل روی این سرور هنوز تنظیم نشده</strong> — تا آن موقع
+            این تنظیم ذخیره می‌شود ولی ایمیلی نمی‌رود.
+        <?php elseif (empty($me['email'])): ?>
+            <br><strong>هنوز ایمیلی ثبت نکرده‌اید</strong> — از بخش «نام، نام کاربری و ایمیل» اضافه کنید.
+        <?php endif; ?>
+    </p>
+    <div id="remindMsg" class="form-message" hidden></div>
+    <?= Csrf::field() ?>
+</div>
+<?php endif; ?>
+
 <div class="card">
     <h2 class="card-title">نمایش</h2>
     <label class="switch" style="margin-bottom:0;">

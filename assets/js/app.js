@@ -2001,6 +2001,64 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // ماندن در حساب — کلید «همیشه» + چیپ‌های مهلت
     //
+    // ---------- یادآوری سررسید ----------
+    // همان الگوی «ماندن در حساب»: کلید + چیپ، ذخیره با هر ضربه.
+    var remindToggle = document.getElementById('remindToggle');
+    if (remindToggle) {
+        var remindDays = document.getElementById('remindDays');
+        var remindMsg  = document.getElementById('remindMsg');
+        var remindCard = remindToggle.closest('.card');
+        var remindChips = remindCard ? remindCard.querySelectorAll('.stay-chip[data-days]') : [];
+
+        function remindSave() {
+            var active = remindCard.querySelector('.stay-chip[data-days].active');
+            var fd = new FormData();
+            var token = remindCard.querySelector('input[name="csrf_token"]');
+            if (token) { fd.append('csrf_token', token.value); }
+            fd.append('email_on', remindToggle.checked ? '1' : '0');
+            fd.append('days_before', active ? active.getAttribute('data-days') : '3');
+
+            fetch(apiUrl('update_reminder_pref.php'), {
+                method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!remindMsg) { return; }
+                    remindMsg.hidden = false;
+                    remindMsg.classList.remove('success', 'error');
+                    remindMsg.classList.add('show', d.success ? 'success' : 'error');
+                    remindMsg.textContent = d.message || (d.success ? 'ذخیره شد.' : 'خطا');
+                    if (d.success) { setTimeout(function () { remindMsg.hidden = true; }, 2200); }
+                })
+                .catch(function () {
+                    if (!remindMsg) { return; }
+                    remindMsg.hidden = false;
+                    remindMsg.classList.add('show', 'error');
+                    remindMsg.textContent = 'خطا در ارتباط با سرور.';
+                });
+        }
+
+        remindToggle.addEventListener('change', function () {
+            if (remindDays) { remindDays.classList.toggle('is-open', remindToggle.checked); }
+            remindSave();
+        });
+
+        remindChips.forEach(function (chip) {
+            chip.addEventListener('click', function () {
+                remindChips.forEach(function (c) { c.classList.remove('active'); });
+                chip.classList.add('active');
+                // زدنِ یک بازه یعنی «یادآوری را می‌خواهم» — اگر کلید
+                // خاموش بود روشنش کن، وگرنه کاربر بازه را انتخاب می‌کرد
+                // و هیچ اتفاقی نمی‌افتاد.
+                if (!remindToggle.checked) {
+                    remindToggle.checked = true;
+                    if (remindDays) { remindDays.classList.add('is-open'); }
+                }
+                remindSave();
+            });
+        });
+    }
+
     // ⚠ دکمه‌ی «ذخیره» عمداً برداشته شد و هر ضربه بلافاصله ذخیره می‌شود.
     //   با دکمه، کاربر گزینه را می‌زد و می‌رفت و تغییر اعمال نمی‌شد —
     //   یعنی تنظیمی که کار نمی‌کند. اشتباه زدن هم بی‌هزینه است: یک ضربه‌ی

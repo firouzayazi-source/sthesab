@@ -487,6 +487,36 @@ function tableHasColumn(string $table, string $column): bool
  * همان کوئری می‌رفت.
  */
 /**
+ * ⚠ تنها مرجعِ «چند روز قبل یادآوری کن».
+ *   مثل Auth::SESSION_WINDOWS: فهرستِ دوم نسازید — وگرنه گزینه‌ای که
+ *   کاربر در پروفایل می‌بیند هنگام ذخیره بی‌سروصدا به پیش‌فرض برمی‌گردد.
+ */
+const REMINDER_DAYS = [1, 3, 7, 14];
+
+/** خواندنِ تنظیمِ یادآوریِ یک کاربر، با پیش‌فرضِ روشن. */
+function reminderPrefs(int $userId): array
+{
+    // پیش‌فرض عمداً روشن است: این تنها قابلیتی است که ارزشش در نبودنش
+    // دیده نمی‌شود — کاربری که نمی‌داند وجود دارد هرگز روشنش نمی‌کند و
+    // بعد چکش برگشت می‌خورد.
+    $out = ['email_on' => true, 'days_before' => 3];
+    if (!tableExists('notification_prefs')) { return $out; }
+
+    try {
+        $st = Database::getConnection()->prepare(
+            'SELECT email_on, days_before FROM notification_prefs WHERE user_id = :u'
+        );
+        $st->execute(['u' => $userId]);
+        if ($row = $st->fetch()) {
+            $out['email_on']    = (bool)$row['email_on'];
+            $out['days_before'] = (int)$row['days_before'];
+        }
+    } catch (PDOException $e) { /* پیش‌فرض می‌ماند */ }
+
+    return $out;
+}
+
+/**
  * دسته‌بندی‌های پیشنهادیِ یک خانوارِ ایرانی.
  *
  * ⚠ همین فهرست در سه جا لازم است: seedِ `schema.sql` برای نصبِ تازه،
@@ -1185,6 +1215,85 @@ function safeToSpend(int $userId, int $daysAhead = 30): array
 function eventKindLabel(string $kind): string
 {
     return ['debt' => 'طلب/بدهی', 'cheque' => 'چک', 'recurring' => 'دوره‌ای'][$kind] ?? '';
+}
+
+/**
+ * بدنه‌ی ایمیلِ یادآوریِ سررسید — [html, text].
+ *
+ * ⚠ عمداً اینجاست نه داخل `deploy/reminders.php`: آن فایل با cron اجرا
+ *   می‌شود و خروجی‌اش را کسی نمی‌بیند، پس اگر متن خراب شود بی‌صدا خراب
+ *   می‌ماند. اینجا بدون فرستادنِ هیچ ایمیلی آزمودنی است.
+ *
+ * ⛔ نسخه‌ی متنی اختیاری نیست: بعضی کلاینت‌ها HTML را نشان نمی‌دهند و
+ *   فیلترهای اسپم به ایمیلِ فقط-HTML سخت‌گیرترند.
+ */
+function reminderEmailBody(string $name, array $overdue, array $soon, int $days): array
+{
+    $money = fn(int $a): string => formatMoney($a) . ' تومان';
+    $line  = function (array $e): array {
+        $when = toJalali($e['date']);
+        $dir  = $e['direction'] === 'in' ? 'دریافت' : 'پرداخت';
+        return [$when, $e['title'], $dir, $e['amount']];
+    };
+
+    $htmlRows = function (array $events, string $accent) use ($line, $money): string {
+        $out = '';
+        foreach ($events as $e) {
+            [$when, $title, $dir, $amount] = $line($e);
+            $out .= '<tr>'
+                . '<td style="padding:8px 10px;border-bottom:1px solid #eceef3;white-space:nowrap;color:#6b7280;font-size:13px;">' . h($when) . '</td>'
+                . '<td style="padding:8px 10px;border-bottom:1px solid #eceef3;font-size:14px;">' . h($title) . '</td>'
+                . '<td style="padding:8px 10px;border-bottom:1px solid #eceef3;white-space:nowrap;font-size:14px;font-weight:700;color:' . $accent . ';">'
+                . h($money($amount)) . ' <span style="font-weight:400;color:#9aa1ad;">(' . h($dir) . ')</span></td>'
+                . '</tr>';
+        }
+        return $out;
+    };
+
+    $html = '<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;background:#f6f7fb;padding:20px;">'
+        . '<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;padding:22px;">'
+        . '<h2 style="margin:0 0 4px;font-size:17px;color:#1b2559;">سلام ' . h($name) . '</h2>'
+        . '<p style="margin:0 0 18px;font-size:13.5px;color:#6b7280;line-height:1.9;">'
+        . 'این خلاصه‌ی سررسیدهای مالیِ شماست.</p>';
+
+    $text = "سلام {$name}\nخلاصه‌ی سررسیدهای مالی شما:\n";
+
+    if ($overdue) {
+        $html .= '<h3 style="margin:16px 0 6px;font-size:14px;color:#d03a40;">سررسید گذشته</h3>'
+            . '<table style="width:100%;border-collapse:collapse;">' . $htmlRows($overdue, '#d03a40') . '</table>';
+        $text .= "\n— سررسید گذشته —\n";
+        foreach ($overdue as $e) {
+            [$when, $title, $dir, $amount] = $line($e);
+            $text .= "  {$when}  {$title}  {$money($amount)} ({$dir})\n";
+        }
+    }
+
+    if ($soon) {
+        $html .= '<h3 style="margin:18px 0 6px;font-size:14px;color:#1b2559;">تا '
+            . h(toPersianDigits((string)$days)) . ' روز آینده</h3>'
+            . '<table style="width:100%;border-collapse:collapse;">' . $htmlRows($soon, '#1b2559') . '</table>';
+        $text .= "\n— تا {$days} روز آینده —\n";
+        foreach ($soon as $e) {
+            [$when, $title, $dir, $amount] = $line($e);
+            $text .= "  {$when}  {$title}  {$money($amount)} ({$dir})\n";
+        }
+    }
+
+    // لینک از APP_URL ساخته می‌شود نه از HTTP_HOST — همان قاعده‌ای که
+    // برای لینکِ بازیابیِ رمز هست، وگرنه با Host جعلی می‌شد کاربر را
+    // به سایتِ مهاجم برد.
+    $url = appBaseUrl() . '/upcoming.php';
+    $html .= '<p style="margin:22px 0 0;"><a href="' . h($url) . '" '
+        . 'style="display:inline-block;background:#1b2559;color:#fff;text-decoration:none;'
+        . 'padding:10px 18px;border-radius:10px;font-size:14px;">دیدن آینده مالی</a></p>'
+        . '<p style="margin:16px 0 0;font-size:11.5px;color:#9aa1ad;line-height:1.9;">'
+        . 'اگر این یادآوری را نمی‌خواهید، از «حساب کاربری من» در برنامه خاموشش کنید.</p>'
+        . '</div></div>';
+
+    $text .= "\nدیدن آینده مالی: {$url}\n"
+        . "اگر این یادآوری را نمی‌خواهید، از «حساب کاربری من» خاموشش کنید.\n";
+
+    return [$html, $text];
 }
 
 /**

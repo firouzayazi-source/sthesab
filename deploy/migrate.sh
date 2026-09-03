@@ -91,6 +91,7 @@ MIGRATIONS=(
     migration_api_tokens.sql
     migration_session_window.sql
     migration_household_categories.sql
+    migration_reminders.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -199,6 +200,7 @@ declare -A SENTINEL=(
     # نمی‌سازد، پس مثل migration_indexes.sql شاهدِ ساختاری ندارد.
     # ایدمپوتنت است و اجرای دوباره‌اش بی‌خطر.
     [migration_household_categories.sql]=""
+    [migration_reminders.sql]="notification_prefs"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟
