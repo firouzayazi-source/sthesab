@@ -233,7 +233,11 @@ html[data-theme="dark"] .theme-icon-sun  { display: block; }
 .brand-icon { font-size: 20px; }
 .sidebar-nav { list-style: none; flex: 1; }
 .sidebar-nav li { margin-bottom: 2px; }
-.sidebar-nav a {
+/* دکمه‌ی «ثبت تراکنش» دقیقاً مثل بقیه‌ی ردیف‌های منو دیده می‌شود —
+   کاربر نباید بفهمد یکی‌شان دکمه است و بقیه لینک. `width:100%` و
+   `text-align:start` لازم‌اند چون `<button>` پیش‌فرضِ خودش را دارد. */
+.sidebar-nav a,
+.sidebar-nav .sidebar-action {
     display: flex; align-items: center; gap: 11px;
     padding: 11px 12px;
     border-radius: var(--r-sm);
@@ -242,7 +246,15 @@ html[data-theme="dark"] .theme-icon-sun  { display: block; }
     font-size: 14px;
     font-weight: 500;
 }
-.sidebar-nav a:hover { background: rgba(255,255,255,.06); color: #fff; }
+.sidebar-nav .sidebar-action {
+    width: 100%; text-align: start;
+    background: var(--brand); border: none;
+    color: #fff; font-family: inherit; cursor: pointer;
+    font-weight: 600; margin-bottom: 6px;
+}
+.sidebar-nav a:hover,
+.sidebar-nav .sidebar-action:hover { background: rgba(255,255,255,.06); color: #fff; }
+.sidebar-nav .sidebar-action:hover { background: var(--brand); filter: brightness(1.15); }
 .sidebar-nav a.active { background: var(--gold); color: #15171c; font-weight: 700; }
 .nav-divider {
     font-size: 10.5px; color: #6a707a;
@@ -1337,6 +1349,28 @@ button.status-badge:active { transform: scale(.96); }
     .data-table td.empty-row::before { content: none; }
 }
 
+/* ---------- گیتِ اشتراک ---------- */
+/* ⛔ قفل، نه پنهان‌سازی. کاربری که نمی‌داند چیزی هست هرگز برایش پول
+   نمی‌دهد؛ آنچه می‌فروشد دیدنِ همان چیزی است که ندارد. */
+.lock-badge { font-size: 11px; opacity: .75; margin-inline-start: 4px; }
+
+.plan-lock { text-align: center; padding: 34px 22px 30px; }
+.plan-lock-icon {
+    width: 62px; height: 62px; margin: 0 auto 16px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: var(--gold-wash, rgba(217,164,65,.14));
+    color: var(--gold);
+}
+.plan-lock-title { font-size: 17px; font-weight: 700; margin-bottom: 10px; }
+.plan-lock-text {
+    font-size: 13.5px; line-height: 2; color: var(--ink-soft);
+    max-width: 380px; margin: 0 auto 14px;
+}
+.plan-lock-price { font-size: 14px; margin-bottom: 18px; }
+.plan-lock .btn-large { max-width: 280px; margin: 0 auto; }
+.plan-lock-back { display: block; margin-top: 14px; }
+
 /* نامِ فایلِ بکاپ — قبل از زدنِ دکمه دیده می‌شود تا کاربر بداند دنبالِ
    چه فایلی در فهرستِ دانلود بگردد. `ltr` چون نامِ فایل لاتین است. */
 .backup-file {
@@ -1360,25 +1394,30 @@ html.is-locked, html.is-locked body {
     overscroll-behavior: none;
 }
 
-/* دکمه‌ی «ثبت تراکنش» نوارِ بالا — فقط دسکتاپ.
-   روی موبایل همان دکمه‌ی + نوارِ پایین کار را می‌کند و دو دکمه‌ی
-   هم‌کار فقط شلوغی است. */
-.topbar-add { display: none; }
-
 @media (min-width: 901px) {
     .bottom-nav, .more-sheet-overlay { display: none !important; }
     .table-wrapper { overflow-x: auto; }
 
-    .topbar-add {
-        display: inline-flex; align-items: center; gap: 6px;
-        background: var(--brand); color: #fff;
-        border: none; border-radius: var(--r-pill);
-        padding: 8px 15px; font: inherit; font-size: 13px; font-weight: 600;
-        cursor: pointer; white-space: nowrap;
-        box-shadow: 0 4px 12px -5px rgba(27,37,89,.5);
+    /* ⛔ روی دسکتاپ شیت باید **وسط** باز شود، نه چسبیده به لبه.
+       `.sheet` یک الگوی موبایلی است: تمام‌عرض، چسبیده به کف، و
+       گردیِ فقط بالا. روی عرضِ ۱۴۰۰ پیکسل همان یعنی یک نوارِ دراز
+       در لبه‌ی پایین که هیچ‌کس آن را «پنجره‌ی ثبت تراکنش» نمی‌خواند.
+       اینجا همان نشانه‌گذاری بدونِ تغییر، به یک مودالِ وسط تبدیل
+       می‌شود — پس هیچ صفحه‌ای دو نسخه‌ی HTML لازم ندارد. */
+    .sheet-overlay { align-items: center; justify-content: center; padding: 24px; }
+    .sheet {
+        width: min(560px, 100%);
+        border-radius: var(--r-lg);
+        padding: 16px 20px 20px;
+        max-height: 86vh;
+        box-shadow: 0 24px 60px -20px rgba(21,23,28,.5);
+        animation: sheetPop .16s ease-out;
     }
-    .topbar-add:hover { filter: brightness(1.08); }
-    .topbar-add:active { transform: scale(.97); }
+}
+
+@keyframes sheetPop {
+    from { opacity: 0; transform: scale(.97); }
+    to   { opacity: 1; transform: scale(1); }
 }
 
 @media (max-width: 420px) {
@@ -2674,7 +2713,49 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
 /* ============================================================
    کارت بانکی
    ============================================================ */
-.ltr-num { direction: ltr; text-align: left; font-variant-numeric: tabular-nums; letter-spacing: .5px; }
+/* ============================================================
+   ⛔ استانداردِ جهت: **متنِ فارسی راست‌چین، عدد چپ‌چین**
+   ============================================================
+
+   صفحه راست‌به‌چپ است و برچسب‌ها باید همان‌طور بمانند، ولی عدد
+   ذاتاً چپ‌به‌راست است. وقتی مبلغ در جریانِ راست‌به‌چپ رها شود سه
+   چیز خراب می‌شود و هیچ‌کدام خطا نمی‌دهد:
+
+     ۱. جداکننده‌ی سه‌رقمی و علامتِ منفی سرِ جای اشتباه می‌نشینند.
+     ۲. ارقامِ هم‌مرتبه در ستون‌های زیرِ هم تراز نمی‌شوند، پس چشم
+        نمی‌تواند «۱٬۲۰۰٬۰۰۰» را از «۱۲۰٬۰۰۰» در یک نگاه جدا کند —
+        و این دقیقاً کارِ یک دفترِ مالی است.
+     ۳. واحدِ پول («تومان») گاهی این‌طرف عدد می‌افتد و گاهی آن‌طرف.
+
+   ⛔ این قاعده **یک جا** تعریف می‌شود و همه‌ی کلاس‌های عددی به همین
+      یک قاعده می‌پیوندند. اگر جای دیگری `direction: ltr` بنویسید،
+      نسخه‌ی دومی می‌شود که دیر یا زود از این عقب می‌افتد.
+      کلاسِ عددیِ تازه = یک نامِ تازه در همین فهرست.
+
+   ⚠ عمداً فقط روی خودِ **مقدار** است، نه روی ظرفش: ظرف‌هایی مثل
+     `.money-card` یا `.balance-ribbon` برچسبِ فارسی هم دارند و
+     چپ‌چین کردنشان چیدمانِ برچسب را خراب می‌کند.
+   ============================================================ */
+.ltr-num,
+.stats-value, .balance-value,
+.wallet-bal, .wallet-line-bal, .wallet-line-total,
+.tx-row-amount, .tx-day-total,
+.debt-amount, .event-amount, .recur-amount, .transfer-amount,
+.cat-breakdown-amount, .cat-detail-amount, .breakdown-cta-amount,
+.asset-total-value, .asset-item-qty, .trade-sum-value,
+.bank-card-balance, .bank-card-row-value, .bank-card-number,
+.pay-number, .amount-cell,
+.amount-income, .amount-expense, .asset-amount-neg,
+.amount-input, .amount-input-sm {
+    direction: ltr;
+    text-align: left;
+    font-variant-numeric: tabular-nums;
+}
+.ltr-num, .bank-card-number, .pay-number { letter-spacing: .5px; }
+
+/* ⚠ در جدول‌ها، سرستونِ عدد هم باید با خودِ عدد یکی باشد وگرنه
+   عنوان راست می‌نشیند و مقدارها چپ. */
+.data-table th.amount-cell { text-align: left; }
 
 .iban-field { display: flex; align-items: stretch; gap: 0; direction: ltr; }
 .iban-prefix {

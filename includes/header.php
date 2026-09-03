@@ -62,16 +62,6 @@ if (!isset($pageTitle)) {
             </button>
             <h1 class="page-title"><?= h($pageTitle) ?></h1>
             <div class="topbar-user">
-                <?php /* ⛔ ورودیِ ثبت تراکنش برای دسکتاپ.
-                         نوارِ پایین بالای ۹۰۰ پیکسل پنهان می‌شود و با آن،
-                         دکمه‌ی + هم می‌رفت — یعنی روی کامپیوتر اصلاً
-                         نمی‌شد تراکنش ثبت کرد. این دکمه فقط در همان
-                         عرض‌ها دیده می‌شود تا روی موبایل دو دکمه‌ی
-                         هم‌کار نباشد. */ ?>
-                <button type="button" class="topbar-add js-add-tx">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
-                    <span>ثبت تراکنش</span>
-                </button>
                 <a href="<?= APP_BASE_PATH ?>/search.php" class="theme-toggle" aria-label="جستجو">
                     <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
                 </a>

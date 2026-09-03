@@ -261,7 +261,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         //   `saveUserEmail`. فرم مقدارِ فعلیِ رمز و کلید را نشان نمی‌دهد
         //   (نباید هم بدهد)، پس ذخیره‌ی ساده نباید آن‌ها را خالی کند.
         //   پاک کردنِ عمدی با تایپِ یک خط تیره انجام می‌شود.
-        foreach (['sms_api_key', 'sms_sender', 'sms_user', 'sms_pass'] as $k) {
+        foreach (['sms_api_key', 'sms_sender', 'sms_user', 'sms_pass', 'sms_pattern'] as $k) {
             $v = trim(postParam($k));
             if ($v === '')  { continue; }
             if ($v === '-') { $v = ''; }
@@ -488,6 +488,25 @@ include __DIR__ . '/../includes/header.php';
             <input type="text" id="sms_user" name="sms_user" autocomplete="off"
                    dir="ltr" placeholder="<?= $smsHas['sms_user'] ? '••••••  (ثبت شده)' : '' ?>">
         </div>
+        <?php /* ⛔ الگو (خدمات پایه) — مهم‌ترین فیلدِ این فرم برای کسی که
+                 خطِ اختصاصی ندارد. پیامکِ کدِ ورود از مسیرِ الگو ارزان‌تر
+                 است، به خط نیاز ندارد و شبانه‌روزی می‌رود؛ متنِ آزاد
+                 ممکن است اصلاً تحویل نشود. */ ?>
+        <div class="form-group">
+            <label for="sms_pattern">کد الگو / خدمات پایه <span class="hint">(توصیه‌شده)</span></label>
+            <input type="text" id="sms_pattern" name="sms_pattern" autocomplete="off"
+                   dir="ltr" placeholder="<?= $smsHas['sms_pattern'] ? '••••••  (ثبت شده)' : 'مثلاً 12345' ?>">
+            <p class="hint">
+                ملی‌پیامک: شناسه‌ی «خدمات پایه»‌ای که در پنل ساخته‌اید (همان
+                <code>bodyId</code>) — <strong>نه شماره خط</strong>.
+                کاوه‌نگار: نام الگو. sms.ir: شناسه‌ی الگو (نام پارامترش باید
+                <code>CODE</code> باشد).
+                متنِ الگو باید یک جای خالی برای کد داشته باشد، مثل:
+                «کد ورود شما: %code%».
+                خالی بگذارید تا پیامک متن‌آزاد با شماره خط برود.
+            </p>
+        </div>
+
         <div class="form-group">
             <label for="sms_pass">رمز پنل <span class="hint">(ملی‌پیامک)</span></label>
             <input type="password" id="sms_pass" name="sms_pass" autocomplete="new-password"

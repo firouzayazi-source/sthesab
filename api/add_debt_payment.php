@@ -9,6 +9,11 @@ if (!Auth::isLoggedIn()) { jsonResponse(['success' => false, 'message' => 'اب�
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { jsonResponse(['success' => false, 'message' => 'درخواست نامعتبر است.'], 405); }
 Csrf::verifyOrFail(postParam('csrf_token'));
 
+// ⛔ قفلِ صفحه بدونِ این فقط تزئین است: کسی که آدرسِ اندپوینت را
+//    بداند مستقیم صدایش می‌زند.
+require_once __DIR__ . '/../includes/plan_gate.php';
+apiRequirePlan('debts');
+
 $userId = Auth::userId();
 $debtId = (int)postParam('debt_id');
 $amount = sanitizeAmount(postParam('amount'));

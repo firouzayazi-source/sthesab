@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/plan_gate.php'; ?>
 <?php
 $currentPage = basename($_SERVER['PHP_SELF']);
 
@@ -41,11 +42,16 @@ if (Auth::isLoggedIn()) {
     </div>
 
     <ul class="sidebar-nav">
+        <?php /* ⛔ این **دکمه** است نه لینک، و شیت را همان‌جا باز می‌کند.
+                 پیش از این یک `<a>` به `index.php` بود: شکلش دقیقاً
+                 «ثبت تراکنش» بود ولی کارش فقط رفتن به خانه — یعنی روی
+                 دسکتاپ که نوارِ پایین پنهان است، تنها چیزی که شبیه راهِ
+                 ثبت تراکنش بود، ثبت تراکنش نمی‌کرد. */ ?>
         <li>
-            <a href="<?= APP_BASE_PATH ?>/index.php" class="<?= $currentPage === 'index.php' ? 'active' : '' ?>">
+            <button type="button" class="sidebar-action js-add-tx">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                 <span>ثبت تراکنش</span>
-            </a>
+            </button>
         </li>
         <li>
             <a href="<?= APP_BASE_PATH ?>/dashboard.php" class="<?= $currentPage === 'dashboard.php' ? 'active' : '' ?>">
@@ -93,6 +99,7 @@ if (Auth::isLoggedIn()) {
             <a href="<?= APP_BASE_PATH ?>/recurring.php" class="<?= $currentPage === 'recurring.php' ? 'active' : '' ?>">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M17 2l4 4-4 4M3 11V9a4 4 0 014-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 01-4 4H3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <span>تراکنش دوره‌ای</span>
+                <?= planLocked('recurring') ? '<span class="lock-badge" title="با اشتراک باز می‌شود">&#128274;</span>' : '' ?>
             </a>
         </li>
         <li>
@@ -105,6 +112,7 @@ if (Auth::isLoggedIn()) {
             <a href="<?= APP_BASE_PATH ?>/debts.php" class="<?= $currentPage === 'debts.php' ? 'active' : '' ?>">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <span>طلب و بدهی</span>
+                <?= planLocked('debts') ? '<span class="lock-badge" title="با اشتراک باز می‌شود">&#128274;</span>' : '' ?>
                 <?php if ($debtReminderCount > 0): ?><span class="nav-badge"><?= toPersianDigits($debtReminderCount) ?></span><?php endif; ?>
             </a>
         </li>
@@ -113,6 +121,7 @@ if (Auth::isLoggedIn()) {
             <a href="<?= APP_BASE_PATH ?>/trades.php" class="<?= $currentPage === 'trades.php' ? 'active' : '' ?>">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M7 4L3.5 7.5M7 4l3.5 3.5M17 20V4M17 20l3.5-3.5M17 20l-3.5-3.5"/></svg>
                 <span>معاملات</span>
+                <?= planLocked('trades') ? '<span class="lock-badge" title="با اشتراک باز می‌شود">&#128274;</span>' : '' ?>
             </a>
         </li>
         <?php endif; ?>
@@ -120,6 +129,7 @@ if (Auth::isLoggedIn()) {
             <a href="<?= APP_BASE_PATH ?>/cheques.php" class="<?= $currentPage === 'cheques.php' ? 'active' : '' ?>">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2"/><path d="M2 10h20M6 15h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                 <span>چک‌ها</span>
+                <?= planLocked('cheques') ? '<span class="lock-badge" title="با اشتراک باز می‌شود">&#128274;</span>' : '' ?>
                 <?php if ($chequeReminderCount > 0): ?><span class="nav-badge"><?= toPersianDigits($chequeReminderCount) ?></span><?php endif; ?>
             </a>
         </li>

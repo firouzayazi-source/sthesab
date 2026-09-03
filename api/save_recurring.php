@@ -9,6 +9,11 @@ if (!Auth::isLoggedIn()) { jsonResponse(['success' => false, 'message' => 'اب�
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { jsonResponse(['success' => false, 'message' => 'درخواست نامعتبر است.'], 405); }
 Csrf::verifyOrFail(postParam('csrf_token'));
 
+// ⛔ قفلِ صفحه بدونِ این فقط تزئین است: کسی که آدرسِ اندپوینت را
+//    بداند مستقیم صدایش می‌زند.
+require_once __DIR__ . '/../includes/plan_gate.php';
+apiRequirePlan('recurring');
+
 $userId    = Auth::userId();
 $id        = (int)postParam('recurring_id');
 $type      = postParam('type');

@@ -6,6 +6,11 @@ require_once __DIR__ . '/includes/functions.php';
 Auth::initSession();
 Auth::requireLogin();
 
+// ⛔ گیتِ اشتراک پیش از هر کوئری و هر خروجی: صفحه دیده می‌شود
+//    (منو سرِ جایش است) ولی محتوایش با قفل عوض می‌شود.
+require_once __DIR__ . '/includes/plan_gate.php';
+requirePlanOrLock('cheques');
+
 $pdo = Database::getConnection();
 $userId = Auth::userId();
 $todayStr = today();

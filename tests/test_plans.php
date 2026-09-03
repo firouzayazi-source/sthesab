@@ -97,10 +97,22 @@ T::same(true, planAllows($uid, 'trades'), 'با اجرای خاموش، بخش �
 T::same(true, planAllows($uid, 'api'), 'و API هم');
 
 setSetting(PLAN_ENFORCE_SETTING, '1');
-T::same(false, planAllows($uid, 'trades'), 'با اجرای روشن، معاملات برای رایگان بسته است');
-T::same(true,  planAllows($uid, 'transactions'),
-    '⛔ ولی هسته‌ی اپ (تراکنش) هرگز بسته نمی‌شود');
-T::same(true,  planAllows($uid, 'cheques'), 'چک هم همین‌طور');
+
+// ⚠ فهرستِ پولی‌ها به خواستِ مالکِ نصب عوض شد: چک، طلب و بدهی و
+//   تراکنشِ دوره‌ای هم به آن اضافه شدند. تست همان تصمیم را می‌سنجد،
+//   نه سلیقه‌ی قبلی.
+foreach (['trades', 'cheques', 'debts', 'recurring', 'api', 'reminders'] as $f) {
+    T::same(false, planAllows($uid, $f), "با اجرای روشن، «{$f}» برای رایگان بسته است");
+}
+
+// ⛔ و این نیمه‌ی دیگرِ همان تصمیم است و مهم‌تر از آن: هسته‌ی **ثبتِ
+//    پول** هرگز بسته نمی‌شود. اگر کاربرِ رایگان نتواند خرجش را ثبت
+//    کند، اپ برایش بی‌فایده است و اصلاً امتحانش نمی‌کند — یعنی هیچ‌وقت
+//    به خریدن هم نمی‌رسد.
+foreach (['transactions', 'wallets', 'categories', 'budget',
+          'savings', 'assets', 'reports'] as $f) {
+    T::same(true, planAllows($uid, $f), "⛔ هسته‌ی اپ («{$f}») باز می‌ماند");
+}
 setSetting(PLAN_ENFORCE_SETTING, '0');
 
 // ---------------------------------------------------------------
