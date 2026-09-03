@@ -134,6 +134,20 @@ if ($cmd === '--reset') {
         } catch (PDOException $e) {
             // جدول هنوز ساخته نشده — مهم نیست
         }
+
+        // توکن‌های اپ هم باطل شوند. `revokeAllAccessFor()` دستگاه‌ها را
+        // دوباره پاک می‌کند (بی‌ضرر) ولی توکن‌های api/v1 را هم می‌گیرد —
+        // و آن‌ها به رمز وابسته نیستند، پس رمزِ تازه بیرونشان نمی‌کرد.
+        $apiRevoked = 0;
+        try {
+            $c = $pdo->prepare('SELECT COUNT(*) FROM api_tokens WHERE user_id = :id AND revoked_at IS NULL');
+            $c->execute(['id' => $user['id']]);
+            $apiRevoked = (int)$c->fetchColumn();
+            revokeAllAccessFor((int)$user['id']);
+        } catch (Throwable $e) {
+            // جدول هنوز ساخته نشده — مهم نیست
+        }
+
         $pdo->commit();
     } catch (Throwable $e) {
         $pdo->rollBack();
@@ -151,6 +165,9 @@ if ($cmd === '--reset') {
     }
     if ($revoked > 0) {
         out("    $revoked دستگاه مورد اعتماد باطل شد — همه باید دوباره وارد شوند.");
+    }
+    if ($apiRevoked > 0) {
+        out("    $apiRevoked توکن اپ موبایل باطل شد.");
     }
     if (!$user['is_active']) {
         out('');

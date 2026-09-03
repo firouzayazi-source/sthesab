@@ -36,10 +36,12 @@ try {
     $upd = $pdo->prepare('UPDATE users SET password_hash = :h WHERE id = :id');
     $upd->execute(['h' => $hash, 'id' => $userId]);
 
-    // با تغییر رمز، همه‌ی دستگاه‌های مورد اعتماد باطل می‌شوند
-    Auth::revokeAllDevices($userId);
+    // با تغییر رمز، هم دستگاه‌های مورد اعتماد باطل می‌شوند هم توکن‌های
+    // اپ موبایل. توکنِ API به رمز وابسته نیست و ۹۰ روز زنده می‌ماند،
+    // پس بدون این، رمزِ تازه مهاجمی را که توکن دارد بیرون نمی‌کرد.
+    revokeAllAccessFor($userId);
 
-    jsonResponse(['success' => true, 'message' => 'رمز عبور تغییر کرد. دستگاه‌های مورد اعتماد هم باطل شدند.']);
+    jsonResponse(['success' => true, 'message' => 'رمز عبور تغییر کرد. دستگاه‌های مورد اعتماد و اپ‌های متصل هم باطل شدند.']);
 } catch (PDOException $e) {
     error_log('Change Password Error: ' . $e->getMessage());
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);

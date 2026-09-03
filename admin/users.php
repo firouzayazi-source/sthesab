@@ -167,6 +167,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'password_hash' => $hash,
                             'id'            => $targetId,
                         ]);
+                        // مدیر که رمزِ کسی را عوض می‌کند، معمولاً چون آن
+                        // حساب مشکلی دارد. رمزِ تازه به‌تنهایی توکنِ
+                        // اپِ آن کاربر را باطل نمی‌کند.
+                        revokeAllAccessFor($targetId);
                     } else {
                         $stmt = $pdo->prepare('UPDATE users SET full_name = :full_name, username = :username, role = :role WHERE id = :id');
                         $stmt->execute([

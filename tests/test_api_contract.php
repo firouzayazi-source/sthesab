@@ -707,6 +707,63 @@ T::ok(
 );
 
 // ---------------------------------------------------------------
+// ⛔ قاعده ۱۴ — رمز که عوض شد، هر دسترسیِ قبلی باید باطل شود.
+//
+// عوض کردنِ رمز به‌تنهایی مهاجم را بیرون نمی‌کند: توکنِ api/v1 نه به
+// رمز وابسته است نه به نشست، و ۹۰ روز زنده می‌ماند. کاربر رمز را عوض
+// می‌کند، خیالش راحت می‌شود، و مهاجم همچنان داخل است — بی‌هیچ نشانه‌ای.
+//
+// چهار مسیر رمز می‌نویسند (پروفایل، بازیابی، پنل مدیر، خط فرمان) و
+// هیچ‌کدام «یادش» نمی‌ماند مگر اینکه اینجا سنجیده شود.
+T::group('قاعده ۱۴ — هر جا رمز نوشته می‌شود، دسترسی‌ها باطل شوند');
+
+$pwWriters = [];
+foreach (['api', 'includes', 'admin', 'deploy', '.'] as $dir) {
+    foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) {
+        $src = php_strip_whitespace($p);
+        // فقط نوشتن، نه خواندن: `SET ... password_hash =`
+        if (preg_match('/UPDATE\s+users\s+SET[^\'"]*password_hash\s*=/i', $src)) {
+            $pwWriters[realpath($p)] = $src;
+        }
+    }
+}
+T::ok(count($pwWriters) >= 4, 'مسیرهای نوشتنِ رمز پیدا شدند',
+    count($pwWriters) . ' فایل: ' . implode('، ', array_map('basename', array_keys($pwWriters))));
+
+$noRevoke = [];
+foreach ($pwWriters as $path => $src) {
+    if (!str_contains($src, 'revokeAllAccessFor(')) {
+        $noRevoke[] = basename($path);
+    }
+}
+T::bulk(count($pwWriters), $noRevoke,
+    'هر مسیرِ نوشتنِ رمز، revokeAllAccessFor() را صدا می‌زند');
+
+// و خودِ آن تابع باید **هر دو** چیز را باطل کند — نه فقط یکی. باطل
+// کردنِ دستگاه‌ها بدونِ توکن‌ها همان باگی است که این قاعده برایش نوشته
+// شده، و از بیرون هیچ فرقی دیده نمی‌شود.
+//
+// ⚠ بدنه با شمردنِ آکولاد بریده می‌شود، نه با regex: کامنت‌ها با
+//   php_strip_whitespace از قبل رفته‌اند، ولی `.*?\n\}` روی فایلی که
+//   قالب‌بندی‌اش فشرده شده به هیچ چیز نمی‌خورد — یک بار همین‌طور شد و
+//   تست به‌جای سنجیدنِ بدنه، «تابع پیدا نشد» داد.
+$fn = php_strip_whitespace(__DIR__ . '/../includes/functions.php');
+$at = strpos($fn, 'function revokeAllAccessFor');
+$body = '';
+if ($at !== false && ($open = strpos($fn, '{', $at)) !== false) {
+    $depth = 0;
+    for ($i = $open, $n = strlen($fn); $i < $n; $i++) {
+        if ($fn[$i] === '{') { $depth++; }
+        elseif ($fn[$i] === '}') { $depth--; if ($depth === 0) { $body = substr($fn, $open, $i - $open); break; } }
+    }
+}
+T::ok($body !== '', 'تابع revokeAllAccessFor پیدا شد');
+T::ok(str_contains($body, 'revokeAllDevices'),
+    'revokeAllAccessFor دستگاه‌های مورد اعتماد را باطل می‌کند');
+T::ok(str_contains($body, 'ApiAuth::revokeAllFor'),
+    'revokeAllAccessFor توکن‌های api/v1 را هم باطل می‌کند');
+
+// ---------------------------------------------------------------
 T::group('نحو — هر فایل PHP باید بدون خطا پارس شود');
 
 $bad = [];
