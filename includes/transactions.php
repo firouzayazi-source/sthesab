@@ -105,16 +105,17 @@ function txResolveCategory(int $userId, ?int $categoryId, string $type): ?int
     return $stmt->fetchColumn() ? $categoryId : null;
 }
 
-/** حساب باید مالِ همین کاربر باشد، وگرنه بی‌حساب ثبت می‌شود. */
+/**
+ * حساب باید مالِ همین کاربر باشد؛ وگرنه **حساب پیش‌فرض**، نه هیچ‌کدام.
+ *
+ * ⛔ نسخه‌ی قبلی در هر دو حالت `null` برمی‌گرداند و تراکنش بی‌حساب ثبت
+ * می‌شد. این همان `resolveWalletId()` است که CLAUDE.md «نقطه‌ی واحدِ
+ * هیچ پولی بی‌حساب نماند» می‌نامدش — ولی مسیرِ نوشتنِ تراکنش از آن رد
+ * نمی‌شد و نسخه‌ی خودش را داشت که این قاعده را رعایت نمی‌کرد.
+ */
 function txResolveWallet(int $userId, $walletId): ?int
 {
-    $walletId = (int)$walletId;
-    if ($walletId <= 0) { return null; }
-
-    $stmt = Database::getConnection()->prepare('SELECT id FROM wallets WHERE id = :id AND user_id = :u');
-    $stmt->execute(['id' => $walletId, 'u' => $userId]);
-
-    return $stmt->fetchColumn() ? $walletId : null;
+    return resolveWalletId($userId, $walletId);
 }
 
 /** ثبت تراکنش تازه. */

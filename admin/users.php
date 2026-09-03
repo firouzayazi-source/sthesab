@@ -97,6 +97,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'role'          => $role,
                     ]);
                     $newId = (int)$pdo->lastInsertId();
+                    // بدون این، کاربرِ تازه هیچ حسابی ندارد و اولین
+                    // تراکنشش در هیچ حسابی نمی‌نشیند.
+                    ensureDefaultWallet($newId);
                     if ($emailErr === '') { $emailErr = $saveEmail($newId); }
                     if ($emailErr !== '') {
                         // کاربر ساخته شد ولی ایمیل ثبت نشد — صریح بگو

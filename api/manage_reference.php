@@ -23,6 +23,53 @@ $action = postParam('action'); // add | delete
 
 $pdo = Database::getConnection();
 
+// ---------- افزودنِ دسته‌های پیشنهادیِ خانوار ----------
+//
+// برای نصب‌های موجود: `migration_household_categories.sql` عمداً فقط
+// وقتی دست به پیش‌فرض‌ها می‌زند که هیچ‌کس آن‌ها را عوض نکرده باشد. پس
+// کاربری که فهرستش دستکاری شده بود همچنان دسته‌های مغازه‌ای را می‌بیند
+// و راهی جز افزودنِ دستیِ ۱۶ دسته ندارد. این یک ردیف همان کار را
+// یک‌جا می‌کند و دسته‌ها را **شخصیِ خودش** می‌سازد، نه پیش‌فرضِ برنامه
+// — پس هیچ کاربرِ دیگری اثری نمی‌بیند و قاعده‌ی جداسازی نمی‌شکند.
+if ($action === 'add_suggested' && $kind === 'category') {
+    if (!tableHasColumn('categories', 'user_id')) {
+        jsonResponse(['success' => false, 'message' => 'ستون دسته‌بندی شخصی هنوز ساخته نشده. روی سرور:  bash deploy/migrate.sh --apply'], 500);
+    }
+
+    $added = 0;
+    try {
+        $dup = $pdo->prepare(
+            'SELECT id FROM categories
+             WHERE name = :name AND type = :type AND (user_id IS NULL OR user_id = :u)'
+        );
+        $ins = $pdo->prepare(
+            'INSERT INTO categories (user_id, name, type, icon, color, is_active)
+             VALUES (:u, :name, :type, :icon, :color, 1)'
+        );
+
+        foreach (suggestedHouseholdCategories() as $c) {
+            $dup->execute(['name' => $c['name'], 'type' => $c['type'], 'u' => $userId]);
+            if ($dup->fetch()) { continue; }   // از قبل هست — رد شو
+            $ins->execute([
+                'u' => $userId, 'name' => $c['name'], 'type' => $c['type'],
+                'icon' => $c['icon'], 'color' => $c['color'],
+            ]);
+            $added++;
+        }
+    } catch (PDOException $e) {
+        error_log('Suggested categories error: ' . $e->getMessage());
+        jsonResponse(['success' => false, 'message' => 'خطایی در ثبت رخ داد.'], 500);
+    }
+
+    jsonResponse([
+        'success' => true,
+        'added'   => $added,
+        'message' => $added > 0
+            ? toPersianDigits((string)$added) . ' دسته‌ی تازه اضافه شد.'
+            : 'همه‌ی دسته‌های پیشنهادی از قبل هستند.',
+    ]);
+}
+
 // ---------- افزودن ----------
 if ($action === 'add') {
     $name = postParam('name');

@@ -64,19 +64,34 @@ CREATE TABLE IF NOT EXISTS `transactions` (
 -- دسته‌بندی‌های پیش‌فرض — فقط وقتی جدول خالی است.
 -- بدون این شرط، اجرای دوباره‌ی schema.sql روی دیتابیسی که داده دارد
 -- (مثلاً بعد از ایمپورت بکاپ هاست) همه‌ی این‌ها را تکراری اضافه می‌کند.
-INSERT INTO `categories` (`name`, `type`)
-SELECT n, t FROM (
-    SELECT 'فروش گوشی' AS n, 'income' AS t
-    UNION ALL SELECT 'خدمات', 'income'
-    UNION ALL SELECT 'فروش لوازم جانبی', 'income'
-    UNION ALL SELECT 'سایر درآمدها', 'income'
-    UNION ALL SELECT 'خرید کالا', 'expense'
-    UNION ALL SELECT 'اجاره', 'expense'
-    UNION ALL SELECT 'حقوق', 'expense'
-    UNION ALL SELECT 'تبلیغات', 'expense'
-    UNION ALL SELECT 'حمل‌ونقل', 'expense'
-    UNION ALL SELECT 'قبوض', 'expense'
-    UNION ALL SELECT 'سایر هزینه‌ها', 'expense'
+--
+-- ⛔ این فهرست عمداً **خانوار** است، نه مغازه.
+--    نسخه‌ی اول «فروش گوشی»، «فروش لوازم جانبی»، «تبلیغات» و — بدتر از
+--    همه — «حقوق» را به‌عنوان *هزینه* داشت. برای یک اپ مالیِ شخصی و
+--    خانوادگی این یعنی اولین منویی که خریدار باز می‌کند به او ربطی
+--    ندارد: نه خوراک هست، نه قبوض، نه درمان، نه قسط، و «حقوق» — که
+--    درآمدِ اصلیِ اغلب خانواده‌هاست — اصلاً در فهرست درآمد نیست.
+--    برای نصب‌های موجود، `migration_household_categories.sql`.
+INSERT INTO `categories` (`name`, `type`, `icon`, `color`)
+SELECT n, t, i, c FROM (
+    SELECT 'حقوق' AS n, 'income' AS t, 'salary' AS i, '#059669' AS c
+    UNION ALL SELECT 'پاداش و عیدی',    'income',  'gift',      '#a855f7'
+    UNION ALL SELECT 'درآمد آزاد',      'income',  'money',     '#10b981'
+    UNION ALL SELECT 'سود سپرده',       'income',  'profit',    '#16a34a'
+    UNION ALL SELECT 'اجاره‌ی دریافتی', 'income',  'home',      '#0d9488'
+    UNION ALL SELECT 'سایر درآمدها',    'income',  'money',     '#10b981'
+    UNION ALL SELECT 'خوراک',           'expense', 'food',      '#f97316'
+    UNION ALL SELECT 'مسکن و اجاره',    'expense', 'home',      '#ef4444'
+    UNION ALL SELECT 'قبوض',            'expense', 'bill',      '#eab308'
+    UNION ALL SELECT 'حمل‌ونقل',        'expense', 'transport', '#0ea5e9'
+    UNION ALL SELECT 'موبایل و اینترنت','expense', 'phone',     '#06b6d4'
+    UNION ALL SELECT 'درمان',           'expense', 'health',    '#ec4899'
+    UNION ALL SELECT 'پوشاک',           'expense', 'clothes',   '#f43f5e'
+    UNION ALL SELECT 'آموزش',           'expense', 'education', '#6366f1'
+    UNION ALL SELECT 'قسط و وام',       'expense', 'money',     '#64748b'
+    UNION ALL SELECT 'تفریح و سفر',     'expense', 'fun',       '#d946ef'
+    UNION ALL SELECT 'هدیه و مهمانی',   'expense', 'gift',      '#a855f7'
+    UNION ALL SELECT 'سایر هزینه‌ها',   'expense', 'default',   '#94a3b8'
 ) AS seed
 WHERE NOT EXISTS (SELECT 1 FROM `categories` LIMIT 1);
 

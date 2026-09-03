@@ -90,6 +90,7 @@ MIGRATIONS=(
     migration_people.sql
     migration_api_tokens.sql
     migration_session_window.sql
+    migration_household_categories.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -194,6 +195,10 @@ declare -A SENTINEL=(
     [migration_people.sql]="people"
     [migration_api_tokens.sql]="api_tokens"
     [migration_session_window.sql]="users.session_minutes"
+    # فقط داده را عوض می‌کند (دسته‌های پیش‌فرض) و هیچ جدول یا ستونی
+    # نمی‌سازد، پس مثل migration_indexes.sql شاهدِ ساختاری ندارد.
+    # ایدمپوتنت است و اجرای دوباره‌اش بی‌خطر.
+    [migration_household_categories.sql]=""
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

@@ -891,6 +891,19 @@ textarea { resize: vertical; }
 .ref-manager { margin-bottom: 20px; }
 .ref-manager:last-child { margin-bottom: 0; }
 .ref-manager-title { font-size: 13px; font-weight: 700; margin-bottom: 9px; color: var(--muted); }
+/* ردیفِ «دسته‌های پیشنهادی» — فقط تا وقتی که چیزی کم است دیده می‌شود،
+   بعد از زدن خودش ناپدید می‌شود. پس نباید مثل یک بخشِ دائمی به نظر
+   برسد؛ همان کارت با یک ردیفِ کم‌ارتفاع. */
+.ref-suggest {
+    display: flex; align-items: center; gap: 12px;
+    flex-wrap: wrap;
+}
+.ref-suggest-text {
+    flex: 1; min-width: 180px; margin: 0;
+    font-size: 12.5px; line-height: 1.8; color: var(--muted);
+}
+.ref-suggest-text strong { color: var(--ink); font-weight: 700; }
+
 .ref-add-row { display: flex; gap: 7px; margin-bottom: 11px; flex-wrap: wrap; }
 .ref-add-row input { flex: 1; min-width: 110px; }
 .ref-chip-list { display: flex; flex-wrap: wrap; gap: 6px; }

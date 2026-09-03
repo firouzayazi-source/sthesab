@@ -46,7 +46,9 @@ try {
         $walletMap[mb_strtolower(trim($w['name']))] = (int)$w['id'];
     }
 } catch (PDOException $e) { /* ignore */ }
-$defaultWalletId = !empty($walletMap) ? reset($walletMap) : null;
+// اگر کاربر هیچ حسابی ندارد، همین حالا کیف پولش ساخته می‌شود — وگرنه
+// یک ورودِ ۳۰۰ ردیفی کاملاً بی‌حساب می‌نشست و دیگر معلوم نبود کجاست.
+$defaultWalletId = !empty($walletMap) ? reset($walletMap) : ensureDefaultWallet($userId);
 
 
 // ============================================================

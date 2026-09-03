@@ -67,6 +67,22 @@ if ($catsReady) {
     }
 }
 
+// چند تا از دسته‌های پیشنهادیِ خانوار را هنوز ندارد؟ اگر صفر باشد،
+// ردیفِ پیشنهاد اصلاً رندر نمی‌شود — تنظیمی که کارش تمام شده نباید
+// تا ابد روی صفحه بماند.
+$missingSuggested = 0;
+if ($catsReady) {
+    $have = [];
+    foreach (['income', 'expense'] as $t) {
+        foreach (array_merge($defaultCats[$t], $myCats[$t]) as $c) {
+            $have[$t . '|' . $c['name']] = true;
+        }
+    }
+    foreach (suggestedHouseholdCategories() as $s) {
+        if (!isset($have[$s['type'] . '|' . $s['name']])) { $missingSuggested++; }
+    }
+}
+
 $pageTitle = 'فهرست‌های من';
 include __DIR__ . '/includes/header.php';
 ?>
@@ -251,6 +267,16 @@ include __DIR__ . '/includes/header.php';
      می‌تواند هر چقدر دسته‌ی خودش اضافه کند و همان‌ها را پاک کند. هر
      دسته‌ای که اینجا ساخته شود بلافاصله در فرم ثبت تراکنش، بودجه،
      تراکنش دوره‌ای و گزارش دسته‌بندی می‌آید. -->
+<?php if ($catsReady && $missingSuggested > 0): ?>
+<div class="card ref-suggest" id="suggestCard">
+    <p class="ref-suggest-text">
+        <strong><?= toPersianDigits((string)$missingSuggested) ?></strong> دسته‌ی رایجِ خانوار
+        (خوراک، قبوض، درمان، قسط، حقوق و …) هنوز در فهرست شما نیست.
+    </p>
+    <button type="button" class="btn btn-secondary btn-sm" id="addSuggestedCats">افزودن یک‌جا</button>
+</div>
+<?php endif; ?>
+
 <?php if ($catsReady): ?>
 <?php foreach ([
     'expense' => ['title' => 'دسته‌بندی هزینه‌ها', 'c1' => '#dc2626', 'c2' => '#b91c1c',

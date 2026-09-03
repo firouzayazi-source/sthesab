@@ -486,19 +486,97 @@ function tableHasColumn(string $table, string $column): bool
  * ثبت تراکنش که در فوتر هر صفحه است)، و بدون کش دو سه بار پشت سر هم
  * همان کوئری می‌رفت.
  */
+/**
+ * دسته‌بندی‌های پیشنهادیِ یک خانوارِ ایرانی.
+ *
+ * ⚠ همین فهرست در سه جا لازم است: seedِ `schema.sql` برای نصبِ تازه،
+ *   `migration_household_categories.sql` برای نصبِ موجود، و دکمه‌ی
+ *   «افزودن دسته‌های پیشنهادی» در «فهرست‌های من» برای کاربری که
+ *   فهرستش دستکاری شده و آن migration عمداً به آن دست نزده. اینجا
+ *   مرجعِ سمتِ PHP است؛ اگر عوضش کردید، آن دو فایل SQL هم باید
+ *   هم‌گام شوند (تستِ قرارداد این هم‌گامی را می‌سنجد).
+ */
+function suggestedHouseholdCategories(): array
+{
+    return [
+        ['name' => 'حقوق',            'type' => 'income',  'icon' => 'salary',    'color' => '#059669'],
+        ['name' => 'پاداش و عیدی',    'type' => 'income',  'icon' => 'gift',      'color' => '#a855f7'],
+        ['name' => 'درآمد آزاد',      'type' => 'income',  'icon' => 'money',     'color' => '#10b981'],
+        ['name' => 'سود سپرده',       'type' => 'income',  'icon' => 'profit',    'color' => '#16a34a'],
+        ['name' => 'اجاره‌ی دریافتی', 'type' => 'income',  'icon' => 'home',      'color' => '#0d9488'],
+        ['name' => 'خوراک',           'type' => 'expense', 'icon' => 'food',      'color' => '#f97316'],
+        ['name' => 'مسکن و اجاره',    'type' => 'expense', 'icon' => 'home',      'color' => '#ef4444'],
+        ['name' => 'قبوض',            'type' => 'expense', 'icon' => 'bill',      'color' => '#eab308'],
+        ['name' => 'حمل‌ونقل',        'type' => 'expense', 'icon' => 'transport', 'color' => '#0ea5e9'],
+        ['name' => 'موبایل و اینترنت','type' => 'expense', 'icon' => 'phone',     'color' => '#06b6d4'],
+        ['name' => 'درمان',           'type' => 'expense', 'icon' => 'health',    'color' => '#ec4899'],
+        ['name' => 'پوشاک',           'type' => 'expense', 'icon' => 'clothes',   'color' => '#f43f5e'],
+        ['name' => 'آموزش',           'type' => 'expense', 'icon' => 'education', 'color' => '#6366f1'],
+        ['name' => 'قسط و وام',       'type' => 'expense', 'icon' => 'money',     'color' => '#64748b'],
+        ['name' => 'تفریح و سفر',     'type' => 'expense', 'icon' => 'fun',       'color' => '#d946ef'],
+        ['name' => 'هدیه و مهمانی',   'type' => 'expense', 'icon' => 'gift',      'color' => '#a855f7'],
+    ];
+}
+
+/**
+ * ⛔ «کیف پول» پیش‌فرض را برای کاربری که هیچ حسابی ندارد می‌سازد.
+ *
+ * CLAUDE.md می‌گوید «برنامه برای هر کاربر یک حساب پیش‌فرض می‌سازد»، ولی
+ * تنها جایی که این کار انجام می‌شد `migration_repair.sql:62` بود — یعنی
+ * **یک بار**، برای کاربرانی که در همان لحظه وجود داشتند. نه `setup.php`
+ * و نه `admin/users.php` هنگام ساخت کاربر حسابی نمی‌ساختند، پس هر
+ * کاربرِ تازه‌ای (یعنی هر خریدارِ آینده) بدون حساب شروع می‌کرد و اولین
+ * پولش با `wallet_id = NULL` ثبت می‌شد — دقیقاً خلافِ قاعده‌ی «هیچ پولی
+ * بی‌حساب نمی‌ماند». خرابی‌اش بی‌صدا بود: تراکنش ثبت می‌شد، فقط در هیچ
+ * حسابی نمی‌نشست و بعداً کسی نمی‌فهمید پول کجا رفت.
+ *
+ * برمی‌گرداند: شناسه‌ی حساب پیش‌فرض، یا null اگر جدول هنوز ساخته نشده.
+ */
+function ensureDefaultWallet(int $userId): ?int
+{
+    if ($userId <= 0) { return null; }
+
+    try {
+        $pdo = Database::getConnection();
+        $st  = $pdo->prepare('SELECT id FROM wallets WHERE user_id = :u LIMIT 1');
+        $st->execute(['u' => $userId]);
+        if ($id = $st->fetchColumn()) { return (int)$id; }
+
+        // نامش با migration_money_links یکی است تا کاربرِ تازه و قدیمی
+        // یک چیز ببینند. sort_order = 0 یعنی پیش‌فرضِ فرم ثبت.
+        $ins = $pdo->prepare(
+            "INSERT INTO wallets (user_id, name, kind, color, sort_order)
+             VALUES (:u, 'کیف پول', 'cash', '#16794f', 0)"
+        );
+        $ins->execute(['u' => $userId]);
+        return (int)$pdo->lastInsertId();
+    } catch (PDOException $e) {
+        return null;   // جدول حساب‌ها هنوز با migration نیامده
+    }
+}
+
 function activeWallets(int $userId): array
 {
     static $cache = [];
     if (isset($cache[$userId])) { return $cache[$userId]; }
 
     try {
-        $st = Database::getConnection()->prepare(
-            "SELECT id, name, kind, sort_order FROM wallets
-             WHERE user_id = :u AND is_active = 1
-             ORDER BY sort_order, name"
-        );
+        $sql = "SELECT id, name, kind, sort_order FROM wallets
+                WHERE user_id = :u AND is_active = 1
+                ORDER BY sort_order, name";
+        $st = Database::getConnection()->prepare($sql);
         $st->execute(['u' => $userId]);
-        $cache[$userId] = $st->fetchAll();
+        $rows = $st->fetchAll();
+
+        // ⚠ ترمیمِ تنبل: کاربرانی که پیش از افزودن ensureDefaultWallet()
+        //   ساخته شده‌اند هیچ حسابی ندارند. با اولین بارگذاری صفحه درست
+        //   می‌شوند، بی‌آنکه کسی migration دستی اجرا کند.
+        if (!$rows && ensureDefaultWallet($userId)) {
+            $st->execute(['u' => $userId]);
+            $rows = $st->fetchAll();
+        }
+
+        $cache[$userId] = $rows;
     } catch (PDOException $e) {
         $cache[$userId] = [];   // جدول حساب‌ها هنوز ساخته نشده
     }

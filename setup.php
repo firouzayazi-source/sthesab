@@ -72,6 +72,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $pdo->commit();
 
+            // حساب پیش‌فرض بعد از commit، تا اگر جدول wallets هنوز با
+            // migration نیامده باشد ساختِ خودِ کاربر شکست نخورد.
+            ensureDefaultWallet((int)$pdo->lastInsertId());
+
             redirectWithMessage('login.php', 'success', 'حساب مدیر با موفقیت ساخته شد. اکنون وارد شوید.');
         } catch (PDOException $e) {
             $pdo->rollBack();

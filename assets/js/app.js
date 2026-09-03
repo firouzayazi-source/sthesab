@@ -2523,6 +2523,42 @@ document.addEventListener('DOMContentLoaded', function () {
         return el ? el.content : '';
     }
 
+    // افزودنِ یک‌جای دسته‌های پیشنهادیِ خانوار. یک درخواست، نه ۱۶ تا.
+    var suggestBtn = document.getElementById('addSuggestedCats');
+    if (suggestBtn) {
+        suggestBtn.addEventListener('click', function () {
+            suggestBtn.disabled = true;
+            suggestBtn.textContent = 'در حال افزودن…';
+
+            var fd = new FormData();
+            fd.append('csrf_token', csrf());
+            fd.append('kind', 'category');
+            fd.append('action', 'add_suggested');
+
+            fetch(apiUrl('manage_reference.php'), {
+                method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d.success) {
+                        alert(d.message || 'خطا');
+                        suggestBtn.disabled = false;
+                        suggestBtn.textContent = 'افزودن یک‌جا';
+                        return;
+                    }
+                    // تازه‌سازی لازم است: همین دسته‌ها باید فوراً در
+                    // شیت ثبت و بودجه و گزارش دیده شوند، و خودِ ردیفِ
+                    // پیشنهاد هم باید ناپدید شود.
+                    location.reload();
+                })
+                .catch(function () {
+                    alert('خطا در ارتباط با سرور.');
+                    suggestBtn.disabled = false;
+                    suggestBtn.textContent = 'افزودن یک‌جا';
+                });
+        });
+    }
+
     document.querySelectorAll('.js-ref-add').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var kind = this.getAttribute('data-kind');

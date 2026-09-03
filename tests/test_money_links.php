@@ -193,5 +193,92 @@ T::same($before + 250000, $balanceOf($cashId), 'افزودن به موجودی �
 T::same(0, $txCount(), 'تعدیل موجودی ردیف درآمد/هزینه نمی‌سازد');
 
 // ---------------------------------------------------------------
+// ⛔ کاربرِ تازه باید کیف پول بگیرد — وگرنه پول در هیچ حسابی نمی‌نشیند
+//
+// این تست عمداً کاربرِ **خودش** را می‌سازد و هیچ حسابی برایش درج
+// نمی‌کند، چون باگ دقیقاً همین بود: درجِ کیف پول فقط یک بار در
+// migration_repair.sql برای کاربرانِ آن لحظه انجام شده بود، پس هر
+// کاربرِ تازه (یعنی هر خریدارِ آینده) بدون حساب شروع می‌کرد و اولین
+// تراکنشش با wallet_id = NULL ثبت می‌شد، بی‌هیچ خطایی.
+T::group('کاربر تازه: هیچ پولی بی‌حساب نمی‌ماند');
+
+require_once __DIR__ . '/../includes/transactions.php';
+
+$FRESH = '__test_fresh_wallet_user';
+$dropFresh = function () use ($pdo, $FRESH) {
+    $st = $pdo->prepare('SELECT id FROM users WHERE username = :u');
+    $st->execute(['u' => $FRESH]);
+    if ($id = $st->fetchColumn()) {
+        $pdo->prepare('DELETE FROM transactions WHERE user_id = :u')->execute(['u' => $id]);
+        $pdo->prepare('DELETE FROM wallets WHERE user_id = :u')->execute(['u' => $id]);
+    }
+    $pdo->prepare('DELETE FROM users WHERE username = :u')->execute(['u' => $FRESH]);
+};
+$dropFresh();
+
+$pdo->prepare(
+    "INSERT INTO users (username, password_hash, full_name, role)
+     VALUES (:u, :p, 'کاربر تازه', 'user')"
+)->execute(['u' => $FRESH, 'p' => password_hash('x', PASSWORD_DEFAULT)]);
+$freshId = (int)$pdo->lastInsertId();
+
+$countWallets = function (int $uid) use ($pdo): int {
+    $st = $pdo->prepare('SELECT COUNT(*) FROM wallets WHERE user_id = :u');
+    $st->execute(['u' => $uid]);
+    return (int)$st->fetchColumn();
+};
+
+T::same(0, $countWallets($freshId), 'کاربرِ تازه در آغاز هیچ حسابی ندارد');
+
+$madeId = ensureDefaultWallet($freshId);
+T::ok($madeId > 0, 'ensureDefaultWallet یک حساب می‌سازد');
+T::same(1, $countWallets($freshId), 'دقیقاً یک حساب ساخته می‌شود');
+T::same($madeId, ensureDefaultWallet($freshId), 'اجرای دوباره حساب تکراری نمی‌سازد');
+T::same($madeId, defaultWalletId($freshId), 'همان حساب، حسابِ پیش‌فرض است');
+
+// مهم‌ترین بررسی: پولی که کاربر حسابش را نگفته باید در حساب پیش‌فرض
+// بنشیند، نه NULL. اگر روزی txResolveWallet دوباره null برگرداند، همین
+// خط شکست می‌دهد.
+T::same($madeId, txResolveWallet($freshId, 0), 'ورودیِ خالی به حساب پیش‌فرض می‌افتد');
+T::same($madeId, txResolveWallet($freshId, 999999), 'حسابِ کاربرِ دیگر به حساب پیش‌فرض می‌افتد');
+
+$res = txCreate($freshId, [
+    'type' => 'expense', 'amount' => '50000', 'title' => 'اولین خرج',
+    'transaction_date' => today(),
+]);
+T::ok(!empty($res['ok']), 'ثبت اولین تراکنشِ کاربرِ تازه موفق است');
+
+$st = $pdo->prepare('SELECT wallet_id FROM transactions WHERE user_id = :u');
+$st->execute(['u' => $freshId]);
+T::same($madeId, (int)$st->fetchColumn(), 'اولین تراکنش در حساب پیش‌فرض می‌نشیند، نه بی‌حساب');
+
+// ⚠ ترمیمِ تنبل باید روی کاربرِ **دست‌نخورده** سنجیده شود.
+//   activeWallets() کشِ استاتیک دارد؛ اگر همان کاربرِ بالا را دوباره
+//   بپرسیم، جواب از کش می‌آید و تست بی‌آنکه چیزی را ثابت کند سبز
+//   می‌ماند. پس کاربرِ دومی ساخته می‌شود که هرگز از این تابع رد نشده.
+$OLDU = '__test_legacy_no_wallet_user';
+$dropOld = function () use ($pdo, $OLDU) {
+    $st = $pdo->prepare('SELECT id FROM users WHERE username = :u');
+    $st->execute(['u' => $OLDU]);
+    if ($id = $st->fetchColumn()) {
+        $pdo->prepare('DELETE FROM wallets WHERE user_id = :u')->execute(['u' => $id]);
+    }
+    $pdo->prepare('DELETE FROM users WHERE username = :u')->execute(['u' => $OLDU]);
+};
+$dropOld();
+$pdo->prepare(
+    "INSERT INTO users (username, password_hash, full_name, role)
+     VALUES (:u, :p, 'کاربر قدیمیِ بی‌حساب', 'user')"
+)->execute(['u' => $OLDU, 'p' => password_hash('x', PASSWORD_DEFAULT)]);
+$oldUserId = (int)$pdo->lastInsertId();
+
+T::same(0, $countWallets($oldUserId), 'کاربرِ قدیمی هیچ حسابی ندارد');
+T::same(1, count(activeWallets($oldUserId)), 'activeWallets خودش حساب را می‌سازد (ترمیم تنبل)');
+T::same(1, $countWallets($oldUserId), 'ترمیم تنبل دقیقاً یک حساب ساخت');
+
+$dropOld();
+$dropFresh();
+
+// ---------------------------------------------------------------
 $cleanup();
 exit(T::report());
