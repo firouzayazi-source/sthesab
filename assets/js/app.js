@@ -2638,6 +2638,28 @@ document.addEventListener('DOMContentLoaded', function () {
         document.body.style.left = '0';
         document.body.style.right = '0';
         document.body.style.width = '100%';
+
+        // ⛔ بدونِ این خط، جعبه‌ی `body` از کفِ پنجره **کوتاه‌تر** می‌شود.
+        //
+        //    body با `top: -Y` بالا کشیده می‌شود ولی ارتفاعش هنوز به
+        //    اندازه‌ی محتواست، پس لبه‌ی پایینش می‌رود روی `-Y + محتوا` —
+        //    که معمولاً بالاتر از کفِ پنجره است. دو خرابیِ دیده‌شده روی
+        //    آیفون دقیقاً از همین می‌آمدند و هر دو **در مرورگر دسکتاپ
+        //    بازتولید نمی‌شوند**، چون کروم فرزندِ `fixed` را همیشه نسبت
+        //    به پنجره می‌چیند:
+        //
+        //      ۱. یک نوارِ سفید زیرِ صفحه ظاهر می‌شد — زمینه‌ی `html`
+        //         که از زیرِ لبه‌ی کوتاه‌شده‌ی body بیرون می‌زد.
+        //      ۲. نوارِ پایین «جابه‌جا» می‌شد: با شیتِ باز، به‌جای ۴۸px
+        //         روی **۱۰۷px** از کفِ صفحه می‌نشست (اندازه‌گیری شده روی
+        //         اسکرین‌شاتِ واقعیِ آیفون ۱۵ پرو). چون `bottom: 14px`
+        //         آن نسبت به همان لبه‌ی کوتاه حساب می‌شد، نه کفِ پنجره.
+        //
+        //    با کشیدنِ ارتفاع تا `Y + ارتفاعِ پنجره`، لبه‌ی پایینِ body
+        //    دقیقاً روی کفِ پنجره می‌نشیند و هر دو از بین می‌روند.
+        //    عمداً `px` است نه `vh`: روی iOS مقدارِ `vh` نوارِ مرورگر را
+        //    نادیده می‌گیرد و همین‌جا دوباره اختلاف می‌ساخت.
+        document.body.style.minHeight = (scrollLock.y + window.innerHeight) + 'px';
     }
     function unlockBodyScroll() {
         if (scrollLock.count === 0) return;
@@ -2647,6 +2669,7 @@ document.addEventListener('DOMContentLoaded', function () {
         document.body.style.left = '';
         document.body.style.right = '';
         document.body.style.width = '';
+        document.body.style.minHeight = '';
         window.scrollTo(0, scrollLock.y);
     }
 
