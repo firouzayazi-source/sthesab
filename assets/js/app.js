@@ -1468,15 +1468,55 @@ document.addEventListener('DOMContentLoaded', function () {
     // ---------- پرداخت جزئی طلب/بدهی ----------
     setupAmountFormatter('payment_amount');
 
+    // ---------- کلید «قسطی است» در فرم افزودن ----------
+    var instToggle = document.getElementById('add_debt_installment');
+    if (instToggle) {
+        var instFields = document.getElementById('addInstFields');
+        var instCount  = document.getElementById('add_inst_count');
+        var instPrev   = document.getElementById('addInstPreview');
+        var debtAmount = document.getElementById('add_debt_amount');
+
+        function instPreview() {
+            if (!instPrev) { return; }
+            var amt = parseInt(toLatinDigitsJs(debtAmount ? debtAmount.value : '').replace(/[^\d]/g, ''), 10) || 0;
+            var n   = parseInt(toLatinDigitsJs(instCount ? instCount.value : '').replace(/[^\d]/g, ''), 10) || 0;
+            if (amt > 0 && n > 1) {
+                // ⚠ همان محاسبه‌ی سمتِ سرور: باقیمانده به قسطِ آخر
+                //   می‌رود، نه پخش‌شده — وگرنه جمعِ اقساط با مبلغِ وام
+                //   یکی نمی‌شد. پیش‌نمایش باید همان را بگوید.
+                var base = Math.floor(amt / n);
+                var last = amt - base * (n - 1);
+                instPrev.textContent = 'هر قسط ' + toPersianDigitsJs(base.toLocaleString('en-US').replace(/,/g, '\u066C')) +
+                    ' تومان' + (last !== base ? ' (قسط آخر ' + toPersianDigitsJs(last.toLocaleString('en-US').replace(/,/g, '\u066C')) + ')' : '') + '.';
+            } else {
+                instPrev.textContent = 'مبلغ هر قسط خودکار حساب می‌شود و همه‌ی اقساط در «آینده مالی» و «پول قابل خرج» دیده می‌شوند.';
+            }
+        }
+
+        instToggle.addEventListener('change', function () {
+            if (instFields) { instFields.classList.toggle('is-open', instToggle.checked); }
+            instPreview();
+        });
+        if (instCount)  { instCount.addEventListener('input', instPreview); }
+        if (debtAmount) { debtAmount.addEventListener('input', instPreview); }
+    }
+
     document.querySelectorAll('.js-debt-payment').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var remaining = parseInt(this.getAttribute('data-remaining'), 10);
+            var nextInst  = parseInt(this.getAttribute('data-next-inst'), 10) || 0;
             document.getElementById('debtPaymentTitle').textContent = 'ثبت پرداخت — ' + this.getAttribute('data-name');
             document.getElementById('payment_debt_id').value = this.getAttribute('data-id');
-            document.getElementById('payment_amount').value = '';
+            // مبلغِ قسط بعدی از پیش پر می‌شود — برای وامِ قسطی، همان
+            // عددی است که کاربر تقریباً همیشه می‌خواهد. قابل تغییر است.
+            document.getElementById('payment_amount').value =
+                nextInst > 0 ? nextInst.toLocaleString('en-US') : '';
             document.getElementById('payment_note').value = '';
-            document.getElementById('paymentRemainingHint').textContent =
-                'باقیمانده: ' + toPersianDigitsJs(remaining.toLocaleString('en-US').replace(/,/g,'\u066C')) + ' تومان';
+            var hint = 'باقیمانده: ' + toPersianDigitsJs(remaining.toLocaleString('en-US').replace(/,/g,'\u066C')) + ' تومان';
+            if (nextInst > 0) {
+                hint += ' — مبلغ قسط بعدی از پیش پر شده است.';
+            }
+            document.getElementById('paymentRemainingHint').textContent = hint;
             var m = document.getElementById('debtPaymentMessage');
             if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
             openModal('debtPaymentModal');

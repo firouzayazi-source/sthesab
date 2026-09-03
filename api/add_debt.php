@@ -59,12 +59,35 @@ if (!empty($errors)) {
 
 $pdo = Database::getConnection();
 
+// ---------- قسط‌بندی ----------
+// ⚠ فقط وقتی خوانده می‌شود که هم ستون‌ها آمده باشند هم کاربر کلید را
+//   زده باشد؛ وگرنه بدهیِ ساده دقیقاً مثل قبل ثبت می‌شود.
+$instCount = null; $instEvery = null; $firstInst = null;
+if (postParam('is_installment') === '1' && tableHasColumn('debts', 'installment_count')) {
+    $instCount = (int)sanitizeAmount((string)postParam('installment_count'));
+    // سقفِ ۴۸۰ یعنی ۴۰ سال ماهانه — بیشتر از هر وامِ واقعی، و جلوی
+    // ساختنِ ده‌هزار رویداد در financialEvents را می‌گیرد.
+    if ($instCount < 2 || $instCount > 480) {
+        jsonResponse(['success' => false, 'message' => 'تعداد اقساط باید بین ۲ تا ۴۸۰ باشد.'], 422);
+    }
+    $instEvery = postParam('installment_every') === 'weekly' ? 'weekly' : 'monthly';
+    $firstInst = (string)postParam('first_installment_date');
+    if ($firstInst === '' || !isValidDate($firstInst)) { $firstInst = null; }
+}
+
 try {
-    $stmt = $pdo->prepare('
-        INSERT INTO debts (user_id, direction, counterparty_name, amount, note, entry_date, due_date)
-        VALUES (:user_id, :direction, :counterparty_name, :amount, :note, :entry_date, :due_date)
-    ');
-    $stmt->execute([
+    $hasInstCols = tableHasColumn('debts', 'installment_count');
+    // ⚠ دو کوئریِ کامل، نه یک رشته‌ی ساخته‌شده با متغیر — قاعده ۴ درجِ
+    //   متغیر در SQL را ممنوع کرده.
+    $sql = $hasInstCols
+        ? 'INSERT INTO debts (user_id, direction, counterparty_name, amount, note, entry_date, due_date,
+                              installment_count, installment_every, first_installment_date)
+           VALUES (:user_id, :direction, :counterparty_name, :amount, :note, :entry_date, :due_date,
+                   :inst_count, :inst_every, :first_inst)'
+        : 'INSERT INTO debts (user_id, direction, counterparty_name, amount, note, entry_date, due_date)
+           VALUES (:user_id, :direction, :counterparty_name, :amount, :note, :entry_date, :due_date)';
+
+    $params = [
         'user_id'           => Auth::userId(),
         'direction'         => $direction,
         'counterparty_name' => $counterpartyName,
@@ -72,7 +95,14 @@ try {
         'note'              => $note !== '' ? $note : null,
         'entry_date'        => $entryDate,
         'due_date'          => $dueDate,
-    ]);
+    ];
+    if ($hasInstCols) {
+        $params['inst_count'] = $instCount;
+        $params['inst_every'] = $instEvery;
+        $params['first_inst'] = $firstInst;
+    }
+
+    $pdo->prepare($sql)->execute($params);
 
     jsonResponse(['success' => true, 'message' => 'با موفقیت ثبت شد.']);
 } catch (PDOException $e) {

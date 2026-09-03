@@ -1123,6 +1123,87 @@ function advanceRecurringDate(string $gregorianDate, string $frequency, int $int
 }
 
 /**
+ * برنامه‌ی اقساطِ یک بدهی — **مجازی**، هیچ ردیفی ذخیره نمی‌شود.
+ *
+ * ⛔ چرا ردیف ذخیره نمی‌شود (مثل تراکنش‌های دوره‌ای):
+ *    • ۳۶ ردیف به‌ازای هر وام یعنی جدولی که سریع بزرگ می‌شود
+ *    • پرداختِ واقعی از قبل در `debt_payments` هست؛ ردیفِ قسط نسخه‌ی
+ *      دومی از همان حقیقت می‌شد و دیر یا زود از آن دور می‌افتاد
+ *    • عوض کردنِ تعداد اقساط یعنی بازسازیِ همه‌ی ردیف‌های پرداخت‌نشده
+ *
+ * ⚠ «کدام قسط پرداخت شده» از روی **جمعِ پرداختی** حساب می‌شود، نه از
+ *   روی تاریخ. کاربر ممکن است دو قسط را یک‌جا بدهد یا زودتر بپردازد؛
+ *   پول پول است و ترتیبش اهمیتی ندارد.
+ *
+ * ⚠ باقیمانده‌ی تقسیم به قسطِ **آخر** می‌رود، نه پخش‌شده. اگر
+ *   ۱۰٬۰۰۰٬۰۰۰ به سه قسط بشکند، ۳٬۳۳۳٬۳۳۳ + ۳٬۳۳۳٬۳۳۳ + ۳٬۳۳۳٬۳۳۴
+ *   می‌شود؛ وگرنه جمعِ اقساط با مبلغِ وام یکی نمی‌شد و کاربر یک ریال
+ *   بدهیِ ابدی پیدا می‌کرد.
+ *
+ * @param array $debt ردیفِ debts با installment_count/every/first_installment_date
+ * @return array هر قلم: seq, date, amount, paid (bool)
+ */
+function debtInstallments(array $debt): array
+{
+    $count = (int)($debt['installment_count'] ?? 0);
+    if ($count < 2) { return []; }
+
+    $total = (int)$debt['amount'];
+    $paid  = (int)($debt['paid_amount'] ?? 0);
+    $every = ($debt['installment_every'] ?? 'monthly') === 'weekly' ? 'weekly' : 'monthly';
+
+    $start = $debt['first_installment_date'] ?? null;
+    if (!$start || !isValidDate($start)) {
+        // اگر تاریخِ اولین قسط نیامده، از سررسید عقب می‌رویم تا آخرین
+        // قسط روی همان سررسید بیفتد — که انتظارِ طبیعیِ کاربر است.
+        $start = $debt['due_date'] ?? today();
+        for ($i = 1; $i < $count; $i++) {
+            $start = advanceRecurringDate($start, $every, -1);
+        }
+    }
+
+    $base = intdiv($total, $count);
+
+    // ⚠ اگر مبلغ کمتر از تعدادِ اقساط باشد، تقسیم بی‌معناست و قسط‌های
+    //   **صفر** می‌سازد — که هم در کارت «قسط ۱ از ۲ — ۰ تومان» نشان
+    //   می‌داد هم به‌عنوان یک تعهدِ صفر وارد آینده‌ی مالی می‌شد. در آن
+    //   حالت بدهی مثل یک بدهیِ ساده رفتار می‌کند. (تستِ خودکار این را
+    //   با ۱ تومان در ۲ قسط پیدا کرد.)
+    if ($base < 1) { return []; }
+
+    $out  = [];
+    $date = $start;
+    $covered = 0;
+
+    for ($i = 1; $i <= $count; $i++) {
+        $amount = $i === $count ? ($total - $base * ($count - 1)) : $base;
+        $out[] = [
+            'seq'    => $i,
+            'date'   => $date,
+            'amount' => $amount,
+            // قسط وقتی پرداخت‌شده است که جمعِ پرداختی تا اینجا را پوشش دهد
+            'paid'   => ($covered + $amount) <= $paid,
+        ];
+        $covered += $amount;
+        if ($i < $count) { $date = advanceRecurringDate($date, $every, 1); }
+    }
+
+    return $out;
+}
+
+/**
+ * قسطِ بعدیِ پرداخت‌نشده — برای پیش‌فرضِ فرمِ «ثبت پرداخت» و خطِ کارت.
+ * اگر بدهی قسطی نباشد یا همه پرداخت شده باشند، null.
+ */
+function nextDebtInstallment(array $debt): ?array
+{
+    foreach (debtInstallments($debt) as $inst) {
+        if (!$inst['paid']) { return $inst; }
+    }
+    return null;
+}
+
+/**
  * تراکنش‌های دوره‌ای سررسیدشده را پردازش می‌کند.
  * - mode=auto: تراکنش را خودش می‌سازد و سررسید را جلو می‌برد (حتی چند دوره‌ی عقب‌افتاده را جبران می‌کند)
  * - mode=remind/confirm: چیزی نمی‌سازد؛ فقط برای نمایش در داشبورد برگردانده می‌شود
@@ -1248,6 +1329,15 @@ function financialEvents(int $userId, string $fromDate, string $toDate): array
     $events = [];
 
     // ---------- طلب و بدهی ----------
+    //
+    // ⚠ بدهیِ قسطی **همه‌ی** اقساطِ داخل بازه را می‌سازد، نه یک رویداد
+    //   در سررسیدِ آخر. بدون این، «آینده مالی» و «پول قابل خرج» قسطِ
+    //   ماهِ بعد را اصلاً نمی‌دیدند و عددِ قابل خرج به‌شدت خوش‌بین
+    //   می‌شد — یعنی همان جایی که کاربر بیشترین اعتماد را به عدد دارد.
+    //
+    // بدهیِ قسطی ممکن است سررسیدِ آخرش بیرونِ بازه باشد ولی قسطش داخل،
+    // پس شرطِ `due_date BETWEEN` برای آن‌ها برداشته می‌شود و خودِ حلقه
+    // بازه را می‌سنجد.
     try {
         $stmt = $pdo->prepare('
             SELECT id, direction, counterparty_name, amount, paid_amount, due_date
@@ -1255,7 +1345,26 @@ function financialEvents(int $userId, string $fromDate, string $toDate): array
             WHERE user_id = :u AND is_settled = 0 AND due_date BETWEEN :f AND :t
         ');
         $stmt->execute(['u' => $userId, 'f' => $fromDate, 't' => $toDate]);
-        foreach ($stmt->fetchAll() as $d) {
+        $plain = $stmt->fetchAll();
+
+        $installmentRows = [];
+        if (tableHasColumn('debts', 'installment_count')) {
+            $ist = $pdo->prepare('
+                SELECT id, direction, counterparty_name, amount, paid_amount, due_date,
+                       installment_count, installment_every, first_installment_date
+                FROM debts
+                WHERE user_id = :u AND is_settled = 0
+                  AND installment_count IS NOT NULL AND installment_count > 1
+            ');
+            $ist->execute(['u' => $userId]);
+            $installmentRows = $ist->fetchAll();
+        }
+        $installmentIds = array_column($installmentRows, 'id');
+
+        foreach ($plain as $d) {
+            // بدهیِ قسطی از حلقه‌ی پایین می‌آید؛ اینجا نباید دوباره
+            // به‌صورت یک مبلغِ درشت هم بیاید.
+            if (in_array($d['id'], $installmentIds)) { continue; }
             $remaining = (int)$d['amount'] - (int)($d['paid_amount'] ?? 0);
             if ($remaining <= 0) { continue; }
             $events[] = [
@@ -1267,6 +1376,25 @@ function financialEvents(int $userId, string $fromDate, string $toDate): array
                 'url' => 'debts.php',
                 'is_overdue' => $d['due_date'] < $today,
             ];
+        }
+
+        foreach ($installmentRows as $d) {
+            foreach (debtInstallments($d) as $inst) {
+                if ($inst['paid']) { continue; }
+                if ($inst['date'] < $fromDate || $inst['date'] > $toDate) { continue; }
+                $events[] = [
+                    'date' => $inst['date'],
+                    'kind' => 'debt',
+                    'direction' => $d['direction'] === 'receivable' ? 'in' : 'out',
+                    'title' => ($d['direction'] === 'receivable' ? 'طلب از ' : 'بدهی به ')
+                             . $d['counterparty_name']
+                             . ' — قسط ' . toPersianDigits((string)$inst['seq'])
+                             . ' از ' . toPersianDigits((string)$d['installment_count']),
+                    'amount' => $inst['amount'],
+                    'url' => 'debts.php',
+                    'is_overdue' => $inst['date'] < $today,
+                ];
+            }
         }
     } catch (PDOException $e) { /* جدول موجود نیست */ }
 

@@ -38,6 +38,25 @@ try {
     ");
     $stmt->execute($params);
     $allDebts = $stmt->fetchAll();
+
+    // ستون‌های قسط جدا خوانده می‌شوند تا کوئریِ حساسِ بالا دست نخورد و
+    // روی نصبی که migration_installments نیامده هم نشکند.
+    if ($allDebts && tableHasColumn('debts', 'installment_count')) {
+        $iq = $pdo->prepare("
+            SELECT id, installment_count, installment_every, first_installment_date
+            FROM debts $whereClause
+        ");
+        $iq->execute($params);
+        $instMap = [];
+        foreach ($iq->fetchAll() as $r) { $instMap[(int)$r['id']] = $r; }
+        foreach ($allDebts as &$__row) {
+            $ex = $instMap[(int)$__row['id']] ?? null;
+            $__row['installment_count']      = $ex['installment_count'] ?? null;
+            $__row['installment_every']      = $ex['installment_every'] ?? null;
+            $__row['first_installment_date'] = $ex['first_installment_date'] ?? null;
+        }
+        unset($__row);
+    }
 } catch (PDOException $e) {
     $stmt = $pdo->prepare("
         SELECT id, direction, counterparty_name, amount, note, entry_date, due_date, is_settled, settled_at
@@ -71,6 +90,36 @@ if ($allDebts && tableHasColumn('debt_payments', 'wallet_id')) {
         }
     } catch (PDOException $e) {
         $settleWalletNames = [];
+    }
+}
+
+// ---------- تاریخچه‌ی پرداخت هر بدهی ----------
+// ⚠ این داده از قبل در debt_payments بود ولی هیچ‌جا رندر نمی‌شد: کاربر
+//   می‌دید «۳ میلیون پرداخت شده» ولی نمی‌توانست بفهمد کِی و از کدام
+//   حساب. یک کوئری برای همه‌ی کارت‌ها، نه یکی به‌ازای هر کارت.
+$paymentsByDebt = [];
+if ($allDebts && tableExists('debt_payments')) {
+    $ids = array_column($allDebts, 'id');
+    $ph  = implode(',', array_fill(0, count($ids), '?'));
+    $walletJoin = tableHasColumn('debt_payments', 'wallet_id');
+    try {
+        $sql = $walletJoin
+            ? "SELECT dp.debt_id, dp.amount, dp.payment_date, dp.is_settlement, w.name AS wallet_name
+               FROM debt_payments dp
+               LEFT JOIN wallets w ON w.id = dp.wallet_id
+               WHERE dp.user_id = ? AND dp.debt_id IN ($ph)
+               ORDER BY dp.payment_date, dp.id"
+            : "SELECT dp.debt_id, dp.amount, dp.payment_date, dp.is_settlement, NULL AS wallet_name
+               FROM debt_payments dp
+               WHERE dp.user_id = ? AND dp.debt_id IN ($ph)
+               ORDER BY dp.payment_date, dp.id";
+        $pq = $pdo->prepare($sql);
+        $pq->execute(array_merge([$userId], $ids));
+        foreach ($pq->fetchAll() as $r) {
+            $paymentsByDebt[(int)$r['debt_id']][] = $r;
+        }
+    } catch (PDOException $e) {
+        $paymentsByDebt = [];
     }
 }
 
@@ -109,7 +158,7 @@ $defaultWallet = defaultWalletId($userId);
 $pageTitle = 'طلب و بدهی';
 include __DIR__ . '/includes/header.php';
 
-function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = []): void
+function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [], array $paymentsByDebt = []): void
 {
     $settleWallet = $settleWalletNames[(int)$d['id']] ?? '';
     $isOverdue = !(int)$d['is_settled'] && $d['due_date'] < $todayStr;
@@ -139,7 +188,12 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
             <div class="debt-amount"><?= formatMoney($d['amount']) ?><small> تومان</small></div>
         </div>
 
-        <?php $paid = (int)($d['paid_amount'] ?? 0); ?>
+        <?php
+        $paid = (int)($d['paid_amount'] ?? 0);
+        // برنامه‌ی اقساط مجازی است؛ هیچ ردیفی ذخیره نشده.
+        $instalments = debtInstallments($d);
+        $nextInst    = $instalments ? nextDebtInstallment($d) : null;
+        ?>
         <?php if ($paid > 0 && !(int)$d['is_settled']): ?>
             <?php $pct = min(100, round(($paid / max(1, (int)$d['amount'])) * 100)); ?>
             <div class="budget-bar-track" style="margin:9px 0 5px;">
@@ -148,6 +202,42 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
             <div class="debt-partial-note">
                 <?= formatMoney($paid) ?> پرداخت شده — <?= formatMoney(debtRemaining($d)) ?> باقیمانده (<?= toPersianDigits($pct) ?>٪)
             </div>
+        <?php endif; ?>
+
+        <?php if ($nextInst !== null && !(int)$d['is_settled']): ?>
+            <?php /* یک خط، نه یک جدول: «کجای این وام هستم و بعدی کِی
+                     است» تنها چیزی است که کاربر از کارت می‌خواهد. */ ?>
+            <div class="debt-inst-line">
+                قسط <strong><?= toPersianDigits((string)$nextInst['seq']) ?></strong>
+                از <?= toPersianDigits((string)count($instalments)) ?> —
+                بعدی <strong><?= formatMoney($nextInst['amount']) ?></strong>
+                در <?= h(toJalali($nextInst['date'])) ?>
+            </div>
+        <?php endif; ?>
+
+        <?php
+        // ⚠ تاریخچه‌ی پرداخت از قبل در debt_payments بود ولی هیچ‌جا
+        //   رندر نمی‌شد: کاربر می‌دید «۳ میلیون پرداخت شده» ولی
+        //   نمی‌توانست بفهمد کِی و از کدام حساب. داخل <details> است تا
+        //   کارت شلوغ نشود.
+        $payRows = $paymentsByDebt[(int)$d['id']] ?? [];
+        ?>
+        <?php if ($payRows): ?>
+            <details class="debt-pay-log">
+                <summary><?= toPersianDigits((string)count($payRows)) ?> پرداخت ثبت‌شده</summary>
+                <?php foreach ($payRows as $pr): ?>
+                    <div class="debt-pay-row">
+                        <span><?= h(toJalali($pr['payment_date'])) ?></span>
+                        <span>
+                            <?= $pr['wallet_name'] !== null ? h($pr['wallet_name']) : '—' ?>
+                            <?php if ((int)($pr['is_settlement'] ?? 0) === 1): ?>
+                                <small style="opacity:.6;">(تسویه)</small>
+                            <?php endif; ?>
+                        </span>
+                        <b><?= formatMoney((int)$pr['amount']) ?></b>
+                    </div>
+                <?php endforeach; ?>
+            </details>
         <?php endif; ?>
 
         <div class="debt-card-footer">
@@ -163,7 +253,8 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
                     <button type="button" class="btn btn-secondary btn-sm js-debt-payment"
                         data-id="<?= (int)$d['id'] ?>"
                         data-name="<?= h($d['counterparty_name']) ?>"
-                        data-remaining="<?= debtRemaining($d) ?>">ثبت پرداخت</button>
+                        data-remaining="<?= debtRemaining($d) ?>"
+                        data-next-inst="<?= $nextInst !== null ? (int)$nextInst['amount'] : 0 ?>">ثبت پرداخت</button>
                 <?php endif; ?>
                 <button type="button" class="btn btn-secondary btn-sm js-edit-debt"
                     data-id="<?= (int)$d['id'] ?>"
@@ -212,7 +303,7 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
     <?php if (empty($allDebts)): ?>
         <p class="empty-row">موردی یافت نشد.</p>
     <?php else: ?>
-        <?php foreach ($allDebts as $d): renderDebtCard($d, $todayStr, $settleWalletNames); endforeach; ?>
+        <?php foreach ($allDebts as $d): renderDebtCard($d, $todayStr, $settleWalletNames, $paymentsByDebt); endforeach; ?>
     <?php endif; ?>
 </div>
 
@@ -226,7 +317,7 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
     <?php if (empty($receivables)): ?>
         <p class="empty-row">هنوز طلبی ثبت نشده است.</p>
     <?php else: ?>
-        <?php foreach ($receivables as $d): renderDebtCard($d, $todayStr, $settleWalletNames); endforeach; ?>
+        <?php foreach ($receivables as $d): renderDebtCard($d, $todayStr, $settleWalletNames, $paymentsByDebt); endforeach; ?>
     <?php endif; ?>
 </div>
 
@@ -238,7 +329,7 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
     <?php if (empty($payables)): ?>
         <p class="empty-row">هنوز بدهی‌ای ثبت نشده است.</p>
     <?php else: ?>
-        <?php foreach ($payables as $d): renderDebtCard($d, $todayStr, $settleWalletNames); endforeach; ?>
+        <?php foreach ($payables as $d): renderDebtCard($d, $todayStr, $settleWalletNames, $paymentsByDebt); endforeach; ?>
     <?php endif; ?>
 </div>
 
@@ -284,6 +375,47 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
                     </div>
                 </div>
             </div>
+
+            <?php if (tableHasColumn('debts', 'installment_count')): ?>
+            <?php /* ⛔ یک کلید، نه یک فرمِ جدا. رایج‌ترین بدهیِ خانوارِ
+                     ایرانی وامِ قسطی است، ولی اکثرِ ثبت‌ها ساده‌اند —
+                     پس سه فیلدِ قسط تا زدنِ کلید اصلاً دیده نمی‌شوند. */ ?>
+            <label class="switch" style="margin: 4px 0 0;">
+                <input type="checkbox" id="add_debt_installment" name="is_installment" value="1">
+                <span class="switch-track"><span class="switch-knob"></span></span>
+                <span class="switch-text">قسطی است (وام، قرض‌الحسنه…)</span>
+            </label>
+
+            <div class="inst-fields" id="addInstFields">
+                <div class="inst-fields-inner">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="add_inst_count">تعداد اقساط</label>
+                            <input type="text" inputmode="numeric" id="add_inst_count"
+                                   name="installment_count" placeholder="مثلاً ۳۶">
+                        </div>
+                        <div class="form-group">
+                            <label for="add_inst_every">دوره</label>
+                            <select id="add_inst_every" name="installment_every">
+                                <option value="monthly">ماهانه</option>
+                                <option value="weekly">هفتگی</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>سررسید اولین قسط</label>
+                        <div class="jdp-field">
+                            <input type="text" class="jdp-display" readonly placeholder="انتخاب کنید">
+                            <input type="hidden" class="jdp-hidden" id="add_first_inst" name="first_installment_date" value="">
+                        </div>
+                        <p class="hint" id="addInstPreview">
+                            مبلغ هر قسط خودکار حساب می‌شود و همه‌ی اقساط در
+                            «آینده مالی» و «پول قابل خرج» دیده می‌شوند.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <div class="form-group">
                 <label for="add_debt_note">توضیح (اختیاری)</label>

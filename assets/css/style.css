@@ -935,6 +935,44 @@ button.status-badge:active { transform: scale(.96); }
 }
 .ref-price-btn:active { transform: scale(.96); }
 
+/* ---------- وام و قسط ---------- */
+/* همان مکانیزمِ باز شدنِ نرمِ «ماندن در حساب» — یک فرزند، وگرنه
+   0fr جمعش نمی‌کند (دلیلش بالاتر توضیح داده شده). */
+.inst-fields {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition: grid-template-rows .28s ease, opacity .2s ease, margin-top .28s ease;
+    margin-top: 0;
+}
+.inst-fields-inner { overflow: hidden; min-height: 0; }
+.inst-fields.is-open { grid-template-rows: 1fr; opacity: 1; margin-top: 12px; }
+
+.debt-inst-line {
+    margin: 7px 0 0;
+    font-size: 12.5px; line-height: 1.8; color: var(--muted);
+}
+.debt-inst-line strong { color: var(--ink); font-weight: 700; }
+
+/* تاریخچه‌ی پرداخت — جمع‌شونده تا کارت شلوغ نشود */
+.debt-pay-log { margin-top: 8px; }
+.debt-pay-log summary {
+    font-size: 12px; color: var(--muted); cursor: pointer;
+    list-style: none; padding: 3px 0;
+    -webkit-tap-highlight-color: transparent;
+}
+.debt-pay-log summary::-webkit-details-marker { display: none; }
+.debt-pay-log summary::before { content: '▾ '; }
+.debt-pay-log[open] summary::before { content: '▴ '; }
+.debt-pay-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 6px 0; font-size: 12.5px; color: var(--muted);
+}
+.debt-pay-row + .debt-pay-row { border-top: 1px solid var(--line-soft); }
+.debt-pay-row span:first-child { min-width: 84px; }
+.debt-pay-row span:nth-child(2) { flex: 1; }
+.debt-pay-row b { color: var(--ink); font-variant-numeric: tabular-nums; }
+
 /* روندِ خالص دارایی */
 .nw-delta { margin: 6px 0 0; font-size: 12.5px; font-weight: 700; }
 .nw-spark { margin: 10px 0 2px; height: 46px; }
