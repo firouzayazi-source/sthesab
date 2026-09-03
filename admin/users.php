@@ -274,8 +274,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         //   **دیده می‌شود**، پس برای آن‌ها خالی واقعاً یعنی خالی —
         //   وگرنه کاربری که می‌خواهد از روشِ قدیمی به کلیدِ API برود
         //   نمی‌توانست نام کاربری را بردارد و مسیر عوض نمی‌شد.
-        foreach (['sms_api_key' => false, 'sms_pass' => false,
-                  'sms_user' => true, 'sms_pattern' => true, 'sms_sender' => true] as $k => $visible) {
+        foreach (['sms_api_key' => false, 'sms_pass' => false, 'sms_user' => true,
+                  'sms_pattern' => true, 'sms_sender' => true,
+                  'sms_meli_mode' => true] as $k => $visible) {
             // ⚠ مستقیم از `$_POST` خوانده می‌شود نه `postParam()`:
             //   آن تابع «نبود» و «خالی» را یکی می‌کند، و اینجا فرقشان
             //   مهم است — فیلدی که اصلاً در این فرم نیست نباید پاک شود.
@@ -317,6 +318,9 @@ $smsTableReady = SmsLogin::tableReady();
 $smsConfigured = Sms::isConfigured();
 $smsMethod     = Sms::method();
 $smsMissing    = $smsMethod === '' ? '' : Sms::missingFor($smsMethod);
+// ⚠ از `Sms::meliMode()` می‌آید، نه از یک شرطِ تازه در همین صفحه — وگرنه
+//   فرم یک نوعِ حساب را نشان می‌دهد و فرستنده نوعِ دیگری را صدا می‌زند.
+$meliMode      = Sms::meliMode();
 // فقط «ثبت شده یا نه» به صفحه می‌رود، نه خودِ مقدار — کلید و رمزِ پنل
 // نباید در سورسِ صفحه دیده شوند.
 $smsHas = [];
@@ -477,32 +481,47 @@ include __DIR__ . '/../includes/header.php';
         <?= Csrf::field() ?>
         <input type="hidden" name="action" value="update_sms_conn">
 
-        <p class="hint" style="margin-bottom:16px;">
-            دو نوع حساب دارد: <strong>حساب جدید</strong> فقط یک «کلید API»
-            می‌دهد — «نام کاربری» را خالی بگذارید. <strong>حساب قدیمی</strong>
-            نام کاربری و رمز عبور پنل دارد — هر دو را پر کنید و رمز را در
-            فیلد کلید بگذارید. در هر دو حالت «کد بادی الگو» لازم است.
-        </p>
-
+        <?php /* ⛔ نوعِ حساب باید صریح انتخاب شود، نه از خالی بودنِ نام
+                 کاربری حدس زده شود. با حدس، مالکِ یک حسابِ قدیمی که فقط
+                 کلید را پر کرده بود بی‌آنکه بداند به کنسول فرستاده
+                 می‌شد و «کلید کنسول معتبر نیست» می‌گرفت — پیامی که درست
+                 است و هیچ نمی‌گوید کدام مسیر رفته. */ ?>
         <div class="form-group">
-            <label for="mp_key">کلید API (یا رمز عبور پنل، در روش قدیمی) <span class="req">*</span></label>
-            <input type="text" id="mp_key" name="sms_api_key" autocomplete="off" dir="ltr"
-                   placeholder="<?= $smsHas['sms_api_key'] ? 'ثبت شده — خالی بگذارید تا تغییر نکند' : 'کلید وب‌سرویس را بچسبانید' ?>">
+            <label for="mp_mode">نوع حساب <span class="req">*</span></label>
+            <select id="mp_mode" name="sms_meli_mode">
+                <option value="console" <?= $meliMode === 'console' ? 'selected' : '' ?>>
+                    حساب جدید — فقط کلید وب‌سرویس (کنسول)
+                </option>
+                <option value="panel" <?= $meliMode === 'panel' ? 'selected' : '' ?>>
+                    حساب قدیمی — نام کاربری و رمز عبور پنل
+                </option>
+            </select>
             <p class="hint">
-                از بخش «تنظیمات» کنسول ملی‌پیامک، گزینهٔ کلید وب‌سرویس. اگر
-                حساب قدیمی دارید، به‌جای کلید رمز عبور پنل را بگذارید و
-                «نام کاربری» را هم پر کنید.
+                اگر در کنسول ملی‌پیامک «کلید وب‌سرویس» دارید گزینهٔ اول؛ اگر
+                با نام کاربری و رمز وارد پنل می‌شوید و کلیدی ندارید، گزینهٔ
+                دوم. در هر دو حالت «کد بادی الگو» لازم است.
             </p>
         </div>
 
-        <div class="form-group">
-            <label for="mp_user">نام کاربری <span class="hint">(فقط روش قدیمی)</span></label>
+        <div class="form-group mp-console" <?= $meliMode === 'console' ? '' : 'hidden' ?>>
+            <label for="mp_key">کلید وب‌سرویس <span class="req">*</span></label>
+            <input type="text" id="mp_key" name="sms_api_key" autocomplete="off" dir="ltr"
+                   placeholder="<?= $smsHas['sms_api_key'] ? 'ثبت شده — خالی بگذارید تا تغییر نکند' : 'کلید وب‌سرویس را بچسبانید' ?>">
+            <p class="hint">از بخش «تنظیمات» کنسول ملی‌پیامک، گزینهٔ کلید وب‌سرویس.</p>
+        </div>
+
+        <div class="form-group mp-panel" <?= $meliMode === 'panel' ? '' : 'hidden' ?>>
+            <label for="mp_user">نام کاربری پنل <span class="req">*</span></label>
             <input type="text" id="mp_user" name="sms_user" autocomplete="off" dir="ltr"
                    value="<?= h(smsSetting('sms_user', 'SMS_USER')) ?>" placeholder="">
-            <p class="hint">
-                ⓘ اگر کلید API دارید این را خالی بگذارید — پر بودنش یعنی از
-                وب‌سرویس قدیمی با رمز عبور استفاده کن.
-            </p>
+            <p class="hint">همان نام کاربری‌ای که با آن وارد پنل ملی‌پیامک می‌شوید.</p>
+        </div>
+
+        <div class="form-group mp-panel" <?= $meliMode === 'panel' ? '' : 'hidden' ?>>
+            <label for="mp_pass">رمز عبور پنل <span class="req">*</span></label>
+            <input type="text" id="mp_pass" name="sms_pass" autocomplete="off" dir="ltr"
+                   placeholder="<?= $smsHas['sms_pass'] ? 'ثبت شده — خالی بگذارید تا تغییر نکند' : '' ?>">
+            <p class="hint">خالی گذاشتنش یعنی «دست نزن»؛ برای پاک کردن یک خط تیره (-) بنویسید.</p>
         </div>
 
         <div class="form-group">
@@ -633,6 +652,20 @@ include __DIR__ . '/../includes/header.php';
             c.hidden = c.getAttribute('data-for') !== sel.value;
         });
     });
+})();
+
+/* نوعِ حسابِ ملی‌پیامک: فیلدهای هر روش فقط در همان روش دیده شوند.
+   بدون این، کاربر هر چهار فیلد را می‌بیند و نمی‌داند کدامش به او ربط
+   دارد — همان چیزی که «رمز را در فیلدِ کلید بگذارید» را ساخته بود. */
+(function () {
+    var m = document.getElementById('mp_mode');
+    if (!m) { return; }
+    function sync() {
+        document.querySelectorAll('.mp-console').forEach(function (e) { e.hidden = m.value !== 'console'; });
+        document.querySelectorAll('.mp-panel').forEach(function (e) { e.hidden = m.value !== 'panel'; });
+    }
+    m.addEventListener('change', sync);
+    sync();
 })();
 </script>
 

@@ -1354,7 +1354,10 @@ button.status-badge:active { transform: scale(.96); }
    کدام دیرتر بیاید برنده می‌شود — یعنی `hidden` بی‌اثر می‌ماند و کارت
    با اینکه پنهان علامت خورده دیده می‌شود. این را در مرورگر دیدم، نه
    با خواندنِ کد. یک قاعده‌ی صریح جلویش را می‌گیرد. */
+/* ⚠ ویژگیِ hidden با هر قاعده‌ای که display بدهد هم‌وزن است، پس کارتِ
+   «پنهان» دیده می‌شد. برای فیلدهای نوعِ حسابِ ملی‌پیامک هم صریح لازم است. */
 .sms-conn[hidden] { display: none; }
+.mp-console[hidden], .mp-panel[hidden] { display: none; }
 
 .req { color: var(--out); font-weight: 700; }
 .sms-test {

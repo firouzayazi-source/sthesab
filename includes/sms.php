@@ -49,13 +49,14 @@ function smsSetting(string $key, string $constName): string
 
 /** کلیدهای پنل که مدیر می‌تواند از صفحه‌ی «مدیریت کاربران» تنظیمشان کند. */
 const SMS_SETTING_KEYS = [
-    'sms_method'  => 'SMS_METHOD',
-    'sms_api_key' => 'SMS_API_KEY',
-    'sms_sender'  => 'SMS_SENDER',
-    'sms_user'    => 'SMS_USER',
-    'sms_pass'    => 'SMS_PASS',
-    'sms_pattern' => 'SMS_PATTERN',
-    'sms_text'    => 'SMS_TEXT',
+    'sms_method'    => 'SMS_METHOD',
+    'sms_api_key'   => 'SMS_API_KEY',
+    'sms_sender'    => 'SMS_SENDER',
+    'sms_user'      => 'SMS_USER',
+    'sms_pass'      => 'SMS_PASS',
+    'sms_pattern'   => 'SMS_PATTERN',
+    'sms_text'      => 'SMS_TEXT',
+    'sms_meli_mode' => 'SMS_MELI_MODE',
 ];
 
 /**
@@ -109,6 +110,33 @@ class Sms
         return smsSetting('sms_method', 'SMS_METHOD');
     }
 
+    /**
+     * ⛔ نوعِ حسابِ ملی‌پیامک — **تنها جایی که این تصمیم گرفته می‌شود**
+     *    (مثل `categoryScopeSql()`). هر جایی که به ملی‌پیامک وصل می‌شود
+     *    باید از همین رد شود، وگرنه فرم یک نوع را نشان می‌دهد و
+     *    فرستنده نوعِ دیگری را صدا می‌زند.
+     *
+     * دو نوع حساب هست و آدرسشان یکی نیست:
+     *   `console` → حسابِ جدید، فقط «کلید وب‌سرویس»، کنسول.
+     *   `panel`   → حسابِ قدیمی، نام کاربری و رمزِ پنل، REST قدیمی.
+     *
+     * ⛔ پیش از این این تصمیم از «خالی بودنِ نام کاربری» **حدس زده
+     *    می‌شد**، و همان یک خطِ نادیدنی کلِ خرابی را ساخت: مالکِ یک
+     *    حسابِ قدیمی که فقط کلید را پر کرده بود، بی‌آنکه بداند به کنسول
+     *    فرستاده می‌شد و جواب می‌گرفت «کلید کنسول معتبر نیست» — پیامی که
+     *    درست است ولی هیچ نمی‌گوید کدام مسیر رفته و چرا. حالا کلید صریح
+     *    است و روی فرم دیده می‌شود.
+     *
+     * ⚠ نبودنِ مقدار یعنی نصبِ قدیمی: همان حدسِ قبلی را می‌زنیم تا رفتارِ
+     *   نصب‌هایی که امروز کار می‌کنند عوض نشود.
+     */
+    public static function meliMode(): string
+    {
+        $mode = smsSetting('sms_meli_mode', 'SMS_MELI_MODE');
+        if ($mode === 'console' || $mode === 'panel') { return $mode; }
+        return smsSetting('sms_user', 'SMS_USER') !== '' ? 'panel' : 'console';
+    }
+
     /** آیا این پنل هر چیزی که لازم دارد را دارد؟ '' یعنی آماده است. */
     public static function missingFor(string $method): string
     {
@@ -118,13 +146,16 @@ class Sms
         //   جدید، یا نام کاربری و رمزِ حسابِ قدیمی. با فهرستِ ثابت،
         //   حسابِ جدید همیشه «ناقص» گزارش می‌شد در حالی که کار می‌کرد.
         if ($method === 'melipayamak') {
-            $user = smsSetting('sms_user', 'SMS_USER');
-            $pass = smsSetting('sms_pass', 'SMS_PASS');
-            if ($user !== '' && $pass === '' && $key === '') {
-                return 'رمز عبور پنل وارد نشده است.';
-            }
-            if ($user === '' && $key === '') {
-                return 'کلید API وارد نشده است.';
+            if (self::meliMode() === 'panel') {
+                $user = smsSetting('sms_user', 'SMS_USER');
+                $pass = smsSetting('sms_pass', 'SMS_PASS');
+                if ($pass === '') { $pass = $key; }   // نصب‌های قدیمی: رمز در فیلدِ کلید
+                $missing = [];
+                if ($user === '') { $missing[] = 'نام کاربری پنل'; }
+                if ($pass === '') { $missing[] = 'رمز عبور پنل'; }
+                if ($missing !== []) { return implode(' و ', $missing) . ' وارد نشده است.'; }
+            } elseif ($key === '') {
+                return 'کلید وب‌سرویس وارد نشده است.';
             }
             if (smsSetting('sms_pattern', 'SMS_PATTERN') === '') {
                 return 'کد بادی الگو وارد نشده است — برای کد ورود عملاً لازم است.';
@@ -203,19 +234,18 @@ class Sms
         $key  = smsSetting('sms_api_key', 'SMS_API_KEY');
         $user = smsSetting('sms_user', 'SMS_USER');
 
-        // ⛔ ملی‌پیامک **دو نوع حساب** دارد و مسیرشان یکی نیست. نبودِ
-        //    این تفکیک همان چیزی بود که پیامک را نمی‌فرستاد:
+        // ⛔ ملی‌پیامک **دو نوع حساب** دارد و مسیرشان یکی نیست:
         //
         //    • حسابِ جدید فقط یک «کلید وب‌سرویس» می‌دهد و از کنسول کار
         //      می‌کند: `console.melipayamak.com/api/send/shared/{key}`.
         //    • حسابِ قدیمی نام کاربری و رمزِ پنل دارد و از REST قدیمی:
         //      `rest.payamak-panel.com/.../BaseServiceNumber`.
         //
-        //    ⚠ «نام کاربری» پر باشد یعنی روشِ قدیمی. پس اگر کلید دارید
-        //      آن فیلد را خالی بگذارید — پر بودنش مسیر را عوض می‌کند.
-        if ($user === '') {
+        //    کدام‌یک، از `meliMode()` می‌آید — یک تنظیمِ صریح روی فرم،
+        //    نه حدس از روی خالی بودنِ نام کاربری.
+        if (self::meliMode() === 'console') {
             if ($key === '') {
-                self::$lastError = 'کلید API ملی‌پیامک تنظیم نشده است.';
+                self::$lastError = 'کلید وب‌سرویس ملی‌پیامک تنظیم نشده است.';
                 return false;
             }
             $res = self::post(
@@ -230,17 +260,19 @@ class Sms
             // یعنی نرفته، حتی اگر کدِ HTTP دویست باشد.
             $json = json_decode($res['body'], true);
             if ((int)($json['recId'] ?? 0) <= 0) {
-                self::$lastError = 'پاسخ ملی‌پیامک: '
-                    . ($json['status'] ?? $json['message'] ?? $res['body']);
+                self::$lastError = self::meliError(
+                    'console',
+                    (string)($json['status'] ?? $json['message'] ?? $res['body'])
+                );
                 return false;
             }
             return true;
         }
 
         $pass = smsSetting('sms_pass', 'SMS_PASS');
-        if ($pass === '') { $pass = $key; }   // روشِ قدیمی: رمز در همان فیلدِ کلید
-        if ($pass === '') {
-            self::$lastError = 'رمزِ پنلِ ملی‌پیامک تنظیم نشده است.';
+        if ($pass === '') { $pass = $key; }   // نصب‌های قدیمی: رمز در همان فیلدِ کلید
+        if ($user === '' || $pass === '') {
+            self::$lastError = 'نام کاربری یا رمزِ پنلِ ملی‌پیامک تنظیم نشده است.';
             return false;
         }
 
@@ -257,11 +289,51 @@ class Sms
         //   یعنی پذیرفته شد؛ هر چیز دیگری خطاست.
         $json = json_decode($res['body'], true);
         if ((int)($json['RetStatus'] ?? 0) !== 1) {
-            self::$lastError = 'پاسخ ملی‌پیامک: '
-                . ($json['StrRetStatus'] ?? $res['body']);
+            self::$lastError = self::meliError(
+                'panel',
+                (string)($json['StrRetStatus'] ?? $res['body'])
+            );
             return false;
         }
         return true;
+    }
+
+    /**
+     * ⛔ خطای خامِ پنل + «حالا چه کار کنم».
+     *
+     * خطای خام لازم است (بدونش «پیامک ارسال نشد» یعنی حدس زدن بین کلیدِ
+     * غلط، الگوی تأییدنشده و اعتبارِ تمام‌شده) ولی **کافی نیست**:
+     * «کلید کنسول معتبر نیست» درست است و هیچ نمی‌گوید که مشکل می‌تواند
+     * اصلاً نوعِ حساب باشد، نه خودِ کلید. مالکِ یک حسابِ قدیمی همین را
+     * می‌دید و دنبالِ کلیدِ تازه می‌گشت، در حالی که اصلاً کلیدی ندارد.
+     *
+     * ⚠ تطبیق روی زیررشته است چون متنِ پنل نسخه به نسخه عوض می‌شود؛
+     *   نخوردنش فقط یعنی راهنمایی اضافه نمی‌شود، نه اینکه خطا گم شود.
+     */
+    private static function meliError(string $mode, string $raw): string
+    {
+        $raw  = trim($raw) !== '' ? trim($raw) : 'پاسخِ خالی از پنل.';
+        $hint = '';
+
+        if ($mode === 'console') {
+            if (mb_strpos($raw, 'کلید') !== false || mb_stripos($raw, 'key') !== false) {
+                $hint = 'این مقدار به‌عنوان «کلید وب‌سرویسِ کنسول» پذیرفته نشد. '
+                      . 'اگر حسابتان از نوع قدیمی است (با نام کاربری و رمزِ پنل وارد '
+                      . 'می‌شوید و کلیدی ندارید)، «نوع حساب» را روی «حساب قدیمی» '
+                      . 'بگذارید و نام کاربری و رمز را پر کنید.';
+            }
+        } else {
+            if (mb_strpos($raw, 'کاربر') !== false || mb_strpos($raw, 'رمز') !== false
+                || mb_stripos($raw, 'invalid') !== false) {
+                $hint = 'نام کاربری یا رمزِ پنل پذیرفته نشد. اگر حسابتان از نوع '
+                      . 'جدید است و فقط کلید وب‌سرویس دارید، «نوع حساب» را روی '
+                      . '«حساب جدید» بگذارید.';
+            }
+        }
+
+        $where = $mode === 'console' ? 'کنسول (حساب جدید)' : 'وب‌سرویس قدیمی (حساب قدیمی)';
+        return 'پاسخ ملی‌پیامک از مسیر ' . $where . ': ' . $raw
+             . ($hint === '' ? '' : ' — ' . $hint);
     }
 
     /** کاوه‌نگار — `verify/lookup` با نامِ الگو. */
@@ -428,10 +500,12 @@ class Sms
         $pass = smsSetting('sms_pass', 'SMS_PASS');
         if ($pass === '') { $pass = $key; }
 
-        // حسابِ جدید (فقط کلید): متنِ آزاد از کنسول می‌رود.
-        if ($user === '') {
+        // ⚠ از همان `meliMode()` رد می‌شود که مسیرِ الگو از آن رد می‌شود.
+        //   دو تصمیمِ جدا یعنی فرم یک نوعِ حساب را نشان بدهد و متنِ آزاد
+        //   نوعِ دیگری را صدا بزند — و آن خرابی بی‌صداست.
+        if (self::meliMode() === 'console') {
             if ($key === '') {
-                self::$lastError = 'کلید API ملی‌پیامک تنظیم نشده است.';
+                self::$lastError = 'کلید وب‌سرویس ملی‌پیامک تنظیم نشده است.';
                 return false;
             }
             $res = self::post(
@@ -443,15 +517,17 @@ class Sms
             if ($res === null) { return false; }
             $json = json_decode($res['body'], true);
             if ((int)($json['recId'] ?? 0) <= 0) {
-                self::$lastError = 'پاسخ ملی‌پیامک: '
-                    . ($json['status'] ?? $json['message'] ?? $res['body']);
+                self::$lastError = self::meliError(
+                    'console',
+                    (string)($json['status'] ?? $json['message'] ?? $res['body'])
+                );
                 return false;
             }
             return true;
         }
 
-        if ($pass === '') {
-            self::$lastError = 'رمزِ پنلِ ملی‌پیامک تنظیم نشده است.';
+        if ($user === '' || $pass === '') {
+            self::$lastError = 'نام کاربری یا رمزِ پنلِ ملی‌پیامک تنظیم نشده است.';
             return false;
         }
 
@@ -468,7 +544,7 @@ class Sms
         // این پنل شناسه‌ی پیام را برمی‌گرداند؛ مقدارهای یک‌رقمی کدِ خطا هستند.
         $ret = (string)($json['Value'] ?? '');
         if ($ret === '' || strlen($ret) < 2) {
-            self::$lastError = 'پاسخ ملی‌پیامک: ' . $res['body'];
+            self::$lastError = self::meliError('panel', $res['body']);
             return false;
         }
         return true;

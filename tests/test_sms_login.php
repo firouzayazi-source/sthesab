@@ -380,4 +380,75 @@ if (!is_resource($srv)) {
     proc_close($srv);
 }
 
+// ---------------------------------------------------------------
+// ⛔ نوعِ حسابِ ملی‌پیامک — تنها جایی که این تصمیم گرفته می‌شود.
+//
+// خرابیِ واقعی: مالکِ یک حسابِ **قدیمی** فقط فیلدِ کلید را پر کرد.
+// کدِ قبلی نوعِ حساب را از «خالی بودنِ نام کاربری» حدس می‌زد، پس به
+// کنسول فرستاد و پنل جواب داد «کلید کنسول معتبر نیست» — پیامی که درست
+// است و هیچ نمی‌گوید مشکل می‌تواند اصلاً نوعِ حساب باشد.
+T::group('⛔ نوعِ حسابِ ملی‌پیامک: تنظیمِ صریح، نه حدس');
+
+$smsKeys = ['sms_meli_mode', 'sms_user', 'sms_pass', 'sms_api_key', 'sms_pattern'];
+$smsBack = [];
+foreach ($smsKeys as $k) { $smsBack[$k] = getSetting($k, ''); }
+$smsRestore = function () use ($smsKeys, $smsBack) {
+    foreach ($smsKeys as $k) { setSetting($k, $smsBack[$k]); }
+};
+
+// ⚠ اگر `config.php` این‌ها را تعریف کرده باشد، ثابت برنده است و این
+//   بخش چیزی جز خودِ config را نمی‌سنجد — پس رد می‌شود، نه شکست.
+$constOverrides = false;
+foreach (['SMS_MELI_MODE', 'SMS_USER', 'SMS_PASS', 'SMS_API_KEY'] as $c) {
+    if (defined($c) && (string)constant($c) !== '') { $constOverrides = true; }
+}
+
+if ($constOverrides) {
+    T::skip('نوعِ حسابِ ملی‌پیامک', 'config.php این کلیدها را تعریف کرده و برنده است');
+} else {
+    setSetting('sms_pattern', '12345');
+
+    // ⚠ سازگاری با نصب‌هایی که امروز کار می‌کنند: مقدارِ نداشته یعنی
+    //   همان حدسِ قبلی. اگر این بشکند، نصبِ موجود بی‌صدا مسیرش عوض
+    //   می‌شود.
+    setSetting('sms_meli_mode', '');
+    setSetting('sms_user', 'olduser');
+    setSetting('sms_pass', 'oldpass');
+    T::same('panel', Sms::meliMode(), 'بدونِ تنظیم و با نام کاربری → روشِ قدیمی (رفتارِ قبلی)');
+
+    setSetting('sms_user', '');
+    setSetting('sms_api_key', 'somekey');
+    T::same('console', Sms::meliMode(), 'بدونِ تنظیم و بدونِ نام کاربری → کنسول (رفتارِ قبلی)');
+
+    // ⛔ و حالا همان حالتی که کاربر در آن گیر کرد: حسابِ قدیمی، ولی
+    //    نام کاربری هنوز پر نشده. با حدس، به کنسول می‌رفت.
+    setSetting('sms_meli_mode', 'panel');
+    T::same('panel', Sms::meliMode(),
+        '⛔ تنظیمِ صریح بر حدس مقدم است — حتی وقتی نام کاربری خالی است');
+    T::ok(str_contains(Sms::missingFor('melipayamak'), 'نام کاربری'),
+        'و صریح می‌گوید نام کاربری کم است، نه اینکه به کنسول بفرستد');
+
+    setSetting('sms_meli_mode', 'console');
+    setSetting('sms_user', 'olduser');
+    T::same('console', Sms::meliMode(),
+        '⛔ و برعکس: نام کاربریِ پرشده کنسول را از کار نمی‌اندازد');
+
+    // آماده بودن: کنسول فقط کلید و الگو می‌خواهد.
+    setSetting('sms_api_key', 'somekey');
+    T::same('', Sms::missingFor('melipayamak'), 'کنسول با کلید و الگو آماده است');
+    setSetting('sms_api_key', '');
+    T::ok(str_contains(Sms::missingFor('melipayamak'), 'کلید وب‌سرویس'),
+        'و بی‌کلید صریح می‌گوید چه چیزی کم است');
+
+    // روشِ قدیمی: رمزِ ذخیره‌شده در فیلدِ کلید هنوز باید بخواند
+    // (نصب‌های قبل از این تغییر همان‌طور ذخیره شده‌اند).
+    setSetting('sms_meli_mode', 'panel');
+    setSetting('sms_pass', '');
+    setSetting('sms_api_key', 'passInKeyField');
+    T::same('', Sms::missingFor('melipayamak'),
+        'روشِ قدیمی: رمزِ ذخیره‌شده در فیلدِ کلید هنوز پذیرفته می‌شود');
+
+    $smsRestore();
+}
+
 exit(T::report());
