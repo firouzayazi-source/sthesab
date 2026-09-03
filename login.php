@@ -3,6 +3,7 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/signup.php';
+require_once __DIR__ . '/includes/sms_login.php';
 
 Auth::initSession();
 
@@ -147,6 +148,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php if (signupEnabled()): ?>
                     <a href="<?= APP_BASE_PATH ?>/register.php" class="link-back" style="display:block;text-align:center;margin-top:10px">حساب ندارم — می‌خواهم بسازم</a>
                 <?php endif; ?>
+                <?php /* فقط وقتی مدیر ورود با پیامک را روشن کرده و پنل
+                         هم تنظیم شده باشد؛ وگرنه خودِ صفحه‌اش ۴۰۴ می‌دهد و
+                         این لینک به بن‌بست می‌برد. */ ?>
+                <?php if (SmsLogin::available()): ?>
+                    <a href="<?= APP_BASE_PATH ?>/sms-login.php" class="link-back" style="display:block;text-align:center;margin-top:10px">ورود با کد پیامکی</a>
+                <?php endif; ?>
             </form>
         <?php else: ?>
             <!-- ورود کامل (نام کاربری + رمز عبور) -->
@@ -174,6 +181,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                          صفحه‌اش هم ۴۰۴ می‌دهد. */ ?>
                 <?php if (signupEnabled()): ?>
                     <a href="<?= APP_BASE_PATH ?>/register.php" class="link-back" style="display:block;text-align:center;margin-top:10px">حساب ندارم — می‌خواهم بسازم</a>
+                <?php endif; ?>
+                <?php /* فقط وقتی مدیر ورود با پیامک را روشن کرده و پنل
+                         هم تنظیم شده باشد؛ وگرنه خودِ صفحه‌اش ۴۰۴ می‌دهد و
+                         این لینک به بن‌بست می‌برد. */ ?>
+                <?php if (SmsLogin::available()): ?>
+                    <a href="<?= APP_BASE_PATH ?>/sms-login.php" class="link-back" style="display:block;text-align:center;margin-top:10px">ورود با کد پیامکی</a>
                 <?php endif; ?>
             </form>
         <?php endif; ?>

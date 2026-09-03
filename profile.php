@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/sms_login.php';
 require_once __DIR__ . '/includes/user_data.php';
 require_once __DIR__ . '/includes/plan.php';
 
@@ -29,6 +30,7 @@ $me = $stmt->fetch();
 if ($me) {
     $me['avatar'] = $me['avatar'] ?? null;
     $me['email']  = $me['email'] ?? null;
+    $me['phone']  = $me['phone'] ?? null;
     unset($me['password_hash']);   // لازم نیست در این صفحه باشد
 }
 
@@ -116,6 +118,26 @@ include __DIR__ . '/includes/header.php';
                         هنوز ایمیلی ثبت نکرده‌اید. بدون آن، اگر رمزتان را فراموش کنید راهی برای بازیابی ندارید.
                     <?php else: ?>
                         با همین ایمیل هم می‌توانید وارد شوید، و لینک بازیابی رمز به همین آدرس می‌رود.
+                    <?php endif; ?>
+                </p>
+            </div>
+<?php endif; ?>
+
+<?php /* ⛔ شماره فقط وقتی نشان داده می‌شود که مدیر ورودِ پیامکی را روشن
+         کرده باشد. اگر خاموش است، این فیلد هیچ کاری نمی‌کند و فقط یک
+         فیلدِ اضافه در سرراهِ کاربر است — و فیلدی که کاری نمی‌کند از
+         نبودنش بدتر است. */ ?>
+<?php if (SmsLogin::available()): ?>
+            <div class="form-group">
+                <label for="pf_phone">شماره موبایل (اختیاری)</label>
+                <input type="tel" id="pf_phone" name="phone" maxlength="20"
+                       inputmode="tel" autocomplete="tel" placeholder="۰۹۱۲۳۴۵۶۷۸۹"
+                       value="<?= h(toPersianDigits($me['phone'] ?? '')) ?>">
+                <p class="hint">
+                    <?php if (empty($me['phone'])): ?>
+                        با ثبت شماره می‌توانید بدون رمز، با کد پیامکی وارد شوید.
+                    <?php else: ?>
+                        کد ورود به همین شماره فرستاده می‌شود. خالی گذاشتنِ این فیلد شماره را پاک نمی‌کند.
                     <?php endif; ?>
                 </p>
             </div>

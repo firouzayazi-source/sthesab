@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/signup.php';
 require_once __DIR__ . '/../includes/plan.php';
+require_once __DIR__ . '/../includes/sms_login.php';
 
 Auth::initSession();
 Auth::requireAdmin();
@@ -246,6 +247,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         setSetting('support_email', $sup);
 
+        // ⛔ ورود با پیامک هم پیش‌فرض خاموش است و فقط از همین‌جا روشن
+        //    می‌شود: یک راهِ ورودِ تازه به هر حسابی است و نباید با یک
+        //    `git pull` بی‌خبر باز شود.
+        setSetting(SMS_LOGIN_SETTING, postParam('allow_sms_login') === '1' ? '1' : '0');
+
         redirectWithMessage('users.php', 'success', 'تنظیمات ثبت‌نام بروزرسانی شد.');
     }
 }
@@ -261,6 +267,9 @@ $users = $pdo->query($hasEmailColumn
 $requireFullLoginSetting = getSetting('require_full_login', '0') === '1';
 $signupOn      = signupEnabled();
 $supportEmail  = getSetting('support_email', '');
+$smsLoginOn    = SmsLogin::switchedOn();
+$smsTableReady = SmsLogin::tableReady();
+$smsConfigured = Sms::isConfigured();
 $planOn        = planEnforced();
 $planPrice     = planMonthlyPrice();
 $planCard      = getSetting(PLAN_CARD_SETTING, '');
@@ -391,6 +400,31 @@ include __DIR__ . '/../includes/header.php';
                    autocapitalize="none" autocorrect="off" spellcheck="false">
             <p class="hint">در صفحه‌ی حریم خصوصی و پروفایل به کاربران نشان داده می‌شود.</p>
         </div>
+
+        <?php /* ⛔ ورود با پیامک: یک راهِ ورودِ دوم به هر حسابی است، پس
+                 پیش‌فرض خاموش. و کلیدی که کار نمی‌کند از نبودنش بدتر
+                 است — پس اگر پنلِ پیامک تنظیم نشده باشد همین‌جا صریح
+                 گفته می‌شود، نه اینکه کاربر روشنش کند و هیچ کدی نرسد. */ ?>
+        <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
+        <label class="switch" style="margin-bottom:8px;">
+            <input type="checkbox" name="allow_sms_login" value="1" <?= $smsLoginOn ? 'checked' : '' ?>>
+            <span class="switch-track"><span class="switch-knob"></span></span>
+            <span class="switch-text">ورود با کد پیامکی</span>
+        </label>
+        <p class="hint" style="margin-bottom:14px;">
+            <?php if (!$smsTableReady): ?>
+                ⛔ جدولش هنوز ساخته نشده. اول <code>migration_sms_login</code> را اجرا کنید.
+            <?php elseif (!$smsConfigured): ?>
+                ⛔ پنل پیامک تنظیم نشده (<code>SMS_METHOD</code> در <code>config/config.php</code>)،
+                پس روشن کردنِ این کلید هیچ کدی نمی‌فرستد. کاوه‌نگار، sms.ir و
+                ملی‌پیامک پشتیبانی می‌شوند.
+            <?php else: ?>
+                کاربرانی که شماره موبایلشان را در پروفایل ثبت کرده‌اند می‌توانند
+                بدون رمز، با کد پیامکی وارد شوند. هر پیامک هزینه دارد، پس سقفِ
+                <?= toPersianDigits(SmsLogin::MAX_PER_PHONE) ?> درخواست در ساعت
+                برای هر شماره گذاشته شده است.
+            <?php endif; ?>
+        </p>
 
         <button type="submit" class="btn btn-secondary btn-sm">ذخیره</button>
     </form>

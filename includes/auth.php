@@ -169,7 +169,25 @@ class Auth
             return $result;
         }
 
-        $user = $result['user'];
+        self::establishSession($result['user']);
+        return ['success' => true, 'message' => 'ورود موفقیت‌آمیز بود.'];
+    }
+
+    /**
+     * ساختنِ نشست برای یک کاربرِ **از قبل احراز شده**.
+     *
+     * ⛔ این تابع هیچ چیزی را احراز نمی‌کند و نباید بکند — کارش فقط
+     *    نوشتنِ نشست است. مسئولیتِ اینکه این کاربر واقعاً حقِ ورود دارد
+     *    مالِ فراخواننده است (`attemptLogin` با رمز، `SmsLogin` با کد).
+     *
+     * ⛔ چرا جدا شد: با آمدنِ ورودِ پیامکی باید بار دوم نوشته می‌شد، و
+     *    دو نسخه از «ورود» دیر یا زود از هم دور می‌افتند — همان دلیلی که
+     *    `verifyCredentials()` از `attemptLogin()` جدا شد. کلیدِ فراموش‌شده
+     *    در یکی از دو نسخه (مثلاً `session_minutes`) یعنی مهلتِ نشست برای
+     *    آن مسیر بی‌صدا به پیش‌فرض برمی‌گردد.
+     */
+    public static function establishSession(array $user): void
+    {
         session_regenerate_id(true);
 
         $_SESSION['user_id']         = (int)$user['id'];
@@ -179,8 +197,6 @@ class Auth
         $_SESSION['session_minutes'] = self::sessionMinutesFor((int)$user['id']);
         $_SESSION['login_time']      = time();
         $_SESSION['last_seen']       = time();
-
-        return ['success' => true, 'message' => 'ورود موفقیت‌آمیز بود.'];
     }
 
     /* ============================================================

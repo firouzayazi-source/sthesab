@@ -13,6 +13,7 @@ $userId   = Auth::userId();
 $fullName = trim(postParam('full_name'));
 $username = trim(postParam('username'));
 $email    = trim(postParam('email'));
+$phone    = trim(postParam('phone'));
 $current  = postParam('current_password');
 
 $errors = [];
@@ -61,6 +62,19 @@ try {
         $emailErr = saveUserEmail($pdo, $userId, $email);
         if ($emailErr !== '') {
             jsonResponse(['success' => false, 'message' => $emailErr], 422);
+        }
+    }
+
+    // ⛔ شماره موبایل هم پیش از نامِ نمایشی نوشته می‌شود، به همان دلیلِ
+    //    ایمیل: اگر تکراری یا نامعتبر بود کلِ ذخیره باید رد شود، نه اینکه
+    //    نام عوض شود و شماره بی‌سروصدا جا بماند.
+    // ⚠ شماره **اختیاری** است، برخلاف ایمیل. کاربری که ورودِ پیامکی
+    //   نمی‌خواهد نباید مجبور شود شماره‌اش را بدهد؛ خالی گذاشتنش هم
+    //   شماره‌ی قبلی را پاک نمی‌کند (قاعده‌ی `saveUserPhone`).
+    if (tableHasColumn('users', 'phone')) {
+        $phoneErr = saveUserPhone($pdo, $userId, $phone);
+        if ($phoneErr !== '') {
+            jsonResponse(['success' => false, 'message' => $phoneErr], 422);
         }
     }
 

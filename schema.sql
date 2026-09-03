@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS `users` (
     `full_name` VARCHAR(100) NOT NULL,
     `username` VARCHAR(50) NOT NULL,
     `email` VARCHAR(190) NULL COMMENT 'برای بازیابی رمز',
+    -- اختیاری، و فقط برای «ورود با کد پیامکی» که پیش‌فرض خاموش است.
+    -- نرمال‌سازی‌اش تنها در SmsLogin::normalizePhone() است.
+    `phone` VARCHAR(20) NULL DEFAULT NULL COMMENT 'شماره موبایل نرمال‌شده: 09xxxxxxxxx',
     `password_hash` VARCHAR(255) NOT NULL,
     `role` ENUM('admin', 'user') NOT NULL DEFAULT 'user',
     -- بعد از چند دقیقه بی‌فعالیتی دوباره رمز پرسیده شود. ۰ = هرگز.
@@ -21,7 +24,8 @@ CREATE TABLE IF NOT EXISTS `users` (
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     UNIQUE KEY `uq_username` (`username`),
-    UNIQUE KEY `uq_email` (`email`)
+    UNIQUE KEY `uq_email` (`email`),
+    UNIQUE KEY `uniq_users_phone` (`phone`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_persian_ci;
 
 CREATE TABLE IF NOT EXISTS `categories` (

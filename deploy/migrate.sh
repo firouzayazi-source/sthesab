@@ -97,6 +97,7 @@ MIGRATIONS=(
     migration_installments.sql
     migration_wallet_encrypt.sql
     migration_plans.sql
+    migration_sms_login.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -213,6 +214,7 @@ declare -A SENTINEL=(
     # شاهدش هم باید طول باشد نه وجود، وگرنه همیشه «هست» می‌گفت.
     [migration_wallet_encrypt.sql]="wallets.card_number>=255"
     [migration_plans.sql]="payments"
+    [migration_sms_login.sql]="sms_codes"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

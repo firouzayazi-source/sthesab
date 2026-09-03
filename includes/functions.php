@@ -2306,6 +2306,52 @@ function revokeAllAccessFor(int $userId): void
  * این تابع سه قاعده را یک‌جا نگه می‌دارد تا در سه فایل تکرار نشوند:
  * وجود ستون، معتبر بودن آدرس، و یکتا بودنش بین کاربران.
  */
+/**
+ * ⛔ تنها مسیرِ نوشتنِ شماره موبایل — مثل `saveUserEmail()`.
+ *
+ * دو قاعده‌ی همان تابع اینجا هم هست و هر دو از یک باگِ واقعی آمده‌اند:
+ *   - **رشته‌ی خالی یعنی «دست نزن»، نه «پاک کن».** پاک کردن فقط با
+ *     `$allowClear` صریح. فرمی که مقدارِ فعلی را رندر می‌کند، اگر یک بار
+ *     خالی برسد نباید شماره را بی‌صدا NULL کند.
+ *   - **یکتایی سنجیده می‌شود و پیامِ روشن می‌دهد**، وگرنه کاربر فقط
+ *     «خطای دیتابیس» می‌دید. `uniq_users_phone` در دیتابیس هم هست، ولی
+ *     تکیه بر خطای آن یعنی پیامِ نامفهوم.
+ *
+ * نرمال‌سازی از `SmsLogin::normalizePhone()` می‌گذرد، نه از یک تبدیلِ
+ * تازه — وگرنه شماره‌ای که اینجا ثبت می‌شود با شماره‌ای که در ورود
+ * جست‌وجو می‌شود یکی نمی‌ماند و تطبیق **بی‌صدا** شکست می‌خورد.
+ */
+function saveUserPhone(PDO $pdo, int $userId, string $phone, bool $allowClear = false): string
+{
+    if (!tableHasColumn('users', 'phone')) {
+        return 'ستون شماره موبایل هنوز ساخته نشده — migration را اجرا کنید (bash deploy/migrate.sh --apply).';
+    }
+
+    require_once __DIR__ . '/sms_login.php';
+    $phone = trim($phone);
+
+    if ($phone === '') {
+        if (!$allowClear) { return ''; }
+        $pdo->prepare('UPDATE users SET phone = NULL WHERE id = :id')->execute(['id' => $userId]);
+        return '';
+    }
+
+    $norm = SmsLogin::normalizePhone($phone);
+    if ($norm === null) {
+        return 'شماره موبایل معتبر نیست (مثل ۰۹۱۲۳۴۵۶۷۸۹).';
+    }
+
+    $dup = $pdo->prepare('SELECT username FROM users WHERE phone = :p AND id <> :id');
+    $dup->execute(['p' => $norm, 'id' => $userId]);
+    if ($other = $dup->fetchColumn()) {
+        return 'این شماره برای کاربر «' . $other . '» ثبت شده است.';
+    }
+
+    $pdo->prepare('UPDATE users SET phone = :p WHERE id = :id')
+        ->execute(['p' => $norm, 'id' => $userId]);
+    return '';
+}
+
 function saveUserEmail(PDO $pdo, int $userId, string $email, bool $allowClear = false): string
 {
     if (!usersHaveEmailColumn($pdo)) {
