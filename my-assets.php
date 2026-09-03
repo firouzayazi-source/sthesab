@@ -17,22 +17,18 @@ $typesStmt->execute(['user_id' => $userId]);
 $assetTypes = $typesStmt->fetchAll();
 
 // موجودی تجمیع‌شده به تفکیک نوع
-$summaryStmt = $pdo->prepare('
-    SELECT at.id, at.name, at.unit,
-           COALESCE(SUM(a.quantity), 0) AS total_qty,
-           COALESCE(SUM(a.quantity * COALESCE(a.unit_price, 0)), 0) AS total_value,
-           COUNT(a.id) AS cnt
-    FROM asset_types at
-    LEFT JOIN assets a ON a.asset_type_id = at.id AND a.user_id = :user_id
-    WHERE at.user_id = :user_id2
-    GROUP BY at.id, at.name, at.unit
-    HAVING cnt > 0
-    ORDER BY total_value DESC, at.name
-');
-$summaryStmt->execute(['user_id' => $userId, 'user_id2' => $userId]);
-$assetSummary = $summaryStmt->fetchAll();
-
+//
+// ⛔ ارزش با `COALESCE(at.current_price, a.unit_price)` حساب می‌شود، نه
+//    فقط `a.unit_price`. `unit_price` بهای واحد **هنگام ثبت** است؛ در
+//    اقتصادِ تورمی، ارزشِ سکه‌ای که پارسال خریده شده هیچ ربطی به آن
+//    عدد ندارد. اگر کاربر نرخِ روز را وارد نکرده باشد، همان بهای خرید
+//    می‌ماند — یعنی رفتارِ قبلی، نه صفر.
+$assetSummary = assetSummaryRows($userId);
 $totalPortfolioValue = array_sum(array_column($assetSummary, 'total_value'));
+// بهای تمام‌شده جدا نگه داشته می‌شود تا بشود «سود/زیانِ محقق‌نشده» را
+// نشان داد — بدون آن، کاربر فقط یک عددِ بزرگ‌تر می‌بیند و نمی‌داند
+// چقدرش رشدِ قیمت است و چقدرش پولی که گذاشته.
+$totalPortfolioCost = array_sum(array_column($assetSummary, 'total_cost'));
 
 // رکوردهای جزئی
 $listStmt = $pdo->prepare('
@@ -207,6 +203,36 @@ $portfolioTotal = 0;
 foreach ($portfolio as $row) { $portfolioTotal += $row['value']; }
 $chartable = array_values(array_filter($portfolio, fn($r) => $r['value'] > 0));
 
+// ---------- روندِ خالص دارایی ----------
+// عکسِ امروز با همان اجزایی که بالا حساب شده‌اند ثبت می‌شود — بدون
+// cron، به همان روشِ processRecurringTransactions. اجزا جدا ذخیره
+// می‌شوند نه جمع، چون هر قلم کلیدِ روشن/خاموش دارد.
+$snapParts = ['wallets' => 0, 'assets' => 0, 'trades_open' => 0,
+              'cheques_net' => 0, 'debts_net' => 0];
+// ⚠ نامِ کلیدها دقیقاً همانی است که بالا در $portfolio گذاشته شده:
+//   asset / trade / cheques / debts / wallets. اگر اینجا مفرد نوشته
+//   شود (wallet, cheque, debt) همه به شاخه‌ی else می‌افتند و جزوِ
+//   «دارایی» شمرده می‌شوند — جمعِ کل درست می‌ماند ولی اجزا غلط، و
+//   همه‌ی دلیلِ جدا ذخیره کردنشان از بین می‌رود. بی‌صدا هم خراب
+//   می‌شود، چون عددِ روی صفحه فرقی نمی‌کند.
+$snapMap = ['wallets' => 'wallets', 'trade' => 'trades_open',
+            'cheques' => 'cheques_net', 'debts' => 'debts_net'];
+foreach ($portfolio as $row) {
+    $bucket = $snapMap[$row['kind']] ?? 'assets';
+    $snapParts[$bucket] += $row['value'];
+}
+recordNetWorthSnapshot($userId, $snapParts);
+
+$nwHistory = netWorthHistory($userId, 12);
+// «نسبت به قبل» فقط وقتی معنا دارد که دست‌کم دو نقطه باشد؛ با یک نقطه
+// عددِ «۰٪» ساختگی است.
+$nwPrev  = count($nwHistory) >= 2 ? $nwHistory[count($nwHistory) - 2]['total'] : null;
+$nwDelta = $nwPrev !== null ? $portfolioTotal - $nwPrev : null;
+
+// سود/زیانِ محقق‌نشده‌ی دارایی‌های ثبت‌شده — فقط وقتی نرخِ روز وارد
+// شده باشد، وگرنه ارزش و بها یکی‌اند و خطِ «۰» بی‌معناست.
+$unrealized = $totalPortfolioValue - $totalPortfolioCost;
+
 $pageTitle = 'دارایی‌ها';
 include __DIR__ . '/includes/header.php';
 ?>
@@ -218,9 +244,34 @@ include __DIR__ . '/includes/header.php';
      همین مرورگر به خاطر می‌ماند. -->
 <div class="card">
     <div class="asset-total-row">
-        <span class="asset-total-label">ارزش کل دارایی‌ها</span>
+        <?php /* ⚠ «خالص» نه «کل»: بدهی از این عدد کم می‌شود، پس
+                 «ارزش کل دارایی‌ها» اسمِ غلطی بود. */ ?>
+        <span class="asset-total-label">خالص دارایی</span>
         <b class="asset-total-value" id="assetGrandTotal"><?= formatMoney($portfolioTotal) ?> <small><?= h(APP_CURRENCY) ?></small></b>
     </div>
+
+    <?php if ($nwDelta !== null && $nwDelta !== 0): ?>
+        <p class="nw-delta <?= $nwDelta > 0 ? 'delta-up' : 'delta-down' ?>">
+            <?= $nwDelta > 0 ? '▲' : '▼' ?> <?= formatMoney(abs($nwDelta)) ?>
+            نسبت به <?= h(toJalali($nwHistory[count($nwHistory) - 2]['date'])) ?>
+        </p>
+    <?php endif; ?>
+
+    <?php if (count($nwHistory) >= 2): ?>
+        <?php /* اسپارک‌لاین بی‌محور و بی‌عدد: اینجا شکلِ روند مهم است نه
+                 مقدارِ دقیق — آن را همان عددِ بالای صفحه می‌گوید. */ ?>
+        <div class="nw-spark"><canvas id="nwSpark" height="46"></canvas></div>
+    <?php endif; ?>
+
+    <?php if ($unrealized !== 0 && $totalPortfolioCost > 0): ?>
+        <p class="hint asset-total-note">
+            از دارایی‌های ثبت‌شده،
+            <strong class="<?= $unrealized > 0 ? 'delta-up' : 'delta-down' ?>"><?= formatMoney(abs($unrealized)) ?></strong>
+            <?= $unrealized > 0 ? 'سود' : 'زیان' ?> محقق‌نشده دارید
+            (بهای خرید <?= formatMoney($totalPortfolioCost) ?>).
+        </p>
+    <?php endif; ?>
+
     <p class="hint asset-total-note" id="assetExcludedNote" hidden></p>
 
     <?php if (empty($portfolio)): ?>
@@ -470,11 +521,23 @@ include __DIR__ . '/includes/header.php';
 
 <meta name="csrf-token" content="<?= Csrf::token() ?>">
 
-<?php if (!empty($chartable)): ?>
+<?php /* ⚠ شرط شاملِ اسپارک‌لاین هم هست: کاربری که هنوز دارایی ثبت
+         نکرده ولی تاریخچه دارد، بدون این Chart.js را نمی‌گرفت و
+         نمودارِ روند خالی می‌ماند. */ ?>
+<?php if (!empty($chartable) || count($nwHistory) >= 2): ?>
 <!-- همان منبعی که گزارش دسته‌بندی از آن استفاده می‌کند -->
 <?php foreach (assetUrls(['js/chart.umd.js']) as $__u): ?>
 <script defer src="<?= h($__u) ?>"></script>
 <?php endforeach; ?>
+<?php if (count($nwHistory) >= 2): ?>
+<script id="netWorthData" type="application/json"><?= json_encode(array_map(fn($r) => [
+    'd' => toJalali($r['date']),
+    'v' => (int)$r['total'],
+], $nwHistory), JSON_UNESCAPED_UNICODE) ?></script>
+<?php endif; ?>
+<?php endif; ?>
+
+<?php if (!empty($chartable)): ?>
 <script id="assetPortfolioData" type="application/json"><?= json_encode(array_map(fn($r) => [
     'key'   => $r['key'],
     'name'  => $r['name'],

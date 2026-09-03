@@ -93,6 +93,7 @@ MIGRATIONS=(
     migration_household_categories.sql
     migration_reminders.sql
     migration_cheque_status.sql
+    migration_asset_prices.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -203,6 +204,7 @@ declare -A SENTINEL=(
     [migration_household_categories.sql]=""
     [migration_reminders.sql]="notification_prefs"
     [migration_cheque_status.sql]="cheques.status"
+    [migration_asset_prices.sql]="asset_types.current_price"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

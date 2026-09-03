@@ -2588,6 +2588,64 @@ document.addEventListener('DOMContentLoaded', function () {
         return el ? el.content : '';
     }
 
+    // ---------- نرخِ روزِ نوع دارایی ----------
+    var assetPriceModal = document.getElementById('assetPrice');
+    if (assetPriceModal) {
+        setupAmountFormatter('assetPriceValue');
+        var apId    = document.getElementById('assetPriceId');
+        var apVal   = document.getElementById('assetPriceValue');
+        var apUnit  = document.getElementById('assetPriceUnit');
+        var apTitle = document.getElementById('assetPriceTitle');
+        var apMsg   = document.getElementById('assetPriceMessage');
+        var apBtn   = document.getElementById('assetPriceSubmitBtn');
+
+        document.querySelectorAll('.js-asset-price').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                apId.value = btn.getAttribute('data-id');
+                apTitle.textContent = 'نرخ روز — ' + btn.getAttribute('data-name');
+                apUnit.textContent = btn.getAttribute('data-unit') || 'واحد';
+                var p = parseInt(btn.getAttribute('data-price'), 10) || 0;
+                apVal.value = p > 0 ? p.toLocaleString('en-US') : '';
+                if (apMsg) { apMsg.hidden = true; apMsg.classList.remove('show', 'success', 'error'); }
+                if (apBtn) { apBtn.disabled = false; }
+                assetPriceModal.classList.add('show');
+            });
+        });
+
+        document.getElementById('assetPriceForm').addEventListener('submit', function (e) {
+            e.preventDefault();
+            var fd = new FormData();
+            fd.append('csrf_token', csrf());
+            fd.append('type_id', apId.value);
+            // ارقام فارسی و جداکننده‌ها پاک می‌شوند؛ سمتِ سرور هم
+            // sanitizeAmount دوباره همین کار را می‌کند.
+            fd.append('price', toLatinDigitsJs(apVal.value).replace(/[,٬\s]/g, ''));
+            if (apBtn) { apBtn.disabled = true; }
+
+            fetch(apiUrl('update_asset_price.php'), {
+                method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.success) { window.location.reload(); return; }
+                    if (apMsg) {
+                        apMsg.hidden = false;
+                        apMsg.classList.add('show', 'error');
+                        apMsg.textContent = d.message || 'خطایی رخ داد.';
+                    }
+                    if (apBtn) { apBtn.disabled = false; }
+                })
+                .catch(function () {
+                    if (apMsg) {
+                        apMsg.hidden = false;
+                        apMsg.classList.add('show', 'error');
+                        apMsg.textContent = 'خطا در ارتباط با سرور.';
+                    }
+                    if (apBtn) { apBtn.disabled = false; }
+                });
+        });
+    }
+
     // افزودنِ یک‌جای دسته‌های پیشنهادیِ خانوار. یک درخواست، نه ۱۶ تا.
     var suggestBtn = document.getElementById('addSuggestedCats');
     if (suggestBtn) {
@@ -3209,6 +3267,57 @@ document.addEventListener('DOMContentLoaded', function () {
         if (dataEl) {
             try { chartData = JSON.parse(dataEl.textContent) || []; } catch (e) { chartData = []; }
         }
+
+        // ---------- اسپارک‌لاینِ روندِ خالص دارایی ----------
+        // بی‌محور، بی‌عدد، بی‌راهنما: اینجا فقط **شکلِ** روند مهم است؛
+        // مقدارِ دقیق را همان عددِ بزرگِ بالای صفحه می‌گوید. افزودنِ
+        // محور و اعداد یعنی گفتنِ دوباره‌ی چیزی که همان‌جا نوشته شده.
+        (function () {
+            var sparkEl = document.getElementById('nwSpark');
+            var nwEl = document.getElementById('netWorthData');
+            if (!sparkEl || !nwEl || !window.Chart) { return; }
+
+            var nw = [];
+            try { nw = JSON.parse(nwEl.textContent) || []; } catch (e) { return; }
+            if (nw.length < 2) { return; }
+
+            // رنگ از روندِ کلی می‌آید: رشد سبز، افت قرمز. رنگ اینجا
+            // معناست نه تزئین — همان قاعده‌ی نمودارهای دیگر.
+            function paint(c) {
+                var up = nw[nw.length - 1].v >= nw[0].v;
+                var css = getComputedStyle(document.documentElement);
+                var col = (css.getPropertyValue(up ? '--in' : '--out') || '#16a34a').trim();
+                c.data.datasets[0].borderColor = col;
+                c.data.datasets[0].backgroundColor = col + '22';
+                c.update('none');
+            }
+
+            var spark = new Chart(sparkEl.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: nw.map(function (p) { return p.d; }),
+                    datasets: [{
+                        data: nw.map(function (p) { return p.v; }),
+                        borderWidth: 2, pointRadius: 0, fill: true, tension: 0.25
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+                    scales: { x: { display: false }, y: { display: false } },
+                    animation: false
+                }
+            });
+            paint(spark);
+            // ⚠ `onThemeChange` نه `registerThemedChart`: دومی آرایه‌ی
+            //   رنگِ قاچ‌ها را می‌گیرد (برای دونات)، نه یک تابع. اینجا
+            //   رنگ از --in/--out خوانده می‌شود، پس باید خودمان دوباره
+            //   رنگ بزنیم. بدون این، نمودار با عوض شدنِ حالت شب رنگِ
+            //   قبلی را نگه می‌داشت — همان درسی که صفحه‌ی گزارش داد.
+            if (typeof window.onThemeChange === 'function') {
+                window.onThemeChange(function () { paint(spark); });
+            }
+        })();
 
         function money(n) {
             var neg = n < 0;

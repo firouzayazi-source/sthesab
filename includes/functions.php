@@ -487,6 +487,130 @@ function tableHasColumn(string $table, string $column): bool
  * همان کوئری می‌رفت.
  */
 /**
+ * موجودیِ دارایی‌ها به تفکیک نوع، با **ارزشِ روز** و بهای تمام‌شده.
+ *
+ * ⛔ `assets.unit_price` بهای واحد **هنگام ثبت** است. صفحه‌ی دارایی تا
+ *    پیش از این همان را جمع می‌زد و «ارزش کل دارایی‌ها» می‌نامیدش —
+ *    که در اقتصادِ تورمی حرفِ بی‌معنایی است: ارزشِ سکه‌ی پارسال هیچ
+ *    ربطی به قیمتِ پارسال ندارد. حالا اگر کاربر برای آن نوع نرخِ روز
+ *    وارد کرده باشد از آن استفاده می‌شود، وگرنه همان بهای خرید می‌ماند
+ *    (رفتارِ قبلی، نه صفر).
+ *
+ * خروجی هر ردیف: id, name, unit, total_qty, total_value (به نرخِ روز),
+ * total_cost (بهای تمام‌شده), current_price, price_updated_at, cnt
+ */
+function assetSummaryRows(int $userId): array
+{
+    $pdo = Database::getConnection();
+    $hasPrice = tableHasColumn('asset_types', 'current_price');
+
+    // ⚠ دو کوئریِ جدا، نه یک رشته‌ی ساخته‌شده با متغیر: قاعده ۴ درجِ
+    //   متغیر در SQL را ممنوع کرده و درست هم می‌گوید.
+    if ($hasPrice) {
+        $sql = 'SELECT at.id, at.name, at.unit, at.current_price, at.price_updated_at,
+                       COALESCE(SUM(a.quantity), 0) AS total_qty,
+                       COALESCE(SUM(a.quantity * COALESCE(at.current_price, a.unit_price, 0)), 0) AS total_value,
+                       COALESCE(SUM(a.quantity * COALESCE(a.unit_price, 0)), 0) AS total_cost,
+                       COUNT(a.id) AS cnt
+                FROM asset_types at
+                LEFT JOIN assets a ON a.asset_type_id = at.id AND a.user_id = :user_id
+                WHERE at.user_id = :user_id2
+                GROUP BY at.id, at.name, at.unit, at.current_price, at.price_updated_at
+                HAVING cnt > 0
+                ORDER BY total_value DESC, at.name';
+    } else {
+        $sql = 'SELECT at.id, at.name, at.unit,
+                       NULL AS current_price, NULL AS price_updated_at,
+                       COALESCE(SUM(a.quantity), 0) AS total_qty,
+                       COALESCE(SUM(a.quantity * COALESCE(a.unit_price, 0)), 0) AS total_value,
+                       COALESCE(SUM(a.quantity * COALESCE(a.unit_price, 0)), 0) AS total_cost,
+                       COUNT(a.id) AS cnt
+                FROM asset_types at
+                LEFT JOIN assets a ON a.asset_type_id = at.id AND a.user_id = :user_id
+                WHERE at.user_id = :user_id2
+                GROUP BY at.id, at.name, at.unit
+                HAVING cnt > 0
+                ORDER BY total_value DESC, at.name';
+    }
+
+    try {
+        $st = $pdo->prepare($sql);
+        $st->execute(['user_id' => $userId, 'user_id2' => $userId]);
+        return $st->fetchAll();
+    } catch (PDOException $e) {
+        return [];
+    }
+}
+
+/**
+ * عکسِ امروزِ خالص دارایی را می‌نویسد — بدونِ cron.
+ *
+ * ⚠ همان الگوی `processRecurringTransactions()`: اولین بازدیدِ روز
+ *   ردیف را می‌سازد. `INSERT IGNORE` با کلیدِ (user_id, snap_date)
+ *   یعنی بازدیدِ دومِ همان روز چیزی اضافه نمی‌کند.
+ *
+ * ⚠ **اجزا** ذخیره می‌شوند نه جمع، چون صفحه‌ی دارایی برای هر قلم یک
+ *   کلیدِ روشن/خاموش دارد؛ با ذخیره‌ی جمع، روندِ «بدون طلا» ساختنی
+ *   نبود.
+ *
+ * عمداً هیچ‌وقت استثنا پرتاب نمی‌کند: این یک کارِ جانبی است و نباید
+ * بارگذاریِ صفحه را بشکند.
+ */
+function recordNetWorthSnapshot(int $userId, array $parts): void
+{
+    if (!tableExists('net_worth_snapshots')) { return; }
+
+    try {
+        Database::getConnection()->prepare(
+            'INSERT IGNORE INTO net_worth_snapshots
+                (user_id, snap_date, wallets, assets, trades_open, cheques_net, debts_net)
+             VALUES (:u, :d, :w, :a, :t, :c, :b)'
+        )->execute([
+            'u' => $userId,
+            'd' => today(),
+            'w' => (int)($parts['wallets'] ?? 0),
+            'a' => (int)($parts['assets'] ?? 0),
+            't' => (int)($parts['trades_open'] ?? 0),
+            'c' => (int)($parts['cheques_net'] ?? 0),
+            'b' => (int)($parts['debts_net'] ?? 0),
+        ]);
+    } catch (PDOException $e) { /* کارِ جانبی — صفحه نباید بشکند */ }
+}
+
+/**
+ * تاریخچه‌ی خالص دارایی برای اسپارک‌لاین.
+ * خروجی: [['date' => 'Y-m-d', 'total' => int], ...] از قدیم به جدید.
+ */
+function netWorthHistory(int $userId, int $limit = 12): array
+{
+    if (!tableExists('net_worth_snapshots')) { return []; }
+
+    try {
+        // ⚠ `LIMIT :n` با پارامترِ صحیح، نه درجِ متغیر در رشته — قاعده ۴
+        //   درجِ متغیر را ممنوع کرده. با EMULATE_PREPARES=false باید
+        //   صریحاً PARAM_INT باشد، وگرنه MySQL آن را رشته می‌بیند و
+        //   کوئری با خطای نحوی می‌شکند.
+        $st = Database::getConnection()->prepare(
+            'SELECT snap_date, wallets, assets, trades_open, cheques_net, debts_net
+             FROM net_worth_snapshots WHERE user_id = :u
+             ORDER BY snap_date DESC LIMIT :n'
+        );
+        $st->bindValue('u', $userId, PDO::PARAM_INT);
+        $st->bindValue('n', max(1, min(400, $limit)), PDO::PARAM_INT);
+        $st->execute();
+        $rows = array_reverse($st->fetchAll());
+    } catch (PDOException $e) {
+        return [];
+    }
+
+    return array_map(fn($r) => [
+        'date'  => $r['snap_date'],
+        'total' => (int)$r['wallets'] + (int)$r['assets'] + (int)$r['trades_open']
+                 + (int)$r['cheques_net'] + (int)$r['debts_net'],
+    ], $rows);
+}
+
+/**
  * ⛔ تنها جایی که «چکِ در جریان» تعریف می‌شود.
  *
  * مثل `categoryScopeSql()`: هر کوئری‌ای که چکِ باز می‌خواهد باید از

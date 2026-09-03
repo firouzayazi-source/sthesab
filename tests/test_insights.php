@@ -46,10 +46,14 @@ $cleanup = function () use ($pdo, $TESTU) {
     $st = $pdo->prepare('SELECT id FROM users WHERE username = :u');
     $st->execute(['u' => $TESTU]);
     if ($id = $st->fetchColumn()) {
-        foreach (['transactions', 'debts', 'cheques', 'wallets'] as $t) {
+        foreach (['net_worth_snapshots', 'assets', 'transactions', 'debts', 'cheques', 'wallets'] as $t) {
             try { $pdo->prepare("DELETE FROM `$t` WHERE user_id = :u")->execute(['u' => $id]); }
             catch (PDOException $e) { /* جدول شاید نباشد */ }
         }
+    }
+    if ($id) {
+        try { $pdo->prepare('DELETE FROM asset_types WHERE user_id = :u')->execute(['u' => $id]); }
+        catch (PDOException $e) { /* جدول شاید نباشد */ }
     }
     $pdo->prepare('DELETE FROM users WHERE username = :u')->execute(['u' => $TESTU]);
 };
@@ -221,6 +225,103 @@ $pdo->prepare('DELETE FROM debts WHERE user_id = :u AND due_date = :d')
 $sts2 = safeToSpend($userId, 30);
 T::same(0, $sts2['overdue'], 'بدون سررسیدگذشته، سهمش صفر است');
 T::same(1000000, $sts2['commitments'], 'تعهدِ آینده همچنان شمرده می‌شود');
+
+// ---------------------------------------------------------------
+T::group('ارزشِ دارایی به نرخِ روز، نه بهای خرید');
+
+// ⛔ `assets.unit_price` بهای واحد **هنگام ثبت** است. صفحه‌ی دارایی
+//    همان را جمع می‌زد و «ارزش کل» می‌نامیدش — که در اقتصادِ تورمی
+//    حرفِ بی‌معنایی است: ارزشِ سکه‌ی پارسال هیچ ربطی به قیمتِ پارسال
+//    ندارد.
+if (!tableHasColumn('asset_types', 'current_price')) {
+    T::skip('ارزشِ روز', 'migration_asset_prices اجرا نشده');
+} else {
+    $pdo->prepare("INSERT INTO asset_types (user_id, name, unit) VALUES (:u, 'طلای تست', 'گرم')")
+        ->execute(['u' => $userId]);
+    $typeId = (int)$pdo->lastInsertId();
+
+    // ۵ گرم، گرمی ۳ میلیون خریده شده
+    $pdo->prepare(
+        'INSERT INTO assets (user_id, asset_type_id, quantity, unit_price, entry_date)
+         VALUES (:u, :t, 5, 3000000, :d)'
+    )->execute(['u' => $userId, 't' => $typeId, 'd' => date('Y-m-d', strtotime('-1 year'))]);
+
+    $row = null;
+    foreach (assetSummaryRows($userId) as $r) {
+        if ((int)$r['id'] === $typeId) { $row = $r; }
+    }
+    T::ok($row !== null, 'ردیفِ دارایی پیدا شد');
+
+    // بدون نرخِ روز → همان بهای خرید (رفتارِ قبلی، نه صفر)
+    T::same(15000000, (int)$row['total_value'], 'بدون نرخِ روز، ارزش = بهای خرید');
+    T::same(15000000, (int)$row['total_cost'], 'بهای تمام‌شده هم همان است');
+
+    // با نرخِ روز → ارزش عوض می‌شود ولی بها نه
+    $pdo->prepare('UPDATE asset_types SET current_price = 7000000, price_updated_at = :d WHERE id = :t')
+        ->execute(['t' => $typeId, 'd' => today()]);
+    $row = null;
+    foreach (assetSummaryRows($userId) as $r) {
+        if ((int)$r['id'] === $typeId) { $row = $r; }
+    }
+    T::same(35000000, (int)$row['total_value'], 'با نرخِ روز، ارزش = ۵ × ۷ میلیون');
+    T::same(15000000, (int)$row['total_cost'], 'بهای تمام‌شده دست‌نخورده می‌ماند');
+    T::same(20000000, (int)$row['total_value'] - (int)$row['total_cost'],
+        'سود محقق‌نشده درست حساب می‌شود');
+
+    // برداشتنِ نرخ باید به بهای خرید برگردد، نه صفر
+    $pdo->prepare('UPDATE asset_types SET current_price = NULL WHERE id = :t')->execute(['t' => $typeId]);
+    $row = null;
+    foreach (assetSummaryRows($userId) as $r) {
+        if ((int)$r['id'] === $typeId) { $row = $r; }
+    }
+    T::same(15000000, (int)$row['total_value'], 'برداشتنِ نرخ به بهای خرید برمی‌گردد، نه صفر');
+}
+
+// ---------------------------------------------------------------
+T::group('عکسِ خالص دارایی');
+
+if (!tableExists('net_worth_snapshots')) {
+    T::skip('عکسِ خالص دارایی', 'migration_asset_prices اجرا نشده');
+} else {
+    $pdo->prepare('DELETE FROM net_worth_snapshots WHERE user_id = :u')->execute(['u' => $userId]);
+
+    $parts = ['wallets' => 100, 'assets' => 50, 'trades_open' => 20,
+              'cheques_net' => 10, 'debts_net' => -30];
+    recordNetWorthSnapshot($userId, $parts);
+
+    $st = $pdo->prepare('SELECT * FROM net_worth_snapshots WHERE user_id = :u AND snap_date = :d');
+    $st->execute(['u' => $userId, 'd' => today()]);
+    $snap = $st->fetch();
+    T::ok($snap !== false, 'عکسِ امروز نوشته شد');
+
+    // ⛔ **اجزا** ذخیره می‌شوند نه جمع: صفحه‌ی دارایی برای هر قلم یک
+    //    کلیدِ روشن/خاموش دارد و با ذخیره‌ی جمع، روندِ «بدون طلا»
+    //    ساختنی نبود.
+    foreach ($parts as $k => $v) {
+        T::same($v, (int)$snap[$k], "جزءِ «{$k}» جدا ذخیره می‌شود");
+    }
+
+    // ⚠ روزی یک ردیف: بازدیدِ دوم در همان روز نباید چیزی اضافه کند،
+    //   وگرنه هر بارگذاریِ صفحه یک ردیف می‌ساخت.
+    recordNetWorthSnapshot($userId, ['wallets' => 999]);
+    $c = $pdo->prepare('SELECT COUNT(*) FROM net_worth_snapshots WHERE user_id = :u');
+    $c->execute(['u' => $userId]);
+    T::same(1, (int)$c->fetchColumn(), 'بازدیدِ دوم در همان روز ردیفِ تازه نمی‌سازد');
+    $st->execute(['u' => $userId, 'd' => today()]);
+    T::same(100, (int)$st->fetch()['wallets'], 'و مقدارِ اولیه را هم بازنویسی نمی‌کند');
+
+    // تاریخچه از قدیم به جدید، با جمعِ درستِ اجزا
+    $pdo->prepare(
+        'INSERT INTO net_worth_snapshots (user_id, snap_date, wallets, assets, trades_open, cheques_net, debts_net)
+         VALUES (:u, :d, 1000, 0, 0, 0, 0)'
+    )->execute(['u' => $userId, 'd' => date('Y-m-d', strtotime('-30 days'))]);
+
+    $hist = netWorthHistory($userId, 12);
+    T::same(2, count($hist), 'تاریخچه هر دو نقطه را دارد');
+    T::ok($hist[0]['date'] < $hist[1]['date'], 'ترتیب از قدیم به جدید است');
+    T::same(1000, $hist[0]['total'], 'جمعِ نقطه‌ی قدیمی درست است');
+    T::same(150, $hist[1]['total'], 'جمعِ امروز = ۱۰۰+۵۰+۲۰+۱۰−۳۰');
+}
 
 // ---------------------------------------------------------------
 $cleanup();

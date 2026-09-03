@@ -36,7 +36,10 @@ try {
 
 $assetTypes = [];
 try {
-    $st = $pdo->prepare('SELECT id, name, unit FROM asset_types WHERE user_id = :u ORDER BY name');
+    // نرخِ روز فقط اگر migration_asset_prices آمده باشد.
+    $st = $pdo->prepare(tableHasColumn('asset_types', 'current_price')
+        ? 'SELECT id, name, unit, current_price, price_updated_at FROM asset_types WHERE user_id = :u ORDER BY name'
+        : 'SELECT id, name, unit, NULL AS current_price, NULL AS price_updated_at FROM asset_types WHERE user_id = :u ORDER BY name');
     $st->execute(['u' => $userId]);
     $assetTypes = $st->fetchAll();
 } catch (PDOException $e) {
@@ -227,7 +230,26 @@ include __DIR__ . '/includes/header.php';
             <span class="ref-empty">هنوز نوعی اضافه نکرده‌اید.</span>
         <?php else: ?>
             <?php foreach ($assetTypes as $at): ?>
-                <span class="ref-chip"><?= h($at['name']) ?> <small style="opacity:.6;">(<?= h($at['unit']) ?>)</small><button type="button" class="ref-chip-x js-ref-delete" data-kind="asset_type" data-id="<?= (int)$at['id'] ?>" aria-label="حذف">&times;</button></span>
+                <?php /* ⛔ نرخ روی خودِ چیپ زده می‌شود، نه در یک بخشِ
+                         تازه. صفحه از قبل شش فهرست دارد؛ یک کارتِ
+                         هفتم برای «نرخ‌ها» یعنی همان شلوغی‌ای که این
+                         صفحه برای حذفش ساخته شد. */ ?>
+                <span class="ref-chip ref-chip-priced">
+                    <?= h($at['name']) ?> <small style="opacity:.6;">(<?= h($at['unit']) ?>)</small>
+                    <button type="button" class="ref-price-btn js-asset-price"
+                            data-id="<?= (int)$at['id'] ?>"
+                            data-name="<?= h($at['name']) ?>"
+                            data-unit="<?= h($at['unit']) ?>"
+                            data-price="<?= (int)($at['current_price'] ?? 0) ?>"
+                            title="نرخ روز">
+                        <?php if (!empty($at['current_price'])): ?>
+                            <?= formatMoney((int)$at['current_price']) ?>
+                        <?php else: ?>
+                            + نرخ روز
+                        <?php endif; ?>
+                    </button>
+                    <button type="button" class="ref-chip-x js-ref-delete" data-kind="asset_type" data-id="<?= (int)$at['id'] ?>" aria-label="حذف">&times;</button>
+                </span>
             <?php endforeach; ?>
         <?php endif; ?>
     </div>
@@ -324,6 +346,32 @@ include __DIR__ . '/includes/header.php';
 </div>
 <?php endforeach; ?>
 <?php endif; ?>
+
+<!-- ---------- نرخِ روزِ یک نوع دارایی ---------- -->
+<div class="modal-overlay" id="assetPrice">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="assetPriceTitle">نرخ روز</h3>
+            <button type="button" class="modal-close" data-modal-close="assetPrice">&times;</button>
+        </div>
+        <form id="assetPriceForm" autocomplete="off">
+            <input type="hidden" id="assetPriceId" value="">
+            <div class="form-group">
+                <label for="assetPriceValue">قیمت هر <span id="assetPriceUnit">واحد</span> (<?= h(APP_CURRENCY) ?>)</label>
+                <input type="text" id="assetPriceValue" inputmode="numeric" placeholder="مثلاً ۷,۰۰۰,۰۰۰">
+                <p class="hint">
+                    ارزشِ دارایی‌های شما با همین نرخ حساب می‌شود. خالی بگذارید تا
+                    دوباره به بهای خرید برگردد.
+                </p>
+            </div>
+            <div id="assetPriceMessage" class="form-message" hidden></div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" data-modal-close="assetPrice">انصراف</button>
+                <button type="submit" class="btn btn-primary" id="assetPriceSubmitBtn">ذخیره</button>
+            </div>
+        </form>
+    </div>
+</div>
 
 <meta name="csrf-token" content="<?= Csrf::token() ?>">
 

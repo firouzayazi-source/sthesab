@@ -920,6 +920,25 @@ button.status-badge:active { transform: scale(.96); }
 }
 .ref-suggest-text strong { color: var(--ink); font-weight: 700; }
 
+/* چیپِ نوعِ دارایی وقتی نرخ دارد: نام، نرخ، حذف — همه در یک چیپ.
+   بخشِ جدا برای «نرخ‌ها» یعنی کارتِ هفتم در صفحه‌ای که برای کم کردنِ
+   شلوغی ساخته شده. */
+.ref-chip-priced { gap: 7px; }
+.ref-price-btn {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-pill);
+    color: var(--gold);
+    font-family: inherit; font-size: 11.5px; font-weight: 700;
+    padding: 3px 9px; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.ref-price-btn:active { transform: scale(.96); }
+
+/* روندِ خالص دارایی */
+.nw-delta { margin: 6px 0 0; font-size: 12.5px; font-weight: 700; }
+.nw-spark { margin: 10px 0 2px; height: 46px; }
+
 .ref-add-row { display: flex; gap: 7px; margin-bottom: 11px; flex-wrap: wrap; }
 .ref-add-row input { flex: 1; min-width: 110px; }
 .ref-chip-list { display: flex; flex-wrap: wrap; gap: 6px; }
