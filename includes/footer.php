@@ -167,6 +167,8 @@ $moreActive = in_array($bottomPage, $morePages, true);
 // فهرست را خوانده باشد.
 if (class_exists('Auth') && Auth::isLoggedIn()) {
     echo peopleDatalist((int)Auth::userId());
+    // عنوان‌های اخیر — یک بار برای همه‌ی فرم‌های همان صفحه، مثل بالا.
+    echo recentTitlesDatalist((int)Auth::userId());
 }
 ?>
 

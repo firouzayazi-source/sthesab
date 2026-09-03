@@ -475,6 +475,51 @@ textarea { resize: vertical; }
 .alert-error   { background: var(--out-wash); color: var(--out); }
 .alert-info    { background: var(--warn-wash); color: var(--warn-ink); }
 
+/* ---------- «از پیامک بانک» ----------
+   یک دکمه‌ی کوچکِ کم‌رنگ زیرِ عنوانِ شیت، نه یک بخشِ تازه: مسیرِ اصلیِ
+   ثبت همان فرم است و این میان‌بر نباید با آن رقابت کند. جعبه‌اش با
+   grid-template-rows از ۰fr باز می‌شود (همان الگوی .stay-choices)، و
+   دقیقاً **یک** فرزندِ صریح دارد — دو تا بشود، دومی در ردیفِ ضمنیِ
+   auto می‌افتد و جعبه در حالت بسته هم جا می‌گیرد. */
+.sms-paste-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin: -4px 0 12px;
+    padding: 7px 11px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--muted);
+    font-family: inherit; font-size: 12.5px; font-weight: 600;
+    cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+}
+.sms-paste-btn:hover,
+.sms-paste-btn.active { color: var(--brand); border-color: var(--brand); }
+.sms-paste-btn.active { background: var(--line-soft); }
+
+.sms-paste {
+    display: grid; grid-template-rows: 0fr;
+    opacity: 0;
+    transition: grid-template-rows .22s ease, opacity .18s ease, margin .22s ease;
+    margin-bottom: 0;
+}
+.sms-paste.open { grid-template-rows: 1fr; opacity: 1; margin-bottom: 14px; }
+.sms-paste-inner { overflow: hidden; min-height: 0; }
+.sms-paste textarea {
+    width: 100%; resize: vertical;
+    padding: 10px 12px;
+    border: 1px solid var(--line); border-radius: var(--r-sm);
+    background: var(--bg); color: var(--text);
+    font-family: inherit; font-size: 13px; line-height: 1.8;
+}
+.sms-paste-actions {
+    display: flex; align-items: center; gap: 10px;
+    margin-top: 8px; flex-wrap: wrap;
+}
+.sms-paste-msg { font-size: 12px; color: var(--muted); flex: 1; min-width: 0; }
+.sms-paste-msg.ok   { color: var(--in); }
+.sms-paste-msg.warn { color: var(--warn-ink); }
+
 /* ---------- تاگل درآمد/هزینه ---------- */
 .type-toggle {
     display: flex; gap: 4px;

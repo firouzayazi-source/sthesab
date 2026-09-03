@@ -146,6 +146,218 @@ if ('serviceWorker' in navigator) {
     };
 })();
 
+/* ============================================================
+   خواندنِ پیامکِ بانک
+   ------------------------------------------------------------
+   داده‌ی واقعیِ کاربر ایرانی در پیامکِ بانک است، ولی PWA و TWA هیچ
+   دسترسی‌ای به SMS ندارند. همین محدودیت به سودِ ماست: کاربر پیامک را
+   می‌چسباند و **هیچ چیزی به سرور نمی‌رود** — فقط فیلدهای همین فرم پر
+   می‌شوند. اگر روزی وسوسه شدید این را به یک اندپوینت بدهید، بدانید که
+   دارید متنِ خامِ پیامکِ بانکِ کاربر را روی سیم می‌فرستید.
+
+   ⛔ این تابع عمداً **خالص** است: هیچ DOM ای نمی‌خواند و نمی‌نویسد،
+      پس در node آزمودنی است (tests/test_sms_parse.php). خرابیِ یک
+      پارسر بی‌صداست — مبلغِ «مانده» را به‌جای مبلغِ تراکنش برمی‌دارد و
+      کاربر تازه در گزارشِ آخر ماه می‌فهمد.
+
+   ⛔ واحد پول: پیامکِ بانک تقریباً همیشه ریال است و اپ تومان. اگر
+      واحد در متن **نبود**، عمداً هیچ حدسی زده نمی‌شود: عدد همان‌طور
+      می‌ماند و پیام به کاربر می‌گوید بررسی کند. حدس زدن یعنی احتمالِ
+      ده‌برابر یا یک‌دهمِ مبلغ، بی‌هیچ خطایی.
+   ============================================================ */
+(function () {
+    'use strict';
+
+    var OUT_WORDS = ['برداشت', 'خرید', 'خريد', 'پرداخت', 'انتقال به', 'کسر', 'بدهکار', 'حواله', 'قسط'];
+    var IN_WORDS  = ['واریز', 'واريز', 'دریافت', 'دريافت', 'وصول', 'بستانکار', 'عودت', 'انتقال از'];
+    // اعدادی که کنارِ این کلمه‌ها می‌آیند مبلغِ تراکنش **نیستند**.
+    var NOT_AMOUNT = ['مانده', 'موجودی', 'موجودي', 'باقیمانده', 'باقيمانده', 'اعتبار', 'سقف'];
+
+    function normalize(s) {
+        s = String(s || '');
+        // ارقام فارسی و عربی → لاتین
+        s = s.replace(/[۰-۹]/g, function (d) { return d.charCodeAt(0) - 0x06F0; })
+             .replace(/[٠-٩]/g, function (d) { return d.charCodeAt(0) - 0x0660; });
+        // ی و ک عربی → فارسی، نیم‌فاصله → فاصله
+        return s.replace(/ي/g, 'ی').replace(/ك/g, 'ک')
+                .replace(/‌/g, ' ');
+    }
+
+    /** نخستین جایی که یکی از کلمه‌های فهرست دیده می‌شود (یا 1-). */
+    function firstIndexOf(text, words) {
+        var best = -1;
+        for (var i = 0; i < words.length; i++) {
+            var at = text.indexOf(words[i]);
+            if (at !== -1 && (best === -1 || at < best)) { best = at; }
+        }
+        return best;
+    }
+
+    /**
+     * تبدیل تاریخِ شمسیِ داخلِ پیامک به میلادی.
+     * ⚠ از همان jalali-datepicker.js استفاده می‌کند، نه یک تبدیلِ
+     *   تازه — وگرنه می‌شد پیاده‌سازیِ سومِ تقویم، بیرون از پوششِ
+     *   test_jalali_parity، و دیر یا زود یک روز اختلاف پیدا می‌کرد.
+     */
+    function jalaliToIso(jy, jm, jd) {
+        var api = (typeof window !== 'undefined') && window.JalaliDatePicker;
+        if (!api || !api.jalaliToGregorian) { return null; }
+        if (jm < 1 || jm > 12 || jd < 1 || jd > 31) { return null; }
+        var g = api.jalaliToGregorian(jy, jm, jd);
+        var back = api.gregorianToJalali(g[0], g[1], g[2]);
+        // رفت‌وبرگشت نخواند یعنی تاریخ اصلاً وجود ندارد (۳۱ آبان)
+        if (back[0] !== jy || back[1] !== jm || back[2] !== jd) { return null; }
+        var p = function (n) { return (n < 10 ? '0' : '') + n; };
+        return g[0] + '-' + p(g[1]) + '-' + p(g[2]);
+    }
+
+    function findDate(text) {
+        var re = /(\d{2,4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/g, m;
+        while ((m = re.exec(text)) !== null) {
+            var jy = parseInt(m[1], 10);
+            if (jy < 100) { jy += 1400; }          // ۰۳/۰۶/۱۲
+            if (jy < 1300 || jy > 1500) { continue; }
+            var iso = jalaliToIso(jy, parseInt(m[2], 10), parseInt(m[3], 10));
+            if (iso) { return { iso: iso, at: m.index, len: m[0].length }; }
+        }
+        return null;
+    }
+
+    // شکل‌های رایجِ شماره‌ی کارت در پیامک بانک. جداکننده‌ی سه‌رقمیِ
+    // مبلغ (`,` و `٬`) عمداً در هیچ‌کدام نیست، و `/` هم نیست تا تاریخ
+    // سالم بماند.
+    var CARD_MASKS = [
+        /(?:\d{2,6}[\s\-]){0,3}\d{0,6}[*.•x×]{2,}[\s\-]*\d{0,6}/g,  // 6037-9975-****-1234
+        /\d{4}[\s\-]\d{4}[\s\-]\d{4}[\s\-]\d{4}/g,                  // 6037 9975 1111 1234
+        /\d{16}/g                                                    // 6037997511111234
+    ];
+
+    function findCardTail(text) {
+        // 6037****1234 یا ...1234 یا «کارت 1234»
+        var m = text.match(/[*.•x×]{2,}[\s\-]*(\d{4})(?!\d)/);
+        if (m) { return m[1]; }
+        m = text.match(/کارت[^\d\n]{0,12}(\d{4})(?!\d)/);
+        if (m) { return m[1]; }
+        m = text.match(/(?:\d{4}[\s\-]){3}(\d{4})(?!\d)|\d{12}(\d{4})/);
+        return m ? (m[1] || m[2]) : null;
+    }
+
+    /**
+     * شماره‌ی کارت را با فاصله جای‌گزین می‌کند تا ارقامش به‌عنوان مبلغ
+     * خوانده نشوند. طولِ متن دست‌نخورده می‌ماند، پس اندیسِ تاریخ که
+     * روی متنِ اصلی حساب شده هنوز معتبر است.
+     *
+     * ⚠ بدون این، «واریز به 6037-9975-****-1234 مبلغ 500,000 ریال»
+     *   عددِ 6037 را برمی‌داشت: چهار رقمِ اولِ کارت هم ≥ ۱۰۰۰ است و هم
+     *   بلافاصله بعد از کلمه‌ی جهت می‌آید، یعنی هر دو نشانه‌ی «مبلغ» را
+     *   دارد.
+     */
+    function blankCards(text) {
+        var blank = function (s) { return new Array(s.length + 1).join(' '); };
+        for (var i = 0; i < CARD_MASKS.length; i++) {
+            text = text.replace(CARD_MASKS[i], blank);
+        }
+        return text;
+    }
+
+    /**
+     * انتخابِ مبلغ از میانِ همه‌ی عددهای پیامک.
+     *
+     * ⚠ خطرناک‌ترین بخش: پیامکِ بانک چند عدد دارد (مبلغ، مانده، شماره‌ی
+     *   حساب، چهار رقمِ کارت، تاریخ، ساعت، کد پیگیری). برداشتنِ «مانده»
+     *   یا شماره‌ی حساب به‌جای مبلغ هیچ خطایی نمی‌دهد و فقط عددِ غلط
+     *   ثبت می‌شود.
+     *
+     * ⛔ به همین دلیل هیچ عددی «به‌طور پیش‌فرض» مبلغ نیست: باید دست‌کم
+     *   یکی از سه نشانه را داشته باشد — جداکننده‌ی سه‌رقمی، واحدِ پول
+     *   کنارش، یا نزدیکیِ کلمه‌ی جهت/«مبلغ». شماره‌ی حسابِ ده‌رقمی هیچ
+     *   کدام را ندارد.
+     */
+    function findAmount(text, dirAt, dateRange) {
+        var scan = blankCards(text);
+        var re = /\d{1,3}(?:[,،٬]\d{3})+|\d+/g, m, cands = [];
+        while ((m = re.exec(scan)) !== null) {
+            var at = m.index, len = m[0].length;
+            if (dateRange && at >= dateRange.at && at < dateRange.at + dateRange.len) { continue; }
+            var val = parseInt(m[0].replace(/[,،٬]/g, ''), 10);
+            if (!val || val < 1000) { continue; }        // ساعت و روز و ماه
+
+            var before = scan.slice(Math.max(0, at - 22), at);
+            var after  = scan.slice(at + len, at + len + 14);
+            if (firstIndexOf(before, NOT_AMOUNT) !== -1) { continue; }
+
+            var unit = /^[\s:：]*(ریال|ريال)/.test(after) ? 'rial'
+                     : (/^[\s:：]*(تومان|تومن)/.test(after) ? 'toman' : null);
+            var grouped = /[,،٬]/.test(m[0]);
+            var near = (dirAt !== -1 && at > dirAt && at - dirAt <= 24)
+                    || before.indexOf('مبلغ') !== -1;
+
+            if (!grouped && !unit && !near) { continue; }
+
+            cands.push({ value: val, at: at, unit: unit, grouped: grouped, near: near });
+        }
+        if (!cands.length) { return null; }
+
+        // اولویت: کنارِ کلمه‌ی جهت/«مبلغ» → کنارِ واحد پول →
+        // سه‌رقم‌جداشده → زودتر در متن.
+        return cands.slice().sort(function (a, b) {
+            if (a.near !== b.near)     { return a.near ? -1 : 1; }
+            if (!!a.unit !== !!b.unit) { return a.unit ? -1 : 1; }
+            if (a.grouped !== b.grouped) { return a.grouped ? -1 : 1; }
+            return a.at - b.at;
+        })[0];
+    }
+
+    /**
+     * @param {string} raw متنِ خامِ پیامک
+     * @returns {{ok:boolean, type:?string, amount:?number, currency:?string,
+     *            date:?string, card4:?string, note:?string, reason:string}}
+     *          amount همیشه **تومان** است، مگر currency تهی باشد که یعنی
+     *          واحد در پیامک نبود و عدد دست‌نخورده برگشته.
+     */
+    window.parseBankSms = function (raw) {
+        var text = normalize(raw);
+        var fail = function (why) {
+            return { ok: false, type: null, amount: null, currency: null,
+                     date: null, card4: null, note: null, reason: why };
+        };
+        if (text.replace(/\s/g, '') === '') { return fail('متنی وارد نشده.'); }
+
+        var outAt = firstIndexOf(text, OUT_WORDS);
+        var inAt  = firstIndexOf(text, IN_WORDS);
+        var type = null, dirAt = -1;
+        if (outAt !== -1 && (inAt === -1 || outAt < inAt)) { type = 'expense'; dirAt = outAt; }
+        else if (inAt !== -1) { type = 'income'; dirAt = inAt; }
+
+        // ⛔ بدون کلمه‌ی جهت، متن اصلاً تراکنش نیست — پیامکِ «مانده حساب
+        //    شما …» هم یک عددِ درشت دارد و بدونِ این شرط همان مانده به
+        //    عنوان مبلغِ تراکنش پر می‌شد. نه خطایی، نه نشانه‌ای.
+        if (type === null) {
+            return fail('برداشت یا واریز در این متن پیدا نشد.');
+        }
+
+        var dateHit = findDate(text);
+        var hit = findAmount(text, dirAt, dateHit);
+        if (!hit) { return fail('مبلغی در این متن پیدا نشد.'); }
+
+        var amount = hit.value;
+        if (hit.unit === 'rial') { amount = Math.round(amount / 10); }
+
+        var noteM = text.match(/(?:بابت|پذیرنده|شرح)[:：\s]+([^\n\r]{2,40})/);
+
+        return {
+            ok: true,
+            type: type,
+            amount: amount,
+            currency: hit.unit,
+            date: dateHit ? dateHit.iso : null,
+            card4: findCardTail(text),
+            note: noteM ? noteM[1].trim() : null,
+            reason: ''
+        };
+    };
+})();
+
 document.addEventListener('DOMContentLoaded', function () {
 
     // اول از همه: حالا که این فایل واقعاً اجرا شد، صفحه دیگر «در حال
@@ -320,6 +532,116 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         });
     }
+
+    // ---------- «از پیامک بانک» و پیشنهادِ عنوان‌های قبلی ----------
+    (function () {
+        var box = document.getElementById('smsPasteBox');
+        var btn = document.getElementById('smsPasteBtn');
+        if (!box || !btn) { return; }
+
+        var ta   = document.getElementById('smsPasteText');
+        var go   = document.getElementById('smsPasteApply');
+        var msg  = document.getElementById('smsPasteMsg');
+        var amountEl = document.getElementById('amount');
+        var titleEl  = document.getElementById('title');
+        var walletEl = document.getElementById('wallet_select');
+        var dateEl   = document.getElementById('transaction_date');
+
+        btn.addEventListener('click', function () {
+            var open = box.classList.toggle('open');
+            btn.classList.toggle('active', open);
+            if (open) { ta.focus(); }
+        });
+
+        function setAmount(v) {
+            if (!amountEl) { return; }
+            amountEl.value = toPersianDigitsJs(
+                Number(v).toLocaleString('en-US').replace(/,/g, '٬'));
+        }
+
+        function setDate(iso) {
+            if (!dateEl || !window.JalaliDatePicker) { return false; }
+            var p = iso.split('-').map(Number);
+            var j = window.JalaliDatePicker.gregorianToJalali(p[0], p[1], p[2]);
+            var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+            dateEl.value = iso;
+            var field = dateEl.closest('.jdp-field');
+            var disp  = field && field.querySelector('.jdp-display');
+            if (disp) {
+                disp.value = window.JalaliDatePicker.toFa(j[0]) + '/'
+                           + window.JalaliDatePicker.toFa(pad(j[1])) + '/'
+                           + window.JalaliDatePicker.toFa(pad(j[2]));
+            }
+            return true;
+        }
+
+        go.addEventListener('click', function () {
+            var r = window.parseBankSms(ta.value);
+            msg.classList.remove('ok', 'warn');
+
+            if (!r.ok) {
+                msg.classList.add('warn');
+                msg.textContent = r.reason;
+                return;
+            }
+
+            var done = [];
+            setAmount(r.amount);
+            done.push(r.currency === 'rial' ? 'مبلغ (از ریال)' : 'مبلغ');
+
+            if (r.type && quickAddToggle) { quickAddToggle.setType(r.type); done.push('نوع'); }
+            if (r.date && setDate(r.date)) { done.push('تاریخ'); }
+            if (r.note && titleEl && !titleEl.value) { titleEl.value = r.note; done.push('عنوان'); }
+
+            // ⚠ حساب فقط وقتی عوض می‌شود که چهار رقمِ آخرِ کارت واقعاً با
+            //   یکی از حساب‌ها بخواند — وگرنه پول در حسابِ اشتباه می‌نشست.
+            if (r.card4 && walletEl) {
+                for (var i = 0; i < walletEl.options.length; i++) {
+                    if (walletEl.options[i].getAttribute('data-card4') === r.card4) {
+                        walletEl.selectedIndex = i;
+                        done.push('حساب');
+                        break;
+                    }
+                }
+            }
+
+            msg.classList.add(r.currency ? 'ok' : 'warn');
+            msg.textContent = r.currency
+                ? done.join('، ') + ' پر شد.'
+                : done.join('، ') + ' پر شد — واحد پول در پیامک نبود، مبلغ را بررسی کنید.';
+
+            if (titleEl && !titleEl.value) { titleEl.focus(); }
+        });
+
+        // ---- انتخابِ یک عنوانِ قبلی، بقیه‌ی فرم را هم پر می‌کند ----
+        var list = document.getElementById('recentTitles');
+        if (list && titleEl) {
+            titleEl.addEventListener('input', function () {
+                var opt = null, opts = list.options;
+                for (var i = 0; i < opts.length; i++) {
+                    if (opts[i].value === titleEl.value) { opt = opts[i]; break; }
+                }
+                if (!opt) { return; }
+
+                var t = opt.getAttribute('data-type');
+                if (t && quickAddToggle) { quickAddToggle.setType(t); }
+
+                // ⚠ دسته بعد از setType پر می‌شود: عوض کردنِ نوع فهرستِ
+                //   دسته‌ها را از نو می‌سازد و انتخابِ قبلی را می‌برد.
+                var cat = document.getElementById('category_id');
+                var cid = opt.getAttribute('data-category');
+                if (cat && cid && cid !== '0') { cat.value = cid; }
+
+                var wid = opt.getAttribute('data-wallet');
+                if (walletEl && wid && wid !== '0') { walletEl.value = wid; }
+
+                // مبلغ فقط وقتی که کاربر هنوز چیزی ننوشته — نوشته‌ی خودش
+                // همیشه برنده است.
+                var amt = opt.getAttribute('data-amount');
+                if (amountEl && !amountEl.value && amt && amt !== '0') { setAmount(amt); }
+            });
+        }
+    })();
 
     // ---------- حذف تراکنش (AJAX) — در صفحه اصلی و صفحه تراکنش‌ها ----------
     document.querySelectorAll('.js-delete-tx').forEach(function (btn) {

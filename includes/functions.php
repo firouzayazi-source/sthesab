@@ -611,6 +611,95 @@ function netWorthHistory(int $userId, int $limit = 12): array
 }
 
 /**
+ * فهرستِ عنوان‌های اخیرِ کاربر برای پیشنهاد در فرمِ ثبت.
+ *
+ * ⛔ چرا: بیشترِ ثبت‌های یک دفترِ شخصی تکراری‌اند — «نان»، «تاکسی»،
+ *    «قبض برق». کاربر هر بار نام را دوباره تایپ می‌کند، دسته را
+ *    دوباره انتخاب می‌کند، و اگر یک بار «نان» و یک بار «نون» بنویسد
+ *    گزارشِ دسته‌بندی‌اش دو ردیف می‌شود.
+ *
+ * ⚠ هیچ جدول یا اندپوینتِ تازه‌ای لازم ندارد: از خودِ `transactions`
+ *   خوانده می‌شود. `<datalist>` هم یعنی ورودیِ آزاد سر جایش می‌ماند —
+ *   همان دلیلی که `peopleDatalist()` هم datalist است نه select.
+ *
+ * @return array هر قلم: title, category_id, wallet_id, amount, type
+ */
+function recentTransactionTitles(int $userId, int $limit = 30): array
+{
+    try {
+        // آخرین ثبت به‌ازای هر عنوان. `MAX(id)` یعنی تازه‌ترین، و
+        // JOIN روی همان id مقدارهای همان ردیف را می‌آورد — نه ترکیبی
+        // از چند ردیفِ مختلف که با GROUP BY خام پیش می‌آمد.
+        $st = Database::getConnection()->prepare(
+            'SELECT t.title, t.category_id, t.wallet_id, t.amount, t.type
+             FROM transactions t
+             JOIN (
+                 SELECT MAX(id) AS mx
+                 FROM transactions
+                 WHERE user_id = :u AND title <> ""
+                 GROUP BY title
+             ) g ON g.mx = t.id
+             ORDER BY t.id DESC
+             LIMIT :n'
+        );
+        $st->bindValue('u', $userId, PDO::PARAM_INT);
+        $st->bindValue('n', max(1, min(100, $limit)), PDO::PARAM_INT);
+        $st->execute();
+        return $st->fetchAll();
+    } catch (PDOException $e) {
+        return [];
+    }
+}
+
+/**
+ * چهار رقمِ آخرِ کارتِ هر حساب — برای تطبیقِ پیامکِ بانک با حساب.
+ *
+ * ⚠ فقط چهار رقمِ آخر بیرون می‌رود، نه شماره‌ی کامل. شماره‌ی کارت
+ *   حساس است و در فهرست حساب‌ها هم نشان داده نمی‌شود؛ اینجا هم نباید
+ *   داخلِ سورسِ صفحه بنشیند.
+ *
+ * @return array<int,string> شناسه‌ی حساب → چهار رقم
+ */
+function walletCardTails(int $userId): array
+{
+    if (!tableHasColumn('wallets', 'card_number')) { return []; }
+
+    try {
+        $st = Database::getConnection()->prepare(
+            'SELECT id, card_number FROM wallets
+             WHERE user_id = :u AND is_active = 1 AND card_number <> ""'
+        );
+        $st->execute(['u' => $userId]);
+    } catch (PDOException $e) {
+        return [];
+    }
+
+    $out = [];
+    foreach ($st->fetchAll() as $r) {
+        $digits = preg_replace('/\D/', '', (string)$r['card_number']);
+        if (strlen($digits) >= 4) { $out[(int)$r['id']] = substr($digits, -4); }
+    }
+    return $out;
+}
+
+/** رندرِ datalist عنوان‌های اخیر — یک بار در فوتر، مثل peopleDatalist. */
+function recentTitlesDatalist(int $userId): string
+{
+    $rows = recentTransactionTitles($userId);
+    if (!$rows) { return ''; }
+
+    $out = '<datalist id="recentTitles">';
+    foreach ($rows as $r) {
+        $out .= '<option value="' . h($r['title']) . '"'
+             . ' data-category="' . (int)$r['category_id'] . '"'
+             . ' data-wallet="' . (int)$r['wallet_id'] . '"'
+             . ' data-amount="' . (int)$r['amount'] . '"'
+             . ' data-type="' . h($r['type']) . '"></option>';
+    }
+    return $out . '</datalist>';
+}
+
+/**
  * ⛔ تنها جایی که «چکِ در جریان» تعریف می‌شود.
  *
  * مثل `categoryScopeSql()`: هر کوئری‌ای که چکِ باز می‌خواهد باید از
