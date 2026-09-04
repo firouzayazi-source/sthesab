@@ -116,6 +116,9 @@ $smsMissing    = $smsMethod === '' ? '' : Sms::missingFor($smsMethod);
 $patternWarning = smsPatternWarning();
 // ⛔ «ثبت شده» می‌گوید چیزی هست؛ این می‌گوید آن چیز چه شکلی است.
 $smsKeyShape    = smsSecretShape('sms_api_key', 'SMS_API_KEY');
+// ⛔ پنلِ کارکن با «ورود پیامکی کار می‌کند» یکی نیست: بدونِ شماره‌ی
+//    ثبت‌شده، هیچ کدی برای هیچ‌کس نمی‌رود و هیچ خطایی هم دیده نمی‌شود.
+$phoneCount     = $smsTableReady ? SmsLogin::usersWithPhone() : -1;
 // ⚠ از `Sms::meliMode()` می‌آید، نه از یک شرطِ تازه در همین صفحه — وگرنه
 //   فرم یک نوعِ حساب را نشان می‌دهد و فرستنده نوعِ دیگری را صدا می‌زند.
 $meliMode      = Sms::meliMode();
@@ -210,6 +213,23 @@ include __DIR__ . '/../includes/header.php';
                 بدون رمز، با کد پیامکی وارد شوند. هر پیامک هزینه دارد، پس سقفِ
                 <?= toPersianDigits(SmsLogin::MAX_PER_PHONE) ?> درخواست در ساعت
                 برای هر شماره گذاشته شده است.
+                <?php if ($phoneCount === 0): ?>
+                    <?php /* ⛔ بن‌بستِ مرغ و تخم‌مرغ، و کاملاً بی‌صدا: صفحه‌ی
+                             ورود برای شماره‌ی ثبت‌نشده هم «کد فرستاده شد»
+                             می‌گوید (تا فهرست کاربران لو نرود) و هیچ پیامکی
+                             نمی‌فرستد. تنها جایی که این حقیقت گفتنی است
+                             همین‌جاست. */ ?>
+                    <br><strong>⛔ هنوز هیچ کاربری شماره ثبت نکرده است</strong>، پس
+                    ورود با پیامک برای هیچ‌کس کار نمی‌کند — و صفحه‌ی ورود هم این را
+                    نمی‌گوید، چون پیامش برای شماره‌ی ثبت‌شده و ثبت‌نشده عمداً یکی
+                    است. هر کاربر (از جمله خودتان) باید یک بار به «حساب کاربری من»
+                    برود و شماره‌اش را ذخیره کند. آن فیلد تا همین حالا پنهان بود و
+                    فقط بعد از تنظیم شدنِ پنلِ پیامک ظاهر می‌شود.
+                <?php elseif ($phoneCount > 0): ?>
+                    <br><span class="saved-chip">
+                        <?= toPersianDigits((string)$phoneCount) ?> کاربر شماره ثبت کرده‌اند
+                    </span>
+                <?php endif; ?>
             <?php endif; ?>
         </p>
 
@@ -280,7 +300,7 @@ include __DIR__ . '/../includes/header.php';
              مقدارِ قبلی را می‌بیند بی‌آنکه بفهمد چرا. */ ?>
     <p class="conn-state">
         وضعیتِ ذخیره‌شده:
-        <strong><?= $meliMode === 'panel' ? 'حساب قدیمی (نام کاربری و رمز)' : 'حساب جدید (کلید وب‌سرویس)' ?></strong>
+        <strong><?= $meliMode === 'panel' ? 'وب‌سرویس (نام کاربری + رمز یا APIKey)' : 'کنسول جدید (کلید در آدرس)' ?></strong>
         <?php $__m = Sms::missingFor('melipayamak'); ?>
         · <?= $__m === '' ? '<span class="saved-chip">آماده</span>' : h($__m) ?>
     </p>
@@ -296,17 +316,21 @@ include __DIR__ . '/../includes/header.php';
         <div class="form-group">
             <label for="mp_mode">نوع حساب <span class="req">*</span></label>
             <select id="mp_mode" name="sms_meli_mode">
-                <option value="console" <?= $meliMode === 'console' ? 'selected' : '' ?>>
-                    حساب جدید — فقط کلید وب‌سرویس (کنسول)
-                </option>
                 <option value="panel" <?= $meliMode === 'panel' ? 'selected' : '' ?>>
-                    حساب قدیمی — نام کاربری و رمز عبور پنل
+                    وب‌سرویس — نام کاربری + رمز عبور یا APIKey
+                </option>
+                <option value="console" <?= $meliMode === 'console' ? 'selected' : '' ?>>
+                    کنسول جدید — کلید وب‌سرویس در آدرس
                 </option>
             </select>
             <p class="hint">
-                اگر در کنسول ملی‌پیامک «کلید وب‌سرویس» دارید گزینهٔ اول؛ اگر
-                با نام کاربری و رمز وارد پنل می‌شوید و کلیدی ندارید، گزینهٔ
-                دوم. در هر دو حالت «کد بادی الگو» لازم است.
+                <strong>در پنل ملی‌پیامک «APIKey جهت استفاده از وبسرویس» دارید؟
+                گزینهٔ اول را بگیرید</strong> — خودِ ملی‌پیامک می‌گوید آن مقدار
+                «به جای رمز عبور در پارامتر Password» فرستاده می‌شود، پس
+                APIKey یک <em>رمز</em> است نه کلیدِ کنسول. نام کاربری هم همان
+                است که با آن وارد پنل می‌شوید. گزینهٔ دوم فقط برای حساب‌هایی
+                است که در کنسول جدید کلید می‌گیرند. در هر دو حالت «کد بادی
+                الگو» لازم است.
             </p>
         </div>
 
@@ -315,7 +339,10 @@ include __DIR__ . '/../includes/header.php';
             <input type="text" id="mp_key" name="sms_api_key" autocomplete="off" dir="ltr"
                    placeholder="<?= h($smsMask['sms_api_key'] ?: 'کلید وب‌سرویس را بچسبانید') ?>">
             <p class="hint">
-                از بخش «تنظیمات» کنسول ملی‌پیامک، گزینهٔ کلید وب‌سرویس.
+                از بخش «تنظیمات» <strong>کنسول</strong> ملی‌پیامک.
+                ⚠ «APIKey جهت استفاده از وبسرویس» که در پنل می‌بینید
+                <strong>اینجا کار نمی‌کند</strong> — آن یک رمز است و جایش
+                گزینهٔ «وب‌سرویس» است، نه این.
                 <?php if ($smsKeyShape !== ''): ?>
                     <?php /* ⛔ وقتی پنل می‌گوید «کلید معتبر نیست»، سؤالِ
                              بعدی همیشه این است که آنچه ذخیره شده اصلاً
@@ -337,10 +364,20 @@ include __DIR__ . '/../includes/header.php';
         </div>
 
         <div class="form-group mp-panel" <?= $meliMode === 'panel' ? '' : 'hidden' ?>>
-            <label for="mp_pass">رمز عبور پنل <span class="req">*</span> <?php if ($smsHas['sms_pass']): ?><span class="saved-chip">ثبت شده</span><?php endif; ?></label>
+            <label for="mp_pass">رمز عبور پنل یا APIKey <span class="req">*</span> <?php if ($smsHas['sms_pass']): ?><span class="saved-chip">ثبت شده</span><?php endif; ?></label>
             <input type="text" id="mp_pass" name="sms_pass" autocomplete="off" dir="ltr"
                    placeholder="<?= h($smsMask['sms_pass'] ?: 'رمز عبور پنل') ?>">
-            <p class="hint">خالی گذاشتنش یعنی «دست نزن»؛ برای پاک کردن یک خط تیره (-) بنویسید.</p>
+            <p class="hint">
+                <?php /* ⛔ همان جمله‌ی خودِ ملی‌پیامک زیرِ APIKey در پنل:
+                         «کافی است مقدار فوق را به جای رمز عبور در پارامتر
+                         Password به متدها ارسال نمایید». تا وقتی این
+                         اینجا نوشته نشده بود، کاربر APIKey را در فیلدِ
+                         کلیدِ کنسول می‌گذاشت و ۴۰۰ می‌گرفت. */ ?>
+                رمزِ ورود به پنل، <strong>یا</strong> همان
+                «APIKey جهت استفاده از وبسرویس» — ملی‌پیامک خودش می‌گوید آن
+                مقدار به جای رمز عبور در پارامتر Password فرستاده می‌شود.
+                خالی گذاشتنش یعنی «دست نزن»؛ برای پاک کردن یک خط تیره (-) بنویسید.
+            </p>
         </div>
 
         <div class="form-group">
