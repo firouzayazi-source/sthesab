@@ -521,6 +521,37 @@ if ($constOverrides ?? false) {
             'و پیام می‌گوید مسیرِ دوم هم آزموده شد');
     }
 
+    // ⛔ و وقتی مسیرِ دوم اصلاً **آزموده نشده**، پیام باید بگوید چرا.
+    //
+    // خرابیِ واقعی روی سرور: کاربر فقط کلید را پر کرده بود، کنسول ردش
+    // کرد، و راهنمای خطا گفت «نوع حساب را روی حساب قدیمی بگذارید». او
+    // فرض کرد اپ خودش هر دو را آزموده و دنبالِ کلیدِ تازه گشت — در حالی
+    // که مسیرِ دوم به‌خاطر خالی بودنِ نام کاربری اصلاً اجرا نشده بود.
+    // سکوت در این نقطه یعنی فرستادنِ کاربر به راهِ اشتباه.
+    //
+    // ⚠ اینجا کلید هم خالی است تا مسیرِ اول بدونِ هیچ درخواستِ شبکه‌ای
+    //   رد شود؛ چیزی که سنجیده می‌شود شاخه‌ی «آزموده نشد» است نه پنل.
+    $php2 = 'require "' . __DIR__ . '/../includes/db.php";'
+          . 'require "' . __DIR__ . '/../includes/sms.php";'
+          . 'setSetting("sms_method","melipayamak");'
+          . 'setSetting("sms_meli_mode","console");'
+          . 'setSetting("sms_pattern","12345");'
+          . 'setSetting("sms_api_key",""); setSetting("sms_user",""); setSetting("sms_pass","");'
+          . '[$o,$m] = smsTestSend("09123456789");'
+          . 'echo json_encode(["ok"=>$o,"msg"=>$m], JSON_UNESCAPED_UNICODE);';
+    $out2 = [];
+    exec('php -r ' . escapeshellarg($php2) . ' 2>/dev/null', $out2);
+    $res2 = json_decode(implode('', $out2), true);
+
+    T::ok(is_array($res2), 'پروسه‌ی جدا اجرا شد', implode('', $out2));
+    if (is_array($res2)) {
+        T::ok(!$res2['ok'], 'بدونِ هیچ اعتبارنامه‌ای ارسال ناموفق است');
+        T::ok(str_contains($res2['msg'], 'آزموده نشد'),
+            '⛔ پیام می‌گوید مسیرِ دوم آزموده نشد، نه اینکه ساکت بماند');
+        T::ok(str_contains($res2['msg'], 'حساب قدیمی'),
+            'و می‌گوید کدام مسیر و چه چیزی کم دارد');
+    }
+
     foreach ($bak as $k => $v) { setSetting($k, $v); }
 }
 
