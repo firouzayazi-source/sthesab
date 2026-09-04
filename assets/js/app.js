@@ -627,6 +627,19 @@ document.addEventListener('DOMContentLoaded', function () {
             }
         }
 
+        // صفحه‌ی سررسیدها: تسویه / تعویق / رد
+        document.querySelectorAll('.js-due-form').forEach(function (f) {
+            f.addEventListener('submit', function (e) {
+                e.preventDefault();
+                post(f.getAttribute('action'), f)
+                    .then(function (d) {
+                        if (d.success) { window.location.reload(); }
+                        else { alert(d.message || 'انجام نشد.'); }
+                    })
+                    .catch(function () { alert('خطا در ارتباط با سرور.'); });
+            });
+        });
+
         document.querySelectorAll('.js-reminder-done, .js-reminder-delete, .js-notif-clear')
             .forEach(function (f) {
                 f.addEventListener('submit', function (e) {

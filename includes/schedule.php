@@ -120,6 +120,25 @@ class Schedule
         $pdo  = Database::getConnection();
         $made = 0;
 
+        // ⛔ اگر همین حالا یک سررسیدِ **باز** برای این قانون هست، کاری
+        //    نیست. بدونِ این شرط، هر اجرا یک سررسیدِ آینده‌ی تازه اضافه
+        //    می‌کرد و کرونِ ساعتی روزی ۲۴ ردیف انبوه می‌ساخت — دقیقاً
+        //    همان «از قبل انبوه‌سازی نکن» که قرار بود رعایت شود. با
+        //    اجرای واقعی پیدا شد، نه با نگاه.
+        $open = $pdo->prepare("
+            SELECT COUNT(*) FROM reminder_occurrences
+             WHERE reminder_id = :r AND status IN ('pending','overdue')
+        ");
+        $open->execute(['r' => $rid]);
+        if ((int)$open->fetchColumn() > 0) {
+            $pdo->prepare("
+                UPDATE reminder_occurrences SET status = 'overdue'
+                 WHERE user_id = :u AND reminder_id = :r
+                   AND status = 'pending' AND due_date < :t
+            ")->execute(['u' => $userId, 'r' => $rid, 't' => $today]);
+            return 0;
+        }
+
         // آخرین سررسیدی که برای این قانون ساخته شده.
         $st = $pdo->prepare('SELECT MAX(due_date) FROM reminder_occurrences WHERE reminder_id = :r');
         $st->execute(['r' => $rid]);
@@ -277,4 +296,112 @@ class Schedule
         rsort($keys);
         return $keys;
     }
+}
+
+/**
+ * ⛔ همگام‌سازیِ قانون‌ها با جدول‌های دامنه — «اتصال» چهار بخش.
+ *
+ *    برای هر چکِ در جریان، هر طلب/بدهیِ تسویه‌نشده و هر تراکنشِ دوره‌ایِ
+ *    فعال، یک ردیفِ قانون در `reminders` ساخته یا به‌روز می‌شود. کلیدِ
+ *    یکتای `(user_id, source_type, source_id)` تضمین می‌کند که هر ردیفِ
+ *    منبع فقط یک قانون داشته باشد.
+ *
+ * ⛔ و هیچ مبلغی اینجا **نوشته** نمی‌شود: مبلغ و تاریخ از خودِ ردیفِ
+ *    منبع خوانده می‌شوند و همان‌جا هم می‌مانند. اگر کاربر تاریخِ چک را
+ *    عوض کند، اجرای بعدیِ همین تابع قانون را هم‌تراز می‌کند.
+ */
+function syncScheduleRules(int $userId): int
+{
+    if (!Schedule::available() || $userId <= 0) { return 0; }
+    $pdo = Database::getConnection();
+    $n   = 0;
+
+    $upsert = function (string $type, int $sid, string $title, ?string $date,
+                        ?int $amount, ?int $walletId, string $rec = 'once', int $recN = 1)
+                       use ($pdo, $userId, &$n): void {
+        if ($date === null || $date === '') { return; }
+        $anchor = jalaliDayOf($date);
+        // ⚠ `ON DUPLICATE KEY` تاریخ و مبلغ را هم‌تراز می‌کند ولی به
+        //   وضعیتِ occurrence ها دست نمی‌زند — آن‌ها کارِ خودشان را دارند.
+        $st = $pdo->prepare("
+            INSERT INTO reminders
+                (user_id, source_type, source_id, title, remind_date, amount, wallet_id,
+                 recurrence_type, recurrence_n, anchor_day, status)
+            VALUES (:u, :st, :sid, :t, :d, :a, :w, :rt, :rn, :an, 'active')
+            ON DUPLICATE KEY UPDATE
+                title = VALUES(title), remind_date = VALUES(remind_date),
+                amount = VALUES(amount), wallet_id = VALUES(wallet_id),
+                anchor_day = VALUES(anchor_day),
+                status = IF(status = 'paused', 'paused', 'active')
+        ");
+        $st->execute(['u' => $userId, 'st' => $type, 'sid' => $sid,
+                      't' => mb_substr($title, 0, 200), 'd' => $date,
+                      'a' => $amount, 'w' => $walletId, 'rt' => $rec, 'rn' => $recN,
+                      'an' => $anchor]);
+        if ($st->rowCount() > 0) { $n++; }
+    };
+
+    // ---------- چک‌های در جریان ----------
+    try {
+        $st = $pdo->prepare('SELECT id, direction, counterparty_name, amount, due_date
+                             FROM cheques WHERE user_id = :u AND ' . chequeActiveSql());
+        $st->execute(['u' => $userId]);
+        foreach ($st->fetchAll() as $c) {
+            $upsert('cheque', (int)$c['id'],
+                'چک ' . ($c['direction'] === 'received' ? 'دریافتی از ' : 'صادره به ')
+                      . $c['counterparty_name'],
+                $c['due_date'], (int)$c['amount'], null);
+        }
+    } catch (Throwable $e) { /* جدول نیست */ }
+
+    // ---------- طلب و بدهیِ تسویه‌نشده ----------
+    try {
+        $st = $pdo->prepare('SELECT id, direction, counterparty_name, amount, paid_amount, due_date
+                             FROM debts WHERE user_id = :u AND is_settled = 0');
+        $st->execute(['u' => $userId]);
+        foreach ($st->fetchAll() as $d) {
+            $remaining = max(0, (int)$d['amount'] - (int)$d['paid_amount']);
+            $upsert('debt', (int)$d['id'],
+                ($d['direction'] === 'receivable' ? 'طلب از ' : 'بدهی به ') . $d['counterparty_name'],
+                $d['due_date'], $remaining, null);
+        }
+    } catch (Throwable $e) { /* جدول نیست */ }
+
+    // ---------- تراکنش‌های دوره‌ایِ فعال ----------
+    //
+    // ⚠ `interval_count` همان N است و از قبل وجود داشت؛ فقط نگاشت
+    //   می‌شود. `daily`/`weekly` قانونِ ماهانه ندارند، پس یک‌باره ثبت
+    //   می‌شوند و خودِ موتورِ قدیمیِ تراکنش دوره‌ای جلوشان می‌برد.
+    try {
+        $st = $pdo->prepare('SELECT id, title, amount, wallet_id, frequency, interval_count, next_due_date
+                             FROM recurring_transactions WHERE user_id = :u AND is_active = 1');
+        $st->execute(['u' => $userId]);
+        foreach ($st->fetchAll() as $r) {
+            $freq = (string)$r['frequency'];
+            $rec  = $freq === 'monthly' ? 'every_n_months' : ($freq === 'yearly' ? 'yearly' : 'once');
+            $upsert('recurring_tx', (int)$r['id'], (string)$r['title'],
+                $r['next_due_date'], (int)$r['amount'], $r['wallet_id'] ? (int)$r['wallet_id'] : null,
+                $rec, max(1, (int)$r['interval_count']));
+        }
+    } catch (Throwable $e) { /* جدول نیست */ }
+
+    // ⛔ قانونی که منبعش دیگر در جریان نیست باید بسته شود، وگرنه چکِ
+    //    پاس‌شده تا ابد در فهرستِ سررسیدها می‌ماند.
+    foreach ([
+        'cheque'       => 'SELECT id FROM cheques WHERE user_id = :u AND ' . chequeActiveSql(),
+        'debt'         => 'SELECT id FROM debts WHERE user_id = :u AND is_settled = 0',
+        'recurring_tx' => 'SELECT id FROM recurring_transactions WHERE user_id = :u AND is_active = 1',
+    ] as $type => $sql) {
+        try {
+            $st = $pdo->prepare($sql);
+            $st->execute(['u' => $userId]);
+            $live = array_map('intval', array_column($st->fetchAll(), 'id'));
+            $q = $pdo->prepare("UPDATE reminders SET status = 'finished'
+                                 WHERE user_id = :u AND source_type = :t AND status <> 'finished'"
+                               . ($live ? ' AND source_id NOT IN (' . implode(',', $live) . ')' : ''));
+            $q->execute(['u' => $userId, 't' => $type]);
+        } catch (Throwable $e) { /* جدول نیست */ }
+    }
+
+    return $n;
 }

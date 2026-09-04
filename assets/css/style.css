@@ -3289,3 +3289,59 @@ html[data-theme="dark"] .stay-chip.active { box-shadow: none; }
     font-size: 11px; color: var(--muted);
     margin: -8px 0 14px; text-align: left;
 }
+
+/* ---------- صفحه‌ی سررسیدها ---------- */
+.due-filters {
+    display: flex; gap: 6px; overflow-x: auto;
+    scrollbar-width: none; margin-bottom: 14px; padding-bottom: 2px;
+}
+.due-filters::-webkit-scrollbar { display: none; }
+.due-filter {
+    flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border-radius: 999px;
+    font-size: 12.5px; font-weight: 600;
+    color: var(--muted); background: var(--surface);
+    border: 1px solid var(--line); text-decoration: none; white-space: nowrap;
+}
+.due-filter.is-active { background: var(--brand); color: #fff; border-color: var(--brand); }
+.due-count {
+    background: color-mix(in srgb, currentColor 18%, transparent);
+    border-radius: 999px; padding: 1px 6px; font-size: 11px;
+}
+
+.due-list { list-style: none; margin: 0; padding: 0; }
+.due-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 12px 0; border-bottom: 1px solid var(--line);
+}
+.due-row:last-child { border-bottom: none; }
+/* رنگِ نوع — همان معنایی که در بقیه‌ی اپ دارند. */
+.due-dot { flex: 0 0 auto; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; }
+.due-cheque    { background: var(--gold); }
+.due-debt      { background: var(--out); }
+.due-recurring { background: var(--in); }
+.due-custom    { background: var(--muted); }
+
+.due-main { flex: 1 1 auto; min-width: 0; text-decoration: none; color: inherit; }
+.due-title { font-size: 13.5px; font-weight: 700; }
+.due-meta {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--muted); margin-top: 4px;
+}
+.due-meta .is-late  { color: var(--out); font-weight: 700; }
+.due-meta .is-today { color: var(--gold); font-weight: 700; }
+.due-type {
+    background: var(--paper); border: 1px solid var(--line);
+    border-radius: 999px; padding: 1px 7px; font-size: 11px;
+}
+.due-amount { font-weight: 600; }
+
+.due-actions { display: flex; gap: 4px; flex: 0 0 auto; }
+.due-btn {
+    width: 30px; height: 30px; display: grid; place-items: center;
+    border-radius: 8px; border: 1px solid var(--line);
+    background: var(--surface); color: var(--muted); cursor: pointer;
+}
+.due-btn-ok   { color: var(--in); }
+.due-btn-mute { color: var(--out); }
+.due-btn:hover { background: var(--paper); }

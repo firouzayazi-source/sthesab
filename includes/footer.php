@@ -72,6 +72,10 @@ $moreActive = in_array($bottomPage, $morePages, true);
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="6" rx="8" ry="3" stroke="currentColor" stroke-width="2"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" stroke="currentColor" stroke-width="2"/></svg>
                 <span>دارایی‌ها</span>
             </a>
+            <a href="<?= APP_BASE_PATH ?>/due.php" class="tool-card" style="--tc1:#0ea5e9; --tc2:#0369a1;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                <span>سررسیدها</span>
+            </a>
             <a href="<?= APP_BASE_PATH ?>/reminders.php" class="tool-card" style="--tc1:#f59e0b; --tc2:#d97706;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>
                 <span>یادآورها</span>
