@@ -921,6 +921,22 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     })();
 
+    // ---------- کارتِ «ثبت خودکار از پیامک» فقط داخلِ اپ اندروید ----------
+    //
+    // ⚠ تشخیص از روی `document.referrer` یا user-agent نیست (هر دو
+    //   دست‌کاری‌شدنی و شکننده‌اند) بلکه از روی همان چیزی است که TWA
+    //   واقعاً می‌سازد: اپِ نصب‌شده در حالتِ standalone باز می‌شود و
+    //   اندروید است. در مرورگرِ معمولیِ اندروید کارت دیده نمی‌شود، چون
+    //   آنجا آن لینک هیچ کاری نمی‌کند.
+    (function () {
+        var card = document.getElementById('smsCaptureCard');
+        if (!card) { return; }
+        var standalone = window.matchMedia
+            && window.matchMedia('(display-mode: standalone)').matches;
+        var android = /Android/i.test(navigator.userAgent || '');
+        if (standalone && android) { card.hidden = false; }
+    })();
+
     // ---------- «از پیامک بانک» و پیشنهادِ عنوان‌های قبلی ----------
     (function () {
         var box = document.getElementById('smsPasteBox');
@@ -993,6 +1009,59 @@ document.addEventListener('DOMContentLoaded', function () {
                 });
             });
         }
+
+        // ---- پیامکی که اپ اندروید خودش گرفته و آورده ----
+        //
+        // ⛔ **هیچ اندپوینتِ تازه‌ای در کار نیست و متن روی سیم نمی‌رود.**
+        //    اپ اندروید متن را در **فرگمنتِ** آدرس می‌گذارد (`#sms=…`) و
+        //    مرورگر فرگمنت را هرگز به سرور نمی‌فرستد — نه در درخواست، نه
+        //    در لاگِ دسترسی. همان تضمینی که تا امروز از «کاربر خودش
+        //    می‌چسباند» می‌آمد، حالا خودکار هم همان است.
+        //
+        // ⛔ و پارس همان‌جایی انجام می‌شود که همیشه: `go.click()` صدا زده
+        //    می‌شود، نه یک مسیرِ دوم. پیاده‌سازیِ دومِ پر کردنِ فرم یعنی
+        //    مسیرِ خودکار و مسیرِ دستی دیر یا زود دو جور رفتار کنند.
+        // ⛔ `setTimeout(0)` اختیاری نیست و یک باگِ واقعی را می‌بندد:
+        //    این بلوک بالاتر از `go.addEventListener('click', …)` است،
+        //    پس `go.click()` وقتی اجرا می‌شد که هنوز هیچ شنونده‌ای ثبت
+        //    نشده بود — جعبه باز می‌شد و متن هم می‌نشست، ولی **هیچ
+        //    چیزی پارس نمی‌شد**: نه مبلغی پر می‌شد نه پیامی می‌آمد.
+        //    خرابیِ کاملاً بی‌صدا، و در مرورگر واقعاً دیده شد.
+        //    با یک تیک تأخیر، همه‌ی شنونده‌های همین چرخه ثبت شده‌اند و
+        //    این بلوک دیگر به **جای خودش در فایل** وابسته نیست.
+        setTimeout(function () {
+            var h = window.location.hash || '';
+            if (h.indexOf('#sms=') !== 0) { return; }
+
+            var raw = '';
+            try { raw = decodeURIComponent(h.slice(5)); } catch (e) { raw = ''; }
+
+            // ⚠ فرگمنت **بلافاصله** پاک می‌شود: با تازه‌سازیِ صفحه دوباره
+            //   اجرا می‌شد (یعنی تراکنشِ تکراری)، و تا آن موقع هم متنِ
+            //   پیامک در نوارِ آدرس و تاریخچه‌ی مرورگر می‌ماند.
+            try {
+                history.replaceState(null, '', window.location.pathname + window.location.search);
+            } catch (e) { window.location.hash = ''; }
+
+            if (!raw.trim()) { return; }
+
+            // شیتِ ثبت تراکنش را باز کن — از همان کلاسِ مشترک، نه یک
+            // شناسه: `.js-add-tx` هم روی نوارِ پایین است هم نوارِ کناری.
+            var opener = document.querySelector('.js-add-tx');
+            if (opener) { opener.click(); }
+
+            // ⚠ کلاسِ باز شدن `open` است، نه `is-open`. نسخه‌ی اول
+            //   `is-open` نوشته بود (کلاسِ بخش‌های دیگرِ همین فایل) و
+            //   خرابی‌اش بی‌صدا بود: متن پر و پارس می‌شد ولی جعبه بسته
+            //   می‌ماند، پس کاربر پیامِ «مبلغ پر شد» را اصلاً نمی‌دید.
+            //   `btn` هم هم‌زمان عوض می‌شود، وگرنه یک تپ روی آن جعبه‌ی
+            //   بازِ را دوباره باز می‌کرد (یعنی می‌بست).
+            box.classList.add('open');
+            btn.classList.add('active');
+
+            ta.value = raw;
+            go.click();
+        }, 0);
 
         go.addEventListener('click', function () {
             var r = window.parseBankSms(ta.value);

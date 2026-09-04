@@ -169,6 +169,29 @@ jobs:
           fi
           echo "✓ اثر انگشت می‌خواند."
 
+          # ⛔ «ساخت موفق شد» با «درست کار می‌کند» یکی نیست — همان درسی که
+          #    قاعده‌ی nginx در api/v1 داد، این بار روی APK.
+          #
+          #    اگر گیرنده‌ی پیامک یا مجوزش از manifestِ **نهایی** بیفتد،
+          #    گریدل هیچ خطایی نمی‌دهد: APK ساخته می‌شود، نصب می‌شود، و
+          #    فقط هیچ پیامکی گرفته نمی‌شود. کاربر تازه بعد از اولین
+          #    برداشتِ بانکی می‌فهمد. پس خودِ APK بازرسی می‌شود، نه فایلِ
+          #    منبع (که تستِ قرارداد از قبل می‌سنجدش).
+          AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort | tail -1)
+          if [ -n "$AAPT" ]; then
+            DUMP=$("$AAPT" dump xmltree --file AndroidManifest.xml "$APK" 2>/dev/null || true)
+            for NEEDLE in "RECEIVE_SMS" "BankSmsReceiver" "SmsSetupActivity"; do
+              if ! printf '%s' "$DUMP" | grep -q "$NEEDLE"; then
+                echo "::error::«$NEEDLE» در manifestِ خودِ APK نیست."
+                echo "::error::اپ ساخته و نصب می‌شود ولی ثبت خودکار از پیامک کار نمی‌کند."
+                exit 1
+              fi
+            done
+            echo "✓ گیرنده‌ی پیامک و مجوزش در APK هستند."
+          else
+            echo "::warning::aapt2 پیدا نشد؛ بازرسیِ manifestِ APK انجام نشد."
+          fi
+
           cp "$APK" "$GITHUB_WORKSPACE/daftar-${{ github.run_number }}.apk"
           ls -lh "$GITHUB_WORKSPACE/daftar-${{ github.run_number }}.apk"
 

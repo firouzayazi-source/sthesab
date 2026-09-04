@@ -15,6 +15,21 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
 
+    <!-- ⛔ ثبت خودکار از پیامک بانک — تنها دلیلی که این اپ کدِ بومی دارد.
+         نه PWA و نه TWA به SMS دسترسی ندارند و هیچ API وبی هم برایش نیست
+         (Web OTP فقط کدِ ورودِ همان دامنه را می‌دهد)، پس این کار **فقط**
+         از سمت اندروید ممکن است.
+
+         ⚠ مجوزِ خطرناک است: کاربر باید هم داخل اپ کلیدش را بزند هم مجوزِ
+           اندروید را بدهد. پیش‌فرض خاموش.
+
+         ⚠ این اپ از راه GitHub Release نصب می‌شود، نه Google Play، پس
+           سیاستِ SMS ی پلی (که برای این مجوز تأییدیه می‌خواهد) اینجا
+           موضوعیت ندارد. اگر روزی به پلی رفت، باید درخواستِ استثنا داد. -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS"/>
+    <!-- اندروید ۱۳ به بالا: بدونش اعلان ساخته می‌شود ولی **دیده نمی‌شود**. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
     <!-- اندروید ۱۱ به بالا: بدون این، اپ نمی‌تواند ببیند کدام مرورگر
          نصب است و TWA بی‌سروصدا به حالت مرورگر معمولی می‌افتد. -->
     <queries>
@@ -69,6 +84,36 @@
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="https" android:host="${hostName}"/>
+            </intent-filter>
+        </activity>
+
+        <!-- ⛔ گیرنده‌ی پیامکِ بانک.
+             `exported="true"` لازم است چون فرستنده‌اش خودِ سیستم است، نه
+             اپ. `android:priority` بالا نیست: ما پیامک را **نمی‌بلعیم** و
+             هیچ `abortBroadcast()` ای در کار نیست — پیامک مثل همیشه به
+             اپِ پیام‌رسانِ خودِ کاربر هم می‌رسد. -->
+        <receiver
+            android:name=".BankSmsReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SMS_RECEIVED"/>
+            </intent-filter>
+        </receiver>
+
+        <!-- ⛔ صفحه‌ی روشن/خاموش کردنِ همان قابلیت.
+             از داخلِ سایت نمی‌شود مجوزِ اندروید گرفت، پس این تنها راهش
+             است. با `LAUNCHER` نمی‌آید (اپ باید یک آیکون داشته باشد نه
+             دو تا) و از خودِ سایت با یک لینکِ `intent://` باز می‌شود. -->
+        <activity
+            android:name=".SmsSetupActivity"
+            android:exported="true"
+            android:label="@string/sms_setup_title"
+            android:theme="@style/Theme.Daftar">
+            <intent-filter>
+                <action android:name="ir.stland.daftar.SMS_SETUP"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
             </intent-filter>
         </activity>
 

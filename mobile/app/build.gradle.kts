@@ -20,6 +20,15 @@ android {
         // پس آدرس فقط یک جا نوشته شده.
         manifestPlaceholders["hostName"] = "hesab.stland.ir"
         manifestPlaceholders["launchUrl"] = "https://hesab.stland.ir/index.php"
+
+        // ⛔ همان آدرس، این بار برای کدِ جاوا — و از **همان یک منبع**.
+        //
+        //    `BankSmsReceiver` باید آدرسی بسازد که اعلان بازش کند. اگر
+        //    آن آدرس در `strings.xml` دستی نوشته می‌شد، عوض کردنِ دامنه
+        //    یکی از این دو را جا می‌گذاشت و اعلانِ پیامک بی‌صدا به
+        //    دامنه‌ی قدیمی می‌رفت — یعنی تپ می‌کردی و هیچ اتفاقی
+        //    نمی‌افتاد. با `resValue` هر دو از یک خط می‌آیند.
+        resValue("string", "launch_url", manifestPlaceholders["launchUrl"] as String)
     }
 
     signingConfigs {

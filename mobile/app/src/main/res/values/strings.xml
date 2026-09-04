@@ -1,4 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">دفتر مالی</string>
+
+    <!--
+      ⛔ آدرس اینجا **نوشته نمی‌شود**؛ از `manifestPlaceholders` در
+         `build.gradle.kts` می‌آید و گریدل با `resValue` می‌سازدش.
+         آدرسِ سرور باید فقط یک جا باشد، وگرنه عوض کردنِ دامنه یکی از
+         این دو را جا می‌گذارد و اعلانِ پیامک بی‌صدا به دامنه‌ی قدیمی
+         می‌رود.
+      (نامِ `launch_url` عمداً اینجا تعریف نشده — گریدل تولیدش می‌کند.)
+    -->
+
+    <string name="sms_channel_name">پیامک بانک</string>
+    <string name="sms_channel_desc">وقتی پیامکِ برداشت یا واریز برسد، یک اعلان برای ثبتِ سریع می‌آید.</string>
+    <string name="sms_notif_title">برای ثبت در دفتر بزنید</string>
+
+    <string name="sms_setup_title">ثبت خودکار از پیامک بانک</string>
+    <string name="sms_setup_body">با روشن کردن این گزینه، هر بار که پیامکِ برداشت یا واریز برسد، یک اعلان می‌بینید و با زدنش فرم ثبت تراکنش از قبل پر شده باز می‌شود.\n\nمتنِ پیامک از گوشیِ شما بیرون نمی‌رود: خواندن و تشخیصِ مبلغ کاملاً داخلِ خودِ برنامه انجام می‌شود و چیزی به سرور فرستاده نمی‌شود.\n\nاین گزینه هر وقت بخواهید خاموش می‌شود.</string>
+    <string name="sms_setup_enable">روشن کردن</string>
+    <string name="sms_setup_disable">خاموش کردن</string>
+    <string name="sms_setup_back">بازگشت</string>
+    <string name="sms_state_on">روشن است — پیامک‌های بانکی خوانده می‌شوند.</string>
+    <string name="sms_state_off">خاموش است — هیچ پیامکی خوانده نمی‌شود.</string>
+    <string name="sms_state_no_perm">مجوز خواندن پیامک داده نشده است.</string>
+    <string name="sms_perm_denied">بدون این مجوز، ثبت خودکار از پیامک کار نمی‌کند.</string>
 </resources>
