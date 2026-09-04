@@ -191,6 +191,35 @@ function smsProviders(): array
     ];
 }
 
+/**
+ * ⛔ برای کدِ ورود، **الگو الزامی است** — و نبودنش بی‌صدا خراب می‌کند.
+ *
+ * پنل‌های ایرانی پیامکِ **متنِ آزاد** به شماره‌ای که در دفترچه‌شان نیست را
+ * در عمل تحویل نمی‌دهند: پنل «پذیرفته شد» می‌گوید، اپ «فرستاده شد» نشان
+ * می‌دهد، و هیچ پیامکی نمی‌رسد. هیچ خطایی هم در کار نیست که کسی ببیند.
+ *
+ * پس اگر پنلی انتخاب شده ولی الگویی ثبت نشده، همین‌جا صریح گفته می‌شود —
+ * پیش از اینکه کاربر ساعت‌ها دنبالِ کلیدِ درست بگردد.
+ *
+ * @return string خالی یعنی مشکلی نیست.
+ */
+function smsPatternWarning(): string
+{
+    $m = Sms::method();
+    if ($m === '' || $m === 'log') { return ''; }
+    if (smsSetting('sms_pattern', 'SMS_PATTERN') !== '') { return ''; }
+
+    $where = [
+        'melipayamak' => 'در پنل ملی‌پیامک، بخش «خدمات پایه»، یک الگو بسازید و شناسه‌اش (bodyId) را اینجا بگذارید.',
+        'kavenegar'   => 'در کاوه‌نگار یک الگوی «لوک‌آپ» بسازید و نامش را اینجا بگذارید.',
+        'smsir'       => 'در sms.ir یک قالب بسازید (نامِ پارامتر: CODE) و شناسه‌اش را اینجا بگذارید.',
+    ];
+    return 'الگویی ثبت نشده، پس کدِ ورود به‌صورت پیامکِ متنِ آزاد می‌رود. '
+         . 'پنل‌های ایرانی این نوع پیامک را اغلب تحویل نمی‌دهند و شکستش هم '
+         . 'خطایی ندارد — پنل «پذیرفته شد» می‌گوید و پیامک نمی‌رسد. '
+         . ($where[$m] ?? '');
+}
+
 class Sms
 {
     /** آخرین خطا، برای نشان دادن به مدیر (نه به کاربرِ ورود). */
@@ -212,6 +241,68 @@ class Sms
     public static function method(): string
     {
         return smsSetting('sms_method', 'SMS_METHOD');
+    }
+
+    /**
+     * ⛔ آیا کنسول ملی‌پیامک این ارسال را **پذیرفت**؟
+     *
+     *    تنها معیار، **وجودِ `recId`** است. نه `status`، نه کدِ HTTP.
+     *
+     * ⛔ چرا `status` معیار نیست: در پاسخِ **موفق** هم یک متنِ فارسی است
+     *    («ارسال موفق بود»)، نه کدِ عددی. هر سنجشی که آن را عدد بخواند
+     *    روی پاسخِ موفق صفر می‌گیرد و می‌گوید «نرفت».
+     *
+     * ⚠ و چرا `recId > 0` هم غلط بود — عارضه‌اش فقط یک پیامِ اشتباه
+     *   نیست: `smsTestSend()` هر مسیرِ ناموفق را با **مسیرِ دوم** دنبال
+     *   می‌کند، پس یک ارسالِ موفقِ بدخوانده‌شده یعنی پیامکِ دوم و
+     *   هزینه‌ی دوم — و کاربر دو پیامک می‌گیرد و پیامِ «نرفت» می‌بیند.
+     *
+     * ⚠ تنها استثنا `recId` **صفر یا خالی** است. اینجا عمداً از قاعده‌ی
+     *   «فقط وجود» فاصله می‌گیریم: پنل در بعضی خطاها `{"recId":0}`
+     *   برمی‌گرداند و «موفق» خواندنش یعنی گفتنِ «فرستاده شد» به پیامکی
+     *   که نرفته — بدترین دروغی که این لایه می‌تواند بگوید.
+     *
+     * @param array{code:int, body:string} $res
+     * @return array{0: bool, 1: string}  پذیرفته شد؟ و اگر نه، پاسخِ خام.
+     */
+    private static function meliConsoleAccepted(array $res): array
+    {
+        $json = json_decode($res['body'], true);
+        $rec  = is_array($json) && array_key_exists('recId', $json)
+              ? trim((string)$json['recId']) : '';
+        if ($rec !== '' && $rec !== '0') { return [true, '']; }
+        return [false, self::rawAnswer($res, $json)];
+    }
+
+    /**
+     * ⛔ پاسخِ خام باید **کدِ HTTP** را هم بگوید، نه فقط متنِ داخلِ بدنه.
+     *
+     * «کلید کنسول معتبر نیست» با کدِ ۴۰۱ یعنی کلید سرِ درِ ورودی رد شده و
+     * باید کلیدِ دیگری برداشت. همان متن با کدِ ۲۰۰ یعنی کلید رسیده و پنل
+     * به دلیلِ دیگری قبول نکرده (الگوی تأییدنشده، اعتبارِ تمام‌شده). دو
+     * کارِ کاملاً جدا، و بدونِ کدِ HTTP از هم جدا نمی‌شوند — تا امروز
+     * همین عدد دور ریخته می‌شد.
+     *
+     * @param array{code:int, body:string} $res
+     * @param mixed $json بدنه‌ی decode شده (اگر JSON نبود، هرچه)
+     */
+    private static function rawAnswer(array $res, $json): string
+    {
+        $msg = '';
+        if (is_array($json)) {
+            foreach (['status', 'message', 'error', 'Message', 'StrRetStatus'] as $k) {
+                if (isset($json[$k]) && is_scalar($json[$k]) && trim((string)$json[$k]) !== '') {
+                    $msg = trim((string)$json[$k]);
+                    break;
+                }
+            }
+        }
+        if ($msg === '') { $msg = trim($res['body']); }
+        if ($msg === '') { $msg = 'پاسخِ خالی از پنل.'; }
+        // ⚠ بدنه‌ی HTML یک صفحه‌ی خطا می‌تواند کیلوبایتی باشد و کلِ پیام را
+        //   غیرقابل خواندن کند.
+        if (mb_strlen($msg) > 300) { $msg = mb_substr($msg, 0, 300) . '…'; }
+        return 'HTTP ' . $res['code'] . ' — ' . $msg;
     }
 
     /**
@@ -360,16 +451,8 @@ class Sms
             );
             if ($res === null) { return false; }
 
-            // کنسول شناسه‌ی پیام را در `recId` برمی‌گرداند. صفر یا نبودنش
-            // یعنی نرفته، حتی اگر کدِ HTTP دویست باشد.
-            $json = json_decode($res['body'], true);
-            if ((int)($json['recId'] ?? 0) <= 0) {
-                self::$lastError = self::meliError(
-                    'console',
-                    (string)($json['status'] ?? $json['message'] ?? $res['body'])
-                );
-                return false;
-            }
+            [$ok, $raw] = self::meliConsoleAccepted($res);
+            if (!$ok) { self::$lastError = self::meliError('console', $raw); return false; }
             return true;
         }
 
@@ -392,11 +475,11 @@ class Sms
         // ⚠ ۲۰۰ گرفتن کافی نیست: وضعیت داخلِ بدنه است. RetStatus = 1
         //   یعنی پذیرفته شد؛ هر چیز دیگری خطاست.
         $json = json_decode($res['body'], true);
+        // ⚠ برخلافِ کنسول، اینجا `RetStatus` واقعاً یک کدِ عددی است و ۱
+        //   یعنی پذیرفته شد. دو پنل دو قرارداد دارند و یکی کردنشان یعنی
+        //   یکی از دو مسیر بی‌صدا غلط جواب بدهد.
         if ((int)($json['RetStatus'] ?? 0) !== 1) {
-            self::$lastError = self::meliError(
-                'panel',
-                (string)($json['StrRetStatus'] ?? $res['body'])
-            );
+            self::$lastError = self::meliError('panel', self::rawAnswer($res, $json));
             return false;
         }
         return true;
@@ -619,14 +702,9 @@ class Sms
                 ['Content-Type: application/json', 'Accept: application/json']
             );
             if ($res === null) { return false; }
-            $json = json_decode($res['body'], true);
-            if ((int)($json['recId'] ?? 0) <= 0) {
-                self::$lastError = self::meliError(
-                    'console',
-                    (string)($json['status'] ?? $json['message'] ?? $res['body'])
-                );
-                return false;
-            }
+
+            [$ok, $raw] = self::meliConsoleAccepted($res);
+            if (!$ok) { self::$lastError = self::meliError('console', $raw); return false; }
             return true;
         }
 
@@ -648,7 +726,7 @@ class Sms
         // این پنل شناسه‌ی پیام را برمی‌گرداند؛ مقدارهای یک‌رقمی کدِ خطا هستند.
         $ret = (string)($json['Value'] ?? '');
         if ($ret === '' || strlen($ret) < 2) {
-            self::$lastError = self::meliError('panel', $res['body']);
+            self::$lastError = self::meliError('panel', self::rawAnswer($res, $json));
             return false;
         }
         return true;

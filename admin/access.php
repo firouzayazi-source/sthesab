@@ -112,6 +112,8 @@ $smsTableReady = SmsLogin::tableReady();
 $smsConfigured = Sms::isConfigured();
 $smsMethod     = Sms::method();
 $smsMissing    = $smsMethod === '' ? '' : Sms::missingFor($smsMethod);
+// ⛔ اعتبارنامه‌ی کامل با «کار می‌کند» یکی نیست — الگو هم لازم است.
+$patternWarning = smsPatternWarning();
 // ⚠ از `Sms::meliMode()` می‌آید، نه از یک شرطِ تازه در همین صفحه — وگرنه
 //   فرم یک نوعِ حساب را نشان می‌دهد و فرستنده نوعِ دیگری را صدا می‌زند.
 $meliMode      = Sms::meliMode();
@@ -232,6 +234,14 @@ include __DIR__ . '/../includes/header.php';
                 <?php elseif ($smsMethod === 'log'): ?>
                     ⛔ این حالت هیچ پیامکی نمی‌فرستد و کدها را در
                     <code>var/sms.log</code> می‌نویسد. فقط برای آزمایش.
+                <?php elseif ($patternWarning !== ''): ?>
+                    <?php /* ⛔ اینجا «آماده است» نوشتن دروغِ محض بود: همه‌ی
+                             اعتبارنامه‌ها هست، پس `missingFor()` چیزی کم
+                             نمی‌بیند — ولی بدونِ الگو، پیامکِ کدِ ورود
+                             عملاً تحویل نمی‌شود و پنل هم «پذیرفته شد»
+                             می‌گوید. تنها جایی که این خرابی دیده می‌شود
+                             همین‌جاست. */ ?>
+                    ⚠ <?= h($patternWarning) ?>
                 <?php else: ?>
                     ✓ آماده است.
                 <?php endif; ?>
