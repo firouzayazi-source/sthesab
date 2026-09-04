@@ -197,6 +197,81 @@ try {
         'ولی ردیفش در جدول هست — فقط از این صفحه بیرون است، نه پاک شده');
 
     // ---------------------------------------------------------------
+    // ⛔ «چند روز قبل خبر بده» تا امروز ذخیره می‌شد ولی هیچ‌جا خوانده
+    //    نمی‌شد: تولیدکننده فقط `remind_date <= today` را می‌گرفت. یعنی
+    //    کاربر «یک هفته قبل» را می‌زد، ذخیره هم می‌شد، و اعلان باز هم
+    //    روزِ خودِ سررسید می‌آمد — تنظیمی که کار نمی‌کند.
+    T::group('⛔ روزهای پیش‌آگاهی واقعاً اثر دارند');
+
+    $in7 = date('Y-m-d', strtotime($today . ' +7 day'));
+    $in5 = date('Y-m-d', strtotime($today . ' +5 day'));
+
+    $pdo->prepare("INSERT INTO reminders (user_id, source_type, title, remind_date, notify_days_before)
+                   VALUES (:u, 'custom', 'بیمه با هشدارِ هفت‌روزه', :d, '[7,1]')")
+        ->execute(['u' => $uidA, 'd' => $in7]);
+    $pdo->prepare("INSERT INTO reminders (user_id, source_type, title, remind_date, notify_days_before)
+                   VALUES (:u, 'custom', 'بیمه بدونِ هشدارِ پنج‌روزه', :d, '[7,1]')")
+        ->execute(['u' => $uidA, 'd' => $in5]);
+
+    unset($_SESSION['notify_scan']);
+    Notify::generateFor($uidA);
+    $seen = array_column(Notify::recent($uidA), 'title');
+
+    T::ok(in_array('بیمه با هشدارِ هفت‌روزه', $seen, true),
+        '⛔ سررسیدِ هفت روز بعد، با انتخابِ «یک هفته قبل»، همین امروز اعلان می‌دهد');
+    T::ok(!in_array('بیمه بدونِ هشدارِ پنج‌روزه', $seen, true),
+        '⛔ ولی پنج روز بعد اعلان نمی‌دهد — بازه‌ی ۵ انتخاب نشده بود');
+
+    // ---------------------------------------------------------------
+    // ⛔ «۱۲ قسط، ۱۲ میلیون» نباید ۱۲ ردیف بسازد و نباید باقیمانده را
+    //    گم کند. باقیمانده به قسطِ آخر می‌رود — همان قاعده‌ی
+    //    `debtInstallments()`؛ بدونش جمعِ اقساط با تعهد نمی‌خواند.
+    T::group('⛔ اقساط: باقیمانده به قسطِ آخر');
+
+    $rule = ['total_count' => 3, 'total_amount' => 10_000_000, 'done_count' => 0, 'amount' => 0];
+    T::same(3_333_333, Schedule::installmentAmount($rule, 1), 'قسط اول');
+    T::same(3_333_333, Schedule::installmentAmount($rule, 2), 'قسط دوم');
+    T::same(3_333_334, Schedule::installmentAmount($rule, 3), '⛔ قسط آخر باقیمانده را می‌گیرد');
+
+    $sum = 0;
+    for ($i = 1; $i <= 3; $i++) { $sum += Schedule::installmentAmount($rule, $i); }
+    T::same(10_000_000, $sum, '⛔ جمعِ اقساط دقیقاً با تعهد می‌خواند');
+
+    T::same(3_333_333, Schedule::installmentAmount($rule),
+        'بدونِ شماره، قسطِ جاری از done_count خوانده می‌شود');
+    T::same(3_333_334, Schedule::installmentAmount(['total_count' => 3, 'total_amount' => 10_000_000,
+        'done_count' => 2, 'amount' => 0]), 'و با done_count = ۲ همان قسطِ آخر است');
+
+    T::same(500, Schedule::installmentAmount(['total_count' => 0, 'total_amount' => 0, 'amount' => 500]),
+        '⚠ بدونِ تعهدِ چندقسطی، همان مبلغِ خام برمی‌گردد (یادآورهای موجود دست‌نخورده)');
+
+    // ---------------------------------------------------------------
+    // ⛔ دوره‌ی روزانه نباید از تقویمِ ماهانه رد شود: «هر ۱۵ روز» در هر
+    //    تقویمی دقیقاً ۱۵ روز است و ترجمه‌اش به ماه بی‌معناست.
+    T::group('⛔ تکرارِ روزانه دقیقاً روزانه است');
+
+    T::same(date('Y-m-d', strtotime($today . ' +15 day')),
+        Schedule::nextDue(['recurrence_type' => 'every_n_days', 'recurrence_n' => 15], $today),
+        'هر ۱۵ روز → دقیقاً ۱۵ روز بعد');
+    T::same(date('Y-m-d', strtotime($today . ' +7 day')),
+        Schedule::nextDue(['recurrence_type' => 'every_n_days', 'recurrence_n' => 7], $today),
+        'هفتگی → دقیقاً ۷ روز بعد');
+    T::same(null, Schedule::nextDue(['recurrence_type' => 'once'], $today),
+        'یک‌باره تاریخِ بعدی ندارد');
+
+    // ⛔ فهرستِ چیپ‌های فرم و فهرستِ انواعِ مجازِ اندپوینت باید یکی باشند،
+    //    وگرنه گزینه‌ای که کاربر می‌بیند هنگام ذخیره بی‌صدا به «یک بار»
+    //    برمی‌گردد — همان چیزی که سرِ `SESSION_WINDOWS` گفته شد.
+    foreach (Schedule::RECUR_PRESETS as $key => $p) {
+        T::ok(in_array($p['type'], Schedule::RECUR_TYPES, true),
+            "⛔ نوعِ چیپِ «{$p['label']}» در فهرستِ مجازِ اندپوینت هست");
+        T::same($key, Schedule::presetKey($p['type'], $p['n']),
+            "کلیدِ چیپِ «{$p['label']}» برگشت‌پذیر است (پر کردنِ فرمِ ویرایش)");
+    }
+    T::same('custom', Schedule::presetKey('every_n_months', 4),
+        '⛔ «هر ۴ ماه» با هیچ چیپی نمی‌خواند، پس «دلخواه» است');
+
+    // ---------------------------------------------------------------
     T::group('پاک کردن فقط مالِ خودِ کاربر است');
 
     Notify::deleteAll($uidA);

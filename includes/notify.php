@@ -14,11 +14,21 @@
  */
 
 require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/schedule.php';
 
 class Notify
 {
     /** بازه‌ی پیش‌فرضِ «سررسیدِ نزدیک» وقتی کاربر چیزی انتخاب نکرده باشد. */
     public const DEFAULT_DAYS = 3;
+
+    /**
+     * بازه‌های «چند روز قبل خبر بده» برای یادآورِ دلخواه — تنها مرجع.
+     *
+     * ⛔ فرمِ یادآور و `api/save_reminder.php` هم از همین می‌خوانند؛ فهرستِ
+     *    دوم نسازید، وگرنه گزینه‌ای که کاربر می‌بیند هنگام ذخیره بی‌صدا
+     *    کنار گذاشته می‌شود.
+     */
+    public const REMINDER_STEPS = [1, 3, 7, 30];
 
     /** بیشترین اعلانی که در صفحه‌ی مرکزِ اعلان نشان داده می‌شود. */
     public const PAGE_LIMIT = 60;
@@ -165,28 +175,68 @@ class Notify
         if (!self::remindersAvailable()) { return 0; }
         $made = 0;
         try {
-            $pdo  = Database::getConnection();
+            $pdo = Database::getConnection();
+
+            // ⛔ پنجره تا بلندترین بازه‌ی مجاز باز است، نه فقط «امروز».
+            //
+            //    «چند روز قبل خبر بده» ذخیره می‌شد ولی هیچ‌جا خوانده
+            //    نمی‌شد: کوئری فقط `remind_date <= today` را می‌گرفت، پس
+            //    انتخابِ «یک هفته قبل» هیچ اثری نداشت و اعلان همیشه
+            //    **روزِ خودِ سررسید** می‌آمد. تنظیمی که کار نمی‌کند از
+            //    نبودنش بدتر است.
+            $maxAhead = max(self::REMINDER_STEPS);
+            $horizon  = date('Y-m-d', strtotime($today . ' +' . $maxAhead . ' day'));
+
             $stmt = $pdo->prepare('
                 SELECT * FROM reminders
-                WHERE user_id = :u AND is_done = 0 AND remind_date <= :t
+                WHERE user_id = :u AND is_done = 0 AND remind_date <= :h
                   AND (last_notified_on IS NULL OR last_notified_on < :t2)
                 ORDER BY remind_date ASC LIMIT 50
             ');
-            $stmt->execute(['u' => $userId, 't' => $today, 't2' => $today]);
+            $stmt->execute(['u' => $userId, 'h' => $horizon, 't2' => $today]);
             foreach ($stmt->fetchAll() as $r) {
+                $left = (int)floor((strtotime($r['remind_date']) - strtotime($today)) / 86400);
+
+                // ⚠ روزهای انتخابیِ خودِ کاربر. مقدارِ خرابِ ذخیره‌شده نباید
+                //   اعلان را خاموش کند، پس به پیش‌فرض برمی‌گردد.
+                $days = json_decode((string)($r['notify_days_before'] ?? '[1]'), true);
+                $days = is_array($days)
+                    ? array_values(array_filter(array_map('intval', $days), fn ($d) => $d > 0))
+                    : [];
+                if (!$days) { $days = [1]; }
+
+                // سررسیدِ امروز و عقب‌افتاده همیشه؛ آینده فقط سرِ یکی از
+                // بازه‌های خودِ کاربر.
+                if ($left > 0 && !in_array($left, $days, true)) { continue; }
+
                 $late  = $r['remind_date'] < $today;
-                $body  = $late ? 'سررسیدش گذشته — ' . toJalali($r['remind_date']) : 'برای امروز';
-                if (!empty($r['amount'])) {
-                    $body .= ' · ' . formatMoney((int)$r['amount']);
+                $body  = $late
+                    ? 'سررسیدش گذشته — ' . toJalali($r['remind_date'])
+                    : ($left === 0
+                        ? 'برای امروز'
+                        : toPersianDigits((string)$left) . ' روز مانده — ' . toJalali($r['remind_date']));
+
+                // مبلغِ **همین قسط**، نه مبلغِ خام: در تعهدِ چندقسطی این دو
+                // یکی نیستند و قسطِ آخر باقیمانده را هم دارد.
+                $due = Schedule::installmentAmount($r);
+                if ($due > 0) { $body .= ' · ' . formatMoney($due); }
+                $tc = (int)($r['total_count'] ?? 0);
+                if ($tc > 1) {
+                    $body .= ' · قسط ' . toPersianDigits((string)min((int)($r['done_count'] ?? 0) + 1, $tc))
+                           . ' از ' . toPersianDigits((string)$tc);
                 }
                 if (!empty($r['note'])) { $body .= ' · ' . $r['note']; }
 
                 // ⚠ کلیدِ یکتایی **تاریخِ خودِ یادآور** را دارد نه امروز را،
                 //   وگرنه یادآورِ عقب‌افتاده هر روز یک اعلانِ تازه می‌ساخت.
-                if (self::push($userId, 'reminder', $r['title'], $body,
-                        'reminders.php', 'reminder:' . $r['id'] . ':' . $r['remind_date'])) {
+                // ⚠ و بازه هم در کلید هست: کسی که «۷ روز قبل» و «۱ روز قبل»
+                //   را با هم زده باید هر دو را بگیرد، نه یکی را.
+                $key = 'reminder:' . $r['id'] . ':' . $r['remind_date'] . ':' . max($left, 0);
+                if (self::push($userId, 'reminder', $r['title'], $body, 'reminders.php', $key)) {
                     $made++;
                 }
+                // ⚠ فقط وقتی چیزی فرستاده شد: وگرنه یک یادآورِ خارج از بازه،
+                //   نگهبانِ «روزی یک بار» را برای بقیه‌ی همان روز می‌سوزاند.
                 $up = $pdo->prepare('UPDATE reminders SET last_notified_on = :d WHERE id = :i AND user_id = :u');
                 $up->execute(['d' => $today, 'i' => $r['id'], 'u' => $userId]);
             }

@@ -172,11 +172,47 @@ T::group('با ورود، هیچ اندپوینتی نباید ۵۰۰ بدهد')
 $smokeUser = '__test_api_smoke';
 $smokePass = 'SmokePass12345';
 
+/**
+ * ⛔ پاک کردنِ کاربرِ تست با فهرستی که از **خودِ دیتابیس** کشف می‌شود،
+ *    نه یک فهرستِ دستی.
+ *
+ *    نسخه‌ی قبلی سه جدول را دستی نام می‌برد (`transactions`, `wallets`,
+ *    `categories`). با آمدنِ هر جدولِ تازه، یک ردیفِ جامانده کلیدِ خارجی
+ *    را نگه می‌داشت و `DELETE FROM users` شکست می‌خورد — و آن‌وقت
+ *    **کلِ لایه‌ی «با ورود»** با پیامِ «اتصال به دیتابیس برقرار نشد»
+ *    رد می‌شد. یعنی مهم‌ترین بخشِ این تست ماه‌ها اجرا نمی‌شد و مجموعه
+ *    سبز می‌ماند: دقیقاً همان خرابیِ بی‌صدایی که این فایل برای گرفتنش
+ *    نوشته شده.
+ */
+$purgeUser = function (string $username) use ($root) {
+    require_once $root . '/includes/functions.php';
+    require_once $root . '/includes/user_data.php';
+    $pdo = Database::getConnection();
+    $st  = $pdo->prepare('SELECT id FROM users WHERE username = :u');
+    $st->execute(['u' => $username]);
+    $id = $st->fetchColumn();
+    if (!$id) { return; }
+
+    // چند دور، چون ترتیبِ کلیدهای خارجی از قبل معلوم نیست — همان
+    // الگوی `deleteUserAccount()`.
+    $tables = userDataTables();
+    for ($pass = 0; $pass < 4 && $tables; $pass++) {
+        $left = [];
+        foreach ($tables as $t) {
+            try { $pdo->prepare("DELETE FROM `$t` WHERE user_id = :u")->execute(['u' => $id]); }
+            catch (PDOException $e) { $left[] = $t; }
+        }
+        if (count($left) === count($tables)) { break; }
+        $tables = $left;
+    }
+    $pdo->prepare('DELETE FROM users WHERE id = :i')->execute(['i' => $id]);
+};
+
 $pdoOk = false;
 try {
     require_once $root . '/includes/db.php';
     $pdo = Database::getConnection();
-    $pdo->prepare('DELETE FROM users WHERE username = :u')->execute(['u' => $smokeUser]);
+    $purgeUser($smokeUser);
     $pdo->prepare(
         "INSERT INTO users (username, password_hash, full_name, role, is_active)
          VALUES (:u, :p, 'کاربر تست اندپوینت', 'user', 1)"
@@ -303,6 +339,69 @@ if ($pdoOk) {
     }
 
     // -----------------------------------------------------------
+    // ⛔ همان درسِ بالا، یک بارِ دیگر و روی مسیرِ دیگری: بررسیِ «۵۰۰
+    //    نمی‌دهد» با ورودیِ خالی، `INSERT` این اندپوینت را **اصلاً**
+    //    اجرا نمی‌کند (عنوانِ خالی همان اول با ۴۲۲ برمی‌گردد). پس یک
+    //    کامنتِ پی‌اچ‌پی که داخلِ رشته‌ی SQL جا مانده بود ماه‌ها زنده
+    //    ماند: `php -l` سبز، تستِ قرارداد سبز، ویرایش و «انجام شد» هم
+    //    سالم — و ثبتِ هر یادآورِ تازه بی‌صدا شکست می‌خورد.
+    T::group('مسیر واقعیِ یادآور: ثبت با پیلودِ کامل');
+
+    // ⚠ این تست `functions.php` را لود نمی‌کند (عمداً: می‌خواهد اپ را از
+    //   بیرون و با HTTP ببیند)، پس `tableExists()` اینجا نیست.
+    $hasReminders = false;
+    try { $hasReminders = (bool)$pdo->query("SHOW TABLES LIKE 'reminders'")->fetchColumn(); }
+    catch (PDOException $e) { /* ignore */ }
+
+    if (!$hasReminders) {
+        T::skip('مسیر واقعیِ یادآور', 'migration_reminders.sql هنوز اجرا نشده');
+    } else {
+        $rmPayload = [
+            'csrf_token'      => $token,
+            'title'           => 'تست دود یادآور',
+            'remind_date'     => date('Y-m-d'),
+            'note'            => 'یادداشتِ تست',
+            'amount'          => '12000000',
+            'recurrence_type' => 'every_n_months',
+            'recurrence_n'    => '3',
+            'total_count'     => '12',
+            'amount_mode'     => 'total',
+            'notify_days'     => '[7,1]',
+        ];
+
+        [$c3, $b3] = $sess('/api/save_reminder.php', $rmPayload, 'POST');
+        $j3 = json_decode($b3, true);
+        T::same(200, $c3, 'ثبت یادآورِ چنددوره‌ای پاسخ ۲۰۰ می‌دهد',
+            $c3 >= 500 ? 'بدنه: ' . substr(trim($b3), 0, 120) . ' (بدنه‌ی خالی = خطای کشنده‌ی PHP)' : '');
+        T::ok(is_array($j3), 'پاسخ ثبتِ یادآور، JSON معتبر است');
+        T::ok(!empty($j3['success']), '⛔ ثبتِ یادآور واقعاً موفق بود', $j3['message'] ?? substr(trim($b3), 0, 160));
+
+        // و ردیف واقعاً نوشته شده باشد — «۲۰۰ گرفت» با «ذخیره شد» یکی نیست.
+        $rmRow = null;
+        try {
+            $st = $pdo->prepare(
+                'SELECT r.* FROM reminders r JOIN users u ON u.id = r.user_id
+                 WHERE u.username = :u AND r.title = :t ORDER BY r.id DESC LIMIT 1'
+            );
+            $st->execute(['u' => $smokeUser, 't' => 'تست دود یادآور']);
+            $rmRow = $st->fetch();
+        } catch (PDOException $e) { /* ignore */ }
+
+        T::ok(is_array($rmRow), '⛔ ردیفِ یادآور واقعاً در جدول نشست');
+        if (is_array($rmRow)) {
+            T::same(12, (int)($rmRow['total_count'] ?? 0), 'تعداد اقساط ذخیره شد');
+            // ۱۲٬۰۰۰٬۰۰۰ در ۱۲ قسط = ۱٬۰۰۰٬۰۰۰ برای هر قسط.
+            T::same(1000000, (int)($rmRow['amount'] ?? 0),
+                '⛔ «جمع کل» به مبلغِ هر قسط تقسیم شد، نه اینکه خام بماند');
+            T::same(12000000, (int)($rmRow['total_amount'] ?? 0), 'جمعِ کل هم جدا نگه داشته شد');
+            T::same('every_n_months', (string)($rmRow['recurrence_type'] ?? ''), 'دوره‌ی تکرار ذخیره شد');
+            $nd = json_decode((string)($rmRow['notify_days_before'] ?? '[]'), true);
+            T::same([7, 1], is_array($nd) ? $nd : [], '⛔ روزهای اعلان از رشته‌ی JSON خوانده شدند');
+            $pdo->prepare('DELETE FROM reminders WHERE id = :i')->execute(['i' => $rmRow['id']]);
+        }
+    }
+
+    // -----------------------------------------------------------
     T::group('ورود اطلاعات: شناسه‌ی کاربر دیگر پذیرفته نشود');
 
     // `data.php` مرحله‌ی ثبت را از روی پیلودِ JSON مرورگر انجام می‌دهد.
@@ -381,17 +480,8 @@ if ($pdoOk) {
     } catch (PDOException $e) { /* ignore */ }
 
     @unlink($jar);
-    try {
-        $st = $pdo->prepare('SELECT id FROM users WHERE username = :u');
-        $st->execute(['u' => $smokeUser]);
-        if ($id = $st->fetchColumn()) {
-            foreach (['transactions', 'wallets', 'categories'] as $t) {
-                try { $pdo->prepare("DELETE FROM `$t` WHERE user_id = :u")->execute(['u' => $id]); }
-                catch (PDOException $e) { /* جدول شاید نباشد */ }
-            }
-        }
-        $pdo->prepare('DELETE FROM users WHERE username = :u')->execute(['u' => $smokeUser]);
-    } catch (Throwable $e) { /* ignore */ }
+    // همان تابعِ بالا، تا فهرستِ جدول‌ها یک جا باشد نه دو جا.
+    try { $purgeUser($smokeUser); } catch (Throwable $e) { /* ignore */ }
 }
 
 // ---------------------------------------------------------------

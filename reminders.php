@@ -13,6 +13,7 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/notify.php';
+require_once __DIR__ . '/includes/schedule.php';
 
 Auth::initSession();
 Auth::requireLogin();
@@ -74,14 +75,46 @@ include __DIR__ . '/includes/header.php';
         <?= Csrf::field() ?>
         <input type="hidden" name="id" id="rm_id" value="">
 
+        <?php /* ⛔ چیپ‌های آماده، چون بیشترِ یادآورهای واقعیِ یک خانوار
+                 همین چهار تا هستند و تایپ کردنِ «بیمه‌ی شخص ثالث» روی
+                 کیبوردِ گوشی همان اصطکاکی است که باعث می‌شود کاربر اصلاً
+                 ثبت نکند. هرکدام دوره‌ی متعارفِ خودش را هم می‌گذارد —
+                 ولی همه چیز بعدش قابل تغییر است، چون این پیشنهاد است نه
+                 تصمیم. «سایر» فرم را خالی می‌کند تا حالتِ دستی هم یک
+                 انتخابِ صریح باشد، نه «هیچ‌کدام را نزن».
+
+                 ⚠ فقط UI است و به سرور نمی‌رود؛ چیزی که ذخیره می‌شود
+                   همان عنوان و دوره است. پس فهرستِ دومی در برابرِ
+                   `Schedule::RECUR_PRESETS` نمی‌سازد. */ ?>
         <div class="form-group">
-            <label for="rm_title">برای چه چیزی؟ <span class="req">*</span></label>
+            <label>چه چیزی؟</label>
+            <div class="stay-chips rm-chips" id="rm_presets">
+                <?php
+                $titlePresets = [
+                    ['t' => 'بیمه تأمین اجتماعی', 'r' => 'm3'],
+                    ['t' => 'بیمه خودرو',          'r' => 'y1'],
+                    ['t' => 'بیمه شخص ثالث',       'r' => 'y1'],
+                    ['t' => 'اقساط بانک',          'r' => 'm1'],
+                    ['t' => '',                     'r' => 'once', 'l' => 'سایر'],
+                ];
+                foreach ($titlePresets as $p): ?>
+                    <button type="button" class="stay-chip" data-title="<?= h($p['t']) ?>"
+                            data-repeat="<?= h($p['r']) ?>"><?= h($p['l'] ?? $p['t']) ?></button>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="rm_title">عنوان <span class="req">*</span></label>
             <input type="text" id="rm_title" name="title" maxlength="200" required
                    placeholder="مثلاً بیمه آتش‌سوزی خانه">
         </div>
 
         <div class="form-group">
-            <label>تاریخ <span class="req">*</span></label>
+            <?php /* ⚠ «تاریخ» به‌تنهایی نمی‌گفت تاریخِ چه چیزی — کاربر
+                     نمی‌دانست روزِ سررسید را بنویسد یا روزی که می‌خواهد
+                     خبردار شود (آن یکی پایین‌تر و جداست). */ ?>
+            <label>تاریخ سررسید <span class="req">*</span></label>
             <?php /* همان الگوی تقویمِ بقیه‌ی اپ: نمایشِ شمسی + مقدارِ
                      میلادیِ پنهان. تبدیل فقط با همان یک پیاده‌سازی
                      انجام می‌شود، نه یک تقویمِ تازه. */ ?>
@@ -93,47 +126,99 @@ include __DIR__ . '/includes/header.php';
             </div>
         </div>
 
+        <?php /* ⛔ «هر ماه / هر سال» برای بیمه‌ی تأمین اجتماعی (هر ۴ ماه) و
+                 خیلی از تعهدهای واقعی کافی نبود، ولی منوی کشویی هم
+                 جوابش نبود: کاربر باید منو را باز می‌کرد، گزینه‌ی «هر چند
+                 ماه» را می‌دید، انتخاب می‌کرد، و **بعد** یک فیلدِ عددی
+                 ظاهر می‌شد — سه حرکت برای چیزی که یک تپ است.
+
+                 حالا چیپ‌های آماده از هفتگی تا سالانه در یک نگاه دیده
+                 می‌شوند و «دلخواه» همان N + واحد را برای بقیه‌ی حالت‌ها
+                 نگه می‌دارد (تأمین اجتماعیِ هر ۴ ماه). فهرست از
+                 `Schedule::RECUR_PRESETS` می‌آید، نه از اینجا. */ ?>
+        <div class="form-group">
+            <label>تکرار</label>
+            <div class="stay-chips rm-chips" id="rm_repeat_chips">
+                <?php foreach (Schedule::RECUR_PRESETS as $key => $p): ?>
+                    <button type="button" class="stay-chip<?= $key === 'once' ? ' active' : '' ?>"
+                            data-key="<?= h($key) ?>" data-type="<?= h($p['type']) ?>"
+                            data-n="<?= (int)$p['n'] ?>"><?= h($p['label']) ?></button>
+                <?php endforeach; ?>
+                <button type="button" class="stay-chip" data-key="custom"
+                        data-type="every_n_months" data-n="4">دلخواه</button>
+            </div>
+            <input type="hidden" name="recurrence_type" id="rm_rtype" value="once">
+            <input type="hidden" name="recurrence_n" id="rm_rn" value="1">
+
+            <div class="rm-custom" id="rm_custom" hidden>
+                <label for="rm_n" class="stay-choices-label">هر چند بار یک بار؟</label>
+                <div class="rm-custom-row">
+                    <input type="number" id="rm_n" min="1" max="60" value="4"
+                           inputmode="numeric" class="amount-input-sm">
+                    <select id="rm_unit">
+                        <option value="every_n_months">ماه</option>
+                        <option value="every_n_days">روز</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <?php /* ⛔ «۱۲ قسط» با یک بار ثبت، نه دوازده بار.
+                 هیچ ردیفِ قسطی ذخیره نمی‌شود — فقط «چندمین از چندتا» روی
+                 خودِ قانون می‌نشیند؛ همان مدلی که `debtInstallments()`
+                 دارد و دلیلش در `migration_reminder_plan.sql` نوشته شده. */ ?>
+        <div class="form-group" id="rm_count_wrap" hidden>
+            <label for="rm_count">چند بار تکرار شود؟</label>
+            <input type="number" id="rm_count" name="total_count" min="0" max="600" value="0"
+                   inputmode="numeric" class="amount-input-sm">
+            <p class="hint"><span class="ltr-num">۰</span> یعنی بی‌پایان (تا وقتی خودتان حذفش کنید).</p>
+        </div>
+
         <div class="form-group">
             <label for="rm_amount">مبلغ (اختیاری)</label>
             <input type="text" id="rm_amount" name="amount" inputmode="numeric"
                    class="amount-input-sm" placeholder="اگر می‌دانید چقدر است">
-        </div>
-
-        <?php /* ⛔ «هر ماه / هر سال» برای بیمه‌ی تأمین اجتماعی (هر ۴ ماه) و
-                 خیلی از تعهدهای واقعی کافی نبود. حالا N خودش عدد می‌گیرد
-                 و «هر سال» فقط N=12 است — یعنی یک مدل، نه سه حالتِ جدا. */ ?>
-        <div class="form-group">
-            <label for="rm_repeat">تکرار</label>
-            <select id="rm_repeat" name="recurrence_type">
-                <option value="once">یک بار</option>
-                <option value="every_n_months">هر چند ماه یک بار</option>
-                <option value="yearly">هر سال</option>
-            </select>
-        </div>
-
-        <div class="form-group" id="rm_n_wrap" hidden>
-            <label for="rm_n">هر چند ماه؟</label>
-            <input type="number" id="rm_n" name="recurrence_n" min="1" max="60" value="4"
-                   inputmode="numeric" class="amount-input-sm">
-            <p class="hint">مثلاً بیمه‌ی تأمین اجتماعی: <span class="ltr-num">۴</span> ماه.</p>
+            <?php /* ⛔ بدونِ این انتخاب، «۱۲ قسط، ۱۲ میلیون» دو معنی دارد
+                     و هیچ‌کدام از دیگری واضح‌تر نیست: ۱۲ میلیون در هر
+                     قسط، یا ۱۲ میلیونِ کل. حدس زدنش یعنی عددِ کارت
+                     ده‌برابرِ واقعیت شود، بی‌هیچ خطایی. */ ?>
+            <div class="stay-chips rm-chips" id="rm_amount_mode" hidden>
+                <button type="button" class="stay-chip active" data-mode="each">مبلغ هر قسط</button>
+                <button type="button" class="stay-chip" data-mode="total">جمع کل</button>
+            </div>
+            <input type="hidden" name="amount_mode" id="rm_amode" value="each">
+            <p class="hint" id="rm_plan_note" hidden></p>
         </div>
 
         <?php /* ⛔ چند بازه با هم، نه یکی. کسی که می‌خواهد یک هفته قبل
                  خبردار شود اغلب می‌خواهد یک روز قبل هم یادش بیفتد. ستون
                  `notify_days_before` از اول آرایه‌ی JSON بود؛ فقط فرمش
-                 نبود. */ ?>
+                 نبود.
+
+                 ⚠ و فرمِ اولش غلط بود: `.switch` یک ردیفِ تمام‌عرض است
+                   (`display:flex` با `.switch-text{flex:1}`)، پس چهار
+                   کلید زیرِ هم می‌افتادند و دستگیره‌ی سفید کنارِ متن
+                   شبیهِ یک تکه‌ی جامانده دیده می‌شد. کلید برای «روشن یا
+                   خاموش» است؛ اینجا انتخابِ چندتایی از یک مجموعه است و
+                   زبانِ طراحیِ خودِ پروژه برایش از قبل `.stay-chip` را
+                   داشت (پروفایل و سرنوشتِ چک). */ ?>
         <div class="form-group">
             <label>چند روز قبل خبر بدهد؟</label>
-            <div class="notify-days">
-                <?php foreach ([1 => 'یک روز', 3 => 'سه روز', 7 => 'یک هفته', 30 => 'یک ماه'] as $d => $lbl): ?>
-                    <label class="switch switch-sm notify-day">
-                        <input type="checkbox" name="notify_days[]" value="<?= $d ?>"
-                               <?= $d === 1 ? 'checked' : '' ?>>
-                        <span class="switch-track"><span class="switch-knob"></span></span>
-                        <span class="switch-text"><?= $lbl ?> قبل</span>
-                    </label>
+            <div class="stay-chips rm-chips" id="rm_notify_days">
+                <?php
+                // ⚠ برچسب‌ها اینجا هستند ولی **فهرستِ مقادیر** از
+                //   `Notify::REMINDER_STEPS` می‌آید: اگر بازه‌ای اضافه شود
+                //   و اینجا جا بماند، چیپش اصلاً رندر نمی‌شود — که دیدنی
+                //   است. برعکسش (چیپی که سرور قبولش نکند) بی‌صداست.
+                $dayLabels = [1 => 'یک روز', 3 => 'سه روز', 7 => 'یک هفته', 30 => 'یک ماه'];
+                foreach (Notify::REMINDER_STEPS as $d): ?>
+                    <button type="button" class="stay-chip<?= $d === 1 ? ' active' : '' ?>"
+                            data-day="<?= (int)$d ?>"><?= h($dayLabels[$d] ?? toPersianDigits((string)$d) . ' روز') ?> قبل</button>
                 <?php endforeach; ?>
             </div>
+            <?php /* ⚠ مقدارِ واقعی در یک فیلدِ پنهان است نه در خودِ چیپ‌ها:
+                     `<button>` چیزی به `FormData` اضافه نمی‌کند. */ ?>
+            <input type="hidden" name="notify_days" id="rm_days" value="[1]">
             <p class="hint">هرکدام را که خواستید بزنید — هر سه هم می‌شود.</p>
         </div>
 
@@ -160,6 +245,18 @@ include __DIR__ . '/includes/header.php';
                     $done = (int)$r['is_done'] === 1;
                     $late = !$done && $r['remind_date'] < $today;
                     $soon = !$done && $r['remind_date'] === $today;
+
+                    // ⚠ ستون‌های چنددوره‌ای ممکن است هنوز با migration
+                    //   نیامده باشند — همان قاعده‌ی `walletBalances()`:
+                    //   نبودنشان نباید صفحه را بشکند.
+                    $tCount = (int)($r['total_count'] ?? 0);
+                    $dCount = (int)($r['done_count'] ?? 0);
+                    $shown  = Schedule::installmentAmount([
+                        'total_count'  => $tCount,
+                        'total_amount' => (int)($r['total_amount'] ?? 0),
+                        'done_count'   => $dCount,
+                        'amount'       => (int)($r['amount'] ?? 0),
+                    ]);
                 ?>
                 <li class="reminder-row <?= $done ? 'is-done' : '' ?>">
                     <form method="POST" action="<?= APP_BASE_PATH ?>/api/save_reminder.php"
@@ -179,20 +276,34 @@ include __DIR__ . '/includes/header.php';
                             <span class="<?= $late ? 'is-late' : ($soon ? 'is-today' : '') ?>">
                                 <?= $late ? 'گذشته · ' : ($soon ? 'امروز · ' : '') ?><?= toPersianDigits(toJalali($r['remind_date'])) ?>
                             </span>
-                            <?php if (!empty($r['amount'])): ?>
-                                <span class="reminder-amount ltr-num"><?= formatMoney((int)$r['amount']) ?></span>
+                            <?php if ($shown > 0): ?>
+                                <span class="reminder-amount ltr-num"><?= formatMoney($shown) ?></span>
                             <?php endif; ?>
                             <?php
                                 $rt = (string)($r['recurrence_type'] ?? 'once');
                                 $rn = max(1, (int)($r['recurrence_n'] ?? 1));
-                                $repLabel = match ($rt) {
-                                    'yearly'         => 'هر سال',
-                                    'every_n_months' => $rn === 1 ? 'هر ماه' : 'هر ' . toPersianDigits((string)$rn) . ' ماه',
-                                    default          => '',
-                                };
+                                // ⚠ برچسب از همان فهرستِ چیپ‌ها می‌آید تا آنچه
+                                //   کاربر هنگام ثبت زده با آنچه بعداً می‌خواند
+                                //   یکی باشد؛ فقط حالتِ «دلخواه» ساخته می‌شود.
+                                $pKey     = Schedule::presetKey($rt, $rn);
+                                $repLabel = $pKey !== 'custom'
+                                    ? (Schedule::RECUR_PRESETS[$pKey]['label'] ?? '')
+                                    : 'هر ' . toPersianDigits((string)$rn)
+                                      . ($rt === 'every_n_days' ? ' روز' : ' ماه');
+                                if ($rt === 'once') { $repLabel = ''; }
                             ?>
                             <?php if ($repLabel !== ''): ?>
-                                <span class="asset-tag"><?= $repLabel ?></span>
+                                <span class="asset-tag"><?= h($repLabel) ?></span>
+                            <?php endif; ?>
+                            <?php if ($tCount > 1): ?>
+                                <?php /* «قسط ۳ از ۱۲» — همان خطی که کارتِ بدهیِ
+                                         قسطی دارد، به همان دلیل: بدونش کاربر
+                                         نمی‌داند چقدر از تعهدش مانده. */ ?>
+                                <span class="asset-tag">قسط <?= toPersianDigits((string)min($dCount + 1, $tCount)) ?>
+                                    از <?= toPersianDigits((string)$tCount) ?></span>
+                            <?php endif; ?>
+                            <?php if ($tCount > 1 && (int)($r['total_amount'] ?? 0) > 0): ?>
+                                <span class="asset-tag">جمع کل <span class="ltr-num"><?= formatMoney((int)$r['total_amount']) ?></span></span>
                             <?php endif; ?>
                             <?php
                                 $days = json_decode((string)($r['notify_days_before'] ?? '[1]'), true);
@@ -216,6 +327,9 @@ include __DIR__ . '/includes/header.php';
                                 data-amount="<?= (int)($r['amount'] ?? 0) ?>"
                                 data-rtype="<?= h((string)($r['recurrence_type'] ?? 'once')) ?>"
                                 data-rn="<?= (int)($r['recurrence_n'] ?? 1) ?>"
+                                data-rkey="<?= h($pKey) ?>"
+                                data-count="<?= $tCount ?>"
+                                data-total="<?= (int)($r['total_amount'] ?? 0) ?>"
                                 data-days="<?= h((string)($r['notify_days_before'] ?? '[1]')) ?>"
                                 data-note="<?= h((string)($r['note'] ?? '')) ?>"
                                 aria-label="ویرایش">

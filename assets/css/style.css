@@ -3258,6 +3258,47 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
 }
 html[data-theme="dark"] .stay-chip.active { box-shadow: none; }
 
+/* فرمِ یادآور: همان زبانِ چیپ، ولی داخلِ یک فرم و نه یک کارتِ تنظیمات.
+   ⛔ کلاسِ تازه‌ای برای *ظاهرِ* چیپ ساخته نمی‌شود — فقط چیدمانِ داخلِ فرم
+      تنظیم می‌شود. با یک ظاهرِ دوم، رنگِ فعالِ اینجا و پروفایل دیر یا زود
+      از هم دور می‌افتادند. */
+/* ⛔ هر کلاسی که `display` دارد بر `[hidden]`ِ پیش‌فرضِ مرورگر غلبه
+      می‌کند — قاعده‌ی UA ضعیف‌ترین قاعده‌ی ممکن است. یعنی عنصری که در
+      HTML `hidden` نوشته شده **دیده می‌شود**، بی‌هیچ خطایی.
+
+      این تا امروز پنج بار زده (`.sms-conn`, `.asset-item`,
+      `.chart-container`, و حالا این چهار تا). خرابی‌هایی که با همین
+      یک خط بسته می‌شوند:
+
+      • `.stay-chips` — چیپ‌های «مبلغ هر قسط / جمع کل» که فقط برای
+        تعهدِ چندقسطی معنا دارند، همیشه دیده می‌شدند.
+      • `.btn` — دکمه‌ی «انصراف از ویرایش» در صفحه‌ی یادآور همیشه بود،
+        در حالی که فقط هنگام ویرایش معنا دارد؛ و **دکمه‌ی «چسباندن و
+        خواندن»** پیامک بانک که طبق قاعده‌ی خودش فقط با
+        `navigator.clipboard` و `isSecureContext` باید رندر شود — روی
+        http دیده می‌شد و زدنش هیچ کاری نمی‌کرد. دکمه‌ی بی‌کار از
+        نبودنش بدتر است.
+      • `.form-row` — «بازه‌ی دلخواه» بودجه همیشه باز بود.
+      • `.wallet-extra` — کارهای اضافیِ حساب و بودجه همیشه دیده می‌شدند.
+
+      ⚠ `!important` لازم است: بعضی از این کلاس‌ها داخلِ `@media` هم
+        `display` می‌گیرند و بدونِ آن، قاعده‌ی بعدی دوباره برنده می‌شد.
+      قاعده ۱۸ در `test_api_contract.php` این را می‌سنجد. */
+.stay-chips[hidden],
+.btn[hidden],
+.form-row[hidden],
+.wallet-extra[hidden] { display: none !important; }
+
+.rm-chips { margin-top: 2px; }
+.rm-chips .stay-chip { min-width: 0; flex: 0 1 auto; padding: 9px 12px; font-size: 12.5px; }
+
+/* «دلخواه»: عدد و واحد کنارِ هم، چون با هم یک جمله‌اند («هر ۴ ماه»).
+   زیرِ هم گذاشتنشان دو تصمیمِ جدا به نظر می‌رسید. */
+.rm-custom { margin-top: 12px; }
+.rm-custom-row { display: flex; gap: 8px; align-items: center; }
+.rm-custom-row input { flex: 0 0 92px; }
+.rm-custom-row select { flex: 0 0 auto; width: auto; }
+
 /* خلاصه‌ی زنده — کاربر بدون ذخیره کردن می‌بیند انتخابش یعنی چه */
 .stay-note {
     margin: 14px 0 0;

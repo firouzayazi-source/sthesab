@@ -609,37 +609,201 @@ document.addEventListener('DOMContentLoaded', function () {
             // ویرایش: همان فرم پر می‌شود، نه یک مودالِ دوم — با فرمِ دوم
             // اعتبارسنجی و تقویم باید دو بار نوشته می‌شدند.
             var resetBtn = document.querySelector('.js-reminder-reset');
-            // ⛔ فیلدِ «هر چند ماه» فقط با گزینه‌ی خودش دیده می‌شود. همیشه
-            //    نشان دادنش یعنی کاربرِ یادآورِ یک‌باره یک عددِ بی‌معنا
-            //    جلویش دارد و فکر می‌کند لازم است پرش کند.
-            var repeatSel = document.getElementById('rm_repeat');
-            function syncReminderN() {
-                var wrap = document.getElementById('rm_n_wrap');
-                if (!wrap || !repeatSel) { return; }
-                wrap.hidden = repeatSel.value !== 'every_n_months';
+
+            var repeatChips = document.getElementById('rm_repeat_chips');
+            var customWrap  = document.getElementById('rm_custom');
+            var nInput      = document.getElementById('rm_n');
+            var unitSel     = document.getElementById('rm_unit');
+            var rtypeIn     = document.getElementById('rm_rtype');
+            var rnIn        = document.getElementById('rm_rn');
+            var countWrap   = document.getElementById('rm_count_wrap');
+            var countIn     = document.getElementById('rm_count');
+            var amountIn    = document.getElementById('rm_amount');
+            var amodeChips  = document.getElementById('rm_amount_mode');
+            var amodeIn     = document.getElementById('rm_amode');
+            var planNote    = document.getElementById('rm_plan_note');
+            var daysWrap    = document.getElementById('rm_notify_days');
+            var daysIn      = document.getElementById('rm_days');
+
+            var fa = function (s) {
+                return String(s).replace(/[0-9]/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[+d]; });
+            };
+            var groupNum = function (n) {
+                return fa(String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '٬'));
+            };
+
+            // ⛔ تنها جایی که وضعیتِ فرم به فیلدهای پنهان می‌نشیند. چیپ‌ها
+            //    `<button>` اند و خودشان هیچ چیزی به FormData اضافه
+            //    نمی‌کنند — اگر این تابع جا بیفتد، فرم بی‌صدا مقدارِ
+            //    پیش‌فرض را می‌فرستد و کاربر فکر می‌کند انتخابش ذخیره شد.
+            function syncRepeat() {
+                if (!repeatChips || !rtypeIn) { return; }
+                var on  = repeatChips.querySelector('.stay-chip.active');
+                var key = on ? on.dataset.key : 'once';
+
+                if (customWrap) { customWrap.hidden = key !== 'custom'; }
+
+                if (key === 'custom') {
+                    rtypeIn.value = unitSel ? unitSel.value : 'every_n_months';
+                    rnIn.value    = String(Math.max(1, Math.min(60, parseInt(nInput && nInput.value, 10) || 1)));
+                } else if (on) {
+                    rtypeIn.value = on.dataset.type;
+                    rnIn.value    = on.dataset.n;
+                }
+
+                // «چند بار تکرار شود» فقط برای تکرارشونده معنا دارد.
+                var repeats = rtypeIn.value !== 'once';
+                if (countWrap) {
+                    countWrap.hidden = !repeats;
+                    if (!repeats && countIn) { countIn.value = '0'; }
+                }
+                syncPlan();
             }
-            if (repeatSel) {
-                repeatSel.addEventListener('change', syncReminderN);
-                syncReminderN();
+
+            // خلاصه‌ی زنده: کاربر پیش از ذخیره می‌بیند «۱۲ قسط ۱۲ میلیون»
+            // یعنی چه. بدونِ آن، انتخابِ «جمع کل» و «هر قسط» از بیرون یکی
+            // به نظر می‌رسند و اشتباهش ده‌برابرِ مبلغ است.
+            function syncPlan() {
+                if (!planNote || !amountIn) { return; }
+                var count = Math.max(0, parseInt(countIn && countIn.value, 10) || 0);
+                var multi = count > 1 && rtypeIn && rtypeIn.value !== 'once';
+                if (amodeChips) { amodeChips.hidden = !multi; }
+                if (!multi) { planNote.hidden = true; return; }
+
+                var raw = String(amountIn.value || '').replace(/[^0-9]/g, '');
+                if (!raw) { planNote.hidden = true; return; }
+
+                var val = parseInt(raw, 10);
+                var total, each, last;
+                if (amodeIn && amodeIn.value === 'total') {
+                    total = val;
+                    each  = Math.floor(total / count);
+                    last  = total - each * (count - 1);
+                } else {
+                    each = val; last = val; total = each * count;
+                }
+                planNote.hidden = false;
+                planNote.textContent = fa(count) + ' قسط · هر قسط ' + groupNum(each) +
+                    (last !== each ? ' (آخری ' + groupNum(last) + ')' : '') +
+                    ' · جمع کل ' + groupNum(total) + ' تومان';
             }
+
+            function syncDays() {
+                if (!daysWrap || !daysIn) { return; }
+                var picked = [];
+                daysWrap.querySelectorAll('.stay-chip.active').forEach(function (c) {
+                    picked.push(parseInt(c.dataset.day, 10));
+                });
+                picked.sort(function (a, b) { return b - a; });
+                daysIn.value = JSON.stringify(picked);
+            }
+
+            if (repeatChips) {
+                repeatChips.addEventListener('click', function (e) {
+                    var b = e.target.closest('.stay-chip');
+                    if (!b) { return; }
+                    repeatChips.querySelectorAll('.stay-chip').forEach(function (c) {
+                        c.classList.toggle('active', c === b);
+                    });
+                    syncRepeat();
+                });
+            }
+            if (nInput)  { nInput.addEventListener('input', syncRepeat); }
+            if (unitSel) { unitSel.addEventListener('change', syncRepeat); }
+            if (countIn) { countIn.addEventListener('input', syncPlan); }
+            if (amountIn) { amountIn.addEventListener('input', syncPlan); }
+            if (amodeChips) {
+                amodeChips.addEventListener('click', function (e) {
+                    var b = e.target.closest('.stay-chip');
+                    if (!b) { return; }
+                    amodeChips.querySelectorAll('.stay-chip').forEach(function (c) {
+                        c.classList.toggle('active', c === b);
+                    });
+                    if (amodeIn) { amodeIn.value = b.dataset.mode; }
+                    syncPlan();
+                });
+            }
+            if (daysWrap) {
+                // ⚠ چندانتخابی: چیپ‌ها همدیگر را خاموش نمی‌کنند.
+                daysWrap.addEventListener('click', function (e) {
+                    var b = e.target.closest('.stay-chip');
+                    if (!b) { return; }
+                    b.classList.toggle('active');
+                    syncDays();
+                });
+            }
+
+            var presetWrap = document.getElementById('rm_presets');
+            if (presetWrap) {
+                presetWrap.addEventListener('click', function (e) {
+                    var b = e.target.closest('.stay-chip');
+                    if (!b) { return; }
+                    presetWrap.querySelectorAll('.stay-chip').forEach(function (c) {
+                        c.classList.toggle('active', c === b);
+                    });
+                    var t = document.getElementById('rm_title');
+                    if (t) { t.value = b.dataset.title || ''; if (!b.dataset.title) { t.focus(); } }
+                    pickRepeat(b.dataset.repeat || 'once');
+                });
+            }
+
+            // چیپِ تکرار را با کلید انتخاب می‌کند — هم برای پیش‌فرض‌ها و
+            // هم برای پر کردنِ فرمِ ویرایش، تا یک منطق باشد نه دو تا.
+            function pickRepeat(key) {
+                if (!repeatChips) { return; }
+                var found = false;
+                repeatChips.querySelectorAll('.stay-chip').forEach(function (c) {
+                    var on = c.dataset.key === key;
+                    if (on) { found = true; }
+                    c.classList.toggle('active', on);
+                });
+                if (!found) {
+                    var last = repeatChips.querySelector('.stay-chip[data-key="custom"]');
+                    if (last) { last.classList.add('active'); }
+                }
+                syncRepeat();
+            }
+
+            syncRepeat();
+            syncDays();
 
             document.querySelectorAll('.js-reminder-edit').forEach(function (b) {
                 b.addEventListener('click', function () {
                     document.getElementById('rm_id').value      = b.dataset.id;
                     document.getElementById('rm_title').value   = b.dataset.title;
                     document.getElementById('rm_note').value    = b.dataset.note || '';
-                    document.getElementById('rm_repeat').value  = b.dataset.rtype || 'once';
-                    document.getElementById('rm_amount').value  = b.dataset.amount !== '0' ? b.dataset.amount : '';
-                    var nInput = document.getElementById('rm_n');
-                    if (nInput) { nInput.value = b.dataset.rn || '1'; }
+
+                    if (countIn) { countIn.value = b.dataset.count || '0'; }
+                    // ⛔ با «جمع کل» پر می‌شود، نه با مبلغِ هر قسط: باقیمانده‌ی
+                    //    تقسیم روی قسطِ آخر است، پس ذخیره‌ی دوباره از روی
+                    //    مبلغِ هر قسط جمعِ کل را بی‌صدا چند تومان کم می‌کرد.
+                    var total = parseInt(b.dataset.total, 10) || 0;
+                    if (total > 0 && (parseInt(b.dataset.count, 10) || 0) > 1) {
+                        if (amountIn) { amountIn.value = total; }
+                        if (amodeIn) { amodeIn.value = 'total'; }
+                        if (amodeChips) {
+                            amodeChips.querySelectorAll('.stay-chip').forEach(function (c) {
+                                c.classList.toggle('active', c.dataset.mode === 'total');
+                            });
+                        }
+                    } else if (amountIn) {
+                        amountIn.value = b.dataset.amount !== '0' ? b.dataset.amount : '';
+                    }
+
+                    if (nInput)  { nInput.value  = b.dataset.rn || '1'; }
+                    if (unitSel) { unitSel.value = b.dataset.rtype === 'every_n_days' ? 'every_n_days' : 'every_n_months'; }
+                    pickRepeat(b.dataset.rkey || 'once');
+
                     // ⛔ روزهای اعلان یک آرایه‌ی JSON است. اگر خرابِ ذخیره شده
-                    //    باشد نباید کلِ فرم بایستد — تیک‌ها فقط پاک می‌شوند.
+                    //    باشد نباید کلِ فرم بایستد — انتخاب‌ها فقط پاک می‌شوند.
                     var picked = [];
                     try { picked = JSON.parse(b.dataset.days || '[1]') || []; } catch (err) { picked = []; }
-                    document.querySelectorAll('input[name="notify_days[]"]').forEach(function (c) {
-                        c.checked = picked.indexOf(parseInt(c.value, 10)) !== -1;
-                    });
-                    syncReminderN();
+                    if (daysWrap) {
+                        daysWrap.querySelectorAll('.stay-chip').forEach(function (c) {
+                            c.classList.toggle('active', picked.indexOf(parseInt(c.dataset.day, 10)) !== -1);
+                        });
+                        syncDays();
+                    }
                     var disp = document.getElementById('rm_date_display');
                     if (disp) { disp.value = b.dataset.date; }
                     if (resetBtn) { resetBtn.hidden = false; }

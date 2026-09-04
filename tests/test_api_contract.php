@@ -788,6 +788,128 @@ foreach (['api', 'includes', 'admin', 'deploy', 'tests', 'config', '.'] as $dir)
 T::bulk($scanned, $badTag, 'هیچ کامنتی تگِ پایانِ PHP ندارد');
 
 // ---------------------------------------------------------------
+// ⛔ قاعده ۱۸ — عنصری که `display` دارد، باید `[hidden]` خودش را هم داشته باشد.
+//
+// ویژگیِ `hidden` مرورگر با یک قاعده‌ی **UA** به‌شکلِ `display: none`
+// پیاده می‌شود، و هر قاعده‌ی نویسنده — حتی یک `.foo { display: flex }`
+// ساده — بر آن غلبه می‌کند. یعنی عنصری که در HTML `hidden` نوشته شده
+// **دیده می‌شود**، بی‌هیچ خطایی.
+//
+// این تا امروز سه بار زده: `.sms-conn` (کارتِ پنهانِ پنلِ پیامک)،
+// `.asset-item` / `.chart-container` (قلمِ خاموشِ دارایی)، و
+// `.stay-chips` (چیپ‌های «مبلغ هر قسط / جمع کل» که فقط برای تعهدِ
+// چندقسطی معنا دارند و همیشه دیده می‌شدند). هر سه بار فقط با چشم و
+// روی مرورگر پیدا شد.
+//
+// ⚠ فقط کلاس‌هایی سنجیده می‌شوند که واقعاً در PHP با `hidden` نوشته
+//   شده‌اند — وگرنه هر کلاسِ `display`داری هشدار می‌داد و هشدارِ الکی
+//   از نبودِ تست بدتر است.
+T::group('قاعده ۱۸ — عنصرِ پنهان‌شونده باید [hidden] خودش را داشته باشد');
+
+$css = file_get_contents(__DIR__ . '/../assets/css/style.css');
+
+// کلاس‌هایی که در HTML با ویژگیِ `hidden` رندر می‌شوند.
+// ⚠ `includes/` هم باید اسکن شود: شیتِ ثبت تراکنش آنجاست و در **هر**
+//   صفحه رندر می‌شود، پس یک `[hidden]`ِ جامانده آنجا همه‌جا دیده می‌شود.
+$hiddenClasses = [];
+foreach (['admin', 'includes', '.'] as $dir) {
+    foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) {
+        $src = file_get_contents($p);
+        // تگی که هم `class="…"` دارد هم `hidden` تنها (نه `data-hidden`).
+        if (!preg_match_all('~<[a-z]+[^>]*>~i', $src, $tags)) { continue; }
+        foreach ($tags[0] as $tag) {
+            if (!preg_match('~\shidden(?=[\s/>])~i', $tag)) { continue; }
+            if (!preg_match('~\sclass="([^"]*)"~i', $tag, $m)) { continue; }
+            foreach (preg_split('~\s+~', trim($m[1])) as $cls) {
+                if ($cls !== '' && !str_contains($cls, '<')) { $hiddenClasses[$cls] = basename($p); }
+            }
+        }
+    }
+}
+
+// ⚠ فقط قاعده‌ای می‌شمارد که **خودِ** آن کلاس را هدف بگیرد، نه یک
+//   فرزندش: `.form-group label { display: … }` هیچ ربطی به پنهان شدنِ
+//   `.form-group` ندارد و شمردنش یعنی چهار هشدارِ الکی. پس آخرین
+//   «compound»ِ هر انتخابگر جدا می‌شود.
+$lastCompound = function (string $sel): string {
+    // ⚠ جداکننده `~` نیست: خودِ `~` یکی از ترکیب‌کننده‌های CSS است.
+    $parts = preg_split('#\s*[>+~]\s*|\s+#', trim($sel));
+    return $parts ? (string)end($parts) : '';
+};
+
+// قاعده‌های سطحِ بالای CSS (کافی است؛ داخلِ @media هم با همین الگو
+// خوانده می‌شود چون فقط دنبالِ جفتِ «انتخابگر { بدنه }» است).
+preg_match_all('~([^{}]+)\{([^{}]*)\}~', $css, $rules, PREG_SET_ORDER);
+
+$hasDisplay = [];   // کلاس → قاعده‌ای که مستقیماً display می‌دهد
+$hasHidden  = [];   // کلاس → قاعده‌ای با [hidden]
+foreach ($rules as $r) {
+    $body    = $r[2];
+    $setsDsp = (bool)preg_match('~\bdisplay\s*:~', $body);
+    foreach (explode(',', $r[1]) as $sel) {
+        $comp = $lastCompound($sel);
+        if ($comp === '') { continue; }
+        if (!preg_match_all('~\.([A-Za-z0-9_-]+)~', $comp, $cm)) { continue; }
+        $isHiddenRule = str_contains($comp, '[hidden]');
+        foreach ($cm[1] as $c) {
+            if ($isHiddenRule) { $hasHidden[$c] = true; }
+            elseif ($setsDsp)  { $hasDisplay[$c] = true; }
+        }
+    }
+}
+
+$hiddenBad = [];
+foreach ($hiddenClasses as $cls => $where) {
+    if (empty($hasDisplay[$cls]) || !empty($hasHidden[$cls])) { continue; }
+    $hiddenBad[] = ".$cls (در {$where}) — display دارد ولی .{$cls}[hidden] ندارد";
+}
+T::bulk(count($hiddenClasses), $hiddenBad,
+    'هر کلاسِ پنهان‌شونده‌ای که display دارد، [hidden] خودش را هم دارد');
+
+// ---------------------------------------------------------------
+// ⛔ قاعده ۱۷ — کامنتِ پی‌اچ‌پی نباید داخلِ رشته‌ی SQL باشد.
+//
+// MySQL کامنتِ `//` نمی‌شناسد (فقط `--`، `#` و `/* */`). یک بار دو خط
+// توضیح **داخلِ** کوتیشنِ یک `INSERT` نوشته شدند و نتیجه‌اش این بود که
+// ثبتِ هر یادآورِ تازه با خطای نحویِ SQL رد می‌شد — در حالی که:
+//   • `php -l` سبز بود (رشته از دیدِ PHP کاملاً درست است)،
+//   • ویرایش و «انجام شد» کار می‌کردند (کوئریِ دیگری بودند)،
+//   • و هیچ تستی آن مسیر را با پیلودِ واقعی صدا نمی‌زد.
+// یعنی دقیقاً همان خانواده‌ی خرابیِ **بی‌صدا**ی این پروژه.
+//
+// ⚠ فقط داخلِ رشته سنجیده می‌شود، نه در کدِ عادی: `//` در خودِ PHP
+//   کامنتِ درستی است و توکنایزر آن دو را از هم جدا می‌کند. و فقط
+//   رشته‌هایی که واقعاً SQL به نظر می‌رسند، وگرنه هر رشته‌ی حاویِ یک
+//   آدرسِ `https://` هشدارِ الکی می‌داد — و هشدارِ الکی از نبودِ تست
+//   بدتر است.
+T::group('قاعده ۱۷ — کامنتِ پی‌اچ‌پی داخلِ رشته‌ی SQL نباشد');
+
+$badSql  = [];
+$sqlScan = 0;
+$sqlWord = '~\b(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\b~i';
+foreach (['api', 'api/v1', 'includes', 'admin', 'deploy', 'tests', '.'] as $dir) {
+    foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) {
+        $sqlScan++;
+        foreach (token_get_all(file_get_contents($p)) as $tk) {
+            if (!is_array($tk)) { continue; }
+            if ($tk[0] !== T_CONSTANT_ENCAPSED_STRING && $tk[0] !== T_ENCAPSED_AND_WHITESPACE
+                && $tk[0] !== T_INLINE_HTML) { continue; }
+            if ($tk[0] === T_INLINE_HTML) { continue; }
+            if (!preg_match($sqlWord, $tk[1])) { continue; }
+            // خطی که با `//` یا `#` شروع می‌شود — یعنی کامنتی که یادش
+            // رفته بیرونِ رشته بماند. (`--` کامنتِ خودِ SQL است و مجاز.)
+            foreach (explode("\n", $tk[1]) as $ln) {
+                if (preg_match('~^\s*(//|#\s)~', $ln)) {
+                    $badSql[] = basename($p) . ' خط ' . $tk[2] . ' → ' . trim(mb_substr($ln, 0, 60));
+                    break;
+                }
+            }
+        }
+    }
+}
+T::bulk($sqlScan, $badSql, 'هیچ رشته‌ی SQL ای کامنتِ پی‌اچ‌پی داخلش ندارد');
+
+// ---------------------------------------------------------------
 // ⛔ قاعده ۱۶ — لینک یا ریدایرکتِ داخلی باید به فایلی برسد که هست.
 //
 // قاعده‌ی nginx این است: `location ~ \.php$` شاملِ

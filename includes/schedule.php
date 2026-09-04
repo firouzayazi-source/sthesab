@@ -68,6 +68,72 @@ class Schedule
 
     public const SOURCES = ['custom', 'cheque', 'debt', 'recurring_tx'];
 
+    /**
+     * دوره‌های آماده‌ی تکرار — **تنها مرجع** (مثل `Auth::SESSION_WINDOWS`).
+     *
+     * ⛔ فرمِ یادآور و `api/save_reminder.php` هر دو از همین می‌خوانند. اگر
+     *    صفحه فهرستِ خودش را داشته باشد، گزینه‌ای که کاربر می‌بیند هنگام
+     *    ذخیره بی‌صدا به پیش‌فرض برمی‌گردد — همان چیزی که یک بار سرِ
+     *    `REMINDER_DAYS` و یک بار سرِ `SESSION_WINDOWS` گفته شد.
+     *
+     * کلید فقط برای مقایسه در فرم است؛ چیزی که ذخیره می‌شود `type` و `n` است.
+     */
+    public const RECUR_PRESETS = [
+        'once'  => ['label' => 'یک بار',    'type' => 'once',           'n' => 1],
+        'w1'    => ['label' => 'هفتگی',     'type' => 'every_n_days',   'n' => 7],
+        'd15'   => ['label' => 'هر ۱۵ روز', 'type' => 'every_n_days',   'n' => 15],
+        'm1'    => ['label' => 'ماهانه',    'type' => 'every_n_months', 'n' => 1],
+        'm2'    => ['label' => 'هر ۲ ماه',  'type' => 'every_n_months', 'n' => 2],
+        'm3'    => ['label' => 'هر ۳ ماه',  'type' => 'every_n_months', 'n' => 3],
+        'm6'    => ['label' => 'هر ۶ ماه',  'type' => 'every_n_months', 'n' => 6],
+        'y1'    => ['label' => 'سالانه',    'type' => 'yearly',         'n' => 1],
+    ];
+
+    /** انواعِ تکرارِ پذیرفتنی — هر جای دیگری که اعتبارسنجی کند، از همین بخواند. */
+    public const RECUR_TYPES = ['once', 'every_n_days', 'every_n_months', 'yearly'];
+
+    /**
+     * کلیدِ چیپِ متناظر با یک قانون — یا `custom` اگر با هیچ‌کدام نخواند.
+     *
+     * ⚠ برای پر کردنِ فرمِ ویرایش لازم است: بدونِ آن، ویرایشِ یک یادآورِ
+     *   «هر ۴ ماه» هیچ چیپی را روشن نمی‌کرد و کاربر فکر می‌کرد تکرارش
+     *   پاک شده.
+     */
+    public static function presetKey(string $type, int $n): string
+    {
+        foreach (self::RECUR_PRESETS as $key => $p) {
+            if ($p['type'] === $type && $p['n'] === max(1, $n)) { return $key; }
+        }
+        return 'custom';
+    }
+
+    /**
+     * مبلغِ **همین قسط** از روی جمعِ کل و تعدادِ اقساط.
+     *
+     * ⛔ باقیمانده‌ی تقسیم به **قسطِ آخر** می‌رود، نه پخش‌شده — دقیقاً
+     *    همان قاعده‌ای که `debtInstallments()` دارد. ۱۰٬۰۰۰٬۰۰۰ در ۳ قسط
+     *    می‌شود ۳٬۳۳۳٬۳۳۳ + ۳٬۳۳۳٬۳۳۳ + ۳٬۳۳۳٬۳۳۴. وگرنه جمعِ چیزی که
+     *    کاربر می‌بیند با تعهدش نمی‌خواند و یک اختلافِ چندریالیِ ابدی
+     *    می‌ماند.
+     *
+     * ⚠ اگر تعهدِ چندقسطی در کار نباشد (`total_count = 0`)، همان
+     *   `amount` برمی‌گردد — یعنی یادآورهای موجود دست‌نخورده می‌مانند.
+     *
+     * @param int $index شماره‌ی قسط از ۱؛ ۰ یعنی «قسطِ جاری» از `done_count`
+     */
+    public static function installmentAmount(array $rule, int $index = 0): int
+    {
+        $count = (int)($rule['total_count'] ?? 0);
+        $total = (int)($rule['total_amount'] ?? 0);
+        if ($count < 2 || $total <= 0) { return (int)($rule['amount'] ?? 0); }
+
+        if ($index < 1) { $index = (int)($rule['done_count'] ?? 0) + 1; }
+        $index = max(1, min($count, $index));
+
+        $base = intdiv($total, $count);
+        return $index === $count ? $total - $base * ($count - 1) : $base;
+    }
+
     public static function available(): bool
     {
         static $ok = null;
@@ -86,6 +152,17 @@ class Schedule
         if ($type === 'once') { return null; }
 
         $n = max(1, (int)($rule['recurrence_n'] ?? 1));
+
+        // ⛔ دوره‌ی روزانه از تقویم رد نمی‌شود و نباید بشود: «هر ۱۵ روز»
+        //    در هر تقویمی دقیقاً ۱۵ روز است. بردنش به `jalaliAddMonths()`
+        //    یعنی ترجمه‌ی روز به ماه — که برای ۷ و ۱۵ اصلاً معنا ندارد.
+        //
+        // ⚠ روزِ لنگر هم اینجا بی‌معناست: کسی که «هر ۱۵ روز» می‌گوید
+        //   انتظار ندارد تاریخ به روزِ ثابتی از ماه برگردد.
+        if ($type === 'every_n_days') {
+            return date('Y-m-d', strtotime($fromGregorian . ' +' . $n . ' day'));
+        }
+
         $months = $type === 'yearly' ? 12 * $n : $n;
 
         return jalaliAddMonths(

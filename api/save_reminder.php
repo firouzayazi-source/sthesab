@@ -9,6 +9,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/notify.php';
+require_once __DIR__ . '/../includes/schedule.php';
 
 Auth::initSession();
 header('Content-Type: application/json; charset=utf-8');
@@ -51,23 +52,41 @@ if (postParam('toggle_done') === '1' && $id > 0) {
     //    می‌رود. اگر مثل یادآورِ یک‌باره بسته می‌شد، کاربرِ بیمه‌ی
     //    سالانه باید هر سال دستی یکی تازه می‌ساخت — یعنی همان کاری که
     //    قرار بود یادآور از دوشش بردارد.
-    // ⛔ تاریخِ بعدی از `jalaliAddMonths()` می‌آید — همان تابعی که هسته‌ی
-    //    مشترکِ سررسید از آن رد می‌شود و **روزِ لنگر** می‌گیرد. بدونِ
-    //    لنگر، ۳۱ فروردین بعد از یک بار افتادن در یک ماهِ ۳۰ روزه برای
-    //    همیشه ۳۰ می‌ماند.
-    $rt = (string)($row['recurrence_type'] ?? 'once');
-    $rn = max(1, (int)($row['recurrence_n'] ?? 1));
-    if ($rt === 'yearly' || $rt === 'every_n_months') {
-        $step   = $rt === 'yearly' ? 12 : $rn;
-        $anchor = (int)($row['anchor_day'] ?? 0);
-        $next   = jalaliAddMonths((string)$row['remind_date'], $step, $anchor,
-                                  (string)($row['day_rule'] ?? 'fixed_day'));
-        $pdo->prepare('
-            UPDATE reminders SET remind_date = :d, last_notified_on = NULL
-            WHERE id = :i AND user_id = :u
-        ')->execute(['d' => $next, 'i' => $id, 'u' => $userId]);
+    // ⛔ تاریخِ بعدی از `Schedule::nextDue()` می‌آید، نه از حسابِ محلی —
+    //    همان تابعی که کلِ هسته‌ی سررسید از آن رد می‌شود و **روزِ لنگر**
+    //    می‌گیرد. با نسخه‌ی دوم، «هر ۱۵ روز» اینجا و در `due.php` دو
+    //    تاریخ می‌گفتند، بی‌آنکه هیچ‌کدام خطا بدهد.
+    $next = Schedule::nextDue($row, (string)$row['remind_date']);
+    if ($next !== null) {
+        // ⛔ تعهدِ چندقسطی سرِ قسطِ آخر بسته می‌شود، نه اینکه تا ابد
+        //    جلو برود. بدونِ این، «۱۲ قسط» با «بی‌پایان» یکی می‌شد و
+        //    شمارنده فقط تزئین بود.
+        $total = (int)($row['total_count'] ?? 0);
+        $done  = (int)($row['done_count'] ?? 0) + 1;
+
+        if ($total > 0 && $done >= $total) {
+            $pdo->prepare('
+                UPDATE reminders SET is_done = 1, done_count = :c
+                WHERE id = :i AND user_id = :u
+            ')->execute(['c' => $total, 'i' => $id, 'u' => $userId]);
+            jsonResponse(['success' => true, 'message' => 'قسط آخر هم انجام شد — این یادآور تمام شد.']);
+        }
+
+        $sql = $total > 0
+            ? 'UPDATE reminders SET remind_date = :d, done_count = :c, last_notified_on = NULL
+               WHERE id = :i AND user_id = :u'
+            : 'UPDATE reminders SET remind_date = :d, last_notified_on = NULL
+               WHERE id = :i AND user_id = :u';
+        $args = ['d' => $next, 'i' => $id, 'u' => $userId];
+        if ($total > 0) { $args['c'] = $done; }
+        $pdo->prepare($sql)->execute($args);
+
         unset($_SESSION['notify_scan']);
-        jsonResponse(['success' => true, 'message' => 'انجام شد — یادآور بعدی ' . toJalali($next)]);
+        $msg = 'انجام شد — یادآور بعدی ' . toJalali($next);
+        if ($total > 0) {
+            $msg .= ' (قسط ' . toPersianDigits((string)($done + 1)) . ' از ' . toPersianDigits((string)$total) . ')';
+        }
+        jsonResponse(['success' => true, 'message' => $msg]);
     }
 
     // ⚠ نصب‌های قدیمی که هنوز فقط `repeat_every` دارند.
@@ -126,23 +145,38 @@ $note  = trim(postParam('note'));
 // ⛔ مدلِ تکرار حالا یکی است: نوع + N. «هر سال» فقط N=۱۲ نیست بلکه
 //    نوعِ خودش را دارد، چون کاربر «سالانه» را می‌فهمد و «۱۲ ماه» را
 //    باید در ذهنش ترجمه کند.
+// ⚠ فهرستِ انواع از `Schedule` می‌آید، نه از اینجا: با فهرستِ دوم،
+//   گزینه‌ای که فرم نشان می‌دهد اینجا بی‌صدا رد می‌شد و به «یک بار»
+//   برمی‌گشت — همان چیزی که سرِ `SESSION_WINDOWS` گفته شد.
 $rtype = postParam('recurrence_type', 'once');
-if (!in_array($rtype, ['once', 'every_n_months', 'yearly'], true)) { $rtype = 'once'; }
+if (!in_array($rtype, Schedule::RECUR_TYPES, true)) { $rtype = 'once'; }
 $rn = max(1, min(60, (int)postParam('recurrence_n', '1')));
 
 // ⚠ `repeat_every` هنوز نوشته می‌شود: نصب‌ها و کدِ قدیمی از آن می‌خوانند
 //   و رهایش کردن یعنی یادآورِ تکرارشونده در آن مسیرها یک‌باره دیده شود.
+// ⚠ دوره‌ی روزانه معادلِ قدیمی ندارد؛ نزدیک‌ترین چیز `monthly` است تا
+//   دستِ‌کم «تکرارشونده» دیده شود، نه «یک‌باره».
 $rep = match ($rtype) {
     'yearly'         => 'yearly',
     'every_n_months' => $rn === 12 ? 'yearly' : 'monthly',
+    'every_n_days'   => 'monthly',
     default          => 'none',
 };
 
 // ⛔ چند بازه با هم. ورودی از کاربر می‌آید پس هر مقدارِ بی‌ربطی کنار
 //    گذاشته می‌شود، وگرنه یک JSON آشغال در ستون می‌نشیند و کرونِ اعلان
 //    بی‌صدا هیچ چیزی نمی‌فرستد.
-$daysIn  = (array)($_POST['notify_days'] ?? []);
-$allowed = [1, 3, 7, 30];
+//
+// ⚠ دو شکلِ ورودی پذیرفته می‌شود چون فرم از چیپ (یک رشته‌ی JSON) استفاده
+//   می‌کند ولی `api/v1` و هر کلاینتِ قدیمی ممکن است هنوز آرایه بفرستند.
+//   نپذیرفتنِ یکی یعنی روزهای اعلان بی‌صدا به پیش‌فرض برگردد.
+$daysRaw = $_POST['notify_days'] ?? [];
+if (is_string($daysRaw)) {
+    $decoded = json_decode($daysRaw, true);
+    $daysRaw = is_array($decoded) ? $decoded : [];
+}
+$daysIn  = (array)$daysRaw;
+$allowed = Notify::REMINDER_STEPS;   // تنها مرجع — فهرستِ دوم نسازید.
 $days    = array_values(array_unique(array_filter(
     array_map('intval', $daysIn),
     fn ($d) => in_array($d, $allowed, true)
@@ -155,6 +189,34 @@ if (!isValidDate($date)) { jsonResponse(['success' => false, 'message' => 'تا�
 
 $amountRaw = trim(postParam('amount'));
 $amount    = $amountRaw === '' ? null : max(0, (int)sanitizeAmount($amountRaw));
+
+// ⛔ تعهدِ چندقسطی: یک بار ثبت، N سررسید.
+//
+//    هیچ ردیفِ قسطی ساخته نمی‌شود — فقط «چندمین از چندتا» روی خودِ قانون
+//    می‌نشیند؛ دلیلش در `migration_reminder_plan.sql` نوشته شده و همان
+//    دلیلِ مجازی بودنِ `debtInstallments()` است.
+//
+// ⚠ تعداد فقط برای تکرارشونده معنا دارد: «یک بار، ۱۲ قسط» یعنی هیچ.
+$count = max(0, min(600, (int)postParam('total_count', '0')));
+if ($rtype === 'once') { $count = 0; }
+
+// ⛔ «۱۲ قسط، ۱۲ میلیون» دو معنی دارد و حدس زدنش یعنی عددِ کارت
+//    ده‌برابرِ واقعیت شود، بی‌هیچ خطایی. پس خودِ کاربر می‌گوید کدام است
+//    و هر دو مقدار ذخیره می‌شوند: `amount` مبلغِ همین قسط، و
+//    `total_amount` جمعِ کل.
+//
+// ⚠ باقیمانده‌ی تقسیم به قسطِ **آخر** می‌رود (قاعده‌ی `debtInstallments()`)،
+//   پس `amount` عددِ قسط‌های عادی است و قسطِ آخر هنگام نمایش از
+//   `Schedule::installmentAmount()` حساب می‌شود.
+$totalAmount = null;
+if ($count > 1 && $amount !== null && $amount > 0) {
+    if (postParam('amount_mode', 'each') === 'total') {
+        $totalAmount = $amount;
+        $amount      = intdiv($totalAmount, $count);
+    } else {
+        $totalAmount = $amount * $count;
+    }
+}
 
 // ⛔ روزِ لنگر از روزِ **شمسیِ** خودِ تاریخ برداشته می‌شود، نه میلادی —
 //    وگرنه «۳۱ فروردین» به روزِ ۲۰ آوریل لنگر می‌خورد و تکرار بی‌معنا
@@ -172,6 +234,8 @@ $params = [
     'rn' => $rn,
     'ad' => $anchorDay,
     'nd' => json_encode($days),
+    'tc' => $count,
+    'ta' => $totalAmount,
 ];
 
 if ($id > 0) {
@@ -181,7 +245,8 @@ if ($id > 0) {
         UPDATE reminders
         SET title = :t, remind_date = :d, note = :n, amount = :a, repeat_every = :r,
             recurrence_type = :rt, recurrence_n = :rn, anchor_day = :ad,
-            notify_days_before = :nd, last_notified_on = NULL
+            notify_days_before = :nd, total_count = :tc, total_amount = :ta,
+            last_notified_on = NULL
         WHERE id = :i AND user_id = :u
           AND (source_type = 'custom' OR source_type IS NULL)
     ");
@@ -196,16 +261,23 @@ if ($id > 0) {
     jsonResponse(['success' => true, 'message' => 'یادآور بروزرسانی شد.']);
 }
 
-$pdo->prepare('
-    INSERT INTO reminders (user_id, source_type, title, remind_date, note, amount,
-                           repeat_every, recurrence_type, recurrence_n, anchor_day,
-                           notify_days_before)
-    VALUES (:u, :st, :t, :d, :n, :a, :r, :rt, :rn, :ad, :nd)
 // ⛔ صریح: این صفحه فقط یادآورِ **دلخواه** می‌سازد. قانون‌های چک و بدهی را
 //    `syncScheduleRules()` می‌سازد؛ اگر اینجا هم `custom` نمی‌نشست، ردیف
 //    از فهرستِ «یادآورهای من» بیرون می‌ماند و کاربر فکر می‌کرد ذخیره نشد.
-// ⚠ فقط به INSERT داده می‌شود، نه به UPDATE — پارامترِ bind شده‌ای که در
-//   SQL نباشد با `EMULATE_PREPARES=false` خطا می‌دهد.
+//
+// ⛔ و این توضیح **بیرونِ** رشته‌ی SQL است، نه داخلش. یک بار همین دو خط
+//    داخلِ کوتیشن نوشته شدند و MySQL کامنتِ `//` نمی‌شناسد: هر ثبتِ
+//    یادآورِ تازه با خطای نحوی رد می‌شد، در حالی که `php -l` سبز بود و
+//    ویرایش و «انجام شد» هم درست کار می‌کردند. قاعده ۱۷ در
+//    `test_api_contract.php` این را می‌سنجد.
+//
+// ⚠ `st` فقط به INSERT داده می‌شود، نه به UPDATE — پارامترِ bind شده‌ای که
+//   در SQL نباشد با `EMULATE_PREPARES=false` خطا می‌دهد.
+$pdo->prepare('
+    INSERT INTO reminders (user_id, source_type, title, remind_date, note, amount,
+                           repeat_every, recurrence_type, recurrence_n, anchor_day,
+                           notify_days_before, total_count, total_amount)
+    VALUES (:u, :st, :t, :d, :n, :a, :r, :rt, :rn, :ad, :nd, :tc, :ta)
 ')->execute($params + ['st' => 'custom']);
 
 jsonResponse(['success' => true, 'message' => 'یادآور ثبت شد.']);
