@@ -609,13 +609,37 @@ document.addEventListener('DOMContentLoaded', function () {
             // ویرایش: همان فرم پر می‌شود، نه یک مودالِ دوم — با فرمِ دوم
             // اعتبارسنجی و تقویم باید دو بار نوشته می‌شدند.
             var resetBtn = document.querySelector('.js-reminder-reset');
+            // ⛔ فیلدِ «هر چند ماه» فقط با گزینه‌ی خودش دیده می‌شود. همیشه
+            //    نشان دادنش یعنی کاربرِ یادآورِ یک‌باره یک عددِ بی‌معنا
+            //    جلویش دارد و فکر می‌کند لازم است پرش کند.
+            var repeatSel = document.getElementById('rm_repeat');
+            function syncReminderN() {
+                var wrap = document.getElementById('rm_n_wrap');
+                if (!wrap || !repeatSel) { return; }
+                wrap.hidden = repeatSel.value !== 'every_n_months';
+            }
+            if (repeatSel) {
+                repeatSel.addEventListener('change', syncReminderN);
+                syncReminderN();
+            }
+
             document.querySelectorAll('.js-reminder-edit').forEach(function (b) {
                 b.addEventListener('click', function () {
                     document.getElementById('rm_id').value      = b.dataset.id;
                     document.getElementById('rm_title').value   = b.dataset.title;
                     document.getElementById('rm_note').value    = b.dataset.note || '';
-                    document.getElementById('rm_repeat').value  = b.dataset.repeat || 'none';
+                    document.getElementById('rm_repeat').value  = b.dataset.rtype || 'once';
                     document.getElementById('rm_amount').value  = b.dataset.amount !== '0' ? b.dataset.amount : '';
+                    var nInput = document.getElementById('rm_n');
+                    if (nInput) { nInput.value = b.dataset.rn || '1'; }
+                    // ⛔ روزهای اعلان یک آرایه‌ی JSON است. اگر خرابِ ذخیره شده
+                    //    باشد نباید کلِ فرم بایستد — تیک‌ها فقط پاک می‌شوند.
+                    var picked = [];
+                    try { picked = JSON.parse(b.dataset.days || '[1]') || []; } catch (err) { picked = []; }
+                    document.querySelectorAll('input[name="notify_days[]"]').forEach(function (c) {
+                        c.checked = picked.indexOf(parseInt(c.value, 10)) !== -1;
+                    });
+                    syncReminderN();
                     var disp = document.getElementById('rm_date_display');
                     if (disp) { disp.value = b.dataset.date; }
                     if (resetBtn) { resetBtn.hidden = false; }

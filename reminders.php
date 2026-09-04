@@ -24,9 +24,20 @@ $ready  = Notify::remindersAvailable();
 $rows = [];
 if ($ready) {
     // ⚠ ترتیب: انجام‌نشده‌ها اول و نزدیک‌ترین بالا؛ انجام‌شده‌ها ته فهرست.
+    // ⛔ فقط یادآورهای **دلخواهِ خودِ کاربر**، نه قانون‌های چک و بدهی.
+    //
+    //    `syncScheduleRules()` برای هر چک و طلب و بدهی و تراکنشِ دوره‌ای
+    //    یک ردیف در همین جدول می‌سازد (`source_type` مقدارش را می‌گوید).
+    //    این کوئری قبل از آمدنِ آن ستون نوشته شده بود و همه را می‌آورد،
+    //    پس این صفحه پر شد از چیزهایی که **بخشِ خودشان** از قبل خبرشان
+    //    را می‌دهد — و کاربر همان یادآورِ چک را دو جا می‌دید.
+    //
+    // ⚠ `source_type IS NULL` هم می‌آید: ردیف‌هایی که پیش از migration
+    //   ساخته شده‌اند مالِ خودِ کاربرند و نباید ناپدید شوند.
     $stmt = $pdo->prepare('
         SELECT * FROM reminders
         WHERE user_id = :u
+          AND (source_type = \'custom\' OR source_type IS NULL)
         ORDER BY is_done ASC, remind_date ASC, id ASC
     ');
     $stmt->execute(['u' => $userId]);
@@ -88,17 +99,42 @@ include __DIR__ . '/includes/header.php';
                    class="amount-input-sm" placeholder="اگر می‌دانید چقدر است">
         </div>
 
+        <?php /* ⛔ «هر ماه / هر سال» برای بیمه‌ی تأمین اجتماعی (هر ۴ ماه) و
+                 خیلی از تعهدهای واقعی کافی نبود. حالا N خودش عدد می‌گیرد
+                 و «هر سال» فقط N=12 است — یعنی یک مدل، نه سه حالتِ جدا. */ ?>
         <div class="form-group">
             <label for="rm_repeat">تکرار</label>
-            <select id="rm_repeat" name="repeat_every">
-                <option value="none">یک بار</option>
-                <option value="monthly">هر ماه</option>
+            <select id="rm_repeat" name="recurrence_type">
+                <option value="once">یک بار</option>
+                <option value="every_n_months">هر چند ماه یک بار</option>
                 <option value="yearly">هر سال</option>
             </select>
-            <p class="hint">
-                بعد از اینکه «انجام شد» بزنید، یادآورِ تکرارشونده خودش به
-                دوره‌ی بعد می‌رود.
-            </p>
+        </div>
+
+        <div class="form-group" id="rm_n_wrap" hidden>
+            <label for="rm_n">هر چند ماه؟</label>
+            <input type="number" id="rm_n" name="recurrence_n" min="1" max="60" value="4"
+                   inputmode="numeric" class="amount-input-sm">
+            <p class="hint">مثلاً بیمه‌ی تأمین اجتماعی: <span class="ltr-num">۴</span> ماه.</p>
+        </div>
+
+        <?php /* ⛔ چند بازه با هم، نه یکی. کسی که می‌خواهد یک هفته قبل
+                 خبردار شود اغلب می‌خواهد یک روز قبل هم یادش بیفتد. ستون
+                 `notify_days_before` از اول آرایه‌ی JSON بود؛ فقط فرمش
+                 نبود. */ ?>
+        <div class="form-group">
+            <label>چند روز قبل خبر بدهد؟</label>
+            <div class="notify-days">
+                <?php foreach ([1 => 'یک روز', 3 => 'سه روز', 7 => 'یک هفته', 30 => 'یک ماه'] as $d => $lbl): ?>
+                    <label class="switch switch-sm notify-day">
+                        <input type="checkbox" name="notify_days[]" value="<?= $d ?>"
+                               <?= $d === 1 ? 'checked' : '' ?>>
+                        <span class="switch-track"><span class="switch-knob"></span></span>
+                        <span class="switch-text"><?= $lbl ?> قبل</span>
+                    </label>
+                <?php endforeach; ?>
+            </div>
+            <p class="hint">هرکدام را که خواستید بزنید — هر سه هم می‌شود.</p>
         </div>
 
         <div class="form-group">
@@ -146,8 +182,25 @@ include __DIR__ . '/includes/header.php';
                             <?php if (!empty($r['amount'])): ?>
                                 <span class="reminder-amount ltr-num"><?= formatMoney((int)$r['amount']) ?></span>
                             <?php endif; ?>
-                            <?php if ($r['repeat_every'] !== 'none'): ?>
-                                <span class="asset-tag"><?= $r['repeat_every'] === 'monthly' ? 'ماهانه' : 'سالانه' ?></span>
+                            <?php
+                                $rt = (string)($r['recurrence_type'] ?? 'once');
+                                $rn = max(1, (int)($r['recurrence_n'] ?? 1));
+                                $repLabel = match ($rt) {
+                                    'yearly'         => 'هر سال',
+                                    'every_n_months' => $rn === 1 ? 'هر ماه' : 'هر ' . toPersianDigits((string)$rn) . ' ماه',
+                                    default          => '',
+                                };
+                            ?>
+                            <?php if ($repLabel !== ''): ?>
+                                <span class="asset-tag"><?= $repLabel ?></span>
+                            <?php endif; ?>
+                            <?php
+                                $days = json_decode((string)($r['notify_days_before'] ?? '[1]'), true);
+                                $days = is_array($days) ? array_values(array_filter(array_map('intval', $days))) : [];
+                                rsort($days);
+                            ?>
+                            <?php if ($days): ?>
+                                <span class="asset-tag">اعلان: <?= toPersianDigits(implode('، ', $days)) ?> روز قبل</span>
                             <?php endif; ?>
                         </div>
                         <?php if (!empty($r['note'])): ?>
@@ -161,11 +214,30 @@ include __DIR__ . '/includes/header.php';
                                 data-title="<?= h($r['title']) ?>"
                                 data-date="<?= h(toJalali($r['remind_date'])) ?>"
                                 data-amount="<?= (int)($r['amount'] ?? 0) ?>"
-                                data-repeat="<?= h($r['repeat_every']) ?>"
+                                data-rtype="<?= h((string)($r['recurrence_type'] ?? 'once')) ?>"
+                                data-rn="<?= (int)($r['recurrence_n'] ?? 1) ?>"
+                                data-days="<?= h((string)($r['notify_days_before'] ?? '[1]')) ?>"
                                 data-note="<?= h((string)($r['note'] ?? '')) ?>"
                                 aria-label="ویرایش">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg>
                         </button>
+                        <?php /* ⛔ «به تأخیر» جدا از «انجام شد» است و جدا از «حذف».
+                                 بدونِ آن، کاربری که قبضش را هنوز نداده تنها
+                                 راهش «انجام شد» زدن بود — یعنی دروغ گفتن به
+                                 دفترِ خودش — یا حذف کردن، که یادآور را برای
+                                 همیشه می‌برد. */ ?>
+                        <?php if (!$done): ?>
+                        <form method="POST" action="<?= APP_BASE_PATH ?>/api/save_reminder.php"
+                              class="js-reminder-done" style="display:inline;">
+                            <?= Csrf::field() ?>
+                            <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+                            <input type="hidden" name="snooze_days" value="7">
+                            <button type="submit" class="btn btn-secondary btn-sm"
+                                    aria-label="یک هفته به تأخیر بینداز" title="یک هفته به تأخیر">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                            </button>
+                        </form>
+                        <?php endif; ?>
                         <form method="POST" action="<?= APP_BASE_PATH ?>/api/delete_reminder.php"
                               class="js-reminder-delete" style="display:inline;">
                             <?= Csrf::field() ?>

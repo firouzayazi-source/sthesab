@@ -168,6 +168,35 @@ try {
     }
 
     // ---------------------------------------------------------------
+    // ⛔ رگرسیونِ واقعی: با آمدنِ هسته‌ی مشترکِ سررسید،
+    //    `syncScheduleRules()` برای هر چک و طلب و بدهی یک ردیف در همین
+    //    جدولِ `reminders` می‌سازد. کوئریِ صفحه‌ی «یادآورهای من» پیش از
+    //    آن نوشته شده بود و شرطِ `source_type` نداشت، پس آن صفحه پر شد
+    //    از قانون‌هایی که **بخشِ خودشان** از قبل خبرشان را می‌دهد — و
+    //    کاربر همان چک را دو جا می‌دید.
+    T::group('⛔ صفحه‌ی یادآور فقط یادآورِ دلخواه را نشان می‌دهد');
+
+    $pdo->prepare("INSERT INTO reminders (user_id, source_type, source_id, title, remind_date)
+                   VALUES (:u, 'cheque', 987654, 'چکِ ساختگیِ تست', :d)")
+        ->execute(['u' => $uidA, 'd' => $today]);
+
+    // همان کوئریِ خودِ `reminders.php` — نه یک نسخه‌ی تازه، وگرنه تست
+    // چیزی را می‌سنجد که صفحه نمی‌سنجد.
+    $listSql = "SELECT title FROM reminders
+                WHERE user_id = :u AND (source_type = 'custom' OR source_type IS NULL)";
+    $st = $pdo->prepare($listSql);
+    $st->execute(['u' => $uidA]);
+    $titles = $st->fetchAll(PDO::FETCH_COLUMN);
+
+    T::ok(!in_array('چکِ ساختگیِ تست', $titles, true),
+        '⛔ قانونِ مشتق‌شده از چک در فهرستِ «یادآورهای من» نمی‌آید');
+
+    $allSt = $pdo->prepare('SELECT COUNT(*) FROM reminders WHERE user_id = :u');
+    $allSt->execute(['u' => $uidA]);
+    T::ok((int)$allSt->fetchColumn() > count($titles),
+        'ولی ردیفش در جدول هست — فقط از این صفحه بیرون است، نه پاک شده');
+
+    // ---------------------------------------------------------------
     T::group('پاک کردن فقط مالِ خودِ کاربر است');
 
     Notify::deleteAll($uidA);
