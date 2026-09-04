@@ -85,11 +85,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         //    نداشت. نتیجه‌اش همان خطای همیشگی بود و کاربر فکر می‌کرد
         //    گزینه‌ی تازه هم جواب نداد. حالا یک فرم است و تست دقیقاً با
         //    همان چیزی می‌رود که روی صفحه می‌بینید.
-        if (postParam('do') !== 'test') {
+        // ⛔ تصمیم از روی **خودِ فیلدِ شماره** گرفته می‌شود، نه یک دکمه‌ی
+        //    دوم: خالی یعنی فقط ذخیره، پر یعنی ذخیره و بعد آزمایش. یک
+        //    ورودی، یک معنا.
+        $phoneIn = trim(postParam('test_phone'));
+        if ($phoneIn === '') {
             redirectWithMessage('access.php', 'success', 'تنظیمات پیامک ذخیره شد.');
         }
 
-        $to = SmsLogin::normalizePhone(postParam('test_phone'));
+        $to = SmsLogin::normalizePhone($phoneIn);
         if ($to === null) {
             redirectWithMessage('access.php', 'error',
                 'تنظیمات ذخیره شد، ولی شماره‌ی آزمایشی معتبر نیست.');
@@ -254,13 +258,16 @@ include __DIR__ . '/../includes/header.php';
             <label for="test_mp">ارسال آزمایشی (اختیاری)</label>
             <input type="tel" id="test_mp" name="test_phone" dir="ltr"
                    inputmode="numeric" class="phone-input" placeholder="09123456789">
-            <p class="hint">کد ۱۲۳۴۵ فرستاده می‌شود و اگر نرود، متنِ خطای پنل نشان داده می‌شود.</p>
+            <p class="hint">اگر پر باشد، با ذخیره یک کد آزمایشی هم به همین شماره می‌رود و نتیجه‌اش (موفق یا خطای خامِ پنل) بالای صفحه نشان داده می‌شود. خالی بگذارید تا فقط ذخیره شود.</p>
         </div>
 
-        <div class="sms-actions">
-            <button type="submit" name="do" value="save" class="btn btn-secondary">ذخیرهٔ تنظیمات</button>
-            <button type="submit" name="do" value="test" class="btn btn-primary">ذخیره و ارسال آزمایشی</button>
-        </div>
+        <?php /* ⛔ **یک** دکمه، نه دو تا. دو دکمه‌ی «ذخیره» و «ذخیره و
+                 ارسال آزمایشی» کنارِ هم شبیه دو جای تست خوانده می‌شدند و
+                 کاربر اولی را می‌زد و منتظرِ پیامک می‌ماند. حالا کارِ
+                 دکمه از پرِ بودنِ شماره‌ی آزمایشی معلوم می‌شود و
+                 برچسبش هم همان را می‌گوید. بدونِ جاوااسکریپت هم درست
+                 کار می‌کند: تصمیم را سرور از روی همان فیلد می‌گیرد. */ ?>
+        <button type="submit" class="btn btn-primary btn-block js-sms-submit">ذخیرهٔ تنظیمات</button>
     </form>
 </div>
 
@@ -351,13 +358,16 @@ include __DIR__ . '/../includes/header.php';
             <label for="test_kv">ارسال آزمایشی (اختیاری)</label>
             <input type="tel" id="test_kv" name="test_phone" dir="ltr"
                    inputmode="numeric" class="phone-input" placeholder="09123456789">
-            <p class="hint">کد ۱۲۳۴۵ فرستاده می‌شود و اگر نرود، متنِ خطای پنل نشان داده می‌شود.</p>
+            <p class="hint">اگر پر باشد، با ذخیره یک کد آزمایشی هم به همین شماره می‌رود و نتیجه‌اش (موفق یا خطای خامِ پنل) بالای صفحه نشان داده می‌شود. خالی بگذارید تا فقط ذخیره شود.</p>
         </div>
 
-        <div class="sms-actions">
-            <button type="submit" name="do" value="save" class="btn btn-secondary">ذخیرهٔ تنظیمات</button>
-            <button type="submit" name="do" value="test" class="btn btn-primary">ذخیره و ارسال آزمایشی</button>
-        </div>
+        <?php /* ⛔ **یک** دکمه، نه دو تا. دو دکمه‌ی «ذخیره» و «ذخیره و
+                 ارسال آزمایشی» کنارِ هم شبیه دو جای تست خوانده می‌شدند و
+                 کاربر اولی را می‌زد و منتظرِ پیامک می‌ماند. حالا کارِ
+                 دکمه از پرِ بودنِ شماره‌ی آزمایشی معلوم می‌شود و
+                 برچسبش هم همان را می‌گوید. بدونِ جاوااسکریپت هم درست
+                 کار می‌کند: تصمیم را سرور از روی همان فیلد می‌گیرد. */ ?>
+        <button type="submit" class="btn btn-primary btn-block js-sms-submit">ذخیرهٔ تنظیمات</button>
     </form>
 
 
@@ -392,13 +402,16 @@ include __DIR__ . '/../includes/header.php';
             <label for="test_ir">ارسال آزمایشی (اختیاری)</label>
             <input type="tel" id="test_ir" name="test_phone" dir="ltr"
                    inputmode="numeric" class="phone-input" placeholder="09123456789">
-            <p class="hint">کد ۱۲۳۴۵ فرستاده می‌شود و اگر نرود، متنِ خطای پنل نشان داده می‌شود.</p>
+            <p class="hint">اگر پر باشد، با ذخیره یک کد آزمایشی هم به همین شماره می‌رود و نتیجه‌اش (موفق یا خطای خامِ پنل) بالای صفحه نشان داده می‌شود. خالی بگذارید تا فقط ذخیره شود.</p>
         </div>
 
-        <div class="sms-actions">
-            <button type="submit" name="do" value="save" class="btn btn-secondary">ذخیرهٔ تنظیمات</button>
-            <button type="submit" name="do" value="test" class="btn btn-primary">ذخیره و ارسال آزمایشی</button>
-        </div>
+        <?php /* ⛔ **یک** دکمه، نه دو تا. دو دکمه‌ی «ذخیره» و «ذخیره و
+                 ارسال آزمایشی» کنارِ هم شبیه دو جای تست خوانده می‌شدند و
+                 کاربر اولی را می‌زد و منتظرِ پیامک می‌ماند. حالا کارِ
+                 دکمه از پرِ بودنِ شماره‌ی آزمایشی معلوم می‌شود و
+                 برچسبش هم همان را می‌گوید. بدونِ جاوااسکریپت هم درست
+                 کار می‌کند: تصمیم را سرور از روی همان فیلد می‌گیرد. */ ?>
+        <button type="submit" class="btn btn-primary btn-block js-sms-submit">ذخیرهٔ تنظیمات</button>
     </form>
 </div>
 
@@ -438,6 +451,24 @@ include __DIR__ . '/../includes/header.php';
         document.querySelectorAll('.sms-conn').forEach(function (c) {
             c.hidden = c.getAttribute('data-for') !== sel.value;
         });
+    });
+})();
+
+/* ⛔ برچسبِ دکمه باید بگوید همین حالا چه اتفاقی می‌افتد. با برچسبِ
+   ثابت، کاربر شماره را پر می‌کرد، «ذخیره» می‌زد، و نمی‌دانست پیامک
+   رفت یا نه. */
+(function () {
+    document.querySelectorAll('.sms-conn form').forEach(function (f) {
+        var phone = f.querySelector('input[name="test_phone"]');
+        var btn   = f.querySelector('.js-sms-submit');
+        if (!phone || !btn) { return; }
+        function sync() {
+            btn.textContent = phone.value.trim() === ''
+                ? 'ذخیرهٔ تنظیمات'
+                : 'ذخیره و ارسال آزمایشی';
+        }
+        phone.addEventListener('input', sync);
+        sync();
     });
 })();
 
