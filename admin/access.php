@@ -114,6 +114,8 @@ $smsMethod     = Sms::method();
 $smsMissing    = $smsMethod === '' ? '' : Sms::missingFor($smsMethod);
 // ⛔ اعتبارنامه‌ی کامل با «کار می‌کند» یکی نیست — الگو هم لازم است.
 $patternWarning = smsPatternWarning();
+// ⛔ «ثبت شده» می‌گوید چیزی هست؛ این می‌گوید آن چیز چه شکلی است.
+$smsKeyShape    = smsSecretShape('sms_api_key', 'SMS_API_KEY');
 // ⚠ از `Sms::meliMode()` می‌آید، نه از یک شرطِ تازه در همین صفحه — وگرنه
 //   فرم یک نوعِ حساب را نشان می‌دهد و فرستنده نوعِ دیگری را صدا می‌زند.
 $meliMode      = Sms::meliMode();
@@ -312,7 +314,19 @@ include __DIR__ . '/../includes/header.php';
             <label for="mp_key">کلید وب‌سرویس <span class="req">*</span> <?php if ($smsHas['sms_api_key']): ?><span class="saved-chip">ثبت شده</span><?php endif; ?></label>
             <input type="text" id="mp_key" name="sms_api_key" autocomplete="off" dir="ltr"
                    placeholder="<?= h($smsMask['sms_api_key'] ?: 'کلید وب‌سرویس را بچسبانید') ?>">
-            <p class="hint">از بخش «تنظیمات» کنسول ملی‌پیامک، گزینهٔ کلید وب‌سرویس.</p>
+            <p class="hint">
+                از بخش «تنظیمات» کنسول ملی‌پیامک، گزینهٔ کلید وب‌سرویس.
+                <?php if ($smsKeyShape !== ''): ?>
+                    <?php /* ⛔ وقتی پنل می‌گوید «کلید معتبر نیست»، سؤالِ
+                             بعدی همیشه این است که آنچه ذخیره شده اصلاً
+                             شبیهِ کلید هست یا نه. بدونِ این خط، تنها راهِ
+                             فهمیدنش پاک کردن و دوباره چسباندن بود. */ ?>
+                    <br>مقدارِ ذخیره‌شده: <span class="ltr-num"><?= h($smsKeyShape) ?></span>.
+                    کلید وب‌سرویس کنسول معمولاً <span class="ltr-num">۳۶</span> نویسه و
+                    به شکل UUID است (<span class="ltr-num">xxxxxxxx-xxxx-…</span>). اگر
+                    آنچه ذخیره شده این شکل را ندارد، آن مقدار کلید وب‌سرویس نیست.
+                <?php endif; ?>
+            </p>
         </div>
 
         <div class="form-group mp-panel" <?= $meliMode === 'panel' ? '' : 'hidden' ?>>
