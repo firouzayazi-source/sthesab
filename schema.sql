@@ -177,3 +177,45 @@ CREATE TABLE IF NOT EXISTS `notifications` (
     CONSTRAINT `fk_notifications_user` FOREIGN KEY (`user_id`)
         REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_persian_ci;
+
+-- هسته‌ی مشترکِ سررسید (migration_schedule.sql)
+CREATE TABLE IF NOT EXISTS `reminder_occurrences` (
+    `id`          BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `reminder_id` INT NOT NULL,
+    `user_id`     INT UNSIGNED NOT NULL,
+    -- ⛔ میلادی ذخیره می‌شود؛ نمایشِ شمسی کارِ `toJalali()` است.
+    `due_date`    DATE NOT NULL,
+    -- pending | done | skipped | overdue
+    `status`      VARCHAR(16) NOT NULL DEFAULT 'pending',
+    `done_at`     DATETIME NULL,
+    `note`        VARCHAR(500) NULL,
+    `created_at`  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    -- ⛔ یک سررسید، یک ردیف. بدونِ این، چند بارِ اجرای تولیدکننده برای
+    --    یک تاریخ چند ردیف می‌ساخت و فهرستِ سررسیدها پر از تکراری می‌شد.
+    UNIQUE KEY `uq_occurrence` (`reminder_id`, `due_date`),
+    KEY `idx_occ_user_due` (`user_id`, `status`, `due_date`),
+    CONSTRAINT `fk_occ_reminder` FOREIGN KEY (`reminder_id`)
+        REFERENCES `reminders` (`id`) ON DELETE CASCADE,
+    CONSTRAINT `fk_occ_user` FOREIGN KEY (`user_id`)
+        REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_persian_ci;
+
+-- ---------- ۳. نگهبانِ «یک اعلان به‌ازای هر پله» ----------
+--
+-- ⛔ بدونِ این، کرونِ ساعتی هر ساعت همان اعلانِ «۳ روز مانده» را دوباره
+--    می‌ساخت. ایدمپوتنت بودنِ کرون از همین کلید می‌آید، نه از زمان‌بندی.
+CREATE TABLE IF NOT EXISTS `reminder_notifications` (
+    `id`            BIGINT AUTO_INCREMENT PRIMARY KEY,
+    `occurrence_id` BIGINT NOT NULL,
+    `user_id`       INT UNSIGNED NOT NULL,
+    -- ۰ = روزِ سررسید، عددِ منفی = بعد از سررسید (overdue)
+    `days_before`   SMALLINT NOT NULL,
+    `sent_at`       DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `uq_occ_step` (`occurrence_id`, `days_before`),
+    KEY `idx_rn_user` (`user_id`),
+    CONSTRAINT `fk_rn_occurrence` FOREIGN KEY (`occurrence_id`)
+        REFERENCES `reminder_occurrences` (`id`) ON DELETE CASCADE,
+    CONSTRAINT `fk_rn_user` FOREIGN KEY (`user_id`)
+        REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_persian_ci;
+
