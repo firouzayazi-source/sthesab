@@ -3282,3 +3282,10 @@ html[data-theme="dark"] .stay-chip.active { box-shadow: none; }
 }
 .conn-state strong { color: var(--ink); }
 .sms-test-inline { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+
+/* نسخه‌ی مستقرشده، زیرِ نوارِ بخش‌های مدیریت. عمداً کم‌رنگ و ریز است:
+   جواب دادنِ «آیا deploy نشست؟» مهم است، ولی هر روز خوانده نمی‌شود. */
+.deploy-stamp {
+    font-size: 11px; color: var(--muted);
+    margin: -8px 0 14px; text-align: left;
+}

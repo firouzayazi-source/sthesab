@@ -27,3 +27,19 @@ $__here = basename($_SERVER['SCRIPT_NAME'] ?? '');
            <?= $__here === $__file ? 'aria-current="page"' : '' ?>><?= h($__label) ?></a>
     <?php endforeach; ?>
 </nav>
+<?php
+/**
+ * ⛔ نسخه‌ی مستقرشده، همین‌جا و برای مدیر.
+ *
+ * بدونِ این، «آیا deploy من روی سرور نشست؟» فقط با SSH جواب داشت — و
+ * تا وقتی جواب نداشته باشد، هر رفتارِ قدیمی به‌حسابِ باگ گذاشته می‌شود
+ * و دنبالِ مشکلی می‌گردیم که اصلاً وجود ندارد. `deploy.sh` این مقدار
+ * را هنگام استقرار می‌نویسد، پس اگر عوض نشده باشد یعنی استقرار انجام
+ * نشده.
+ *
+ * ⚠ از `appVersion()` می‌آید که فایلِ `var/version.txt` را می‌خواند، نه
+ *   از `git` — pool این اپ `exec` را غیرفعال کرده.
+ */
+require_once __DIR__ . '/../includes/user_data.php';
+?>
+<p class="deploy-stamp">نسخه‌ی مستقرشده: <span class="ltr-num"><?= h(appVersion()) ?></span></p>
