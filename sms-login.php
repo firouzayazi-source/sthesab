@@ -145,9 +145,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?= Csrf::field() ?>
                 <div class="form-group">
                     <label for="phone">شماره موبایل</label>
+                    <?php /* ⚠ جای‌نگهدار با ارقامِ **لاتین** است: ورودی
+                             چپ‌به‌راست و `tabular-nums` است و ارقامِ فارسی
+                             آنجا پهنای دیگری دارند، پس جای‌نگهدار و مقدارِ
+                             واقعی روی هم نمی‌افتادند و فیلد می‌پرید. */ ?>
                     <input type="tel" id="phone" name="phone" required autofocus
-                           inputmode="tel" autocomplete="tel" maxlength="20"
-                           placeholder="۰۹۱۲۳۴۵۶۷۸۹" value="<?= h($phone) ?>">
+                           inputmode="numeric" autocomplete="tel" maxlength="20"
+                           class="phone-input" placeholder="09123456789"
+                           value="<?= h($phone) ?>">
                     <p class="hint">همان شماره‌ای که در پروفایلِ حسابتان ثبت شده است.</p>
                 </div>
                 <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ارسال…">فرستادن کد</button>

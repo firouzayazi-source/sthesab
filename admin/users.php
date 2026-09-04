@@ -284,6 +284,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $v = trim((string)$_POST[$k]);
             if ($v === '-') { $v = ''; }
             if ($v === '' && !$visible) { continue; } // مخفی و خالی = دست نزن
+            // ⚠ کلید و رمز اغلب از روی یک آدرسِ نمونه کپی می‌شوند؛ همان
+            //   تکه‌های اضافه باعثِ «کلید معتبر نیست» می‌شد.
+            if (!$visible && $v !== '') { $v = smsNormalizeSecret($v); }
             setSetting($k, $v);
         }
         redirectWithMessage('users.php', 'success', 'تنظیمات پیامک ذخیره شد.');
@@ -325,6 +328,13 @@ $meliMode      = Sms::meliMode();
 // نباید در سورسِ صفحه دیده شوند.
 $smsHas = [];
 foreach (SMS_SETTING_KEYS as $k => $const) { $smsHas[$k] = smsSetting($k, $const) !== ''; }
+// ⛔ فیلدِ خالی بعد از ذخیره دقیقاً شبیهِ «ذخیره نشد» است — و کاربر هم
+//    همین را فهمید. حالا جای‌نگهدارِ فیلد خودِ مقدارِ ماسک‌شده است، پس
+//    یک نگاه کافی است تا معلوم شود ثبت شده. رمز عبور دنباله نمی‌گیرد.
+$smsMask = [
+    'sms_api_key' => smsMaskedHint('sms_api_key', 'SMS_API_KEY'),
+    'sms_pass'    => smsMaskedHint('sms_pass', 'SMS_PASS', false),
+];
 $planOn        = planEnforced();
 $planPrice     = planMonthlyPrice();
 $planCard      = getSetting(PLAN_CARD_SETTING, '');
@@ -504,9 +514,9 @@ include __DIR__ . '/../includes/header.php';
         </div>
 
         <div class="form-group mp-console" <?= $meliMode === 'console' ? '' : 'hidden' ?>>
-            <label for="mp_key">کلید وب‌سرویس <span class="req">*</span></label>
+            <label for="mp_key">کلید وب‌سرویس <span class="req">*</span> <?php if ($smsHas['sms_api_key']): ?><span class="saved-chip">ثبت شده</span><?php endif; ?></label>
             <input type="text" id="mp_key" name="sms_api_key" autocomplete="off" dir="ltr"
-                   placeholder="<?= $smsHas['sms_api_key'] ? 'ثبت شده — خالی بگذارید تا تغییر نکند' : 'کلید وب‌سرویس را بچسبانید' ?>">
+                   placeholder="<?= h($smsMask['sms_api_key'] ?: 'کلید وب‌سرویس را بچسبانید') ?>">
             <p class="hint">از بخش «تنظیمات» کنسول ملی‌پیامک، گزینهٔ کلید وب‌سرویس.</p>
         </div>
 
@@ -518,9 +528,9 @@ include __DIR__ . '/../includes/header.php';
         </div>
 
         <div class="form-group mp-panel" <?= $meliMode === 'panel' ? '' : 'hidden' ?>>
-            <label for="mp_pass">رمز عبور پنل <span class="req">*</span></label>
+            <label for="mp_pass">رمز عبور پنل <span class="req">*</span> <?php if ($smsHas['sms_pass']): ?><span class="saved-chip">ثبت شده</span><?php endif; ?></label>
             <input type="text" id="mp_pass" name="sms_pass" autocomplete="off" dir="ltr"
-                   placeholder="<?= $smsHas['sms_pass'] ? 'ثبت شده — خالی بگذارید تا تغییر نکند' : '' ?>">
+                   placeholder="<?= h($smsMask['sms_pass'] ?: 'رمز عبور پنل') ?>">
             <p class="hint">خالی گذاشتنش یعنی «دست نزن»؛ برای پاک کردن یک خط تیره (-) بنویسید.</p>
         </div>
 
@@ -568,9 +578,9 @@ include __DIR__ . '/../includes/header.php';
         <?= Csrf::field() ?>
         <input type="hidden" name="action" value="update_sms_conn">
         <div class="form-group">
-            <label for="kv_key">کلید API <span class="req">*</span></label>
+            <label for="kv_key">کلید API <span class="req">*</span> <?php if ($smsHas['sms_api_key']): ?><span class="saved-chip">ثبت شده</span><?php endif; ?></label>
             <input type="text" id="kv_key" name="sms_api_key" autocomplete="off" dir="ltr"
-                   placeholder="<?= $smsHas['sms_api_key'] ? 'ثبت شده — خالی بگذارید تا تغییر نکند' : 'کلید پنل را بچسبانید' ?>">
+                   placeholder="<?= h($smsMask['sms_api_key'] ?: 'کلید پنل را بچسبانید') ?>">
         </div>
         <div class="form-group">
             <label for="kv_tpl">نام الگو <span class="hint">(verify/lookup)</span></label>
@@ -607,9 +617,9 @@ include __DIR__ . '/../includes/header.php';
         <?= Csrf::field() ?>
         <input type="hidden" name="action" value="update_sms_conn">
         <div class="form-group">
-            <label for="ir_key">کلید API <span class="req">*</span></label>
+            <label for="ir_key">کلید API <span class="req">*</span> <?php if ($smsHas['sms_api_key']): ?><span class="saved-chip">ثبت شده</span><?php endif; ?></label>
             <input type="text" id="ir_key" name="sms_api_key" autocomplete="off" dir="ltr"
-                   placeholder="<?= $smsHas['sms_api_key'] ? 'ثبت شده — خالی بگذارید تا تغییر نکند' : 'کلید پنل را بچسبانید' ?>">
+                   placeholder="<?= h($smsMask['sms_api_key'] ?: 'کلید پنل را بچسبانید') ?>">
         </div>
         <div class="form-group">
             <label for="ir_tpl">شناسهٔ الگو <span class="hint">(templateId)</span></label>

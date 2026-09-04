@@ -75,6 +75,45 @@ function smsCodeText(string $code, int $ttlMinutes): string
     return str_replace(['{code}', '{ttl}'], [$code, (string)$ttlMinutes], $tpl);
 }
 
+/**
+ * ⛔ نشانه‌ی «ثبت شده» برای مقدارِ محرمانه — ستاره به‌علاوه‌ی چند حرفِ آخر.
+ *
+ * فرم مقدارِ کلید و رمز را نشان نمی‌دهد (و نباید بدهد)، ولی فیلدِ خالی
+ * بعد از ذخیره دقیقاً شبیهِ «ذخیره نشد» است. همین یک ابهام باعث شد کاربر
+ * فکر کند کلید پاک می‌شود، در حالی که ذخیره شده بود.
+ *
+ * ⚠ برای کلید چهار حرفِ آخر می‌آید (تا بشود فهمید **کدام** کلید ثبت
+ *   شده)، ولی برای رمز عبور هیچ حرفی — رمز را نباید حتی تکه‌تکه نشان داد.
+ */
+function smsMaskedHint(string $key, string $constName, bool $showTail = true): string
+{
+    $v = smsSetting($key, $constName);
+    if ($v === '') { return ''; }
+    if (!$showTail || mb_strlen($v) <= 4) { return str_repeat('•', 10); }
+    return str_repeat('•', 10) . mb_substr($v, -4);
+}
+
+/**
+ * ⛔ کلیدِ چسبانده‌شده ممکن است یک **آدرس کامل** باشد، نه خودِ کلید.
+ *
+ * کنسول ملی‌پیامک کلید را داخل یک آدرسِ نمونه نشان می‌دهد، و کپی کردنِ
+ * کلِ آن طبیعی‌ترین کارِ ممکن است. نتیجه‌اش «کلید کنسول معتبر نیست» بود —
+ * پیامی که درست است ولی کاربر را دنبالِ کلیدِ تازه می‌فرستد، در حالی که
+ * کلیدش درست بوده و فقط چند تکه‌ی اضافه همراهش آمده.
+ *
+ * فاصله و نقل‌قول و اسلشِ آخر هم پاک می‌شوند — همه‌شان از کپی/پیست می‌آیند.
+ */
+function smsNormalizeSecret(string $v): string
+{
+    $v = trim($v, " \t\n\r\0\x0B\"'");
+    if (preg_match('~^https?://~i', $v)) {
+        $path = parse_url($v, PHP_URL_PATH) ?: '';
+        $seg  = array_values(array_filter(explode('/', $path), fn($s) => $s !== ''));
+        if ($seg !== []) { $v = end($seg); }
+    }
+    return trim($v, " \t\n\r\0\x0B\"'/");
+}
+
 /** پنل‌هایی که پشتیبانی می‌شوند و اینکه هرکدام چه می‌خواهد. */
 function smsProviders(): array
 {

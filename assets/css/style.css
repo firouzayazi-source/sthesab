@@ -427,8 +427,15 @@ html[data-theme="dark"] .summary-box { border: 1px solid var(--line); }
 .form-row { display: flex; gap: 11px; }
 .form-row .form-group { flex: 1; min-width: 0; }
 
+/* ⛔ `tel` و `search` یک بار از این فهرست جا افتاده بودند و نتیجه‌اش
+   **بی‌صدا** بود: آن فیلدها هیچ استایلی نمی‌گرفتند و مرورگر جعبه‌ی
+   پیش‌فرضِ خودش را می‌کشید — کوچک، با حاشیه‌ی آبی، کاملاً بیگانه با
+   بقیه‌ی اپ. روی صفحه‌ی «ورود با پیامک» که تنها فیلدش `tel` است، کلِ
+   صفحه شکسته به نظر می‌رسید. نوعِ تازه‌ای که اضافه می‌کنید هم باید
+   همین‌جا بیاید. */
 input[type="text"], input[type="password"], input[type="email"],
 input[type="number"], input[type="date"], input[type="color"],
+input[type="tel"], input[type="search"],
 select, textarea {
     width: 100%;
     padding: 11px 13px;
@@ -491,6 +498,33 @@ textarea { resize: vertical; }
     letter-spacing: 0.5em;
     padding-inline-start: 0.5em;   /* جبرانِ فاصله‌ی آخرین رقم */
     font-variant-numeric: tabular-nums;
+}
+
+/* شماره موبایل هم عدد است، پس مثل کدِ ورود چپ‌به‌راست و وسط‌چین —
+   قاعده‌ی «متنِ فارسی راست‌چین، عدد چپ‌چین». دو مرحله‌ی همین صفحه
+   (شماره و کد) حالا یک شکل‌اند و پرش بصری بینشان نیست. */
+.phone-input {
+    direction: ltr;
+    text-align: center;
+    font-size: 21px !important;
+    font-weight: 600;
+    letter-spacing: 0.10em;
+    padding: 15px 13px !important;
+    font-variant-numeric: tabular-nums;
+}
+.phone-input::placeholder { font-weight: 400; letter-spacing: 0.06em; opacity: .45; }
+
+/* نشانِ «ثبت شده» کنارِ برچسبِ کلید و رمز. فیلدِ خالی بعد از ذخیره
+   شبیهِ «ذخیره نشد» است؛ این نشان و جای‌نگهدارِ ماسک‌شده با هم ابهام
+   را برمی‌دارند. */
+.saved-chip {
+    display: inline-block;
+    font-size: 10.5px; font-weight: 700;
+    color: var(--in);
+    background: color-mix(in srgb, var(--in) 14%, transparent);
+    border-radius: 999px;
+    padding: 2px 8px;
+    vertical-align: 1px;
 }
 .privacy-p:last-child { margin-bottom: 0; }
 .privacy-p a { color: var(--gold); }
@@ -1315,7 +1349,8 @@ button.status-badge:active { transform: scale(.96); }
 
     /* جلوگیری از زوم خودکار iOS: فونت ورودی حداقل ۱۶px */
     input[type="text"], input[type="password"], input[type="email"],
-    input[type="number"], input[type="date"], select, textarea {
+    input[type="number"], input[type="date"],
+    input[type="tel"], input[type="search"], select, textarea {
         font-size: 16px; padding: 12px 13px;
     }
 
