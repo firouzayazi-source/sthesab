@@ -54,6 +54,12 @@ include __DIR__ . '/includes/header.php';
                     <?php if ($g['target_date']): ?>
                         <div class="goal-date">مهلت: <?= toJalali($g['target_date']) ?></div>
                     <?php endif; ?>
+                    <?php /* ⚠ نامِ حساب فقط وقتی رندر می‌شود که هم ستون آمده
+                             باشد هم حساب هنوز پاک نشده باشد — `ON DELETE SET
+                             NULL` یعنی این مقدار می‌تواند خالی شود. */ ?>
+                    <?php if (!empty($g['wallet_name'])): ?>
+                        <div class="goal-date">حساب: <?= h($g['wallet_name']) ?></div>
+                    <?php endif; ?>
                 </div>
                 <button type="button" class="wallet-menu js-edit-goal"
                     data-id="<?= (int)$g['id'] ?>"
@@ -61,6 +67,7 @@ include __DIR__ . '/includes/header.php';
                     data-target="<?= (int)$g['target_amount'] ?>"
                     data-date="<?= h($g['target_date'] ?? '') ?>"
                     data-color="<?= h($g['color']) ?>"
+                    data-wallet="<?= (int)($g['wallet_id'] ?? 0) ?>"
                     data-archived="<?= (int)$g['is_archived'] ?>"
                     aria-label="ویرایش">
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg>
@@ -111,6 +118,38 @@ include __DIR__ . '/includes/header.php';
                 <div class="form-group">
                     <label for="goal_color">رنگ</label>
                     <input type="color" id="goal_color" name="color" value="#16794f">
+                </div>
+            </div>
+
+            <?php /* ⛔ این پیوند **ارجاعی است، نه انتقالِ پول.** موجودیِ
+                     حساب هیچ تغییری نمی‌کند و `walletBalances()` دست
+                     نمی‌خورد — پس‌انداز یک «پاکتِ کنارگذاشته» روی پولی
+                     است که از قبل در حساب هست، نه یک خرج. اگر روزی
+                     موجودی را کم کند، موجودیِ هر کسی که تا امروز
+                     پس‌انداز ثبت کرده بی‌صدا عوض می‌شود.
+                     جوابِ این فیلد به یک سؤالِ واقعی است: «آن پولی که
+                     کنار گذاشته‌ام کجاست؟» */ ?>
+            <div class="form-group">
+                <label for="goal_wallet">در کدام حساب؟ (اختیاری)</label>
+                <select id="goal_wallet" name="wallet_id">
+                    <option value="0">مشخص نشده</option>
+                    <?php foreach (activeWallets($userId) as $w): ?>
+                        <option value="<?= (int)$w['id'] ?>"><?= h($w['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="hint">فقط برای اینکه بدانید این پول کجا کنار گذاشته شده — از موجودی حساب کم نمی‌شود.</p>
+            </div>
+
+            <?php /* پیش‌نمایشِ زنده: تا امروز کاربر رنگ را انتخاب می‌کرد و
+                     تا **بعد از ذخیره** هیچ‌جا نمی‌دید که چه شکلی می‌شود. */ ?>
+            <div class="goal-preview" id="goalPreview">
+                <div class="goal-preview-title" id="goalPreviewTitle">عنوان هدف</div>
+                <div class="budget-bar-track">
+                    <div class="budget-bar" id="goalPreviewBar" style="width:45%;"></div>
+                </div>
+                <div class="goal-preview-foot">
+                    <span id="goalPreviewWallet">مشخص نشده</span>
+                    <span class="budget-pct" id="goalPreviewPct">۴۵٪</span>
                 </div>
             </div>
 

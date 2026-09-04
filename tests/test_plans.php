@@ -200,4 +200,93 @@ $st = $pdo->prepare('SELECT COUNT(*) FROM payments WHERE user_id = :u');
 $st->execute(['u' => $uid]);
 T::same(3, (int)$st->fetchColumn(), '⛔ هیچ پرداختی حذف نمی‌شود، فقط وضعیتش عوض می‌شود');
 
+// ---------------------------------------------------------------
+// ⛔ هدیه‌ی مدیر: دسترسی کامل بدون پرداخت.
+//
+//    خطرِ اصلی اینجا **دو نسخه شدنِ حسابِ تاریخ** است: اگر هدیه از
+//    `planExtendUntil()` رد نشود، دیر یا زود با تأییدِ پرداخت فرق
+//    می‌کند و تفاوتش فقط در عددِ روزهای کاربر دیده می‌شود — یعنی
+//    بی‌صدا. پس اینجا هم همان قاعده‌ی «از انقضای فعلی، نه از امروز»
+//    سنجیده می‌شود.
+T::group('⛔ دسترسی رایگان توسط مدیر');
+
+// ⚠ کاربرِ جدا، چون `$uid` از بخش‌های بالا `pro_until` دارد و آن‌وقت
+//   «سه ماه از امروز» را نمی‌شد سنجید.
+$GRANTU = '__plan_grant_test';
+$pdo->prepare('DELETE FROM payments WHERE user_id IN (SELECT id FROM users WHERE username = :u)')
+    ->execute(['u' => $GRANTU]);
+$pdo->prepare('DELETE FROM users WHERE username = :u')->execute(['u' => $GRANTU]);
+$pdo->prepare(
+    "INSERT INTO users (username, password_hash, full_name, role, is_active)
+     VALUES (:u, :p, 'کاربر تست هدیه', 'user', 1)"
+)->execute(['u' => $GRANTU, 'p' => password_hash('x', PASSWORD_DEFAULT)]);
+$gid = (int)$pdo->lastInsertId();
+
+$g1 = grantPro($gid, 3, $adminId ?: $gid);
+T::ok(!empty($g1['ok']), 'هدیه‌ی سه‌ماهه ثبت شد', $g1['error'] ?? '');
+$exp3 = (new DateTime('today'))->modify('+3 month')->format('Y-m-d');
+T::same($exp3, userPlan($gid)['pro_until'], 'سه ماه از امروز');
+T::ok(userPlan($gid)['is_pro'], 'کاربر حالا Pro است');
+
+grantPro($gid, 2, $adminId ?: $gid);
+$exp5 = (new DateTime('today'))->modify('+3 month')->modify('+2 month')->format('Y-m-d');
+T::same($exp5, userPlan($gid)['pro_until'],
+    '⛔ تمدید از انقضای فعلی جلو می‌رود، نه از امروز — وگرنه کاربرِ خوش‌حساب روزهایش را از دست می‌داد');
+
+grantPro($gid, 0, $adminId ?: $gid);
+$pf = userPlan($gid);
+T::same(PLAN_FOREVER_DATE, $pf['pro_until'], '⛔ «مادام‌العمر» یک تاریخِ دور است، نه صفر ماه');
+T::ok($pf['is_forever'], 'به‌عنوان بی‌پایان شناخته می‌شود');
+T::ok($pf['is_pro'], 'و البته Pro است');
+T::same(null, $pf['days_left'],
+    '⛔ «روزهای باقی‌مانده» برای مادام‌العمر خالی است، نه سه میلیون روز');
+
+// ⛔ خرابیِ واقعی که آزمونِ جهش پیدا کرد: `DATE_ADD('9999-12-31', …)`
+//    از بازه‌ی `DATE` بیرون می‌زند و MySQL **NULL** برمی‌گرداند، نه خطا.
+//    یعنی مدیری که به کاربرِ مادام‌العمر اشتباهاً «یک ماهه» هم می‌داد،
+//    دسترسیِ او را کاملاً پاک می‌کرد و پیامِ «فعال شد» هم می‌گرفت.
+grantPro($gid, 1, $adminId ?: $gid);
+$after = userPlan($gid);
+T::same(PLAN_FOREVER_DATE, $after['pro_until'],
+    '⛔ تمدیدِ یک اشتراکِ مادام‌العمر آن را پاک نمی‌کند');
+T::ok($after['is_pro'], 'و کاربر همچنان Pro است');
+
+// ⚠ اعتبارسنجیِ دوره روی کاربرِ **تازه** سنجیده می‌شود، نه روی همین یکی.
+//   نسخه‌ی اولِ این تست بعد از هدیه‌ی مادام‌العمر اجرا می‌شد و سبز بود —
+//   ولی به دلیلِ همان سرریزِ تاریخ، نه به دلیلِ خودِ اعتبارسنجی. یعنی
+//   با برداشتنِ کاملِ اعتبارسنجی هم سبز می‌ماند: تستی که چیزی را
+//   می‌سنجید که فکر می‌کردیم.
+$pdo->prepare("UPDATE users SET plan = 'free', pro_until = NULL WHERE id = :u")->execute(['u' => $gid]);
+$bad = grantPro($gid, 7, $adminId ?: $gid);
+T::ok(empty($bad['ok']), '⛔ دوره‌ای که در PLAN_GRANT_PERIODS نیست پذیرفته نمی‌شود');
+T::same(null, userPlan($gid)['pro_until'], 'و هیچ چیزی هم روی کاربر ننشست');
+
+// دوباره مادام‌العمر، تا شمارشِ تاریخچه‌ی پایین سرِ جایش بماند.
+grantPro($gid, 0, $adminId ?: $gid);
+
+$ghost = grantPro(0, 1, $adminId ?: $gid);
+T::ok(empty($ghost['ok']), 'کاربرِ ناموجود ردیفِ پرداختِ یتیم نمی‌سازد');
+
+// ⛔ ردِ کار باید بماند: شش ماه بعد باید معلوم باشد چرا این کاربر Pro است.
+$st = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE user_id = :u AND method = 'admin_grant'");
+$st->execute(['u' => $gid]);
+T::same(5, (int)$st->fetchColumn(), '⛔ هر هدیه یک ردیف در تاریخچه گذاشت');
+
+$st = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE user_id = :u AND amount <> 0");
+$st->execute(['u' => $gid]);
+T::same(0, (int)$st->fetchColumn(), 'و مبلغش صفر است — این پرداخت نیست');
+
+T::ok(revokePro($gid, $adminId ?: $gid)['ok'], 'پس گرفتن انجام شد');
+$pr = userPlan($gid);
+T::same(null, $pr['pro_until'], '⛔ بعد از پس گرفتن، انقضا خالی است');
+T::ok(!$pr['is_pro'], 'و کاربر دیگر Pro نیست');
+
+$st = $pdo->prepare("SELECT COUNT(*) FROM payments WHERE user_id = :u");
+$st->execute(['u' => $gid]);
+T::same(6, (int)$st->fetchColumn(),
+    '⛔ پس گرفتن هم تاریخچه را پاک نمی‌کند، فقط یک ردیف به آن اضافه می‌کند');
+
+$pdo->prepare('DELETE FROM payments WHERE user_id = :u')->execute(['u' => $gid]);
+$pdo->prepare('DELETE FROM users WHERE id = :u')->execute(['u' => $gid]);
+
 exit(T::report());

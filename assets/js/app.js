@@ -2076,6 +2076,29 @@ document.addEventListener('DOMContentLoaded', function () {
     setupAmountFormatter('goal_target');
     setupAmountFormatter('entry_amount');
 
+    // ⛔ پیش‌نمایشِ زنده — تنها جایی که رنگ و عنوان و حساب پیش از ذخیره
+    //    دیده می‌شوند. بدونِ آن کاربر رنگ را انتخاب می‌کرد و تا **بعد از
+    //    ذخیره** نمی‌دانست چه شکلی می‌شود؛ و چون انتخابگرِ رنگ خودش هم
+    //    یک خطِ نازک بود (padding روی `input[type=color]`)، عملاً هیچ
+    //    بازخوردی وجود نداشت.
+    function syncGoalPreview() {
+        var bar = document.getElementById('goalPreviewBar');
+        if (!bar) { return; }
+        var color = document.getElementById('goal_color').value || '#16794f';
+        var title = document.getElementById('goal_title').value.trim();
+        bar.style.background = color;
+        document.getElementById('goalPreviewPct').style.color = color;
+        document.getElementById('goalPreviewTitle').textContent = title || 'عنوان هدف';
+
+        var sel = document.getElementById('goal_wallet');
+        var lbl = document.getElementById('goalPreviewWallet');
+        if (sel && lbl) { lbl.textContent = sel.options[sel.selectedIndex].text; }
+    }
+    ['goal_color', 'goal_title', 'goal_wallet'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) { el.addEventListener('input', syncGoalPreview); el.addEventListener('change', syncGoalPreview); }
+    });
+
     document.querySelectorAll('.js-add-goal').forEach(function (btn) {
         btn.addEventListener('click', function () {
             document.getElementById('goalModalTitle').textContent = 'هدف جدید';
@@ -2085,6 +2108,9 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('goal_color').value = '#16794f';
             document.getElementById('goal_date').value = '';
             document.getElementById('goal_date_display').value = '';
+            var gw = document.getElementById('goal_wallet');
+            if (gw) { gw.value = '0'; }
+            syncGoalPreview();
             document.getElementById('goalExtraActions').hidden = true;
             var m = document.getElementById('goalMessage');
             if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
@@ -2100,6 +2126,14 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('goal_target').value =
                 toPersianDigitsJs(Number(this.getAttribute('data-target')).toLocaleString('en-US').replace(/,/g,'\u066C'));
             document.getElementById('goal_color').value = this.getAttribute('data-color') || '#16794f';
+            var gwEdit = document.getElementById('goal_wallet');
+            if (gwEdit) {
+                // ⚠ حسابی که پاک شده باشد دیگر در فهرست نیست؛ آن‌وقت
+                //   انتساب بی‌صدا رد می‌شود و «مشخص نشده» می‌ماند — درست است.
+                gwEdit.value = this.getAttribute('data-wallet') || '0';
+                if (gwEdit.selectedIndex < 0) { gwEdit.value = '0'; }
+            }
+            syncGoalPreview();
 
             var d = this.getAttribute('data-date');
             if (d) { setJdpValue('goal_date_display', 'goal_date', d); }

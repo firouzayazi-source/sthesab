@@ -39,6 +39,54 @@ const PLAN_PERIODS = [
     12 => 10,   // دو ماه رایگان
 ];
 
+/**
+ * دوره‌هایی که **مدیر** می‌تواند بدون پرداخت بدهد — تنها مرجع.
+ *
+ * ⛔ عمداً از `PLAN_PERIODS` جداست و نباید یکی شوند: آن یکی فهرستِ
+ *    **فروش** است (ضریبِ تخفیف دارد و روی صفحه‌ی خرید دیده می‌شود)، این
+ *    یکی فهرستِ **هدیه**. اگر یکی می‌شدند، اضافه کردنِ «۲ ماهه» برای
+ *    مدیر یک گزینه‌ی فروشِ بی‌قیمت هم می‌ساخت.
+ *
+ * ⚠ کلیدِ `0` یعنی **مادام‌العمر**، نه «صفر ماه».
+ */
+const PLAN_GRANT_PERIODS = [
+    1  => 'یک ماهه',
+    2  => 'دو ماهه',
+    3  => 'سه ماهه',
+    6  => 'شش ماهه',
+    12 => 'یک ساله',
+    0  => 'مادام‌العمر',
+];
+
+/**
+ * ⛔ «مادام‌العمر» یک تاریخِ دور است، نه یک کلیدِ بولین.
+ *
+ * همان استدلالی که `pro_until` را از اول تاریخ کرد: با یک ستونِ بولینِ
+ * `is_lifetime` جدا، دو منبعِ حقیقت می‌شد و هر کوئری‌ای که فقط
+ * `pro_until >= CURDATE()` را می‌دید باید هم عوض می‌شد — و آن‌که عوض
+ * نمی‌شد، بی‌صدا کاربرِ مادام‌العمر را منقضی نشان می‌داد.
+ *
+ * ⚠ بیشترین مقدارِ مجازِ `DATE` در MySQL همین است.
+ */
+const PLAN_FOREVER_DATE = '9999-12-31';
+
+/**
+ * آستانه‌ی «بی‌پایان» — تنها مرجع، و هم PHP هم SQL از همین می‌خوانند.
+ *
+ * ⚠ عمداً پایین‌تر از خودِ `PLAN_FOREVER_DATE` است تا اگر روزی مقدارِ
+ *   دیگری (مثلاً ۲۱۰۰) به‌عنوان بی‌پایان ثبت شده باشد هم شناخته شود.
+ *   عددِ ثابتِ دوم ننویسید: اگر PHP و SQL دو آستانه داشته باشند، یکی
+ *   کاربر را بی‌پایان می‌بیند و دیگری نه.
+ */
+const PLAN_FOREVER_THRESHOLD = '2200-01-01';
+
+/** آیا این تاریخِ انقضا در عمل «بی‌پایان» است؟ */
+function planIsForever(?string $until): bool
+{
+    // ⚠ مقایسه‌ی رشته‌ای بس است چون قالب `Y-m-d` مرتب‌شدنی است.
+    return $until !== null && $until !== '' && $until >= PLAN_FOREVER_THRESHOLD;
+}
+
 /** آیا ستون‌های طرح آمده‌اند؟ (پیش از اجرای migration نه) */
 function plansAvailable(): bool
 {
@@ -64,11 +112,12 @@ function planMonthlyPrice(): int
 /**
  * وضعیتِ طرحِ یک کاربر.
  *
- * @return array{plan:string, pro_until:?string, is_pro:bool, days_left:?int}
+ * @return array{plan:string, pro_until:?string, is_pro:bool, is_forever:bool, days_left:?int}
  */
 function userPlan(int $userId): array
 {
-    $none = ['plan' => 'free', 'pro_until' => null, 'is_pro' => false, 'days_left' => null];
+    $none = ['plan' => 'free', 'pro_until' => null, 'is_pro' => false,
+             'is_forever' => false, 'days_left' => null];
     if (!plansAvailable()) { return $none; }
 
     try {
@@ -93,7 +142,14 @@ function userPlan(int $userId): array
         //   لینک بازیابی رمز بلافاصله «منقضی» شود، چون منطقه‌ی زمانیِ
         //   این دو یکی نبود.
         'is_pro'    => (int)($r['active'] ?? 0) === 1,
-        'days_left' => $r['days_left'] === null ? null : (int)$r['days_left'],
+        // ⛔ برای اشتراکِ مادام‌العمر، «روزهای باقی‌مانده» بی‌معناست و
+        //    عددش مسخره است (نزدیک سه میلیون روز، با تاریخِ شمسیِ سالِ
+        //    ۹۳۷۸ کنارش). پس `null` می‌شود و صفحه به‌جایش «مادام‌العمر»
+        //    می‌نویسد. بدونِ این، هدیه‌ی مدیر روی صفحه‌ی کاربر شبیهِ یک
+        //    باگ دیده می‌شد.
+        'is_forever' => planIsForever($r['pro_until']),
+        'days_left' => (planIsForever($r['pro_until']) || $r['days_left'] === null)
+                       ? null : (int)$r['days_left'],
     ];
 }
 
@@ -193,6 +249,151 @@ function submitPayment(int $userId, int $months, string $reference, string $note
  *
  * @return array{ok:bool, until?:string, error?:string}
  */
+/**
+ * ⛔ تنها جایی که `pro_until` جلو می‌رود.
+ *
+ * از بیشترِ «امروز» و «انقضای فعلی» شروع می‌شود؛ اگر همیشه از امروز
+ * حساب می‌شد، کسی که یک ماه زودتر تمدید کند روزهای باقی‌مانده‌اش را از
+ * دست می‌داد — یعنی تنبیهِ کاربرِ خوش‌حساب.
+ *
+ * ⚠ `$months = 0` یعنی **مادام‌العمر** و مسیرش جداست: `DATE_ADD` با صفر
+ *   ماه هیچ کاری نمی‌کند و کاربر بی‌صدا همان انقضای قبلی را نگه می‌داشت.
+ *
+ * ⚠ همه‌ی حسابِ تاریخ در **دیتابیس** انجام می‌شود، نه در PHP — همان درسی
+ *   که لینکِ بازیابیِ رمز داد (منطقه‌ی زمانیِ PHP و MySQL یکی نبود).
+ */
+function planExtendUntil(PDO $pdo, int $userId, int $months): void
+{
+    if ($months <= 0) {
+        $pdo->prepare("UPDATE users SET plan = 'pro', pro_until = :d WHERE id = :u")
+            ->execute(['d' => PLAN_FOREVER_DATE, 'u' => $userId]);
+        return;
+    }
+
+    // ⛔ اشتراکِ مادام‌العمر دست نمی‌خورد، و این محافظِ یک خرابیِ واقعیِ
+    //    **بی‌صدا**ست: `DATE_ADD('9999-12-31', INTERVAL 7 MONTH)` از
+    //    بازه‌ی مجازِ `DATE` بیرون می‌زند و MySQL به‌جای خطا **NULL**
+    //    برمی‌گرداند. ستون هم nullable است، پس هیچ استثنایی پرتاب
+    //    نمی‌شد: مدیری که به کاربرِ مادام‌العمر اشتباهاً «یک ماهه» هم
+    //    می‌داد، دسترسیِ او را **کاملاً پاک می‌کرد** و پیامِ «فعال شد»
+    //    هم می‌گرفت.
+    //
+    //    این را آزمونِ جهش پیدا کرد، نه بازبینیِ چشمی — و اول به شکلِ
+    //    یک تستِ سبزِ دروغین ظاهر شد: بررسیِ «دوره‌ی نامعتبر» بعد از
+    //    هدیه‌ی مادام‌العمر اجرا می‌شد، پس به دلیلِ همین سرریز رد
+    //    می‌شد و نه به دلیلِ خودِ اعتبارسنجی.
+    $pdo->prepare(
+        "UPDATE users
+         SET plan = 'pro',
+             pro_until = CASE
+                 WHEN pro_until IS NOT NULL AND pro_until >= :forever THEN pro_until
+                 ELSE DATE_ADD(
+                     GREATEST(COALESCE(pro_until, CURDATE()), CURDATE()),
+                     INTERVAL :m MONTH)
+             END
+         WHERE id = :u"
+    )->execute(['m' => $months, 'forever' => PLAN_FOREVER_THRESHOLD, 'u' => $userId]);
+}
+
+/**
+ * هدیه‌ی مدیر: دسترسی کامل بدون پرداخت.
+ *
+ * ⛔ یک ردیف در `payments` هم ثبت می‌شود (`method = 'admin_grant'`,
+ *    `amount = 0`, `status = 'approved'`) — نه برای پول، برای **رد**.
+ *    بدونِ آن، شش ماه بعد هیچ‌کس نمی‌فهمید چرا این کاربر Pro است و چه
+ *    کسی این را داده؛ و همان قاعده‌ی «پرداخت‌ها حذف نمی‌شوند» یعنی
+ *    تاریخچه باید کامل باشد، نه فقط نیمه‌ی پولی‌اش.
+ *
+ * ⚠ جدولِ تازه‌ای ساخته نشد: `payments` از قبل همین شکل را دارد و صفحه‌ی
+ *   مدیر هم از قبل نشانش می‌دهد.
+ *
+ * @param int $months یکی از کلیدهای `PLAN_GRANT_PERIODS`؛ ۰ یعنی مادام‌العمر
+ * @return array{ok:bool, until?:string, error?:string}
+ */
+function grantPro(int $userId, int $months, int $adminId, string $note = ''): array
+{
+    if (!plansAvailable()) { return ['ok' => false, 'error' => 'این قابلیت فعال نیست.']; }
+    if (!array_key_exists($months, PLAN_GRANT_PERIODS)) {
+        return ['ok' => false, 'error' => 'دوره‌ی انتخابی معتبر نیست.'];
+    }
+
+    $pdo = Database::getConnection();
+    $pdo->beginTransaction();
+    try {
+        // ⚠ کاربر باید واقعاً باشد، وگرنه یک ردیفِ پرداختِ یتیم می‌ماند.
+        $st = $pdo->prepare('SELECT id FROM users WHERE id = :u');
+        $st->execute(['u' => $userId]);
+        if (!$st->fetchColumn()) {
+            $pdo->rollBack();
+            return ['ok' => false, 'error' => 'کاربر پیدا نشد.'];
+        }
+
+        planExtendUntil($pdo, $userId, $months);
+
+        $pdo->prepare(
+            "INSERT INTO payments (user_id, amount, months, method, note, status, reviewed_by, reviewed_at)
+             VALUES (:u, 0, :m, 'admin_grant', :n, 'approved', :a, NOW())"
+        )->execute([
+            'u' => $userId,
+            'm' => max(0, $months),
+            'n' => mb_substr($note !== '' ? $note : 'دسترسی رایگان توسط مدیر', 0, 255),
+            'a' => $adminId,
+        ]);
+
+        $st = $pdo->prepare('SELECT pro_until FROM users WHERE id = :u');
+        $st->execute(['u' => $userId]);
+        $until = (string)$st->fetchColumn();
+
+        $pdo->commit();
+
+        // ⛔ **بعد از** commit — همان قاعده‌ی `approvePayment()`: خطای
+        //    اعلان نباید یک دسترسیِ داده‌شده را پس بگیرد.
+        Notify::push(
+            $userId,
+            'payment',
+            'دسترسی کامل برای شما فعال شد',
+            planIsForever($until) ? 'اشتراک شما مادام‌العمر است.' : 'اشتراک تا ' . toJalali($until) . ' فعال است.',
+            'pro.php',
+            'grant:' . $userId . ':' . $until
+        );
+
+        return ['ok' => true, 'until' => $until];
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        error_log('grantPro: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'ثبت دسترسی انجام نشد.'];
+    }
+}
+
+/**
+ * پس گرفتنِ دسترسی.
+ *
+ * ⛔ بدونِ این، «دادن» یک درِ یک‌طرفه بود: مدیری که اشتباهاً مادام‌العمر
+ *    داده هیچ راهی برای برگرداندنش نداشت جز دست بردن در دیتابیس.
+ *
+ * ⚠ ردیف‌های `payments` **پاک نمی‌شوند** — تاریخچه‌ی مالی می‌ماند، حتی
+ *   وقتی دسترسی پس گرفته شده. فقط یک ردیفِ تازه‌ی `admin_revoke` برای
+ *   رد به آن اضافه می‌شود.
+ */
+function revokePro(int $userId, int $adminId): array
+{
+    if (!plansAvailable()) { return ['ok' => false, 'error' => 'این قابلیت فعال نیست.']; }
+
+    $pdo = Database::getConnection();
+    try {
+        $pdo->prepare("UPDATE users SET plan = 'free', pro_until = NULL WHERE id = :u")
+            ->execute(['u' => $userId]);
+        $pdo->prepare(
+            "INSERT INTO payments (user_id, amount, months, method, note, status, reviewed_by, reviewed_at)
+             VALUES (:u, 0, 0, 'admin_revoke', 'دسترسی توسط مدیر پس گرفته شد', 'approved', :a, NOW())"
+        )->execute(['u' => $userId, 'a' => $adminId]);
+        return ['ok' => true];
+    } catch (Throwable $e) {
+        error_log('revokePro: ' . $e->getMessage());
+        return ['ok' => false, 'error' => 'پس گرفتن انجام نشد.'];
+    }
+}
+
 function approvePayment(int $paymentId, int $adminId): array
 {
     if (!plansAvailable()) { return ['ok' => false, 'error' => 'این قابلیت فعال نیست.']; }
@@ -209,14 +410,12 @@ function approvePayment(int $paymentId, int $adminId): array
         }
 
         $months = max(1, (int)$p['months']);
-        $pdo->prepare(
-            "UPDATE users
-             SET plan = 'pro',
-                 pro_until = DATE_ADD(
-                     GREATEST(COALESCE(pro_until, CURDATE()), CURDATE()),
-                     INTERVAL :m MONTH)
-             WHERE id = :u"
-        )->execute(['m' => $months, 'u' => (int)$p['user_id']]);
+        // ⛔ از تابعِ مشترک رد می‌شود، نه یک `UPDATE` محلی: قاعده‌ی
+        //    «تمدید از بیشترِ امروز و انقضای فعلی» یک بار نوشته می‌شود.
+        //    با نسخه‌ی دوم، تأییدِ پرداخت و هدیه‌ی مدیر دیر یا زود دو
+        //    جور حساب می‌کردند و تفاوتش فقط در عددِ روزهای کاربر دیده
+        //    می‌شد — یعنی بی‌صدا.
+        planExtendUntil($pdo, (int)$p['user_id'], $months);
 
         $pdo->prepare(
             "UPDATE payments SET status = 'approved', reviewed_by = :a, reviewed_at = NOW()

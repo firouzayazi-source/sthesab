@@ -37,6 +37,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $ok = rejectPayment($pid, $currentUserId, postParam('reason'));
         redirectWithMessage('billing.php', $ok ? 'success' : 'error',
             $ok ? 'پرداخت رد شد.' : 'رد کردن انجام نشد.');
+    } elseif ($action === 'grant_pro') {
+        // ⛔ دسترسیِ رایگان از همان `grantPro()` رد می‌شود، نه یک
+        //    `UPDATE` محلی: قاعده‌ی «تمدید از بیشترِ امروز و انقضای
+        //    فعلی» و ثبتِ ردِ کار هر دو آنجا هستند.
+        $r = grantPro((int)postParam('grant_user'), (int)postParam('grant_months'),
+                      $currentUserId, postParam('grant_note'));
+        redirectWithMessage('billing.php', $r['ok'] ? 'success' : 'error',
+            $r['ok']
+                ? (planIsForever($r['until'] ?? null)
+                    ? 'دسترسی کامل و مادام‌العمر فعال شد.'
+                    : 'دسترسی کامل تا ' . toJalali($r['until']) . ' فعال شد.')
+                : ($r['error'] ?? 'ثبت دسترسی انجام نشد.'));
+    } elseif ($action === 'revoke_pro') {
+        $r = revokePro((int)postParam('grant_user'), $currentUserId);
+        redirectWithMessage('billing.php', $r['ok'] ? 'success' : 'error',
+            $r['ok'] ? 'دسترسی پس گرفته شد.' : ($r['error'] ?? 'انجام نشد.'));
     }
 }
 
@@ -45,6 +61,17 @@ $planPrice = planMonthlyPrice();
 $planCard  = getSetting(PLAN_CARD_SETTING, '');
 $planOwner = getSetting(PLAN_OWNER_SETTING, '');
 $pending   = pendingPayments();
+
+// فهرستِ کاربران برای دادنِ دسترسی، همراه با وضعیتِ فعلیِ هرکدام —
+// بدونِ وضعیت، مدیر نمی‌داند به چه کسی از قبل داده و دوباره می‌دهد.
+$grantUsers = [];
+if (plansAvailable()) {
+    $grantUsers = Database::getConnection()->query(
+        "SELECT id, username, full_name, plan, pro_until,
+                (pro_until IS NOT NULL AND pro_until >= CURDATE()) AS active
+         FROM users WHERE is_active = 1 ORDER BY full_name, username"
+    )->fetchAll();
+}
 
 $pageTitle = 'اشتراک و پرداخت';
 include __DIR__ . '/../includes/header.php';
@@ -100,6 +127,85 @@ include __DIR__ . '/../includes/header.php';
 
         <button type="submit" class="btn btn-secondary btn-sm">ذخیره</button>
     </form>
+</div>
+
+<?php /* ⛔ دادنِ دسترسی بدونِ پرداخت — برای کسانی که مالکِ نصب خودش
+         می‌خواهد مهمانشان کند (خانواده، آزمونِ یک کاربر، جبرانِ یک
+         خرابی). بدونِ این، تنها راه دست بردن مستقیم در دیتابیس بود.
+
+         ⚠ هر بار یک ردیف در `payments` با `method = 'admin_grant'` ثبت
+           می‌شود؛ نه برای پول، برای **رد**: شش ماه بعد باید معلوم باشد
+           چرا این کاربر Pro است و چه کسی این را داده. */ ?>
+<div class="card">
+    <h2 class="card-title">دادن دسترسی کامل (بدون پرداخت)</h2>
+    <?php if (!$grantUsers): ?>
+        <p class="hint">کاربر فعالی برای انتخاب نیست.</p>
+    <?php else: ?>
+    <form method="POST">
+        <?= Csrf::field() ?>
+        <?php /* ⛔ `action` از خودِ دکمه می‌آید، نه از یک `<input hidden>`
+                 به‌علاوه‌ی جاوااسکریپت. وسوسه‌ی اول این بود که دکمه‌ی
+                 «پس گرفتن» با `this.form.action.value = …` مقدار را عوض
+                 کند — که **کار نمی‌کند و هیچ خطایی هم نمی‌دهد**:
+                 `form.action` خودِ آدرسِ فرم است نه فیلدی به نامِ action،
+                 پس آن انتساب بی‌اثر می‌ماند و دکمه‌ی «پس گرفتن»
+                 بی‌سروصدا **دسترسی می‌داد**. با دو دکمه‌ی name-دار هیچ
+                 ابهامی نمی‌ماند و بدونِ جاوااسکریپت هم درست کار می‌کند. */ ?>
+
+        <div class="form-group">
+            <label for="grant_user">کاربر</label>
+            <select id="grant_user" name="grant_user" required>
+                <?php foreach ($grantUsers as $u): ?>
+                    <?php
+                        // وضعیتِ فعلی کنارِ نام: «فعال تا …» یا «مادام‌العمر»
+                        $state = '';
+                        if ((int)$u['active'] === 1) {
+                            $state = planIsForever($u['pro_until'])
+                                   ? ' — مادام‌العمر'
+                                   : ' — فعال تا ' . toJalali($u['pro_until']);
+                        }
+                    ?>
+                    <option value="<?= (int)$u['id'] ?>">
+                        <?= h($u['full_name'] !== '' ? $u['full_name'] : $u['username']) ?>
+                        (<?= h($u['username']) ?>)<?= h($state) ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="grant_months">مدت</label>
+            <select id="grant_months" name="grant_months">
+                <?php /* فهرست از `PLAN_GRANT_PERIODS` می‌آید — فهرستِ دوم
+                         نسازید، وگرنه گزینه‌ای که مدیر می‌بیند هنگام ذخیره
+                         بی‌صدا رد می‌شود. */ ?>
+                <?php foreach (PLAN_GRANT_PERIODS as $m => $label): ?>
+                    <option value="<?= (int)$m ?>"><?= h($label) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <p class="hint">
+                مدت به اشتراکِ فعلی <strong>اضافه</strong> می‌شود، نه اینکه جایش را بگیرد —
+                پس کاربری که هنوز اعتبار دارد چیزی از دست نمی‌دهد.
+            </p>
+        </div>
+
+        <div class="form-group">
+            <label for="grant_note">توضیح (اختیاری)</label>
+            <input type="text" id="grant_note" name="grant_note" maxlength="255"
+                   placeholder="مثلاً: کاربر آزمایشی، یا جبران خرابی">
+        </div>
+
+        <div class="sms-actions">
+            <button type="submit" name="action" value="grant_pro"
+                    class="btn btn-primary btn-sm">فعال کن</button>
+            <button type="submit" name="action" value="revoke_pro"
+                    class="btn btn-secondary btn-sm"
+                    onclick="return confirm('دسترسی این کاربر پس گرفته شود؟');">
+                پس گرفتن دسترسی
+            </button>
+        </div>
+    </form>
+    <?php endif; ?>
 </div>
 
 <?php /* از اینجا به بعد کارتِ اشتراک است — فرمِ خودش را دارد. */ ?>

@@ -1149,10 +1149,22 @@ function budgetPeriodLabel(string $periodType): string
 function savingsGoalsWithProgress(int $userId, bool $includeArchived = false): array
 {
     $pdo = Database::getConnection();
+
+    // ⚠ ستونِ `wallet_id` ممکن است هنوز با migration نیامده باشد — همان
+    //   قاعده‌ی `walletBalances()`: نبودنش نباید صفحه را بشکند.
+    //
+    // ⛔ و این `JOIN` فقط **نام** می‌آورد: هیچ مبلغی از حساب کم یا زیاد
+    //    نمی‌شود. پس‌انداز پاکتی روی پولِ موجود است، نه یک خرج؛ اگر روزی
+    //    در `walletBalances()` بیاید، موجودیِ هر کاربری که تا امروز
+    //    پس‌انداز ثبت کرده بی‌صدا کم می‌شود.
+    $hasWallet = tableHasColumn('savings_goals', 'wallet_id');
+
     $sql = '
-        SELECT g.*, COALESCE(SUM(e.amount), 0) AS current_amount
+        SELECT g.*, COALESCE(SUM(e.amount), 0) AS current_amount'
+        . ($hasWallet ? ', w.name AS wallet_name' : ', NULL AS wallet_name') . '
         FROM savings_goals g
-        LEFT JOIN savings_entries e ON e.goal_id = g.id
+        LEFT JOIN savings_entries e ON e.goal_id = g.id'
+        . ($hasWallet ? ' LEFT JOIN wallets w ON w.id = g.wallet_id AND w.user_id = g.user_id' : '') . '
         WHERE g.user_id = :u' . ($includeArchived ? '' : ' AND g.is_archived = 0') . '
         GROUP BY g.id
         ORDER BY g.is_archived, g.created_at DESC

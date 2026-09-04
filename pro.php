@@ -37,11 +37,18 @@ include __DIR__ . '/includes/header.php';
     <?php if ($plan['is_pro']): ?>
         <p class="plan-state plan-state-on">
             اشتراک فعال است
-            <?php if ($plan['days_left'] !== null): ?>
+            <?php if (!empty($plan['is_forever'])): ?>
+                — مادام‌العمر
+            <?php elseif ($plan['days_left'] !== null): ?>
                 — <?= toPersianDigits($plan['days_left']) ?> روز باقی مانده
             <?php endif; ?>
         </p>
-        <p class="hint">تا <?= toPersianDigits(toJalali($plan['pro_until'])) ?></p>
+        <?php /* ⛔ برای مادام‌العمر تاریخ نوشته نمی‌شود: `9999-12-31` روی
+                 تقویم شمسی «۹۳۷۸/۱۰/۱۱» می‌شود و کاربر آن را یک باگ
+                 می‌خواند، نه یک هدیه. */ ?>
+        <?php if (empty($plan['is_forever'])): ?>
+            <p class="hint">تا <?= toPersianDigits(toJalali($plan['pro_until'])) ?></p>
+        <?php endif; ?>
     <?php else: ?>
         <p class="plan-state">طرح رایگان</p>
         <?php if (!planEnforced()): ?>

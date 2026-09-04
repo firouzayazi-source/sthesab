@@ -436,6 +436,12 @@ if ($pdoOk) {
         $foreignCat = $foreignWallet = null;
     }
 
+    // ⚠ ستونِ حسابِ هدف ممکن است هنوز با migration نیامده باشد.
+    $hasGoalWallet = false;
+    try {
+        $hasGoalWallet = (bool)$pdo->query("SHOW COLUMNS FROM savings_goals LIKE 'wallet_id'")->fetchColumn();
+    } catch (PDOException $e) { /* ignore */ }
+
     if (!$foreignCat && !$foreignWallet) {
         T::skip('ورود اطلاعات', 'ساخت دسته/حسابِ قربانی ممکن نشد');
     } else {
@@ -470,6 +476,40 @@ if ($pdoOk) {
         }
         try { $pdo->prepare('DELETE FROM transactions WHERE title = :t')->execute(['t' => $marker]); }
         catch (PDOException $e) { /* ignore */ }
+
+        // -------------------------------------------------------
+        // ⛔ همان قاعده روی هدفِ پس‌انداز: «در کدام حساب؟» یک شناسه‌ی
+        //    خام از فرم می‌گیرد، پس بدونِ بررسیِ مالکیت هر کاربری
+        //    می‌توانست هدفش را به حسابِ کاربرِ دیگری بچسباند و نامِ آن
+        //    حساب را روی کارتِ خودش ببیند — همان نشتی‌ای که یک بار در
+        //    `data.php` رخ داد، این بار روی یک فیلدِ تازه.
+        if ($foreignWallet && $hasGoalWallet) {
+            $gMarker = '__test_goal_' . bin2hex(random_bytes(4));
+            [, $savPage] = $sess('/savings.php');
+            preg_match('/name="csrf_token"[^>]*value="([^"]+)"/', $savPage, $m4);
+
+            $sess('/api/save_goal.php', [
+                'csrf_token'    => $m4[1] ?? $token,
+                'title'         => $gMarker,
+                'target_amount' => '1000000',
+                'color'         => '#c2410c',
+                'wallet_id'     => (string)$foreignWallet,
+            ], 'POST');
+
+            $gq = $pdo->prepare('SELECT wallet_id, color FROM savings_goals WHERE title = :t');
+            $gq->execute(['t' => $gMarker]);
+            $goal = $gq->fetch();
+
+            T::ok(is_array($goal), 'هدفِ پس‌انداز با پیلودِ کامل واقعاً ثبت شد');
+            if (is_array($goal)) {
+                T::same(null, $goal['wallet_id'],
+                    '⛔ حسابِ کاربرِ دیگر روی هدفِ پس‌انداز ننشست');
+                T::same('#c2410c', (string)$goal['color'],
+                    'رنگِ انتخابیِ کاربر واقعاً ذخیره شد');
+            }
+            try { $pdo->prepare('DELETE FROM savings_goals WHERE title = :t')->execute(['t' => $gMarker]); }
+            catch (PDOException $e) { /* ignore */ }
+        }
     }
     try {
         if ($victimId) {
