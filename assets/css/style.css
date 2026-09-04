@@ -514,6 +514,63 @@ textarea { resize: vertical; }
 }
 .phone-input::placeholder { font-weight: 400; letter-spacing: 0.06em; opacity: .45; }
 
+/* ---------- اعلان و یادآور ---------- */
+
+.notif-bell { position: relative; }
+/* نشانِ نخوانده روی زنگ. عدد است نه نقطه، چون «۳ تا خبر داری» با
+   «یک خبری هست» فرق دارد — و کاربری که عدد را ببیند بازش می‌کند. */
+.notif-badge {
+    position: absolute; top: -3px; inset-inline-end: -3px;
+    min-width: 16px; height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--out); color: #fff;
+    font-size: 10px; font-weight: 700; line-height: 16px;
+    text-align: center;
+    box-shadow: 0 0 0 2px var(--surface);
+}
+
+.notif-list, .reminder-list { list-style: none; margin: 0; padding: 0; }
+.notif-row, .reminder-row {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+}
+.notif-row:last-child, .reminder-row:last-child { border-bottom: none; }
+.notif-row.is-fresh { background: color-mix(in srgb, var(--gold) 7%, transparent); }
+
+.notif-dot {
+    flex: 0 0 auto; width: 8px; height: 8px; margin-top: 6px;
+    border-radius: 50%; background: var(--muted);
+}
+.notif-reminder { background: var(--gold); }
+.notif-due      { background: var(--out); }
+.notif-payment  { background: var(--in); }
+
+.notif-main, .reminder-main { flex: 1 1 auto; min-width: 0; }
+.notif-title, .reminder-title { font-size: 13.5px; font-weight: 700; }
+.notif-body, .reminder-note { font-size: 12.5px; color: var(--muted); margin-top: 3px; }
+.notif-time { font-size: 11px; color: var(--muted); margin-top: 4px; }
+.notif-go { color: var(--muted); flex: 0 0 auto; padding-top: 4px; }
+
+.reminder-meta {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+    font-size: 12px; color: var(--muted); margin-top: 4px;
+}
+.reminder-meta .is-late  { color: var(--out); font-weight: 700; }
+.reminder-meta .is-today { color: var(--gold); font-weight: 700; }
+.reminder-amount { font-weight: 600; }
+.reminder-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+/* انجام‌شده کم‌رنگ می‌شود ولی پاک نمی‌شود — تاریخچه‌ی خودِ کاربر است. */
+.reminder-row.is-done { opacity: .5; }
+.reminder-row.is-done .reminder-title { text-decoration: line-through; }
+
+.card-head-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-bottom: 8px;
+}
+.card-head-row .card-title { margin-bottom: 0; }
+
 /* نوارِ بخش‌های پنل مدیریت. روی موبایل افقی اسکرول می‌شود تا هیچ‌وقت
    به خطِ دوم نرود و ارتفاعِ صفحه را نخورد؛ نوارِ اسکرول پنهان است. */
 .admin-tabs {

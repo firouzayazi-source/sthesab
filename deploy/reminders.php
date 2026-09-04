@@ -153,7 +153,14 @@ foreach ($users as $u) {
     $from = date('Y-m-d', strtotime('-90 days'));
 
     try {
-        $events = financialEvents($uid, $from, $to);
+        // ⚠ یادآورهای شخصی هم در همان ایمیل می‌آیند — کاربر یک ایمیل
+        //   در روز می‌گیرد، نه دو تا. (`last_sent_on` هم همان یکی را
+        //   نگهبانی می‌کند.)
+        $events = array_merge(
+            financialEvents($uid, $from, $to),
+            customReminderEvents($uid, $from, $to)
+        );
+        usort($events, fn($a, $b) => strcmp($a['date'], $b['date']));
     } catch (Throwable $e) {
         echo '  ' . $red("× {$name}: خطا در خواندن رویدادها") . "\n";
         $failed++;

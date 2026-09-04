@@ -579,6 +579,70 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // ---------- یادآورها و اعلان‌ها ----------
+    //
+    // ⚠ همه‌ی این فرم‌ها بعد از موفقیت صفحه را تازه می‌کنند، چون فهرست و
+    //   نشانِ نخوانده‌ی زنگ از سمتِ سرور رندر شده‌اند. بدونِ تازه‌سازی
+    //   کاربر «ذخیره شد» می‌بیند ولی هیچ تغییری روی صفحه نمی‌بیند و فکر
+    //   می‌کند کار نکرده — همان قاعده‌ی «هر تغییر پول باید بلافاصله
+    //   دیده شود».
+    (function () {
+        var post = function (url, form) {
+            return fetch(url, {
+                method: 'POST', body: new FormData(form),
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            }).then(function (r) { return r.json(); });
+        };
+
+        var reminderForm = document.getElementById('reminderForm');
+        if (reminderForm) {
+            reminderForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+                post(apiUrl('save_reminder.php'), reminderForm)
+                    .then(function (d) {
+                        if (d.success) { window.location.reload(); }
+                        else { alert(d.message || 'ذخیره نشد.'); }
+                    })
+                    .catch(function () { alert('خطا در ارتباط با سرور.'); });
+            });
+
+            // ویرایش: همان فرم پر می‌شود، نه یک مودالِ دوم — با فرمِ دوم
+            // اعتبارسنجی و تقویم باید دو بار نوشته می‌شدند.
+            var resetBtn = document.querySelector('.js-reminder-reset');
+            document.querySelectorAll('.js-reminder-edit').forEach(function (b) {
+                b.addEventListener('click', function () {
+                    document.getElementById('rm_id').value      = b.dataset.id;
+                    document.getElementById('rm_title').value   = b.dataset.title;
+                    document.getElementById('rm_note').value    = b.dataset.note || '';
+                    document.getElementById('rm_repeat').value  = b.dataset.repeat || 'none';
+                    document.getElementById('rm_amount').value  = b.dataset.amount !== '0' ? b.dataset.amount : '';
+                    var disp = document.getElementById('rm_date_display');
+                    if (disp) { disp.value = b.dataset.date; }
+                    if (resetBtn) { resetBtn.hidden = false; }
+                    reminderForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                });
+            });
+            if (resetBtn) {
+                resetBtn.addEventListener('click', function () { window.location.reload(); });
+            }
+        }
+
+        document.querySelectorAll('.js-reminder-done, .js-reminder-delete, .js-notif-clear')
+            .forEach(function (f) {
+                f.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    if (f.classList.contains('js-reminder-delete') &&
+                        !confirm('این یادآور حذف شود؟')) { return; }
+                    post(f.getAttribute('action'), f)
+                        .then(function (d) {
+                            if (d.success) { window.location.reload(); }
+                            else { alert(d.message || 'انجام نشد.'); }
+                        })
+                        .catch(function () { alert('خطا در ارتباط با سرور.'); });
+                });
+            });
+    })();
+
     // ---------- اعلام پرداخت اشتراک ----------
     (function () {
         var form = document.getElementById('payForm');

@@ -24,6 +24,7 @@
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/notify.php';
 
 /** کلیدهای `app_settings` که این لایه می‌خواند. */
 const PLAN_ENFORCE_SETTING = 'plan_enforced';
@@ -227,6 +228,19 @@ function approvePayment(int $paymentId, int $adminId): array
         $until = (string)$st->fetchColumn();
 
         $pdo->commit();
+
+        // ⛔ **بعد از** commit، نه داخلِ تراکنش: اعلان کارِ جانبی است و
+        //    اگر داخل می‌بود، خطای آن می‌توانست یک پرداختِ تأییدشده را
+        //    برگرداند — یعنی کاربر پول داده و اشتراکش فعال نشده.
+        Notify::push(
+            (int)$p['user_id'],
+            'payment',
+            'پرداخت شما تأیید شد',
+            'اشتراک تا ' . toJalali($until) . ' فعال است.',
+            'pro.php',
+            'payment:' . $paymentId . ':approved'
+        );
+
         return ['ok' => true, 'until' => $until];
     } catch (Throwable $e) {
         $pdo->rollBack();
@@ -251,7 +265,18 @@ function rejectPayment(int $paymentId, int $adminId, string $reason = ''): bool
             'r' => $reason !== '' ? ' | رد: ' . mb_substr($reason, 0, 120) : '',
             'i' => $paymentId,
         ]);
-        return $st->rowCount() === 1;
+        if ($st->rowCount() !== 1) { return false; }
+
+        // ⚠ کاربر باید بفهمد که رد شده، وگرنه منتظر می‌ماند و دوباره
+        //   اعلامِ پرداخت می‌کند. دلیلِ رد هم می‌رود تا لازم نباشد بپرسد.
+        $who = Database::getConnection()->prepare('SELECT user_id FROM payments WHERE id = :i');
+        $who->execute(['i' => $paymentId]);
+        $uid = (int)$who->fetchColumn();
+        Notify::push($uid, 'payment', 'پرداخت شما تأیید نشد',
+            $reason !== '' ? mb_substr($reason, 0, 300) : 'برای پیگیری با پشتیبانی تماس بگیرید.',
+            'pro.php', 'payment:' . $paymentId . ':rejected');
+
+        return true;
     } catch (PDOException $e) {
         error_log('rejectPayment: ' . $e->getMessage());
         return false;

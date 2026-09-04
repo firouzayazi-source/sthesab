@@ -1,4 +1,9 @@
 <?php
+// ⚠ اینجا لود می‌شود نه در تک‌تکِ صفحه‌ها: زنگِ اعلان در نوارِ بالاست و
+//   نوارِ بالا در همین فایل است. با لودِ صفحه‌به‌صفحه، زنگ روی بعضی
+//   صفحه‌ها می‌آمد و روی بعضی نه — و کاربر فکر می‌کرد اعلانش پرید.
+require_once __DIR__ . '/notify.php';
+
 if (!isset($pageTitle)) {
     $pageTitle = APP_NAME;
 }
@@ -62,6 +67,28 @@ if (!isset($pageTitle)) {
             </button>
             <h1 class="page-title"><?= h($pageTitle) ?></h1>
             <div class="topbar-user">
+                <?php
+                    /* ⛔ زنگ فقط وقتی رندر می‌شود که جدولش آمده باشد —
+                       لینکی که به صفحه‌ی «هنوز ساخته نشده» می‌رود از
+                       نبودنش بدتر است. تولیدِ اعلان روزی یک بار و از
+                       همین‌جا انجام می‌شود، پس هیچ cron ای لازم نیست
+                       (همان الگوی `processRecurringTransactions`). */
+                    $__notifOn = false;
+                    $__unread  = 0;
+                    if (Auth::isLoggedIn() && Notify::available()) {
+                        $__notifOn = true;
+                        Notify::generateFor((int)Auth::userId());
+                        $__unread = Notify::unreadCount((int)Auth::userId());
+                    }
+                ?>
+                <?php if ($__notifOn): ?>
+                <a href="<?= APP_BASE_PATH ?>/notifications.php" class="theme-toggle notif-bell" aria-label="اعلان‌ها">
+                    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>
+                    <?php if ($__unread > 0): ?>
+                        <span class="notif-badge"><?= toPersianDigits((string)min($__unread, 99)) ?></span>
+                    <?php endif; ?>
+                </a>
+                <?php endif; ?>
                 <a href="<?= APP_BASE_PATH ?>/search.php" class="theme-toggle" aria-label="جستجو">
                     <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
                 </a>

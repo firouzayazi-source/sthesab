@@ -99,6 +99,7 @@ MIGRATIONS=(
     migration_plans.sql
     migration_sms_login.sql
     migration_more_categories.sql
+    migration_notifications.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -214,6 +215,7 @@ declare -A SENTINEL=(
     # این ستون را نمی‌سازد بلکه **پهن‌تر** می‌کند تا مقدارِ رمزشده جا شود.
     # شاهدش هم باید طول باشد نه وجود، وگرنه همیشه «هست» می‌گفت.
     [migration_wallet_encrypt.sql]="wallets.card_number>=255"
+    [migration_notifications.sql]="notifications"
     [migration_plans.sql]="payments"
     [migration_sms_login.sql]="sms_codes"
     # شاهدش داده است نه ساختار — توضیحش در sentinel_present.

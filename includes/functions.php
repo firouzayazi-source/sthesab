@@ -1630,6 +1630,43 @@ function eventKindLabel(string $kind): string
  * ⛔ نسخه‌ی متنی اختیاری نیست: بعضی کلاینت‌ها HTML را نشان نمی‌دهند و
  *   فیلترهای اسپم به ایمیلِ فقط-HTML سخت‌گیرترند.
  */
+/**
+ * یادآورهای شخصیِ کاربر، به همان **شکلِ رویدادِ** `financialEvents()`.
+ *
+ * ⛔ چرا هم‌شکل: ایمیلِ روزانه و «آینده مالی» هر دو روی همان آرایه کار
+ *    می‌کنند. با شکلِ دومی، هر جای نمایش باید دو حالت را می‌شناخت و
+ *    یادآور دیر یا زود از یکی جا می‌ماند.
+ *
+ * ⚠ `direction` اجباری است چون `reminderEmailBody()` آن را می‌خواند؛
+ *   یادآور همیشه «پرداخت» فرض می‌شود (بیمه، عوارض، قسط) و مبلغِ
+ *   نداشته صفر می‌رود.
+ */
+function customReminderEvents(int $userId, string $fromDate, string $toDate): array
+{
+    if (!tableExists('reminders')) { return []; }
+    try {
+        $stmt = Database::getConnection()->prepare('
+            SELECT title, remind_date, amount FROM reminders
+            WHERE user_id = :u AND is_done = 0 AND remind_date BETWEEN :f AND :t
+            ORDER BY remind_date ASC
+        ');
+        $stmt->execute(['u' => $userId, 'f' => $fromDate, 't' => $toDate]);
+        $out = [];
+        foreach ($stmt->fetchAll() as $r) {
+            $out[] = [
+                'date'       => $r['remind_date'],
+                'kind'       => 'reminder',
+                'direction'  => 'out',
+                'title'      => $r['title'],
+                'amount'     => (int)($r['amount'] ?? 0),
+                'url'        => 'reminders.php',
+                'is_overdue' => $r['remind_date'] < today(),
+            ];
+        }
+        return $out;
+    } catch (Throwable $e) { return []; }
+}
+
 function reminderEmailBody(string $name, array $overdue, array $soon, int $days): array
 {
     $money = fn(int $a): string => formatMoney($a) . ' تومان';

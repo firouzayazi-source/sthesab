@@ -72,6 +72,10 @@ $moreActive = in_array($bottomPage, $morePages, true);
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="6" rx="8" ry="3" stroke="currentColor" stroke-width="2"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" stroke="currentColor" stroke-width="2"/></svg>
                 <span>دارایی‌ها</span>
             </a>
+            <a href="<?= APP_BASE_PATH ?>/reminders.php" class="tool-card" style="--tc1:#f59e0b; --tc2:#d97706;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>
+                <span>یادآورها</span>
+            </a>
             <a href="<?= APP_BASE_PATH ?>/upcoming.php" class="tool-card" style="--tc1:#0891b2; --tc2:#0e7490;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <span>آینده مالی</span>
