@@ -413,6 +413,73 @@ foreach ([
 }
 
 // ---------------------------------------------------------------
+// ⛔ «ارسال آزمایشی» باید با همان چیزی برود که روی صفحه است.
+//
+// خرابیِ واقعی: تست فرمِ **جدایی** بود. کاربر «نوع حساب» را عوض می‌کرد،
+// دکمه‌ی تست را می‌زد، و تست با مقدارِ **قبلی** می‌رفت — چون آن فرم
+// فیلدهای فرمِ تنظیمات را نداشت. نتیجه همان خطای همیشگی بود و کاربر
+// نتیجه می‌گرفت که گزینه‌ی تازه هم جواب نداد.
+T::group('⛔ تست و تنظیمات در یک فرم‌اند');
+
+$accessSrc = @file_get_contents(__DIR__ . '/../admin/access.php') ?: '';
+T::ok($accessSrc !== '', 'admin/access.php پیدا شد');
+T::same(0, substr_count($accessSrc, "value=\"sms_test\""),
+    '⛔ هیچ فرمِ جدایی برای تست نمانده');
+T::ok(substr_count($accessSrc, 'name="test_phone"') >= 1,
+    'شماره‌ی آزمایشی داخلِ خودِ فرمِ اتصال است');
+T::ok(substr_count($accessSrc, 'name="do" value="test"') >= 1,
+    'و با دکمه‌ی «ذخیره و ارسال آزمایشی» فرستاده می‌شود');
+
+// ---------------------------------------------------------------
+T::group('ارسال آزمایشی: موفق که شد، تنظیمات دست‌نخورده می‌ماند');
+
+if ($constOverrides ?? false) {
+    T::skip('ارسال آزمایشی', 'config.php کلیدهای پیامک را تعریف کرده');
+} else {
+    $bak = [];
+    foreach (SMS_SETTING_KEYS as $k => $c) { $bak[$k] = getSetting($k, ''); }
+
+    setSetting('sms_method', 'log');
+    setSetting('sms_meli_mode', 'console');
+    setSetting('sms_pattern', '12345');
+    [$ok, $msg] = smsTestSend('09123456789');
+    T::ok($ok, 'با پنلِ log ارسال موفق است');
+    T::same('console', Sms::meliMode(),
+        '⛔ و چون جواب داد، «نوع حساب» عوض نمی‌شود');
+
+    // ⛔ و وقتی هر دو مسیر رد شدند، حالتِ اول باید برگردد — وگرنه یک
+    //    تستِ ناموفق تنظیماتِ کاربر را بی‌اجازه عوض کرده بود.
+    //
+    // ⚠ این تست بالاتر خودش `SMS_METHOD` را روی `log` **ثابت** می‌کند و
+    //   ثابتِ config همیشه بر پنل مقدم است، پس `sms_method` را نمی‌شود
+    //   داخلِ همین پروسه به ملی‌پیامک برد. شاخه‌ی دو-مسیره در یک پروسه‌ی
+    //   جدا سنجیده می‌شود — با نگهبانی که مطمئن شود واقعاً اجرا شده.
+    $php  = 'require "' . __DIR__ . '/../includes/db.php";'
+          . 'require "' . __DIR__ . '/../includes/sms.php";'
+          . 'setSetting("sms_method","melipayamak");'
+          . 'setSetting("sms_meli_mode","console");'
+          . 'setSetting("sms_pattern","12345");'
+          . 'setSetting("sms_api_key","");'
+          . 'setSetting("sms_user","u"); setSetting("sms_pass","p");'
+          . '[$o,$m] = smsTestSend("09123456789");'
+          . 'echo json_encode(["ok"=>$o,"mode"=>Sms::meliMode(),"msg"=>$m], JSON_UNESCAPED_UNICODE);';
+    $out = [];
+    exec('php -r ' . escapeshellarg($php) . ' 2>/dev/null', $out);
+    $res = json_decode(implode('', $out), true);
+
+    T::ok(is_array($res), 'پروسه‌ی جدا اجرا شد', implode('', $out));
+    if (is_array($res)) {
+        T::ok(!$res['ok'], 'با اعتبارنامه‌ی ساختگی ارسال ناموفق است');
+        T::same('console', $res['mode'],
+            '⛔ بعد از شکستِ هر دو مسیر، «نوع حساب» به حالتِ اول برمی‌گردد');
+        T::ok(str_contains($res['msg'], 'مسیرِ دوم'),
+            'و پیام می‌گوید مسیرِ دوم هم آزموده شد');
+    }
+
+    foreach ($bak as $k => $v) { setSetting($k, $v); }
+}
+
+// ---------------------------------------------------------------
 // ⛔ نوعِ حسابِ ملی‌پیامک — تنها جایی که این تصمیم گرفته می‌شود.
 //
 // خرابیِ واقعی: مالکِ یک حسابِ **قدیمی** فقط فیلدِ کلید را پر کرد.

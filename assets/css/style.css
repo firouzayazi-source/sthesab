@@ -3269,3 +3269,16 @@ html[data-theme="dark"] .stay-chip.active { box-shadow: none; }
     color: var(--muted);
 }
 .stay-note strong { color: var(--ink); font-weight: 700; }
+
+/* دکمه‌های ذخیره/تستِ کارتِ اتصالِ پیامک، و خطِ وضعیتِ بالای کارت. */
+.sms-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.sms-actions .btn { flex: 1 1 auto; }
+.conn-state {
+    font-size: 12.5px; color: var(--muted);
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    padding: 9px 11px; margin-bottom: 14px;
+}
+.conn-state strong { color: var(--ink); }
+.sms-test-inline { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }

@@ -77,17 +77,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$visible && $v !== '') { $v = smsNormalizeSecret($v); }
             setSetting($k, $v);
         }
-        redirectWithMessage('access.php', 'success', 'تنظیمات پیامک ذخیره شد.');
-    } elseif ($action === 'sms_test') {
-        // ⛔ «پیامک ارسال نشد» بدونِ دیدنِ خطای پنل یعنی حدس زدن.
+        // ⛔ تست **بعد از** ذخیره و در همین اکشن انجام می‌شود.
+        //
+        //    پیش از این «ارسال آزمایشی» فرمِ جدایی بود. کاربر «نوع حساب»
+        //    را عوض می‌کرد، دکمه‌ی تستِ فرمِ دوم را می‌زد، و تست با
+        //    مقدارِ **قبلی** می‌رفت — چون آن فرم فیلدهای این یکی را
+        //    نداشت. نتیجه‌اش همان خطای همیشگی بود و کاربر فکر می‌کرد
+        //    گزینه‌ی تازه هم جواب نداد. حالا یک فرم است و تست دقیقاً با
+        //    همان چیزی می‌رود که روی صفحه می‌بینید.
+        if (postParam('do') !== 'test') {
+            redirectWithMessage('access.php', 'success', 'تنظیمات پیامک ذخیره شد.');
+        }
+
         $to = SmsLogin::normalizePhone(postParam('test_phone'));
         if ($to === null) {
-            redirectWithMessage('access.php', 'error', 'شماره آزمایشی معتبر نیست.');
+            redirectWithMessage('access.php', 'error',
+                'تنظیمات ذخیره شد، ولی شماره‌ی آزمایشی معتبر نیست.');
         }
-        $ok = Sms::sendCode($to, '12345', smsCodeText('12345', 3));
-        redirectWithMessage('access.php', $ok ? 'success' : 'error',
-            $ok ? 'پیامک آزمایشی به پنل تحویل داده شد. اگر نرسید، از خودِ پنل وضعیت ارسال را ببینید.'
-                : 'ارسال نشد — ' . (Sms::$lastError ?: 'پنل دلیلی نگفت.'));
+
+        [$ok, $msg] = smsTestSend($to);
+        redirectWithMessage('access.php', $ok ? 'success' : 'error', $msg);
     }
 }
 
@@ -238,7 +247,20 @@ include __DIR__ . '/../includes/header.php';
                 مهلت (دقیقه) می‌نشیند.
             </p>
         </div>
-        <button type="submit" class="btn btn-secondary btn-block">ذخیرهٔ تنظیمات</button>
+
+        <?php /* ⛔ همین‌جا و داخلِ همین فرم، نه یک فرمِ جدا: تست باید با
+                 همان مقداری برود که کاربر همین حالا انتخاب کرده. */ ?>
+        <div class="form-group sms-test-inline">
+            <label for="test_mp">ارسال آزمایشی (اختیاری)</label>
+            <input type="tel" id="test_mp" name="test_phone" dir="ltr"
+                   inputmode="numeric" class="phone-input" placeholder="09123456789">
+            <p class="hint">کد ۱۲۳۴۵ فرستاده می‌شود و اگر نرود، متنِ خطای پنل نشان داده می‌شود.</p>
+        </div>
+
+        <div class="sms-actions">
+            <button type="submit" name="do" value="save" class="btn btn-secondary">ذخیرهٔ تنظیمات</button>
+            <button type="submit" name="do" value="test" class="btn btn-primary">ذخیره و ارسال آزمایشی</button>
+        </div>
     </form>
 </div>
 
@@ -249,6 +271,15 @@ include __DIR__ . '/../includes/header.php';
          می‌شود. */ ?>
 <div class="card sms-conn" data-for="melipayamak" <?= $smsMethod === 'melipayamak' ? '' : 'hidden' ?>>
     <h2 class="card-title">اتصال به ملی‌پیامک</h2>
+    <?php /* ⚠ «چه چیزی الان ذخیره است» باید دیده شود. بدونِ آن، کاربر
+             گزینه را عوض می‌کند، ذخیره نمی‌زند، تست می‌گیرد، و نتیجه‌ی
+             مقدارِ قبلی را می‌بیند بی‌آنکه بفهمد چرا. */ ?>
+    <p class="conn-state">
+        وضعیتِ ذخیره‌شده:
+        <strong><?= $meliMode === 'panel' ? 'حساب قدیمی (نام کاربری و رمز)' : 'حساب جدید (کلید وب‌سرویس)' ?></strong>
+        <?php $__m = Sms::missingFor('melipayamak'); ?>
+        · <?= $__m === '' ? '<span class="saved-chip">آماده</span>' : h($__m) ?>
+    </p>
     <form method="POST">
         <?= Csrf::field() ?>
         <input type="hidden" name="action" value="update_sms_conn">
@@ -313,25 +344,24 @@ include __DIR__ . '/../includes/header.php';
             <p class="hint">فقط اگر الگو ندارید و می‌خواهید متن آزاد از خط خودتان بفرستید.</p>
         </div>
 
-        <button type="submit" class="btn btn-secondary btn-block">ذخیرهٔ تنظیمات</button>
-    </form>
 
-
-
-    <?php /* ⛔ بدونِ این، «پیامک ارسال نشد» یعنی حدس زدن. اینجا خطای
-             خامِ پنل دیده می‌شود — تنها راهِ فهمیدنِ اینکه مشکل از کلید
-             است، از الگو، یا از اعتبارِ حساب. */ ?>
-    <form method="POST" class="sms-test">
-        <?= Csrf::field() ?>
-        <input type="hidden" name="action" value="sms_test">
-        <label for="test_melipayamak">ارسال آزمایشی</label>
-        <div class="sms-test-row">
-            <input type="tel" id="test_melipayamak" name="test_phone" dir="ltr"
-                   inputmode="tel" placeholder="۰۹۱۲۳۴۵۶۷۸۹">
-            <button type="submit" class="btn btn-secondary btn-sm">بفرست</button>
+        <?php /* ⛔ همین‌جا و داخلِ همین فرم، نه یک فرمِ جدا: تست باید با
+                 همان مقداری برود که کاربر همین حالا انتخاب کرده. */ ?>
+        <div class="form-group sms-test-inline">
+            <label for="test_kv">ارسال آزمایشی (اختیاری)</label>
+            <input type="tel" id="test_kv" name="test_phone" dir="ltr"
+                   inputmode="numeric" class="phone-input" placeholder="09123456789">
+            <p class="hint">کد ۱۲۳۴۵ فرستاده می‌شود و اگر نرود، متنِ خطای پنل نشان داده می‌شود.</p>
         </div>
-        <p class="hint">کد ۱۲۳۴۵ فرستاده می‌شود. اگر نرود، متنِ خطای پنل همین‌جا نشان داده می‌شود.</p>
+
+        <div class="sms-actions">
+            <button type="submit" name="do" value="save" class="btn btn-secondary">ذخیرهٔ تنظیمات</button>
+            <button type="submit" name="do" value="test" class="btn btn-primary">ذخیره و ارسال آزمایشی</button>
+        </div>
     </form>
+
+
+
 </div>
 
 <div class="card sms-conn" data-for="kavenegar" <?= $smsMethod === 'kavenegar' ? '' : 'hidden' ?>>
@@ -355,21 +385,20 @@ include __DIR__ . '/../includes/header.php';
             <input type="text" id="kv_line" name="sms_sender" autocomplete="off" dir="ltr"
                    value="<?= h(smsSetting('sms_sender', 'SMS_SENDER')) ?>">
         </div>
-        <button type="submit" class="btn btn-secondary btn-block">ذخیرهٔ تنظیمات</button>
-    </form>
-    <?php /* ⛔ بدونِ این، «پیامک ارسال نشد» یعنی حدس زدن. اینجا خطای
-             خامِ پنل دیده می‌شود — تنها راهِ فهمیدنِ اینکه مشکل از کلید
-             است، از الگو، یا از اعتبارِ حساب. */ ?>
-    <form method="POST" class="sms-test">
-        <?= Csrf::field() ?>
-        <input type="hidden" name="action" value="sms_test">
-        <label for="test_kavenegar">ارسال آزمایشی</label>
-        <div class="sms-test-row">
-            <input type="tel" id="test_kavenegar" name="test_phone" dir="ltr"
-                   inputmode="tel" placeholder="۰۹۱۲۳۴۵۶۷۸۹">
-            <button type="submit" class="btn btn-secondary btn-sm">بفرست</button>
+
+        <?php /* ⛔ همین‌جا و داخلِ همین فرم، نه یک فرمِ جدا: تست باید با
+                 همان مقداری برود که کاربر همین حالا انتخاب کرده. */ ?>
+        <div class="form-group sms-test-inline">
+            <label for="test_ir">ارسال آزمایشی (اختیاری)</label>
+            <input type="tel" id="test_ir" name="test_phone" dir="ltr"
+                   inputmode="numeric" class="phone-input" placeholder="09123456789">
+            <p class="hint">کد ۱۲۳۴۵ فرستاده می‌شود و اگر نرود، متنِ خطای پنل نشان داده می‌شود.</p>
         </div>
-        <p class="hint">کد ۱۲۳۴۵ فرستاده می‌شود. اگر نرود، متنِ خطای پنل همین‌جا نشان داده می‌شود.</p>
+
+        <div class="sms-actions">
+            <button type="submit" name="do" value="save" class="btn btn-secondary">ذخیرهٔ تنظیمات</button>
+            <button type="submit" name="do" value="test" class="btn btn-primary">ذخیره و ارسال آزمایشی</button>
+        </div>
     </form>
 </div>
 
@@ -395,20 +424,6 @@ include __DIR__ . '/../includes/header.php';
                    value="<?= h(smsSetting('sms_sender', 'SMS_SENDER')) ?>">
         </div>
         <button type="submit" class="btn btn-secondary btn-block">ذخیرهٔ تنظیمات</button>
-    </form>
-    <?php /* ⛔ بدونِ این، «پیامک ارسال نشد» یعنی حدس زدن. اینجا خطای
-             خامِ پنل دیده می‌شود — تنها راهِ فهمیدنِ اینکه مشکل از کلید
-             است، از الگو، یا از اعتبارِ حساب. */ ?>
-    <form method="POST" class="sms-test">
-        <?= Csrf::field() ?>
-        <input type="hidden" name="action" value="sms_test">
-        <label for="test_smsir">ارسال آزمایشی</label>
-        <div class="sms-test-row">
-            <input type="tel" id="test_smsir" name="test_phone" dir="ltr"
-                   inputmode="tel" placeholder="۰۹۱۲۳۴۵۶۷۸۹">
-            <button type="submit" class="btn btn-secondary btn-sm">بفرست</button>
-        </div>
-        <p class="hint">کد ۱۲۳۴۵ فرستاده می‌شود. اگر نرود، متنِ خطای پنل همین‌جا نشان داده می‌شود.</p>
     </form>
 </div>
 

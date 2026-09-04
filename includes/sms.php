@@ -114,6 +114,60 @@ function smsNormalizeSecret(string $v): string
     return trim($v, " \t\n\r\0\x0B\"'/");
 }
 
+/**
+ * ⛔ ارسالِ آزمایشی — و اگر ملی‌پیامک یک مسیر را رد کرد، **مسیرِ دیگر
+ *    هم آزموده می‌شود**.
+ *
+ *    دلیلش این است که «نوع حساب» چیزی است که خودِ صاحبِ حساب هم اغلب
+ *    نمی‌داند. پیامِ «کلید کنسول معتبر نیست» درست است ولی کاربر را
+ *    دنبالِ کلیدِ تازه می‌فرستد، در حالی که ممکن است اصلاً کلیدی نداشته
+ *    باشد و حسابش از نوعِ قدیمی باشد. اینجا به‌جای اینکه از او بپرسیم،
+ *    خودمان امتحان می‌کنیم و اگر مسیرِ دوم جواب داد **همان را ذخیره
+ *    می‌کنیم** — دفعه‌ی بعد دیگر لازم نیست کسی حدس بزند.
+ *
+ * ⚠ فقط وقتی مسیرِ دوم آزموده می‌شود که اعتبارنامه‌اش واقعاً پر باشد،
+ *   وگرنه یک خطای بی‌ربطِ دوم به خطای اول اضافه می‌شود.
+ *
+ * @return array{0: bool, 1: string}  موفق بود؟ و پیامی که به مدیر نشان داده می‌شود.
+ */
+function smsTestSend(string $to): array
+{
+    $code = '12345';
+    $okMsg = 'پیامک آزمایشی به پنل تحویل داده شد. اگر نرسید، از خودِ پنل وضعیت ارسال را ببینید.';
+
+    if (Sms::sendCode($to, $code, smsCodeText($code, 3))) { return [true, $okMsg]; }
+
+    $first = Sms::$lastError ?: 'پنل دلیلی نگفت.';
+    if (Sms::method() !== 'melipayamak') { return [false, 'ارسال نشد — ' . $first]; }
+
+    $mode  = Sms::meliMode();
+    $other = $mode === 'console' ? 'panel' : 'console';
+
+    // آیا مسیرِ دوم اصلاً اعتبارنامه دارد؟
+    $key  = smsSetting('sms_api_key', 'SMS_API_KEY');
+    $user = smsSetting('sms_user', 'SMS_USER');
+    $pass = smsSetting('sms_pass', 'SMS_PASS');
+    if ($pass === '') { $pass = $key; }
+    $canTry = $other === 'console' ? $key !== '' : ($user !== '' && $pass !== '');
+    if (!$canTry) {
+        return [false, 'ارسال نشد — ' . $first];
+    }
+
+    // ⚠ فقط برای همین یک تلاش عوض می‌شود؛ اگر جواب نداد به حالت اول
+    //   برمی‌گردد و هیچ چیزی در تنظیمات عوض نمی‌ماند.
+    setSetting('sms_meli_mode', $other);
+    if (Sms::sendCode($to, $code, smsCodeText($code, 3))) {
+        $label = $other === 'panel' ? 'حساب قدیمی (نام کاربری و رمز)' : 'حساب جدید (کلید وب‌سرویس)';
+        return [true, 'مسیرِ اول جواب نداد، ولی مسیرِ دوم داد. «نوع حساب» روی «'
+                     . $label . '» تنظیم شد. ' . $okMsg];
+    }
+    $second = Sms::$lastError ?: 'پنل دلیلی نگفت.';
+    setSetting('sms_meli_mode', $mode);
+
+    return [false, 'هر دو مسیر آزموده شد و هیچ‌کدام جواب نداد. '
+                 . 'مسیرِ اول: ' . $first . ' | مسیرِ دوم: ' . $second];
+}
+
 /** پنل‌هایی که پشتیبانی می‌شوند و اینکه هرکدام چه می‌خواهد. */
 function smsProviders(): array
 {
