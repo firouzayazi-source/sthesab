@@ -30,6 +30,8 @@ $pageTitle = 'آمار استفاده';
 include __DIR__ . '/../includes/header.php';
 ?>
 
+<?php include __DIR__ . '/_nav.php'; ?>
+
 <div class="card">
     <h2 class="card-title">از حساب ساختن تا عادت شدن</h2>
     <?php /* مهم‌ترین کارتِ صفحه، و عمداً اولین: اگر عددِ دوم خیلی کمتر از

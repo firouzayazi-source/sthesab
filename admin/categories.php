@@ -135,6 +135,8 @@ $pageTitle = 'دسته‌بندی‌ها';
 include __DIR__ . '/../includes/header.php';
 ?>
 
+<?php include __DIR__ . '/_nav.php'; ?>
+
 <div class="card">
     <div class="card-header-row">
         <h2 class="card-title">دسته‌بندی‌های تراکنش</h2>

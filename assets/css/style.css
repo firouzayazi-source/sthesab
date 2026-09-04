@@ -514,6 +514,33 @@ textarea { resize: vertical; }
 }
 .phone-input::placeholder { font-weight: 400; letter-spacing: 0.06em; opacity: .45; }
 
+/* نوارِ بخش‌های پنل مدیریت. روی موبایل افقی اسکرول می‌شود تا هیچ‌وقت
+   به خطِ دوم نرود و ارتفاعِ صفحه را نخورد؛ نوارِ اسکرول پنهان است. */
+.admin-tabs {
+    display: flex; gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-bottom: 14px;
+    padding-bottom: 2px;
+}
+.admin-tabs::-webkit-scrollbar { display: none; }
+.admin-tab {
+    flex: 0 0 auto;
+    padding: 8px 14px;
+    border-radius: 999px;
+    font-size: 12.5px; font-weight: 600;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background .15s, color .15s, border-color .15s;
+}
+.admin-tab:hover { color: var(--ink); }
+.admin-tab.is-active {
+    background: var(--brand); color: #fff; border-color: var(--brand);
+}
+
 /* نشانِ «ثبت شده» کنارِ برچسبِ کلید و رمز. فیلدِ خالی بعد از ذخیره
    شبیهِ «ذخیره نشد» است؛ این نشان و جای‌نگهدارِ ماسک‌شده با هم ابهام
    را برمی‌دارند. */
