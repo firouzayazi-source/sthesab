@@ -71,16 +71,21 @@ if (Auth::isLoggedIn()) {
                 <span>تراکنش‌های من</span>
             </a>
         </li>
+        <?php /* ⛔ یک قلم به‌جای چهار تا. «آینده مالی»، «تقویم مالی»،
+                 «سررسیدها» و «یادآورها» همه یک سؤال را جواب می‌دادند
+                 («چه چیزی در راه است؟») و حالا زبانه‌های یک صفحه‌اند.
+                 «تراکنش دوره‌ای» هم چون پول جابه‌جا می‌کند صفحه‌ی خودش
+                 ماند ولی لینکش رفت داخلِ همان صفحه. دلیلِ کامل بالای
+                 `due.php` نوشته شده.
+
+                 ⛔ و عمداً **بیرون** از بلوکِ `Auth::isAdmin()` است:
+                 «سررسیدها» و «یادآورها» تا دیروز داخلِ آن بلوک افتاده
+                 بودند، پس کاربر عادی روی دسکتاپ هیچ راهی به آن‌ها
+                 نداشت — بی‌هیچ خطایی، فقط نبودند. */ ?>
         <li>
-            <a href="<?= APP_BASE_PATH ?>/upcoming.php" class="<?= $currentPage === 'upcoming.php' ? 'active' : '' ?>">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3.5 2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                <span>آینده مالی</span>
-            </a>
-        </li>
-        <li>
-            <a href="<?= APP_BASE_PATH ?>/calendar.php" class="<?= $currentPage === 'calendar.php' ? 'active' : '' ?>">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="2"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-                <span>تقویم مالی</span>
+            <a href="<?= APP_BASE_PATH ?>/due.php" class="<?= $currentPage === 'due.php' ? 'active' : '' ?>">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M9 15l2 2 4-4"/></svg>
+                <span>سررسیدها</span>
             </a>
         </li>
         <li>
@@ -93,13 +98,6 @@ if (Auth::isLoggedIn()) {
             <a href="<?= APP_BASE_PATH ?>/savings.php" class="<?= $currentPage === 'savings.php' ? 'active' : '' ?>">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2v4M12 18v4M4 12h4M16 12h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2"/></svg>
                 <span>اهداف پس‌انداز</span>
-            </a>
-        </li>
-        <li>
-            <a href="<?= APP_BASE_PATH ?>/recurring.php" class="<?= $currentPage === 'recurring.php' ? 'active' : '' ?>">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M17 2l4 4-4 4M3 11V9a4 4 0 014-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 01-4 4H3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                <span>تراکنش دوره‌ای</span>
-                <?= planLocked('recurring') ? '<span class="lock-badge" title="با اشتراک باز می‌شود">&#128274;</span>' : '' ?>
             </a>
         </li>
         <li>
@@ -140,18 +138,6 @@ if (Auth::isLoggedIn()) {
             </a>
         </li>
         <?php if (Auth::isAdmin()): ?>
-        <li>
-            <a href="<?= APP_BASE_PATH ?>/due.php" class="<?= $currentPage === 'due.php' ? 'active' : '' ?>">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
-                <span>سررسیدها</span>
-            </a>
-        </li>
-        <li>
-            <a href="<?= APP_BASE_PATH ?>/reminders.php" class="<?= $currentPage === 'reminders.php' ? 'active' : '' ?>">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>
-                <span>یادآورها</span>
-            </a>
-        </li>
         <li class="nav-divider">مدیریت</li>
         <li>
             <a href="<?= APP_BASE_PATH ?>/admin/users.php" class="<?= $currentPage === 'users.php' ? 'active' : '' ?>">

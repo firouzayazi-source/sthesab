@@ -20,6 +20,7 @@ Csrf::verifyOrFail(postParam('csrf_token'));
 // ⛔ قفلِ صفحه بدونِ این فقط تزئین است: کسی که آدرسِ اندپوینت را
 //    بداند مستقیم صدایش می‌زند.
 require_once __DIR__ . '/../includes/plan_gate.php';
+require_once __DIR__ . '/../includes/undo.php';
 apiRequirePlan('debts');
 
 $debtId = (int)postParam('debt_id');
@@ -42,11 +43,13 @@ if ((int)$debt['user_id'] !== Auth::userId()) {
     jsonResponse(['success' => false, 'message' => 'شما اجازه حذف این مورد را ندارید.'], 403);
 }
 
+// ⛔ عکس **پیش از** حذف، وگرنه چیزی برای برگرداندن نمی‌ماند.
+$undo = Undo::capture('debts', $debtId, Auth::userId());
 try {
     $stmt = $pdo->prepare('DELETE FROM debts WHERE id = :id AND user_id = :user_id');
     $stmt->execute(['id' => $debtId, 'user_id' => Auth::userId()]);
 
-    jsonResponse(['success' => true, 'message' => 'با موفقیت حذف شد.']);
+    jsonResponse(['success' => true, 'message' => 'با موفقیت حذف شد.', 'undo_token' => $undo]);
 } catch (PDOException $e) {
     error_log('Delete Debt Error: ' . $e->getMessage());
     jsonResponse(['success' => false, 'message' => 'خطایی در حذف رخ داد.'], 500);

@@ -1602,7 +1602,7 @@ function safeToSpend(int $userId, int $daysAhead = 30): array
     //    سررسیدگذشته در همان صفحه به‌صورت کارتِ سرخ دیده می‌شد ولی از
     //    عددِ بالای صفحه کم نمی‌شد.
     //
-    //    ۹۰ روز همان بازه‌ای است که upcoming.php برای فهرستش می‌گیرد،
+    //    ۹۰ روز همان بازه‌ای است که زبانه‌ی سررسیدها برای فهرستش می‌گیرد،
     //    پس عددِ بالای صفحه و فهرستِ زیرش از یک چیز حرف می‌زنند.
     $from   = date('Y-m-d', strtotime('-90 days'));
     $events = financialEvents($userId, $from, $to);
@@ -1671,7 +1671,7 @@ function customReminderEvents(int $userId, string $fromDate, string $toDate): ar
                 'direction'  => 'out',
                 'title'      => $r['title'],
                 'amount'     => (int)($r['amount'] ?? 0),
-                'url'        => 'reminders.php',
+                'url'        => 'due.php?t=reminders',
                 'is_overdue' => $r['remind_date'] < today(),
             ];
         }
@@ -1734,7 +1734,7 @@ function reminderEmailBody(string $name, array $overdue, array $soon, int $days)
     // لینک از APP_URL ساخته می‌شود نه از HTTP_HOST — همان قاعده‌ای که
     // برای لینکِ بازیابیِ رمز هست، وگرنه با Host جعلی می‌شد کاربر را
     // به سایتِ مهاجم برد.
-    $url = appBaseUrl() . '/upcoming.php';
+    $url = appBaseUrl() . '/due.php?t=list';
     $html .= '<p style="margin:22px 0 0;"><a href="' . h($url) . '" '
         . 'style="display:inline-block;background:#1b2559;color:#fff;text-decoration:none;'
         . 'padding:10px 18px;border-radius:10px;font-size:14px;">دیدن آینده مالی</a></p>'
@@ -1906,7 +1906,7 @@ function financialHighlights(int $userId): array
             $out[] = [
                 'tone' => 'warn',
                 'text' => 'سررسیدِ گذشته دارید: ' . formatMoney((int)$safe['overdue']) . ' تومان.',
-                'link' => 'upcoming.php',
+                'link' => 'due.php?t=list',
             ];
         }
     } catch (Throwable $e) { /* بینش نباید صفحه را بشکند */ }

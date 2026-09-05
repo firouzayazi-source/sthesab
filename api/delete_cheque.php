@@ -20,6 +20,7 @@ Csrf::verifyOrFail(postParam('csrf_token'));
 // ⛔ قفلِ صفحه بدونِ این فقط تزئین است: کسی که آدرسِ اندپوینت را
 //    بداند مستقیم صدایش می‌زند.
 require_once __DIR__ . '/../includes/plan_gate.php';
+require_once __DIR__ . '/../includes/undo.php';
 apiRequirePlan('cheques');
 
 $chequeId = (int)postParam('cheque_id');
@@ -41,11 +42,13 @@ if ((int)$cheque['user_id'] !== Auth::userId()) {
     jsonResponse(['success' => false, 'message' => 'شما اجازه حذف این چک را ندارید.'], 403);
 }
 
+// ⛔ عکس **پیش از** حذف، وگرنه چیزی برای برگرداندن نمی‌ماند.
+$undo = Undo::capture('cheques', $chequeId, Auth::userId());
 try {
     $stmt = $pdo->prepare('DELETE FROM cheques WHERE id = :id AND user_id = :user_id');
     $stmt->execute(['id' => $chequeId, 'user_id' => Auth::userId()]);
 
-    jsonResponse(['success' => true, 'message' => 'چک حذف شد.']);
+    jsonResponse(['success' => true, 'message' => 'چک حذف شد.', 'undo_token' => $undo]);
 } catch (PDOException $e) {
     error_log('Delete Cheque Error: ' . $e->getMessage());
     jsonResponse(['success' => false, 'message' => 'خطایی در حذف رخ داد.'], 500);

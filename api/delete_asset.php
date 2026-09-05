@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/undo.php';
 
 Auth::initSession();
 
@@ -36,11 +37,13 @@ if ((int)$asset['user_id'] !== Auth::userId()) {
     jsonResponse(['success' => false, 'message' => 'شما اجازه حذف این مورد را ندارید.'], 403);
 }
 
+// ⛔ عکس **پیش از** حذف، وگرنه چیزی برای برگرداندن نمی‌ماند.
+$undo = Undo::capture('assets', $assetId, Auth::userId());
 try {
     $stmt = $pdo->prepare('DELETE FROM assets WHERE id = :id AND user_id = :user_id');
     $stmt->execute(['id' => $assetId, 'user_id' => Auth::userId()]);
 
-    jsonResponse(['success' => true, 'message' => 'حذف شد.']);
+    jsonResponse(['success' => true, 'message' => 'حذف شد.', 'undo_token' => $undo]);
 } catch (PDOException $e) {
     error_log('Delete Asset Error: ' . $e->getMessage());
     jsonResponse(['success' => false, 'message' => 'خطایی در حذف رخ داد.'], 500);

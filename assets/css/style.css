@@ -1358,6 +1358,59 @@ button.status-badge:active { transform: scale(.96); }
 .page-back svg { flex: none; }
 .page-back:active { background: var(--line-soft); }
 
+/* ---------- زبانه‌های سطحِ صفحه ----------
+   ⛔ عمداً «زیرخط» است نه «قرص»، چون `.due-filter` و `.filter-chip` هر دو
+      قرص‌اند: با یک شکلِ مشترک، صافیِ داخلِ یک زبانه و خودِ زبانه‌ها هم‌وزن
+      دیده می‌شدند و سلسله‌مراتب صاف می‌شد. حالا زبانه بالاست و قرص‌ها
+      زیرش — یک نگاه کافی است تا معلوم شود کدام کدام است.
+
+   زبانه‌ها **لینک**اند نه جاوااسکریپت: هر زبانه آدرسِ خودش را دارد، پس
+   دکمه‌ی بازگشتِ مرورگر کار می‌کند و فقط محتوای همان زبانه از سرور
+   می‌آید — نه هر سه با هم. */
+.page-tabs {
+    display: flex; gap: 4px;
+    margin: 0 0 16px;
+    border-bottom: 1px solid var(--line);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.page-tabs::-webkit-scrollbar { display: none; }
+.page-tab {
+    flex: 0 0 auto;
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 11px 14px;
+    margin-bottom: -1px;                 /* روی خودِ خطِ پایین می‌نشیند */
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font-size: 13.5px; font-weight: 600;
+    text-decoration: none; white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+}
+.page-tab svg { flex: none; opacity: .8; }
+.page-tab:hover { color: var(--ink-soft); }
+.page-tab.is-active { color: var(--brand); border-bottom-color: var(--brand); }
+.page-tab.is-active svg { opacity: 1; }
+/* شمارنده‌ی کنارِ زبانه — فقط وقتی چیزی هست. */
+.page-tab-n {
+    background: color-mix(in srgb, currentColor 15%, transparent);
+    border-radius: 999px; padding: 1px 6px; font-size: 11px; font-weight: 700;
+}
+
+/* راهِ رسیدن به صفحه‌ای که زبانه نشد (تراکنش دوره‌ای). عمداً یک ردیفِ
+   آرام است نه یک کارتِ دیگر: کارت با کارت‌های بالای صفحه هم‌وزن می‌شد و
+   دوباره همان شلوغی را می‌ساخت. */
+.due-more-link {
+    display: flex; align-items: center; gap: 10px;
+    margin-top: 16px; padding: 13px 15px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    color: var(--ink-soft); font-size: 12.5px; font-weight: 600;
+    text-decoration: none;
+}
+.due-more-link svg { flex: none; color: var(--muted); }
+.due-more-link span { flex: 1; }
+.due-more-link:active { background: var(--line-soft); }
+
 /* ============================================================
    ۱۷. کارت جمع‌شونده
    ============================================================ */
@@ -3361,26 +3414,26 @@ html[data-theme="dark"] .stay-chip.active { box-shadow: none; }
 /* نوارِ «از پیامک بانک خودکار ثبت شد» — بالای محتوای هر صفحه، با راهِ
    برگشت. عمداً در جاوااسکریپت ساخته می‌شود (نه در PHP)، پس قاعده‌ی
    `[hidden]` لازم ندارد: هیچ‌وقت پنهان رندر نمی‌شود، یا هست یا نیست. */
-.sms-auto-bar {
+.undo-bar {
     display: flex; align-items: center; gap: 10px;
     margin-bottom: 14px; padding: 11px 14px;
     background: var(--warn-wash); color: var(--warn-ink);
     border-radius: var(--r-sm);
     font-size: 12.5px; line-height: 1.8;
 }
-.sms-auto-bar-text { flex: 1; }
+.undo-bar-text { flex: 1; }
 /* ⚠ رنگِ متن `--warn-wash` است نه `#fff`: در حالتِ شب، `--warn-ink`
    خودش **روشن** می‌شود (کهربایی کم‌رنگ) و سفید رویش عملاً خوانده
    نمی‌شود. اندازه‌گیری شد: #e5b45f با متنِ سفید. با این جفت، متن در هر
    دو حالت وارونه‌ی زمینه‌اش است و کنتراست حفظ می‌شود. */
-.sms-auto-bar-undo {
+.undo-bar-undo {
     flex-shrink: 0;
     background: var(--warn-ink); color: var(--warn-wash); border: 0;
     padding: 6px 16px; border-radius: var(--r-sm);
     font: inherit; font-weight: 700; cursor: pointer;
 }
-.sms-auto-bar-undo[disabled] { opacity: .55; cursor: default; }
-.sms-auto-bar-close {
+.undo-bar-undo[disabled] { opacity: .55; cursor: default; }
+.undo-bar-close {
     flex-shrink: 0;
     background: none; border: 0; color: inherit;
     font-size: 19px; line-height: 1; cursor: pointer; padding: 0 4px;

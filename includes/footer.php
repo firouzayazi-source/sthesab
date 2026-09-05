@@ -4,7 +4,7 @@ require_once __DIR__ . '/plan_gate.php';
  * فوتر مشترک صفحات داخلی — شامل ناوبری پایین صفحه
  */
 $bottomPage = basename($_SERVER['PHP_SELF']);
-$morePages = ['profile.php', 'wallets.php', 'budget.php', 'savings.php', 'recurring.php', 'upcoming.php', 'calendar.php', 'search.php', 'data.php', 'cheques.php', 'debts.php', 'my-assets.php', 'category-report.php', 'references.php', 'person.php', 'users.php', 'categories.php', 'insights.php', 'backup.php'];
+$morePages = ['profile.php', 'wallets.php', 'budget.php', 'savings.php', 'recurring.php', 'due.php', 'search.php', 'data.php', 'cheques.php', 'debts.php', 'my-assets.php', 'category-report.php', 'references.php', 'person.php', 'users.php', 'categories.php', 'insights.php', 'backup.php'];
 $moreActive = in_array($bottomPage, $morePages, true);
 ?>
         </div>
@@ -73,20 +73,8 @@ $moreActive = in_array($bottomPage, $morePages, true);
                 <span>دارایی‌ها</span>
             </a>
             <a href="<?= APP_BASE_PATH ?>/due.php" class="tool-card" style="--tc1:#0ea5e9; --tc2:#0369a1;">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M9 15l2 2 4-4"/></svg>
                 <span>سررسیدها</span>
-            </a>
-            <a href="<?= APP_BASE_PATH ?>/reminders.php" class="tool-card" style="--tc1:#f59e0b; --tc2:#d97706;">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>
-                <span>یادآورها</span>
-            </a>
-            <a href="<?= APP_BASE_PATH ?>/upcoming.php" class="tool-card" style="--tc1:#0891b2; --tc2:#0e7490;">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                <span>آینده مالی</span>
-            </a>
-            <a href="<?= APP_BASE_PATH ?>/calendar.php" class="tool-card" style="--tc1:#7c3aed; --tc2:#6d28d9;">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4" stroke-linecap="round"/></svg>
-                <span>تقویم مالی</span>
             </a>
             <a href="<?= APP_BASE_PATH ?>/budget.php" class="tool-card" style="--tc1:#d97706; --tc2:#ca8a04;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h6" stroke-linecap="round"/></svg>

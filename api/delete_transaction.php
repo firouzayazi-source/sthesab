@@ -6,6 +6,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/transactions.php';
+require_once __DIR__ . '/../includes/undo.php';
 
 Auth::initSession();
 
@@ -21,9 +22,18 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 Csrf::verifyOrFail(postParam('csrf_token'));
 
-$result = txDelete(Auth::userId(), (int)postParam('transaction_id'));
+$userId = Auth::userId();   // همیشه از اینجا، هرگز از ورودی کاربر
+$txId   = (int)postParam('transaction_id');
+
+// ⛔ عکس **پیش از** حذف گرفته می‌شود، وگرنه چیزی برای برگرداندن نمی‌ماند.
+//    پیوست‌ها با CASCADE می‌روند ولی فایلشان روی دیسک می‌ماند، پس
+//    برگرداندنِ ردیف‌ها کافی است و پیوست هم واقعاً برمی‌گردد.
+$undo = Undo::capture('transactions', $txId, $userId);
+
+$result = txDelete($userId, $txId);
 
 jsonResponse(
-    ['success' => $result['ok'], 'message' => $result['message']],
+    ['success' => $result['ok'], 'message' => $result['message'],
+     'undo_token' => $result['ok'] ? $undo : null],
     $result['ok'] ? 200 : $result['status']
 );

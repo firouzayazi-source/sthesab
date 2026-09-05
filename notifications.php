@@ -41,7 +41,7 @@ include __DIR__ . '/includes/header.php';
 <?php elseif (!$items): ?>
     <div class="card">
         <p class="hint">فعلاً خبری نیست. سررسیدهای نزدیک و یادآورهای شما اینجا می‌آیند.</p>
-        <a href="<?= APP_BASE_PATH ?>/reminders.php" class="btn btn-secondary btn-sm" style="margin-top:10px;">
+        <a href="<?= APP_BASE_PATH ?>/due.php?t=reminders" class="btn btn-secondary btn-sm" style="margin-top:10px;">
             ثبت یادآور تازه
         </a>
     </div>

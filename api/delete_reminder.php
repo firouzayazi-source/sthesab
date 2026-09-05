@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/undo.php';
 
 Auth::initSession();
 header('Content-Type: application/json; charset=utf-8');
@@ -16,7 +17,9 @@ if ($id <= 0) { jsonResponse(['success' => false, 'message' => 'یادآور ن�
 
 // ⚠ شرطِ `user_id` روی خودِ DELETE است — بدونِ آن هر کسی با شناسه‌ی
 //   دیگری یادآورِ کاربرِ دیگری را پاک می‌کرد.
+// ⛔ عکس **پیش از** حذف، وگرنه چیزی برای برگرداندن نمی‌ماند.
+$undo = Undo::capture('reminders', $id, $userId);
 $stmt = Database::getConnection()->prepare('DELETE FROM reminders WHERE id = :i AND user_id = :u');
 $stmt->execute(['i' => $id, 'u' => $userId]);
 
-jsonResponse(['success' => true, 'message' => 'یادآور حذف شد.']);
+jsonResponse(['success' => true, 'message' => 'یادآور حذف شد.', 'undo_token' => $undo]);

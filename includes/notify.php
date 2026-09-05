@@ -232,7 +232,7 @@ class Notify
                 // ⚠ و بازه هم در کلید هست: کسی که «۷ روز قبل» و «۱ روز قبل»
                 //   را با هم زده باید هر دو را بگیرد، نه یکی را.
                 $key = 'reminder:' . $r['id'] . ':' . $r['remind_date'] . ':' . max($left, 0);
-                if (self::push($userId, 'reminder', $r['title'], $body, 'reminders.php', $key)) {
+                if (self::push($userId, 'reminder', $r['title'], $body, 'due.php?t=reminders', $key)) {
                     $made++;
                 }
                 // ⚠ فقط وقتی چیزی فرستاده شد: وگرنه یک یادآورِ خارج از بازه،
@@ -272,7 +272,7 @@ class Notify
                 ), 0, 32);
 
                 if (self::push($userId, 'due', (string)($e['title'] ?? 'سررسید'), $body,
-                        (string)($e['url'] ?? 'upcoming.php'), $key)) {
+                        (string)($e['url'] ?? 'due.php?t=list'), $key)) {
                     $made++;
                 }
             }

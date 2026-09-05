@@ -683,12 +683,15 @@ document.addEventListener('DOMContentLoaded', function () {
                     //    صفحه‌ی تازه می‌سازد. اگر اینجا فقط یک دکمه‌ی
                     //    درجا می‌گذاشتیم، تازه‌سازی می‌بردش — یعنی ثبتِ
                     //    خودکاری بدونِ راهِ برگشت.
-                    if (auto) {
-                        try {
-                            auto.id  = data.id || 0;
-                            auto.at  = Date.now();
-                            sessionStorage.setItem('daftar_sms_auto_last', JSON.stringify(auto));
-                        } catch (e) { /* ناشناس یا پر */ }
+                    if (auto && data.id) {
+                        queueUndoBar(
+                            'از پیامک بانک خودکار ثبت شد: '
+                            + (auto.type === 'income' ? 'واریز ' : 'برداشت ')
+                            + toPersianDigitsJs(Number(auto.amount || 0)
+                                  .toLocaleString('en-US').replace(/,/g, '٬'))
+                            + ' تومان',
+                            { ep: 'delete_transaction.php', field: 'transaction_id', value: data.id }
+                        );
                     }
                     window.location.reload();
                 } else {
@@ -961,12 +964,20 @@ document.addEventListener('DOMContentLoaded', function () {
             .forEach(function (f) {
                 f.addEventListener('submit', function (e) {
                     e.preventDefault();
-                    if (f.classList.contains('js-reminder-delete') &&
-                        !confirm('این یادآور حذف شود؟')) { return; }
+                    // ⚠ حذفِ یادآور بدونِ «مطمئنید؟» است چون برگشت‌پذیر
+                    //   شده؛ «انجام شد» و «پاک کردن اعلان» از اول تأیید
+                    //   نمی‌خواستند.
+                    var isDel = f.classList.contains('js-reminder-delete');
                     post(f.getAttribute('action'), f)
                         .then(function (d) {
-                            if (d.success) { window.location.reload(); }
-                            else { alert(d.message || 'انجام نشد.'); }
+                            if (!d.success) { alert(d.message || 'انجام نشد.'); return; }
+                            if (isDel && d.undo_token) {
+                                queueUndoBar('یادآور حذف شد.', {
+                                    ep: 'undo_delete.php', field: 'undo_token',
+                                    value: d.undo_token
+                                });
+                            }
+                            window.location.reload();
                         })
                         .catch(function () { alert('خطا در ارتباط با سرور.'); });
                 });
@@ -1095,72 +1106,96 @@ document.addEventListener('DOMContentLoaded', function () {
         catch (e) { /* بی‌نگهبان بهتر از خرابیِ ثبت است */ }
     }
 
-    // ---------- نوارِ «خودکار ثبت شد» و راهِ برگشتش ----------
+    // ---------- نوارِ «انجام شد — لغو» ----------
     //
-    // ⛔ این نوار همان چیزی است که ثبتِ خودکار را از یک ثبتِ **پنهان**
-    //    جدا می‌کند. تا امروز آخرین تپ دستِ کاربر بود، پس او همیشه
-    //    می‌دانست چه چیزی ثبت شد. حالا که آن تپ برداشته شده، اگر هیچ
-    //    چیزی روی صفحه نگوید چه شد، خرابیِ پارسر دوباره **بی‌صدا**
-    //    می‌شود — دقیقاً همان چیزی که آن تپ برای جلوگیری از آن بود.
+    // ⛔ **یک نوار برای همه**: هم ثبتِ خودکار از پیامک، هم هر حذفی که
+    //    برگشت‌پذیر است. دو پیاده‌سازیِ جدا یعنی دو رفتار که دیر یا زود
+    //    از هم دور می‌افتند — همان دلیلی که `includes/transactions.php`
+    //    ساخته شد.
+    //
+    // ⛔ چرا بعد از **تازه‌سازی** نشان داده می‌شود و نه درجا: جمع‌ها و
+    //    موجودیِ بالای صفحه از سمتِ سرور رندر شده‌اند، پس بدونِ
+    //    تازه‌سازی کاربر «حذف شد» می‌بیند ولی عددها عوض نشده‌اند —
+    //    همان قاعده‌ی «هر تغییر پول باید بلافاصله دیده شود». نشانه در
+    //    `sessionStorage` می‌ماند و صفحه‌ی تازه نوار را می‌سازد.
+    var UNDO_KEY = 'daftar_undo_last';
+
+    /**
+     * نوار را برای **بارگذاریِ بعدی** صف می‌کند. صداکننده بلافاصله بعدش
+     * صفحه را تازه می‌کند.
+     *
+     * @param {string} text  چه اتفاقی افتاد
+     * @param {object} undo  {ep, field, value} — اندپوینتِ برگشت و بارش
+     */
+    function queueUndoBar(text, undo) {
+        try {
+            sessionStorage.setItem(UNDO_KEY, JSON.stringify({
+                text: text, undo: undo || null, at: Date.now()
+            }));
+        } catch (e) { /* ناشناس یا پر — نوار نمی‌آید ولی کار انجام شده */ }
+    }
+    window.queueUndoBar = queueUndoBar;
+
     (function () {
         var raw = null;
-        try { raw = sessionStorage.getItem('daftar_sms_auto_last'); } catch (e) { return; }
+        try { raw = sessionStorage.getItem(UNDO_KEY); } catch (e) { return; }
         if (!raw) { return; }
-        try { sessionStorage.removeItem('daftar_sms_auto_last'); } catch (e) { /* بی‌اهمیت */ }
+        try { sessionStorage.removeItem(UNDO_KEY); } catch (e) { /* بی‌اهمیت */ }
 
         var d;
         try { d = JSON.parse(raw); } catch (e) { return; }
         // ⚠ کهنه‌اش نشان داده نمی‌شود: sessionStorage تا بسته شدنِ تب
         //   می‌ماند و بدونِ این شرط، کاربری که نیم‌ساعت بعد صفحه‌ای را
-        //   باز می‌کند نوارِ یک ثبتِ فراموش‌شده را می‌دید.
+        //   باز می‌کند نوارِ یک کارِ فراموش‌شده را می‌دید.
         if (!d || !d.at || (Date.now() - d.at) > 120000) { return; }
 
         var host = document.querySelector('.page-content') || document.body;
         if (!host) { return; }
 
         var bar = document.createElement('div');
-        bar.className = 'sms-auto-bar';
+        bar.className = 'undo-bar';
 
         var txt = document.createElement('span');
-        txt.className = 'sms-auto-bar-text';
-        txt.textContent = 'از پیامک بانک خودکار ثبت شد: '
-            + (d.type === 'income' ? 'واریز ' : 'برداشت ')
-            + toPersianDigitsJs(Number(d.amount || 0).toLocaleString('en-US').replace(/,/g, '٬'))
-            + ' تومان';
+        txt.className = 'undo-bar-text';
+        txt.textContent = d.text || 'انجام شد.';
         bar.appendChild(txt);
 
-        var tokenEl = document.querySelector('#quickAddForm [name="csrf_token"]');
-        if (d.id && tokenEl) {
-            var undo = document.createElement('button');
-            undo.type = 'button';
-            undo.className = 'sms-auto-bar-undo';
-            undo.textContent = 'لغو';
-            undo.addEventListener('click', function () {
-                undo.disabled = true;
+        // ⚠ توکنِ CSRF از هر فرمی که روی صفحه هست؛ شیتِ ثبت تراکنش در
+        //   فوترِ **هر** صفحه است، پس تقریباً همیشه پیدا می‌شود. اگر
+        //   نبود، دکمه‌ی «لغو» اصلاً رندر نمی‌شود — دکمه‌ی بی‌کار از
+        //   نبودنش بدتر است.
+        var tokenEl = document.querySelector('[name="csrf_token"]');
+        if (d.undo && d.undo.ep && tokenEl) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'undo-bar-undo';
+            btn.textContent = 'لغو';
+            btn.addEventListener('click', function () {
+                btn.disabled = true;
                 var fd = new FormData();
                 fd.set('csrf_token', tokenEl.value);
-                fd.set('transaction_id', d.id);
-                fetch(apiUrl('delete_transaction.php'), {
+                fd.set(d.undo.field, d.undo.value);
+                fetch(apiUrl(d.undo.ep), {
                     method: 'POST', body: fd,
                     headers: { 'X-Requested-With': 'XMLHttpRequest' }
                 })
                 .then(function (res) { return res.json(); })
                 .then(function (j) {
                     if (j.success) { window.location.reload(); return; }
-                    undo.disabled = false;
+                    btn.disabled = false;
                     txt.textContent = j.message || 'لغو انجام نشد.';
                 })
                 .catch(function () {
-                    undo.disabled = false;
+                    btn.disabled = false;
                     txt.textContent = 'خطا در ارتباط با سرور.';
                 });
             });
-            bar.appendChild(undo);
+            bar.appendChild(btn);
         }
 
         var close = document.createElement('button');
         close.type = 'button';
-        close.className = 'sms-auto-bar-close';
+        close.className = 'undo-bar-close';
         close.setAttribute('aria-label', 'بستن');
         close.textContent = '×';
         close.addEventListener('click', function () { bar.remove(); });
@@ -1473,6 +1508,43 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     })();
 
+
+    /**
+     * حذفِ برگشت‌پذیر: بدونِ «مطمئنید؟»، با نوارِ «لغو» بعدِ تازه‌سازی.
+     *
+     * ⛔ مودالِ تأیید هزینه‌اش را از **همه** می‌گیرد تا اشتباهِ گاه‌به‌گاهِ
+     *    یک نفر را بگیرد — و کاربری که صد بار «بله» زده، بارِ صد و یکم
+     *    هم بی‌خواندن می‌زند. یعنی مودال دقیقاً وقتی لازم است کار
+     *    نمی‌کند.
+     *
+     * ⚠ و اگر سرور توکنِ برگشت نداد (عکس گرفتن ممکن نشد)، همان
+     *   `confirm()` قدیمی می‌آید — **پیش از** حذف. «لغوِ ناموجود» از
+     *   تأیید بدتر است: کاربر روی وعده‌ای حساب می‌کند که وجود ندارد.
+     *   به همین دلیل وقتی مطمئن نیستیم، اول می‌پرسیم.
+     */
+    function deleteWithUndo(opts) {
+        var fd = new FormData();
+        fd.set('csrf_token', opts.csrf || '');
+        fd.set(opts.field, opts.value);
+        if (opts.extra) {
+            Object.keys(opts.extra).forEach(function (k) { fd.set(k, opts.extra[k]); });
+        }
+        return fetch(apiUrl(opts.ep), {
+            method: 'POST', body: fd,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+            if (!j.success) { alert(j.message || 'حذف انجام نشد.'); return; }
+            if (j.undo_token) {
+                queueUndoBar(opts.text || 'حذف شد.',
+                    { ep: 'undo_delete.php', field: 'undo_token', value: j.undo_token });
+            }
+            window.location.reload();
+        })
+        .catch(function () { alert('خطا در ارتباط با سرور.'); });
+    }
+
     // ---------- حذف تراکنش (AJAX) — در صفحه اصلی و صفحه تراکنش‌ها ----------
     document.querySelectorAll('.js-delete-tx').forEach(function (btn) {
         btn.addEventListener('click', function () {
@@ -1481,34 +1553,12 @@ document.addEventListener('DOMContentLoaded', function () {
                 ? document.querySelector('meta[name="csrf-token"]').content
                 : '';
 
-            if (!confirm('آیا از حذف این تراکنش مطمئن هستید؟ این عملیات قابل بازگشت نیست.')) {
-                return;
-            }
-
-            var row = this.closest('tr');
-            var formData = new FormData();
-            formData.append('transaction_id', txId);
-            formData.append('csrf_token', csrfToken);
-
-            fetch(apiUrl('delete_transaction.php'), {
-                method: 'POST',
-                body: formData,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            })
-            .then(function (res) { return res.json(); })
-            .then(function (data) {
-                // برداشتن ردیف کافی نیست: جمع‌ها و موجودی حساب‌ها بالای
-                // صفحه از روی همین رکورد ساخته شده‌اند و بی‌تازه‌سازی،
-                // عدد قدیمی می‌ماند و کاربر فکر می‌کند حذف نشده.
-                if (data.success) {
-                    if (row) row.remove();
-                    window.location.reload();
-                } else {
-                    alert(data.message || 'خطا در حذف تراکنش.');
-                }
-            })
-            .catch(function () {
-                alert('خطا در ارتباط با سرور.');
+            // ⛔ بدونِ «مطمئنید؟». پیامِ قدیمی می‌گفت «قابل بازگشت
+            //    نیست» — حالا هست، و همین جمله بود که تأیید را لازم
+            //    می‌کرد.
+            deleteWithUndo({
+                ep: 'delete_transaction.php', field: 'transaction_id',
+                value: txId, csrf: csrfToken, text: 'تراکنش حذف شد.'
             });
         });
     });
@@ -1867,30 +1917,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 ? document.querySelector('meta[name="csrf-token"]').content
                 : '';
 
-            if (!confirm('آیا از حذف این مورد مطمئن هستید؟')) return;
-
-            var card = this.closest('.debt-card');
-            var formData = new FormData();
-            formData.append('debt_id', debtId);
-            formData.append('csrf_token', csrfToken);
-
-            fetch(apiUrl('delete_debt.php'), {
-                method: 'POST',
-                body: formData,
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            })
-            .then(function (res) { return res.json(); })
-            .then(function (data) {
-                if (data.success) {
-                    if (card) card.remove();
-                    window.location.reload();   // مجموع طلب/بدهی بالای صفحه هم باید عوض شود
-                } else {
-                    alert(data.message || 'خطا در حذف.');
-                }
-            })
-            .catch(function () {
-                alert('خطا در ارتباط با سرور.');
-            });
+            // ⚠ پرداخت‌های ثبت‌شده با CASCADE می‌روند و «لغو» آن‌ها را
+            //   هم برمی‌گرداند.
+            deleteWithUndo({ ep: 'delete_debt.php', field: 'debt_id',
+                             value: debtId, csrf: csrfToken,
+                             text: 'طلب/بدهی با پرداخت‌هایش حذف شد.' });
         });
     });
 
@@ -2375,14 +2406,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.querySelectorAll('.js-delete-transfer').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            if (!confirm('این انتقال حذف شود؟ موجودی هر دو حساب اصلاح می‌شود.')) return;
-            var fd = new FormData();
-            fd.append('transfer_id', this.getAttribute('data-id'));
-            fd.append('csrf_token', csrf());
-            fetch(apiUrl('delete_transfer.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
-                .then(function(r){return r.json();})
-                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
-                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+            deleteWithUndo({ ep: 'delete_transfer.php', field: 'transfer_id',
+                             value: this.getAttribute('data-id'), csrf: csrf(),
+                             text: 'انتقال حذف شد — موجودی هر دو حساب برگشت.' });
         });
     });
 
@@ -2468,14 +2494,9 @@ document.addEventListener('DOMContentLoaded', function () {
     var budgetDeleteBtn = document.getElementById('budgetDeleteBtn');
     if (budgetDeleteBtn) {
         budgetDeleteBtn.addEventListener('click', function () {
-            if (!confirm('این بودجه حذف شود؟')) return;
-            var fd = new FormData();
-            fd.append('budget_id', this.getAttribute('data-id'));
-            fd.append('csrf_token', csrf());
-            fetch(apiUrl('delete_budget.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
-                .then(function(r){return r.json();})
-                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
-                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+            deleteWithUndo({ ep: 'delete_budget.php', field: 'budget_id',
+                             value: this.getAttribute('data-id'), csrf: csrf(),
+                             text: 'بودجه حذف شد.' });
         });
     }
 
@@ -2588,14 +2609,11 @@ document.addEventListener('DOMContentLoaded', function () {
     var goalDeleteBtn = document.getElementById('goalDeleteBtn');
     if (goalDeleteBtn) {
         goalDeleteBtn.addEventListener('click', function () {
-            if (!confirm('این هدف و کل تاریخچه‌اش حذف شود؟')) return;
-            var fd = new FormData();
-            fd.append('goal_id', this.getAttribute('data-id'));
-            fd.append('csrf_token', csrf());
-            fetch(apiUrl('delete_goal.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
-                .then(function(r){return r.json();})
-                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
-                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+            // ⚠ تاریخچه‌ی واریز/برداشت با CASCADE می‌رود و «لغو» هم
+            //   همان را برمی‌گرداند — عکس فرزندها را هم دارد.
+            deleteWithUndo({ ep: 'delete_goal.php', field: 'goal_id',
+                             value: this.getAttribute('data-id'), csrf: csrf(),
+                             text: 'هدف پس‌انداز با کل تاریخچه‌اش حذف شد.' });
         });
     }
 
@@ -2644,14 +2662,9 @@ document.addEventListener('DOMContentLoaded', function () {
                     box.dataset.loaded = '1';
                     box.querySelectorAll('.js-delete-savings-entry').forEach(function (delBtn) {
                         delBtn.addEventListener('click', function () {
-                            if (!confirm('این رکورد حذف شود؟')) return;
-                            var fd = new FormData();
-                            fd.append('entry_id', this.getAttribute('data-id'));
-                            fd.append('csrf_token', csrf());
-                            fetch(apiUrl('delete_savings_entry.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
-                                .then(function (r) { return r.json(); })
-                                .then(function (d) { if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
-                                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+                            deleteWithUndo({ ep: 'delete_savings_entry.php', field: 'entry_id',
+                                             value: this.getAttribute('data-id'), csrf: csrf(),
+                                             text: 'رکورد پس‌انداز حذف شد.' });
                         });
                     });
                 })
@@ -4229,19 +4242,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.querySelectorAll('.js-delete-cheque').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            if (!confirm('آیا از حذف این چک مطمئن هستید؟')) return;
-            var card = this.closest('.debt-card');
-            var fd = new FormData();
-            fd.append('cheque_id', this.getAttribute('data-id'));
-            fd.append('csrf_token', csrf());
-
-            fetch(apiUrl('delete_cheque.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-                .then(function (r) { return r.json(); })
-                .then(function (d) {
-                    if (d.success) { if (card) card.remove(); window.location.reload(); }
-                    else { alert(d.message || 'خطا در حذف.'); }
-                })
-                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+            deleteWithUndo({ ep: 'delete_cheque.php', field: 'cheque_id',
+                             value: this.getAttribute('data-id'), csrf: csrf(),
+                             text: 'چک حذف شد.' });
         });
     });
 
@@ -4338,25 +4341,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
     document.querySelectorAll('.js-delete-asset').forEach(function (btn) {
         btn.addEventListener('click', function () {
-            if (!confirm('آیا از حذف این مورد مطمئن هستید؟')) return;
-            var row = this.closest('.tx-row');
-            var fd = new FormData();
-            fd.append('asset_id', this.getAttribute('data-id'));
-            fd.append('csrf_token', csrf());
-
-            fetch(apiUrl('delete_asset.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
-                .then(function (r) { return r.json(); })
-                .then(function (d) {
-                    // فقط برداشتن ردیف کافی نیست: جمع دارایی‌ها و ارزش کل
-                    // بالای صفحه از روی همین رکوردها ساخته شده‌اند و
-                    // بی‌به‌روزرسانی، عدد قدیمی را نشان می‌دادند — کاربر
-                    // فکر می‌کرد حذف اصلاً انجام نشده.
-                    if (d.success) {
-                        if (row) row.remove();
-                        window.location.reload();
-                    } else { alert(d.message || 'خطا در حذف.'); }
-                })
-                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+            deleteWithUndo({ ep: 'delete_asset.php', field: 'asset_id',
+                             value: this.getAttribute('data-id'), csrf: csrf(),
+                             text: 'دارایی حذف شد.' });
         });
     });
 
