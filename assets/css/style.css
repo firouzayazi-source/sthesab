@@ -604,6 +604,9 @@ textarea { resize: vertical; }
 .notif-reminder { background: var(--gold); }
 .notif-due      { background: var(--out); }
 .notif-payment  { background: var(--in); }
+/* ⚠ کهربایی است نه قرمز: پشتیبان نگرفتن یک **خطر** است ولی سررسیدِ
+   امروز نیست. با قرمز، این جمله در فهرست هم‌وزنِ چکِ برگشتی دیده می‌شد. */
+.notif-backup   { background: var(--warn-ink); }
 
 .notif-main, .reminder-main { flex: 1 1 auto; min-width: 0; }
 .notif-title, .reminder-title { font-size: 13.5px; font-weight: 700; }
@@ -3486,6 +3489,85 @@ html[data-theme="dark"] .stay-chip.active { box-shadow: none; }
 .insight-up   .insight-dot { background: var(--gold); }
 .insight-down .insight-dot,
 .insight-good .insight-dot { background: var(--in); }
+
+/* ---------- «دقیقه‌ی اول»: کارتِ موجودی اولیه ----------
+   ⚠ رنگش آبیِ تعامل است (`--gold`/`--gold-wash`) نه کهربایی: این یک
+     **دعوت** است نه هشدار. با رنگِ هشدار، اولین چیزی که کاربرِ تازه
+     می‌بیند یک اخطار می‌شد — و آن‌وقت رنگِ هشدار در بقیه‌ی اپ هم بی‌اثر
+     می‌شود. همان درسِ «هشدارِ همیشگی بدتر از نبودنش است». */
+.start-card {
+    border-inline-start: 3px solid var(--gold);
+    background: linear-gradient(180deg, var(--gold-wash) 0%, var(--surface) 62%);
+}
+/* ⛔ حالت شب **باید** جدا نوشته شود، وگرنه بی‌صدا از بین می‌رود:
+   `html[data-theme="dark"] .card { background: #16191e }` (خطِ ~۱۷۵۵)
+   وزنِ بیشتری از `.start-card` دارد، پس شورتهندِ `background` آن،
+   گرادیانِ بالا را کاملاً پاک می‌کند. در روز بی‌عیب بود و فقط در شب
+   دیده می‌شد — همان درسِ «قاعده‌ای که *برنده می‌شود* باید مقدار را
+   داشته باشد» که یک بار سرِ `env(safe-area-inset-*)` گفته شد.
+   با اندازه‌گیری پیدا شد (`backgroundImage: none`)، نه با نگاه. */
+html[data-theme="dark"] .start-card {
+    background: linear-gradient(180deg,
+        color-mix(in srgb, var(--gold) 16%, var(--surface)) 0%,
+        var(--surface) 62%);
+    /* ⚠ و خطِ رنگیِ کنار هم همین‌طور: `html[data-theme="dark"] .card
+       { border-color: var(--line) }` (خطِ ~۲۳۲۰) وزنش بیشتر است، پس
+       نوارِ آبی در شب خاکستری می‌شد. اندازه‌گیری شد: rgb(38,44,71). */
+    border-inline-start-color: var(--gold);
+}
+.start-head { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+.start-step {
+    background: var(--gold); color: var(--brand-on);
+    font-size: 11px; font-weight: 700;
+    padding: 3px 9px; border-radius: 999px;
+    flex-shrink: 0;
+}
+.start-title { font-size: 15.5px; font-weight: 800; color: var(--ink); margin: 0; }
+.start-why {
+    font-size: 13px; line-height: 1.9; color: var(--muted);
+    margin: 9px 0 14px;
+}
+.start-label {
+    display: block;
+    font-size: 12.5px; font-weight: 600; color: var(--ink-soft);
+    margin-bottom: 6px;
+}
+/* ورودی و دکمه در یک ردیف: قدمِ اول باید یک عدد و یک تپ باشد، نه یک فرم. */
+.start-row { display: flex; gap: 8px; align-items: stretch; }
+/* ⚠ فاصله‌ی عمودیِ کمتر از فیلدِ مبلغِ شیتِ ثبت. `.amount-input` با
+   `font-size: 30px !important` ساخته شده و با padding پیش‌فرض ۷۷px
+   ارتفاع می‌گیرد؛ در یک کارتِ کوچکِ راهنما آن ارتفاع، دکمه‌ی کنارش را
+   به یک تخته‌ی ۶۰×۷۷ تبدیل می‌کرد. اندازه‌گیری شد، حدس زده نشد. */
+/* ⚠ `!important` اینجا ناچاری است نه سلیقه: خودِ `.amount-input` با
+   `font-size: …!important` و `padding: …!important` نوشته شده، پس بدونِ
+   آن این قاعده **بی‌صدا** بی‌اثر می‌ماند. اولین تلاش دقیقاً همین شد و
+   با اندازه‌گیری معلوم شد (`paddingTop` همچنان ۱۴px بود)، نه با نگاه. */
+.start-row .amount-input {
+    flex: 1; min-width: 0;
+    font-size: 26px !important;
+    padding: 10px 13px !important;
+}
+/* دکمه پهنای معقول می‌گیرد وگرنه با دو حرفِ «ثبت» یک مربعِ باریک می‌شود. */
+.start-row .btn { flex-shrink: 0; min-width: 92px; }
+.start-foot {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-top: 12px;
+    font-size: 12.5px;
+}
+.start-foot a { color: var(--gold); text-decoration: none; }
+/* «نیازی نیست» عمداً کم‌رنگ و بی‌کادر است: راهِ فرار باید باز باشد ولی
+   نباید هم‌وزنِ خودِ کار دیده شود. */
+.start-skip {
+    background: none; border: 0; padding: 0;
+    color: var(--muted-2); font: inherit; cursor: pointer;
+    text-decoration: underline; text-underline-offset: 3px;
+    margin-inline-start: auto;
+}
+.start-skip:hover { color: var(--ink); }
+
+/* ⛔ راهِ ثبتِ اولین تراکنش باید **دکمه** باشد، نه جمله‌ای که به دکمه‌ی
+   نوارِ پایین اشاره کند: آن نوار بالای ۹۰۰px اصلاً رندر نمی‌شود. */
+.empty-cta { text-align: center; padding: 0 12px 26px; margin: -14px 0 0; }
 
 /* پیش‌نمایشِ زنده‌ی هدفِ پس‌انداز — همان اجزای کارتِ واقعی، تا آنچه
    کاربر می‌بیند با آنچه بعد از ذخیره می‌گیرد یکی باشد. */

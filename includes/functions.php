@@ -897,6 +897,118 @@ function defaultWalletId(int $userId): ?int
 }
 
 /**
+ * «دقیقه‌ی اول» — آیا هنوز باید موجودیِ واقعی را از کاربر بپرسیم؟
+ *
+ * ⛔ چرا این مهم‌ترین قدمِ کاربرِ تازه است: حسابِ پیش‌فرض با
+ *    `initial_balance = 0` ساخته می‌شود، پس با اولین هزینه «مجموع
+ *    حساب‌ها» منفی می‌شود و `safeToSpend()` تا ابد منفی می‌ماند.
+ *    یعنی تنها عددی که به کارِ کاربر می‌آید از روزِ اول دروغ می‌گوید،
+ *    **بی‌هیچ خطایی** — و کاربر نتیجه می‌گیرد اپ خراب است.
+ *
+ * ⛔ تنها جایی است که این تصمیم گرفته می‌شود (مثل `categoryScopeSql()`).
+ *    خانه و `api/adjust_wallet.php` هر دو از همین رد می‌شوند؛ با دو
+ *    نسخه، کارت پس از تنظیم کردن سرِ جایش می‌ماند یا برعکس.
+ *
+ * ⛔ دو شرط لازم است و هیچ‌کدام کافی نیست:
+ *    ۱. `users.balance_setup_at` هنوز `NULL` باشد — کاربری که واقعاً
+ *       موجودی‌اش صفر است باید بتواند «نیازی نیست» بزند و خلاص شود.
+ *    ۲. هیچ حسابی موجودی اولیه نداشته باشد — کسی که از راهِ دیگری
+ *       (فرمِ ساختِ حساب) عدد وارد کرده، دیگر نباید پرسیده شود.
+ *
+ * ⚠ اگر ستون هنوز با migration نیامده باشد، `null` برمی‌گردد و کارت
+ *   بی‌سروصدا خاموش می‌ماند — همان قاعده‌ی `LoginThrottle::available()`.
+ *
+ * @return array{wallet_id:int, wallet_name:string, more:bool}|null
+ */
+function openingBalanceHint(int $userId): ?array
+{
+    if ($userId <= 0 || !tableHasColumn('users', 'balance_setup_at')) { return null; }
+
+    try {
+        $pdo = Database::getConnection();
+
+        $st = $pdo->prepare('SELECT balance_setup_at FROM users WHERE id = :u');
+        $st->execute(['u' => $userId]);
+        $row = $st->fetch();
+        if (!$row || $row['balance_setup_at'] !== null) { return null; }
+
+        $st = $pdo->prepare('SELECT id, name, initial_balance FROM wallets
+                             WHERE user_id = :u AND is_active = 1
+                             ORDER BY sort_order, name');
+        $st->execute(['u' => $userId]);
+        $wallets = $st->fetchAll();
+        if (!$wallets) { return null; }
+
+        foreach ($wallets as $w) {
+            if ((int)$w['initial_balance'] !== 0) { return null; }
+        }
+    } catch (PDOException $e) {
+        return null;   // ⚠ کارِ جانبی است و هرگز نباید صفحه‌ی خانه را بشکند
+    }
+
+    $target = defaultWalletId($userId);
+    if ($target === null) { return null; }
+
+    $name = '';
+    foreach ($wallets as $w) {
+        if ((int)$w['id'] === $target) { $name = (string)$w['name']; break; }
+    }
+
+    return [
+        'wallet_id'   => $target,
+        'wallet_name' => $name,
+        'more'        => count($wallets) > 1,
+    ];
+}
+
+/**
+ * نشانه‌ی «دیگر نپرس» را می‌گذارد — چه کاربر عدد وارد کرده باشد چه
+ * گفته باشد نیازی نیست. تنها جای نوشتنِ `balance_setup_at`.
+ */
+function markBalanceSetup(int $userId): void
+{
+    if ($userId <= 0 || !tableHasColumn('users', 'balance_setup_at')) { return; }
+    try {
+        Database::getConnection()
+            ->prepare('UPDATE users SET balance_setup_at = NOW() WHERE id = :u AND balance_setup_at IS NULL')
+            ->execute(['u' => $userId]);
+    } catch (PDOException $e) {
+        // بی‌صدا: نشانه‌گذاری نباید جلوی کارِ اصلی (تعدیل موجودی) را بگیرد.
+    }
+}
+
+/**
+ * «کاربر همین حالا خروجیِ کامل گرفت.» تنها جای نوشتنِ `last_backup_at`.
+ */
+function markBackupTaken(int $userId): void
+{
+    if ($userId <= 0 || !tableHasColumn('users', 'last_backup_at')) { return; }
+    try {
+        Database::getConnection()
+            ->prepare('UPDATE users SET last_backup_at = NOW() WHERE id = :u')
+            ->execute(['u' => $userId]);
+    } catch (PDOException $e) {
+        // بی‌صدا: نشانه‌گذاری هرگز نباید جلوی خودِ دانلودِ فایل را بگیرد.
+    }
+}
+
+/**
+ * آخرین باری که کاربر خروجیِ کامل گرفت — یا `null` اگر هرگز.
+ */
+function lastBackupAt(int $userId): ?string
+{
+    if ($userId <= 0 || !tableHasColumn('users', 'last_backup_at')) { return null; }
+    try {
+        $st = Database::getConnection()->prepare('SELECT last_backup_at FROM users WHERE id = :u');
+        $st->execute(['u' => $userId]);
+        $row = $st->fetch();
+        return ($row && $row['last_backup_at'] !== null) ? (string)$row['last_backup_at'] : null;
+    } catch (PDOException $e) {
+        return null;
+    }
+}
+
+/**
  * حسابی که کاربر فرستاده را می‌سنجد؛ اگر نفرستاده یا مال او نیست،
  * حساب پیش‌فرض برمی‌گردد. نقطه‌ی واحدِ «هیچ پولی بی‌حساب نماند».
  */

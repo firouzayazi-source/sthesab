@@ -103,6 +103,7 @@ MIGRATIONS=(
     migration_schedule.sql
     migration_reminder_plan.sql
     migration_goal_wallet.sql
+    migration_onboarding.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -222,6 +223,7 @@ declare -A SENTINEL=(
     [migration_schedule.sql]="reminder_occurrences"
     [migration_reminder_plan.sql]="reminders.total_count"
     [migration_goal_wallet.sql]="savings_goals.wallet_id"
+    [migration_onboarding.sql]="users.balance_setup_at"
     [migration_plans.sql]="payments"
     [migration_sms_login.sql]="sms_codes"
     # شاهدش داده است نه ساختار — توضیحش در sentinel_present.

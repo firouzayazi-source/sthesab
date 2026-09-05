@@ -19,6 +19,13 @@ CREATE TABLE IF NOT EXISTS `users` (
     -- بعد از چند دقیقه بی‌فعالیتی دوباره رمز پرسیده شود. ۰ = هرگز.
     -- مقدارهای مجاز در Auth::SESSION_WINDOWS تعریف شده‌اند.
     `session_minutes` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0 = بدون مهلت',
+    -- «دقیقه‌ی اول»: تا وقتی NULL است، کارتِ «موجودی واقعی چقدر است؟» روی
+    -- خانه دیده می‌شود. با تنظیم کردن **یا** با «نیازی نیست» پر می‌شود —
+    -- شرطِ «همه‌ی حساب‌ها صفرند» به‌تنهایی کاربرِ واقعاً بی‌پول را تا ابد
+    -- گیر می‌انداخت.
+    `balance_setup_at` DATETIME NULL DEFAULT NULL,
+    -- آخرین خروجیِ کاملِ داده. NULL = هرگز. یادآوریِ ماهانه از همین می‌آید.
+    `last_backup_at` DATETIME NULL DEFAULT NULL,
     `is_active` TINYINT(1) NOT NULL DEFAULT 1,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

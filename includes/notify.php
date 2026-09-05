@@ -33,6 +33,26 @@ class Notify
     /** بیشترین اعلانی که در صفحه‌ی مرکزِ اعلان نشان داده می‌شود. */
     public const PAGE_LIMIT = 60;
 
+    /**
+     * پس از چند روز از آخرین پشتیبان، یادآوری می‌شود. تنها مرجع.
+     *
+     * ⚠ ۳۰ روز عمدی است نه دلخواه: کوتاه‌تر از یک ماه یعنی کاربری که
+     *   ماهی یک بار بکاپ می‌گیرد — رفتارِ کاملاً درست — باز هم یادآوری
+     *   می‌گیرد، و یادآوری‌ای که به کارِ درستِ کاربر گیر بدهد همان اولین
+     *   چیزی است که خاموش می‌شود.
+     */
+    public const BACKUP_AFTER_DAYS = 30;
+
+    /**
+     * زیر این تعداد تراکنش، اصلاً یادآوریِ پشتیبان نمی‌رود.
+     *
+     * ⛔ کاربری که سه تراکنش دارد چیزی برای از دست دادن ندارد؛ گفتنِ
+     *    «پشتیبان بگیر» به او فقط یک اعلانِ بی‌ربط است — و اعلانِ بی‌ربط
+     *    کلِ مرکزِ اعلان را برای همیشه بی‌اعتبار می‌کند. همان استدلالِ
+     *    «کاربرِ تازه هیچ جمله‌ای نمی‌گیرد» در `financialHighlights()`.
+     */
+    public const BACKUP_MIN_ROWS = 25;
+
     public static function available(): bool
     {
         static $ok = null;
@@ -166,7 +186,73 @@ class Notify
         $made = 0;
         $made += self::generateReminders($userId, $today);
         $made += self::generateDueEvents($userId, $today);
+        $made += self::generateBackupHint($userId, $today);
         return $made;
+    }
+
+    /**
+     * «یک ماه از آخرین پشتیبان گذشته.»
+     *
+     * ⛔ چرا لازم است: `backup.php` از قبل هست و کار می‌کند، ولی هیچ‌کس
+     *    بی‌یادآوری بکاپ نمی‌گیرد. دفتری که کاربر سه سال نگه داشته، اگر
+     *    یک بار از دست برود رابطه تمام است — و برخلافِ بقیه‌ی خرابی‌های
+     *    این اپ، این یکی **برگشت‌ناپذیر** است.
+     *
+     * ⛔ `dedup_key` ماهانه است، نه روزانه: بدونِ آن همان یک جمله هر روز
+     *    تکرار می‌شد و فهرستِ اعلان در یک هفته غیرقابل خواندن می‌شد —
+     *    یعنی قابلیت خودش را می‌کشت، بی‌هیچ خطایی.
+     *
+     * ⚠ اگر ستون هنوز با migration نیامده باشد، بی‌صدا هیچ کاری نمی‌کند.
+     */
+    private static function generateBackupHint(int $userId, string $today): int
+    {
+        if (!tableHasColumn('users', 'last_backup_at')) { return 0; }
+
+        try {
+            $pdo = Database::getConnection();
+
+            // ⛔ شرطِ «چیزی برای از دست دادن هست» **پیش از** هر چیزِ دیگر:
+            //    یک کوئریِ شمارش ارزانش را دارد و کاربرِ تازه را کاملاً
+            //    بیرون می‌گذارد.
+            $st = $pdo->prepare('SELECT COUNT(*) FROM transactions WHERE user_id = :u');
+            $st->execute(['u' => $userId]);
+            if ((int)$st->fetchColumn() < self::BACKUP_MIN_ROWS) { return 0; }
+
+            // ⛔ مقایسه‌ی تاریخ در **دیتابیس** انجام می‌شود نه در PHP — همان
+            //    درسی که لینکِ بازیابیِ رمز داد: منطقه‌ی زمانیِ PHP و MySQL
+            //    یکی نبودند و لینک بلافاصله «منقضی» می‌شد.
+            $st = $pdo->prepare('
+                SELECT last_backup_at IS NULL AS never
+                  FROM users
+                 WHERE id = :u
+                   AND (last_backup_at IS NULL
+                        OR last_backup_at < DATE_SUB(NOW(), INTERVAL :d DAY))
+            ');
+            $st->bindValue('u', $userId, PDO::PARAM_INT);
+            $st->bindValue('d', self::BACKUP_AFTER_DAYS, PDO::PARAM_INT);
+            $st->execute();
+            $row = $st->fetch();
+            if (!$row) { return 0; }
+
+            $never = (int)$row['never'] === 1;
+        } catch (Throwable $e) {
+            return 0;
+        }
+
+        $ok = self::push(
+            $userId,
+            'backup',
+            $never ? 'هنوز از داده‌هایتان پشتیبان نگرفته‌اید'
+                   : 'یک ماه از آخرین پشتیبان گذشته است',
+            'یک فایل کوچک می‌گیرید و روی گوشی یا رایانه‌تان نگه می‌دارید. '
+                . 'اگر روزی چیزی برای سرور پیش بیاید، همه‌ی دفترتان همان‌جاست.',
+            'backup.php',
+            // ماهی یکی، نه روزی یکی. کلید از ماهِ **میلادی** ساخته می‌شود
+            // چون یک برچسبِ داخلی است و هیچ‌جا نمایش داده نمی‌شود.
+            'backup:' . substr($today, 0, 7)
+        );
+
+        return $ok ? 1 : 0;
     }
 
     /** یادآورهای شخصیِ کاربر که امروز (یا قبل‌تر) سررسید شده‌اند. */

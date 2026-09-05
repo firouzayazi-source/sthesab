@@ -2201,6 +2201,41 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // ---------- تعدیل موجودی حساب ----------
+    /* ---------- «دقیقه‌ی اول»: موجودی اولیه روی صفحه‌ی خانه ----------
+       عمداً همان `api/adjust_wallet.php` با `mode=set` را صدا می‌زند، نه
+       یک اندپوینتِ تازه: منطقِ «تفاوت تا رسیدن به عددِ واقعی» و بررسیِ
+       مالکیت آنجاست و نسخه‌ی دومش دیر یا زود از آن دور می‌افتاد. */
+    var startBalanceForm = document.getElementById('startBalanceForm');
+    if (startBalanceForm) {
+        setupAmountFormatter('start_balance');
+
+        startBalanceForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            submitJson(startBalanceForm, apiUrl('adjust_wallet.php'),
+                document.getElementById('startBalanceMessage'),
+                document.getElementById('startBalanceSubmit'), 'start_balance');
+        });
+
+        var startSkip = document.getElementById('startBalanceSkip');
+        if (startSkip) {
+            startSkip.addEventListener('click', function () {
+                var fd = new FormData();
+                fd.set('csrf_token', startBalanceForm.querySelector('[name="csrf_token"]').value);
+                startSkip.disabled = true;
+                fetch(apiUrl('dismiss_balance_hint.php'), {
+                    method: 'POST', body: fd,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                    .then(function (r) { return r.json(); })
+                    // ⚠ تازه‌سازی لازم است نه پنهان کردنِ کارت: عددهای بالای
+                    //   صفحه سمتِ سرور رندر شده‌اند و کاربر باید ببیند چیزی
+                    //   عوض نشده — همان قاعده‌ی «هر تغییر باید دیده شود».
+                    .then(function () { window.location.reload(); })
+                    .catch(function () { startSkip.disabled = false; });
+            });
+        }
+    }
+
     var adjustForm = document.getElementById('adjustWalletForm');
     if (adjustForm) {
         var adjustHints = {

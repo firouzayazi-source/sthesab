@@ -25,6 +25,12 @@ Auth::requireLogin();
 
 $fileName = backupFileName();
 
+// ⛔ یادآوریِ ماهانه بدونِ این خط یک ادعای نادیدنی است: کاربر اعلان
+//    می‌گیرد، می‌آید اینجا، و هیچ‌جا نمی‌بیند آخرین بار کِی بوده — پس
+//    نمی‌تواند بفهمد اعلان درست گفته یا نه. همان قاعده‌ی «خطِ وضعیتِ
+//    ذخیره‌شده» در کارتِ اتصالِ پیامک.
+$lastBackup = lastBackupAt(Auth::userId());
+
 $pageTitle = 'بکاپ داده';
 include __DIR__ . '/includes/header.php';
 ?>
@@ -46,6 +52,14 @@ include __DIR__ . '/includes/header.php';
     </p>
     <p class="hint" style="margin-bottom:16px;">
         رمز عبور و اطلاعاتِ ورودِ شما در این فایل <strong>نیست</strong>.
+    </p>
+
+    <p class="hint" style="margin-bottom:14px;">
+        <?php if ($lastBackup !== null): ?>
+            آخرین پشتیبان: <?= toJalali(substr($lastBackup, 0, 10)) ?>
+        <?php else: ?>
+            هنوز پشتیبانی نگرفته‌اید.
+        <?php endif; ?>
     </p>
 
     <div class="backup-file">

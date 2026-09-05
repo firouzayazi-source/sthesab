@@ -54,9 +54,51 @@ $monthNet     = $monthIncome - $monthExpense;
 //    یعنی اولین چیزی که کاربر می‌بیند — بشکند.
 $highlights = financialHighlights($userId);
 
+// ⛔ «دقیقه‌ی اول». تصمیمش تنها در `openingBalanceHint()` است.
+$openingHint = openingBalanceHint($userId);
+
 $pageTitle = 'خانه';
 include __DIR__ . '/includes/header.php';
 ?>
+
+<?php /* ⛔ جای این کارت **بالای همه چیز** است، نه پایین‌تر. حرفش این است
+         که عددهای زیرش هنوز درست نیستند؛ نشاندنش زیرِ همان عددها یعنی
+         کاربر اول باور می‌کند و بعد می‌خواند. فقط تا وقتی دیده می‌شود
+         که کاربر جواب نداده باشد و هیچ حسابی موجودی اولیه نداشته باشد. */ ?>
+<?php if ($openingHint): ?>
+<div class="card start-card">
+    <div class="start-head">
+        <span class="start-step">قدم اول</span>
+        <h2 class="start-title">همین حالا چقدر پول دارید؟</h2>
+    </div>
+    <p class="start-why">
+        تا این عدد را وارد نکنید، حساب‌ها از صفر شروع می‌کنند: با اولین هزینه
+        «مجموع حساب‌ها» منفی می‌شود و «پول قابل خرج» هم همین‌طور.
+    </p>
+
+    <form id="startBalanceForm" class="start-form" autocomplete="off">
+        <input type="hidden" name="csrf_token" value="<?= Csrf::token() ?>">
+        <input type="hidden" name="wallet_id" value="<?= (int)$openingHint['wallet_id'] ?>">
+        <input type="hidden" name="mode" value="set">
+        <label class="start-label" for="start_balance">
+            موجودی «<?= h($openingHint['wallet_name']) ?>» به تومان
+        </label>
+        <div class="start-row">
+            <input type="text" inputmode="numeric" id="start_balance" name="amount"
+                   class="amount-input" placeholder="۰" required>
+            <button type="submit" class="btn btn-primary" id="startBalanceSubmit">ثبت</button>
+        </div>
+        <div id="startBalanceMessage" class="form-message" hidden></div>
+    </form>
+
+    <div class="start-foot">
+        <?php if ($openingHint['more']): ?>
+            <a href="<?= APP_BASE_PATH ?>/wallets.php">حساب‌های دیگر ←</a>
+        <?php endif; ?>
+        <button type="button" class="start-skip" id="startBalanceSkip">نیازی نیست</button>
+    </div>
+</div>
+<?php endif; ?>
 
 <div class="balance-ribbon">
     <div class="balance-label">مانده این ماه</div>
@@ -99,7 +141,14 @@ include __DIR__ . '/includes/header.php';
 
     <div class="table-wrapper">
         <?php if (empty($recentTransactions)): ?>
-            <p class="empty-row">هنوز تراکنشی ثبت نکرده‌اید.<br>با دکمه + پایین صفحه اولین تراکنش را ثبت کنید.</p>
+            <?php /* ⛔ متنِ قبلی می‌گفت «با دکمه + **پایین صفحه**» — و روی
+                     دسکتاپ `.bottom-nav` با `display:none` کنار می‌رود، پس
+                     تنها راهنماییِ کاربرِ خالی‌دفتر به دکمه‌ای اشاره می‌کرد
+                     که وجود نداشت. راهِ درست این است که خودِ اینجا **در**
+                     باشد: `.js-add-tx` تنها بندِ باز کردنِ شیتِ ثبت است و
+                     روی هر عرضی کار می‌کند. */ ?>
+            <p class="empty-row">هنوز تراکنشی ثبت نکرده‌اید.</p>
+            <p class="empty-cta"><button type="button" class="btn btn-primary js-add-tx">ثبت اولین تراکنش</button></p>
         <?php else: ?>
             <?php renderTransactionsGrouped($recentTransactions); ?>
         <?php endif; ?>
