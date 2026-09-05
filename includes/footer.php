@@ -74,7 +74,12 @@ $moreActive = in_array($bottomPage, $morePages, true);
             </a>
             <a href="<?= APP_BASE_PATH ?>/due.php" class="tool-card" style="--tc1:#0ea5e9; --tc2:#0369a1;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M9 15l2 2 4-4"/></svg>
-                <span>سررسیدها</span>
+                <?php /* ⚠ برچسبِ منو با عنوانِ خودِ صفحه («سررسیدها») عمداً
+                         یکی نیست و این خواسته‌ی صاحبِ محصول است. اگر عوضش
+                         کردید، `includes/sidebar.php` را هم همان لحظه عوض
+                         کنید: یک مقصد با دو نامِ مختلف روی موبایل و دسکتاپ،
+                         خرابیِ بی‌صدایی است که فقط کاربر می‌بیند. */ ?>
+                <span>یادآوری‌های من</span>
             </a>
             <a href="<?= APP_BASE_PATH ?>/budget.php" class="tool-card" style="--tc1:#d97706; --tc2:#ca8a04;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h6" stroke-linecap="round"/></svg>
