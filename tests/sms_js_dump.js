@@ -62,9 +62,11 @@ for (const file of ['jalali-datepicker.js', 'app.js']) {
     }
 }
 
-if (typeof sandbox.window.parseBankSms !== 'function') {
-    console.error('ERR_EXPORT: window.parseBankSms صادر نشد');
-    process.exit(2);
+for (const fn of ['parseBankSms', 'smsAutoOk', 'smsFingerprint', 'smsAutoEnabled']) {
+    if (typeof sandbox.window[fn] !== 'function') {
+        console.error('ERR_EXPORT: window.' + fn + ' صادر نشد');
+        process.exit(2);
+    }
 }
 
 let input = '';
@@ -76,7 +78,35 @@ process.stdin.on('end', () => {
         process.exit(2);
     }
     const out = cases.map((t) => {
-        try { return sandbox.window.parseBankSms(t); }
+        try {
+            // ⚠ ورودیِ نشانه‌دار: `smsAutoOk` را با آشغال صدا می‌زند.
+            //   تستِ PHP از این‌طرف نمی‌تواند مستقیم صدایش بزند، و
+            //   بدونِ آن شرطِ `!r || !r.ok` **افزونه** به نظر می‌رسید
+            //   (بقیه‌ی شرط‌ها هم آن حالت را می‌گرفتند) — تا وقتی که
+            //   ورودیِ null باشد و آن‌وقت خطای کشنده بدهد.
+            if (t === '__PROBE_JUNK__') {
+                const call = (x) => {
+                    try { return sandbox.window.smsAutoOk(x, true); }
+                    catch (e) { return { ok: null, why: 'THREW: ' + e.message }; }
+                };
+                return {
+                    ok: false,
+                    junkNull: call(null),
+                    junkUndef: call(undefined),
+                    junkEmpty: call({}),
+                    // ⛔ localStorage در این sandbox همیشه خالی است، یعنی
+                    //    دقیقاً حالتِ «کاربر هیچ‌وقت روشنش نکرده».
+                    autoDefault: sandbox.window.smsAutoEnabled(),
+                };
+            }
+            const r = sandbox.window.parseBankSms(t);
+            // ⚠ هر دو حالتِ «مقصد قطعی / مبهم» با هم برمی‌گردند تا تستِ
+            //   PHP بتواند هر دو را بسنجد بی‌آنکه شکلِ ورودی عوض شود.
+            r.autoWithWallet = sandbox.window.smsAutoOk(r, true);
+            r.autoNoWallet   = sandbox.window.smsAutoOk(r, false);
+            r.fingerprint    = sandbox.window.smsFingerprint(t);
+            return r;
+        }
         catch (e) { return { ok: false, reason: 'THREW: ' + e.message }; }
     });
     process.stdout.write(JSON.stringify(out));

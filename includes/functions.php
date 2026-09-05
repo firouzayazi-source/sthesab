@@ -1872,6 +1872,161 @@ function monthComparison(int $userId): array
 }
 
 /**
+ * ⛔ جمله‌های بینش — تنها جایی که اپ **حرف می‌زند**، نه عدد نشان می‌دهد.
+ *
+ * دلیل وجودش: همه‌ی این اعداد از قبل بودند (`monthComparison`,
+ * `safeToSpend`, `budgetStatuses`, `spendingInsights`) ولی به‌شکلِ عدد،
+ * پراکنده در چهار صفحه. کاربر باید خودش نگاه می‌کرد، مقایسه می‌کرد و
+ * نتیجه می‌گرفت — یعنی کاری که اپ باید برایش بکند. یک دفترِ خوبِ ثبت،
+ * تا وقتی چیزی **نگوید**، فقط یک دفتر است.
+ *
+ * ⛔ حداکثر سه جمله، و این سقف جدی است. با ده جمله هیچ‌کدام خوانده
+ *    نمی‌شوند و کارت به یک دیوارِ متن تبدیل می‌شود — همان چیزی که
+ *    صفحه‌ی «فهرست‌های من» برای حذفش ساخته شد.
+ *
+ * ⛔ و **هیچ جمله‌ای با داده‌ی نازک ساخته نمی‌شود.** درصدِ رشد وقتی ماهِ
+ *    قبل صفر بوده بی‌معناست (`monthComparison` در آن حالت ۱۰۰ برمی‌گرداند
+ *    که یک عددِ فنی است، نه یک حقیقت). جمله‌ای که بگوید «۱۰۰٪ بیشتر از
+ *    ماه قبل» به کاربری که ماه قبل تازه ثبت‌نام کرده، دروغ است — و
+ *    اولین جمله‌ی دروغ یعنی کاربر بقیه را هم باور نمی‌کند.
+ *
+ * @return array<int, array{tone:string, text:string, link:?string}>
+ */
+function financialHighlights(int $userId): array
+{
+    $out = [];
+
+    // ---------- ۱. سررسیدِ عقب‌افتاده، مقدم بر همه ----------
+    // ⛔ اول از همه، چون تنها چیزی است که **همین حالا** هزینه دارد:
+    //    چکِ برگشتی عارضه‌ی حقوقی دارد و بدهیِ دیرکرد رابطه را خراب
+    //    می‌کند. مقایسه‌ی هزینه‌ی ماه در برابرش تزئین است.
+    try {
+        $safe = safeToSpend($userId);
+        if (!empty($safe['overdue']) && (int)$safe['overdue'] > 0) {
+            $out[] = [
+                'tone' => 'warn',
+                'text' => 'سررسیدِ گذشته دارید: ' . formatMoney((int)$safe['overdue']) . ' تومان.',
+                'link' => 'upcoming.php',
+            ];
+        }
+    } catch (Throwable $e) { /* بینش نباید صفحه را بشکند */ }
+
+    // ---------- ۲. بودجه‌ای که رد شده ----------
+    try {
+        $worst = null;
+        foreach (budgetStatuses($userId) as $b) {
+            $pct = (int)($b['percent'] ?? 0);
+            if ($pct > 100 && ($worst === null || $pct > (int)$worst['percent'])) { $worst = $b; }
+        }
+        if ($worst !== null) {
+            $out[] = [
+                'tone' => 'warn',
+                'text' => 'بودجه‌ی «' . $worst['category_name'] . '» رد شده — '
+                          . toPersianDigits((string)(int)$worst['percent']) . '٪ مصرف شده.',
+                'link' => 'budget.php',
+            ];
+        }
+    } catch (Throwable $e) { /* جدول بودجه شاید نیامده باشد */ }
+
+    // ---------- ۳. دسته‌ای که بیشترین رشد را داشته ----------
+    // ⛔ این جمله «چرا» را جواب می‌دهد، و بقیه فقط «چقدر». دیدنِ
+    //    «هزینه‌ات ۴۰٪ بیشتر شده» بدونِ اینکه بدانی **کجا**، هیچ رفتاری
+    //    را عوض نمی‌کند.
+    try {
+        $grew = topGrowingCategory($userId);
+        if ($grew !== null) {
+            $out[] = [
+                'tone' => 'up',
+                'text' => 'این ماه ' . toPersianDigits((string)$grew['pct']) . '٪ بیشتر از ماه قبل خرجِ «'
+                          . $grew['name'] . '» شده — ' . formatMoney($grew['now']) . ' تومان.',
+                'link' => 'category-report.php?type=expense&preset=this_month',
+            ];
+        }
+    } catch (Throwable $e) { /* ignore */ }
+
+    // ---------- ۴. حالِ کلیِ ماه، فقط اگر جای دیگری پر نشده ----------
+    if (count($out) < 3) {
+        try {
+            $mc = monthComparison($userId);
+            // ⛔ نگهبانِ داده‌ی نازک: بدونِ ماهِ قبلِ واقعی، درصد دروغ است.
+            if ((int)$mc['prev_expense'] > 0 && (int)$mc['current_expense'] > 0) {
+                $ch = (int)$mc['expense_change'];
+                if (abs($ch) >= 10) {
+                    $out[] = [
+                        'tone' => $ch > 0 ? 'up' : 'down',
+                        'text' => 'تا امروز ' . toPersianDigits((string)abs($ch)) . '٪ '
+                                  . ($ch > 0 ? 'بیشتر' : 'کمتر') . ' از همین روزِ ' . $mc['prev_label'] . ' خرج کرده‌اید.',
+                        'link' => 'dashboard.php',
+                    ];
+                } elseif ($ch === 0 || abs($ch) < 10) {
+                    $out[] = [
+                        'tone' => 'good',
+                        'text' => 'خرجِ این ماه تقریباً هم‌اندازه‌ی ' . $mc['prev_label'] . ' است.',
+                        'link' => 'dashboard.php',
+                    ];
+                }
+            }
+        } catch (Throwable $e) { /* ignore */ }
+    }
+
+    return array_slice($out, 0, 3);
+}
+
+/**
+ * دسته‌ای که نسبت به همین بازه از ماهِ قبل بیشترین **رشد** را داشته.
+ *
+ * ⚠ پنجره از `monthComparisonWindow()` می‌آید، نه یک حسابِ تازه: مقایسه
+ *   باید «تا همین روزِ ماه» باشد. با کلِ ماهِ قبل، روزِ پنجمِ هر ماه
+ *   همیشه «کاهشِ چشمگیر» نشان می‌داد — یک تعریفِ الکی که کاربر خیلی زود
+ *   می‌فهمید بی‌معناست.
+ *
+ * @return array{name:string, now:int, before:int, pct:int}|null
+ */
+function topGrowingCategory(int $userId): ?array
+{
+    [$jy, $jm, $jd] = gregorianToJalali((int)date('Y'), (int)date('m'), (int)date('d'));
+    $w = monthComparisonWindow($jy, $jm, $jd);
+
+    $sql = '
+        SELECT c.name,
+               COALESCE(SUM(CASE WHEN t.transaction_date BETWEEN :cf AND :ct THEN t.amount ELSE 0 END), 0) AS now_sum,
+               COALESCE(SUM(CASE WHEN t.transaction_date BETWEEN :pf AND :pt THEN t.amount ELSE 0 END), 0) AS before_sum
+        FROM transactions t
+        JOIN categories c ON c.id = t.category_id
+        WHERE t.user_id = :u AND t.type = "expense"
+          AND t.transaction_date BETWEEN :lo AND :hi
+        GROUP BY c.id, c.name
+    ';
+    $st = Database::getConnection()->prepare($sql);
+    $st->execute([
+        'u'  => $userId,
+        'cf' => $w['cur_start'], 'ct' => today(),
+        'pf' => $w['prev_start'], 'pt' => $w['prev_end'],
+        'lo' => $w['prev_start'], 'hi' => today(),
+    ]);
+
+    $best = null;
+    foreach ($st->fetchAll() as $r) {
+        $now    = (int)$r['now_sum'];
+        $before = (int)$r['before_sum'];
+
+        // ⛔ نگهبانِ داده‌ی نازک، دو نیمه دارد و هر دو لازم‌اند:
+        //    بدونِ ماهِ قبلِ **واقعی** درصد بی‌معناست (هر خریدِ تازه
+        //    «۱۰۰٪ رشد» می‌شد)، و بدونِ یک کفِ مبلغ، ۵۰۰ تومان که ۲۰۰۰
+        //    تومان شود «۳۰۰٪ رشد» اعلام می‌شد — از نظر ریاضی درست و از
+        //    نظر معنا آشغال.
+        if ($before < 100000 || $now <= $before) { continue; }
+        $pct = (int)round((($now - $before) / $before) * 100);
+        if ($pct < 25) { continue; }
+
+        if ($best === null || $pct > $best['pct']) {
+            $best = ['name' => (string)$r['name'], 'now' => $now, 'before' => $before, 'pct' => $pct];
+        }
+    }
+    return $best;
+}
+
+/**
  * بیشترین هزینه‌ها و میانگین روزانه در یک بازه.
  */
 function spendingInsights(int $userId, string $fromDate, string $toDate): array

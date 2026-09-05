@@ -402,6 +402,110 @@ if ('serviceWorker' in navigator) {
             reason: ''
         };
     };
+
+    /**
+     * ⛔ آیا این خواندن آن‌قدر قطعی هست که **بدونِ تأیید** ثبت شود؟
+     *
+     *    این تنها جای این تصمیم است. تا امروز آخرین تپ دستِ کاربر بود و
+     *    دلیلش هم نوشته شده: خرابیِ پارسر بی‌صداست، و ثبتِ خودکارِ یک
+     *    برداشتِ غلط دفتر را بی‌آنکه کسی بفهمد خراب می‌کند. آن دلیل هنوز
+     *    درست است — پس آنچه عوض شد «اعتماد به پارسر» نیست، بلکه این
+     *    است که فقط **زیرمجموعه‌ی قطعیِ** خواندن‌ها خودکار می‌شود و
+     *    بقیه دقیقاً مثل قبل یک تپ می‌خواهند.
+     *
+     * ⛔ سه شرط، و هیچ‌کدام اختیاری نیست:
+     *
+     *    ۱. **واحد پول در متن نوشته شده باشد.** `rial_assumed` یعنی
+     *       واحد نبود و ریال **حدس** زده شد؛ حدسِ غلط یعنی مبلغِ
+     *       ده‌برابر — بزرگ‌ترین خطای ممکنِ این مسیر. (و همین شرط
+     *       خودبه‌خود قوی‌ترین نشانه‌ی مبلغ را هم تضمین می‌کند: عددی
+     *       که «ریال» یا «تومان» کنارش نوشته شده، نه عددی که فقط
+     *       جداکننده دارد یا نزدیکِ کلمه‌ی جهت است.)
+     *    ۲. **مبلغ مثبت و نوع روشن باشد.**
+     *    ۳. **حسابِ مقصد حدس نباشد.** بدونِ آن `resolveWalletId()` پول
+     *       را در حسابِ پیش‌فرض می‌نشاند — که برای یک ثبتِ **دستی**
+     *       انتخابِ درستی است (پول گم نشود) ولی برای یک ثبتِ **خودکار**
+     *       یک حدسِ ساکت است.
+     *
+     * ⚠ شرطِ سوم عمداً «کارت خواند» نیست بلکه «مقصد مبهم نیست»، و
+     *   تصمیمش با فراخوان است نه اینجا. دلیلش یک اشتباهِ واقعی در
+     *   نسخه‌ی اول است: آن نسخه تطبیقِ کارت را **لازم** می‌دانست، ولی
+     *   شیتِ ثبت وقتی کاربر فقط **یک** حساب دارد اصلاً `<select>`ی
+     *   نمی‌سازد (یک `input hidden` می‌گذارد) — یعنی هیچ‌وقت تطبیقی رخ
+     *   نمی‌داد و این قابلیت برای رایج‌ترین حالتِ ممکن، یعنی کاربرِ
+     *   تک‌حسابی، **هرگز کار نمی‌کرد**. در مرورگر دیده شد، نه در بازبینی.
+     *   با یک حساب هم اصلاً ابهامی نیست: مقصد فقط همان یکی است.
+     *
+     * ⚠ تاریخ عمداً شرط نیست: پیامکِ بانک همان لحظه می‌رسد، پس نبودنش
+     *   یعنی «امروز» — که درست است. شرط کردنش این قابلیت را عملاً
+     *   خاموش می‌کرد.
+     *
+     * @param {object} r   خروجیِ parseBankSms
+     * @param {boolean} walletCertain مقصد قطعی است (کارت خواند، یا کاربر
+     *                                فقط یک حساب دارد)
+     * @returns {{ok: boolean, why: string}}
+     */
+    window.smsAutoOk = function (r, walletCertain) {
+        if (!r || !r.ok) { return { ok: false, why: 'پیامک خوانده نشد.' }; }
+        if (r.currency === 'rial_assumed') {
+            return { ok: false, why: 'واحد پول در پیامک نوشته نشده بود.' };
+        }
+        if (!(r.amount > 0)) { return { ok: false, why: 'مبلغ خوانده نشد.' }; }
+        if (r.type !== 'income' && r.type !== 'expense') {
+            return { ok: false, why: 'برداشت یا واریز بودنش روشن نیست.' };
+        }
+        if (!walletCertain) {
+            return { ok: false, why: 'حساب از روی شماره‌ی کارت پیدا نشد.' };
+        }
+        return { ok: true, why: '' };
+    };
+
+    /**
+     * اثرِ انگشتِ یک پیامک — فقط برای اینکه یک پیامک **دو بار** ثبت نشود.
+     *
+     * ⛔ چرا لازم است: اعلانِ اندروید ممکن است دو بار زده شود و هر بار
+     *    همان `#sms=` را باز می‌کند. با ثبتِ خودکار، تپِ دوم یک تراکنشِ
+     *    تکراری می‌سازد و کاربر هیچ‌وقت نمی‌فهمد از کجا آمده. پاک شدنِ
+     *    فرگمنت جلوی *تازه‌سازی* را می‌گیرد، ولی جلوی تپِ دوم را نه.
+     *
+     * ⚠ این یک هشِ امنیتی نیست و نباید جایی به‌عنوان کلیدِ امنیتی به کار
+     *   رود؛ FNV-1a ۳۲ بیتی است و فقط باید متن‌های متفاوت را از هم جدا
+     *   کند. مهم‌تر اینکه **هرگز از مرورگر بیرون نمی‌رود**: کنارِ همان
+     *   قاعده‌ای که متنِ پیامک را در فرگمنت نگه می‌دارد، این هم فقط در
+     *   localStorage همان دستگاه می‌ماند.
+     */
+    /**
+     * ⛔ کلیدِ ثبتِ خودکار — **پیش‌فرض خاموش**، و این قابل مذاکره نیست.
+     *
+     *    هر نصبی که تا امروز کار می‌کند، آخرین تپ را از کاربر می‌گیرد.
+     *    روشن شدنِ خودکارِ این کلید با یک به‌روزرسانی یعنی اپ بی‌آنکه
+     *    کسی خواسته باشد شروع کند به **نوشتن در دفترِ مالیِ** کاربر —
+     *    ساکت‌ترین و بدترین شکلِ تغییرِ رفتار.
+     *
+     * ⚠ اینجا (نه داخلِ `DOMContentLoaded`) تعریف شده تا در node
+     *   آزمودنی باشد: آنجا `localStorage` همیشه خالی است، یعنی دقیقاً
+     *   همان حالتِ «کاربر هیچ‌وقت روشنش نکرده» — و جواب باید `false`
+     *   باشد. بدونِ این، «پیش‌فرض خاموش است» فقط یک ادعای خواندنی بود.
+     *
+     * ⚠ و `try/catch` لازم است: در پنجره‌ی ناشناس یا با بستنِ داده‌ی
+     *   سایت، خودِ **خواندن** استثنا پرتاب می‌کند. شکستش هم عمداً به
+     *   سمتِ «خاموش» است.
+     */
+    window.SMS_AUTO_KEY = 'daftar_sms_auto_on';
+    window.smsAutoEnabled = function () {
+        try { return localStorage.getItem(window.SMS_AUTO_KEY) === '1'; }
+        catch (e) { return false; }
+    };
+
+    window.smsFingerprint = function (raw) {
+        var s = normalize(String(raw || '')).replace(/\s+/g, ' ').trim();
+        var h = 0x811c9dc5;
+        for (var i = 0; i < s.length; i++) {
+            h ^= s.charCodeAt(i);
+            h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+        }
+        return ('0000000' + h.toString(16)).slice(-8);
+    };
 })();
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -545,6 +649,15 @@ document.addEventListener('DOMContentLoaded', function () {
             var rawAmount = amountInput.value.replace(/[,\u066C]/g, '');
             formData.set('amount', rawAmount);
 
+            // \u0646\u0634\u0627\u0646\u0647\u200C\u06CC \u00AB\u0627\u06CC\u0646 \u062B\u0628\u062A \u062E\u0648\u062F\u06A9\u0627\u0631 \u0628\u0648\u062F\u00BB \u2014 \u0647\u0645\u0627\u0646\u200C\u062C\u0627 \u062E\u0648\u0627\u0646\u062F\u0647 \u0648 **\u067E\u0627\u06A9**
+            // \u0645\u06CC\u200C\u0634\u0648\u062F\u060C \u0648\u06AF\u0631\u0646\u0647 \u062B\u0628\u062A\u0650 \u062F\u0633\u062A\u06CC\u0650 \u0628\u0639\u062F\u06CC \u0647\u0645 \u0646\u0648\u0627\u0631\u0650 \u00AB\u062E\u0648\u062F\u06A9\u0627\u0631 \u062B\u0628\u062A \u0634\u062F\u00BB
+            // \u0645\u06CC\u200C\u06AF\u0631\u0641\u062A.
+            var auto = null;
+            if (quickAddForm.dataset.autoSms) {
+                try { auto = JSON.parse(quickAddForm.dataset.autoSms); } catch (e) { auto = null; }
+                delete quickAddForm.dataset.autoSms;
+            }
+
             submitBtn.disabled = true;
             submitBtnText.textContent = 'در حال ثبت...';
 
@@ -561,6 +674,22 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (data.success) {
                     formMessage.classList.add('show', 'success');
                     formMessage.textContent = data.message || 'تراکنش با موفقیت ثبت شد.';
+
+                    // ⛔ ثبتِ خودکار باید **بعد از تازه‌سازی** هم راهِ
+                    //    برگشت داشته باشد. تازه‌سازی قابلِ حذف نیست (جمع‌ها
+                    //    و موجودیِ بالای صفحه از سمتِ سرور رندر شده‌اند و
+                    //    بدونش کاربر فکر می‌کند ثبت نشده)، پس نشانه در
+                    //    `sessionStorage` می‌ماند و نوارِ «لغو» را همان
+                    //    صفحه‌ی تازه می‌سازد. اگر اینجا فقط یک دکمه‌ی
+                    //    درجا می‌گذاشتیم، تازه‌سازی می‌بردش — یعنی ثبتِ
+                    //    خودکاری بدونِ راهِ برگشت.
+                    if (auto) {
+                        try {
+                            auto.id  = data.id || 0;
+                            auto.at  = Date.now();
+                            sessionStorage.setItem('daftar_sms_auto_last', JSON.stringify(auto));
+                        } catch (e) { /* ناشناس یا پر */ }
+                    }
                     window.location.reload();
                 } else {
                     formMessage.classList.add('show', 'error');
@@ -921,6 +1050,125 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     })();
 
+    // ---------- ثبتِ خودکار از پیامک: کلید، و نگهبانِ تکراری ----------
+    //
+    // هر دو کلید عمداً در `localStorage` همان دستگاه‌اند و هیچ‌کدام به
+    // سرور نمی‌روند — همان قاعده‌ای که متنِ پیامک را در فرگمنت نگه
+    // می‌دارد. `try/catch` هم لازم است: در پنجره‌ی ناشناس یا با بستنِ
+    // داده‌ی سایت، خواندن و نوشتن **استثنا پرتاب می‌کند** و آن استثنا
+    // کلِ ثبتِ تراکنش را می‌خواباند.
+    //
+    // (خودِ کلیدِ روشن/خاموش بالاتر و بیرون از این بلوک است، تا در node
+    //  آزمودنی بماند: `window.smsAutoEnabled`.)
+    var SMS_AUTO_KEY  = window.SMS_AUTO_KEY;
+    var SMS_SEEN_KEY  = 'daftar_sms_seen';
+    var SMS_SEEN_TTL  = 24 * 60 * 60 * 1000;   // یک شبانه‌روز
+    var SMS_SEEN_MAX  = 40;
+
+    var smsAutoEnabled = window.smsAutoEnabled;
+
+    function smsSeenList() {
+        try {
+            var v = JSON.parse(localStorage.getItem(SMS_SEEN_KEY) || '[]');
+            if (!Array.isArray(v)) { return []; }
+            var now = Date.now();
+            return v.filter(function (e) {
+                return e && e.h && (now - (e.t || 0)) < SMS_SEEN_TTL;
+            });
+        } catch (e) { return []; }
+    }
+
+    /** آیا این پیامک همین اواخر خودکار ثبت شده؟ */
+    function smsAlreadyAuto(fp) {
+        var list = smsSeenList();
+        for (var i = 0; i < list.length; i++) {
+            if (list[i].h === fp) { return true; }
+        }
+        return false;
+    }
+
+    function smsMarkAuto(fp) {
+        var list = smsSeenList();
+        list.push({ h: fp, t: Date.now() });
+        if (list.length > SMS_SEEN_MAX) { list = list.slice(-SMS_SEEN_MAX); }
+        try { localStorage.setItem(SMS_SEEN_KEY, JSON.stringify(list)); }
+        catch (e) { /* بی‌نگهبان بهتر از خرابیِ ثبت است */ }
+    }
+
+    // ---------- نوارِ «خودکار ثبت شد» و راهِ برگشتش ----------
+    //
+    // ⛔ این نوار همان چیزی است که ثبتِ خودکار را از یک ثبتِ **پنهان**
+    //    جدا می‌کند. تا امروز آخرین تپ دستِ کاربر بود، پس او همیشه
+    //    می‌دانست چه چیزی ثبت شد. حالا که آن تپ برداشته شده، اگر هیچ
+    //    چیزی روی صفحه نگوید چه شد، خرابیِ پارسر دوباره **بی‌صدا**
+    //    می‌شود — دقیقاً همان چیزی که آن تپ برای جلوگیری از آن بود.
+    (function () {
+        var raw = null;
+        try { raw = sessionStorage.getItem('daftar_sms_auto_last'); } catch (e) { return; }
+        if (!raw) { return; }
+        try { sessionStorage.removeItem('daftar_sms_auto_last'); } catch (e) { /* بی‌اهمیت */ }
+
+        var d;
+        try { d = JSON.parse(raw); } catch (e) { return; }
+        // ⚠ کهنه‌اش نشان داده نمی‌شود: sessionStorage تا بسته شدنِ تب
+        //   می‌ماند و بدونِ این شرط، کاربری که نیم‌ساعت بعد صفحه‌ای را
+        //   باز می‌کند نوارِ یک ثبتِ فراموش‌شده را می‌دید.
+        if (!d || !d.at || (Date.now() - d.at) > 120000) { return; }
+
+        var host = document.querySelector('.page-content') || document.body;
+        if (!host) { return; }
+
+        var bar = document.createElement('div');
+        bar.className = 'sms-auto-bar';
+
+        var txt = document.createElement('span');
+        txt.className = 'sms-auto-bar-text';
+        txt.textContent = 'از پیامک بانک خودکار ثبت شد: '
+            + (d.type === 'income' ? 'واریز ' : 'برداشت ')
+            + toPersianDigitsJs(Number(d.amount || 0).toLocaleString('en-US').replace(/,/g, '٬'))
+            + ' تومان';
+        bar.appendChild(txt);
+
+        var tokenEl = document.querySelector('#quickAddForm [name="csrf_token"]');
+        if (d.id && tokenEl) {
+            var undo = document.createElement('button');
+            undo.type = 'button';
+            undo.className = 'sms-auto-bar-undo';
+            undo.textContent = 'لغو';
+            undo.addEventListener('click', function () {
+                undo.disabled = true;
+                var fd = new FormData();
+                fd.set('csrf_token', tokenEl.value);
+                fd.set('transaction_id', d.id);
+                fetch(apiUrl('delete_transaction.php'), {
+                    method: 'POST', body: fd,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                .then(function (res) { return res.json(); })
+                .then(function (j) {
+                    if (j.success) { window.location.reload(); return; }
+                    undo.disabled = false;
+                    txt.textContent = j.message || 'لغو انجام نشد.';
+                })
+                .catch(function () {
+                    undo.disabled = false;
+                    txt.textContent = 'خطا در ارتباط با سرور.';
+                });
+            });
+            bar.appendChild(undo);
+        }
+
+        var close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'sms-auto-bar-close';
+        close.setAttribute('aria-label', 'بستن');
+        close.textContent = '×';
+        close.addEventListener('click', function () { bar.remove(); });
+        bar.appendChild(close);
+
+        host.insertBefore(bar, host.firstChild);
+    })();
+
     // ---------- کارتِ «ثبت خودکار از پیامک» فقط داخلِ اپ اندروید ----------
     //
     // ⚠ تشخیص از روی `document.referrer` یا user-agent نیست (هر دو
@@ -935,6 +1183,16 @@ document.addEventListener('DOMContentLoaded', function () {
             && window.matchMedia('(display-mode: standalone)').matches;
         var android = /Android/i.test(navigator.userAgent || '');
         if (standalone && android) { card.hidden = false; }
+
+        var auto = document.getElementById('smsAutoToggle');
+        if (!auto) { return; }
+        auto.checked = smsAutoEnabled();
+        auto.addEventListener('change', function () {
+            try {
+                if (auto.checked) { localStorage.setItem(SMS_AUTO_KEY, '1'); }
+                else { localStorage.removeItem(SMS_AUTO_KEY); }
+            } catch (e) { /* حالت ناشناس یا داده‌ی سایت بسته */ }
+        });
     })();
 
     // ---------- «از پیامک بانک» و پیشنهادِ عنوان‌های قبلی ----------
@@ -1029,7 +1287,7 @@ document.addEventListener('DOMContentLoaded', function () {
         //    خرابیِ کاملاً بی‌صدا، و در مرورگر واقعاً دیده شد.
         //    با یک تیک تأخیر، همه‌ی شنونده‌های همین چرخه ثبت شده‌اند و
         //    این بلوک دیگر به **جای خودش در فایل** وابسته نیست.
-        setTimeout(function () {
+        function takeSmsFragment() {
             var h = window.location.hash || '';
             if (h.indexOf('#sms=') !== 0) { return; }
 
@@ -1061,7 +1319,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
             ta.value = raw;
             go.click();
-        }, 0);
+        }
+
+        setTimeout(takeSmsFragment, 0);
+
+        // ⛔ `hashchange` هم لازم است، و نبودش یک باگِ واقعی بود:
+        //    اگر اپ **همین حالا** روی همان صفحه باز باشد، تپ روی اعلان
+        //    فقط فرگمنت را عوض می‌کند — مرورگر ناوبریِ هم‌سند انجام
+        //    می‌دهد و صفحه اصلاً دوباره بارگذاری نمی‌شود، پس
+        //    `DOMContentLoaded` هرگز دوباره اجرا نمی‌شود و پیامک
+        //    **بی‌صدا نادیده گرفته می‌شود**. کاربر اعلان را می‌زند، اپ
+        //    باز می‌شود، و هیچ اتفاقی نمی‌افتد. در مرورگر بازتولید شد.
+        window.addEventListener('hashchange', takeSmsFragment);
 
         go.addEventListener('click', function () {
             var r = window.parseBankSms(ta.value);
@@ -1083,14 +1352,83 @@ document.addEventListener('DOMContentLoaded', function () {
 
             // ⚠ حساب فقط وقتی عوض می‌شود که چهار رقمِ آخرِ کارت واقعاً با
             //   یکی از حساب‌ها بخواند — وگرنه پول در حسابِ اشتباه می‌نشست.
+            var walletMatched = false;
             if (r.card4 && walletEl) {
                 for (var i = 0; i < walletEl.options.length; i++) {
                     if (walletEl.options[i].getAttribute('data-card4') === r.card4) {
                         walletEl.selectedIndex = i;
+                        walletMatched = true;
                         done.push('حساب');
                         break;
                     }
                 }
+            }
+
+            // ---- ثبتِ خودکار، اگر کلیدش روشن و خواندن قطعی باشد ----
+            //
+            // ⛔ فقط از مسیرِ خودِ فرم (`requestSubmit`)، نه یک fetch تازه:
+            //    منطقِ ثبت — اعتبارسنجی، CSRF، پیام، تازه‌سازی — همان‌جاست
+            //    و نسخه‌ی دومش دیر یا زود از این عقب می‌افتد. همان دلیلی
+            //    که `includes/transactions.php` ساخته شد.
+            // ⚠ «مقصد قطعی است» یعنی یا کارت خواند، یا اصلاً بیش از یک
+            //   حساب وجود ندارد. با یک حساب، شیت `<select>` نمی‌سازد
+            //   (یک `input hidden` می‌گذارد) پس `walletEl` تهی است —
+            //   و بدونِ این شرط، این قابلیت برای کاربرِ تک‌حسابی هرگز
+            //   روشن نمی‌شد.
+            var walletCertain = walletMatched
+                || !walletEl
+                || walletEl.options.length <= 1;
+
+            if (smsAutoEnabled() && quickAddForm) {
+                var verdict = window.smsAutoOk(r, walletCertain);
+                var fp = window.smsFingerprint(ta.value);
+                if (verdict.ok && smsAlreadyAuto(fp)) {
+                    msg.classList.remove('ok');
+                    msg.classList.add('warn');
+                    msg.textContent = 'این پیامک همین اواخر ثبت شده — دوباره ثبت نشد.';
+                    return;
+                }
+                if (verdict.ok) {
+                    // ⛔ عنوان در مسیرِ دستی خالی می‌ماند و کاربر خودش
+                    //    می‌نویسد، ولی اینجا کسی نیست که بنویسد — و
+                    //    فیلدش `required` است. بدونِ این پیش‌فرض،
+                    //    `requestSubmit()` روی اعتبارسنجیِ خودِ مرورگر
+                    //    می‌ایستد و **هیچ اتفاقی نمی‌افتد**: نه ثبتی، نه
+                    //    خطایی، نه پیامی. در مرورگر دیده شد.
+                    if (titleEl && !titleEl.value) {
+                        titleEl.value = (r.type === 'income' ? 'واریز' : 'برداشت')
+                                      + ' — از پیامک بانک';
+                    }
+
+                    // ⛔ و محافظِ دوم: اگر باز هم فرم معتبر نبود، «خودکار»
+                    //    ادعا نمی‌کنیم. سکوت اینجا بدترین حالت است، چون
+                    //    کاربر فکر می‌کند ثبت شده و ماه بعد جای خالی‌اش
+                    //    را می‌بیند.
+                    if (quickAddForm.checkValidity && !quickAddForm.checkValidity()) {
+                        msg.classList.remove('ok');
+                        msg.classList.add('warn');
+                        msg.textContent = 'خودکار ثبت نشد — فرم کامل نیست؛ خودتان ثبت کنید.';
+                        quickAddForm.reportValidity();
+                        return;
+                    }
+
+                    smsMarkAuto(fp);
+                    // ⚠ نشانه روی خودِ فرم است، نه یک متغیرِ مشترک: شنونده‌ی
+                    //   submit در بلوکِ دیگری است و با متغیر باید به ترتیبِ
+                    //   تعریفشان در فایل وابسته می‌شد.
+                    quickAddForm.dataset.autoSms = JSON.stringify({
+                        type: r.type, amount: r.amount
+                    });
+                    msg.classList.add('ok');
+                    msg.textContent = 'خوانده شد — در حال ثبتِ خودکار…';
+                    if (quickAddForm.requestSubmit) { quickAddForm.requestSubmit(); }
+                    else { quickAddForm.dispatchEvent(new Event('submit', { cancelable: true })); }
+                    return;
+                }
+                // ⚠ چرا خودکار نشد **گفته می‌شود**. سکوت اینجا یعنی کاربر
+                //   کلید را روشن کرده و گاهی کار می‌کند و گاهی نه، بی‌آنکه
+                //   بفهمد چرا — و آن‌وقت نتیجه می‌گیرد کلید خراب است.
+                done.push('خودکار نشد (' + verdict.why + ')');
             }
 
             // ⚠ وقتی واحد در متن نبود و ریال **فرض** شده، پیام زرد است

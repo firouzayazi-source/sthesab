@@ -48,6 +48,15 @@ include __DIR__ . '/../includes/header.php';
             </div>
         </div>
     <?php endforeach; ?>
+
+    <?php /* ⛔ تفسیر **زیرِ** میله‌ها، نه بالای آن‌ها: اول عددها دیده
+             شوند و بعد نتیجه، وگرنه حکمی می‌خوانید که هنوز پشتوانه‌اش
+             را ندیده‌اید. */ ?>
+    <?php $verdict = funnelVerdict($funnel); ?>
+    <div class="verdict verdict-<?= h($verdict['tone']) ?>">
+        <div class="verdict-head"><?= h($verdict['headline']) ?></div>
+        <div class="verdict-body"><?= h($verdict['advice']) ?></div>
+    </div>
 </div>
 
 <div class="card">

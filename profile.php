@@ -220,6 +220,24 @@ include __DIR__ . '/includes/header.php';
        href="intent://sms-setup#Intent;scheme=daftar;action=ir.stland.daftar.SMS_SETUP;package=ir.stland.daftar;end">
         تنظیم در اپ اندروید
     </a>
+
+    <?php /* ⛔ پیش‌فرض خاموش، و انتخابش روی **همین دستگاه** می‌ماند نه در
+             دیتابیس. دو دلیل: این رفتار فقط جایی معنا دارد که پیامک
+             واقعاً می‌رسد (اپ اندروید، با مجوزِ SMS)، پس یک تنظیمِ
+             حساب‌محور روی لپ‌تاپ چیزی را روشن می‌کرد که آنجا اصلاً
+             اتفاق نمی‌افتد؛ و پاک شدنِ داده‌ی سایت آن را **خاموش**
+             می‌کند نه روشن — یعنی شکستش به سمتِ امن است. */ ?>
+    <label class="switch" style="margin-top:16px; margin-bottom:0;">
+        <input type="checkbox" id="smsAutoToggle">
+        <span class="switch-track"><span class="switch-knob"></span></span>
+        <span class="switch-text">بدون تأیید ثبت کن</span>
+    </label>
+    <p class="hint" style="margin:8px 0 0;">
+        فقط وقتی خواندنِ پیامک قطعی باشد: واحد پول در متن نوشته شده باشد و
+        حساب از روی چهار رقمِ آخرِ کارت پیدا شود. در هر حالتِ دیگر مثل قبل
+        فرم پر می‌شود و ثبت با خودِ شماست. هر ثبتِ خودکار بالای صفحه با
+        دکمه‌ی «لغو» نشان داده می‌شود.
+    </p>
 </div>
 
 <?php

@@ -3347,6 +3347,93 @@ html[data-theme="dark"] .stay-chip.active { box-shadow: none; }
 .form-row[hidden],
 .wallet-extra[hidden] { display: none !important; }
 
+/* حکمِ قیفِ شروع در پنل مدیر — یک تشخیص و یک قدمِ بعدی.
+   نوارِ رنگی سمتِ **شروع** است (`border-inline-start`) نه سمتِ چپِ
+   فیزیکی، وگرنه در صفحه‌ی راست‌به‌چپ می‌افتد آن‌طرفِ متن. */
+.verdict {
+    margin-top: 18px; padding: 13px 15px;
+    background: var(--line-soft);
+    border-inline-start: 3px solid var(--muted-2);
+    border-radius: var(--r-sm);
+}
+.verdict-head { font-weight: 700; font-size: 13.5px; color: var(--ink); margin-bottom: 5px; }
+.verdict-body { font-size: 12.5px; line-height: 1.9; color: var(--muted); }
+/* نوارِ «از پیامک بانک خودکار ثبت شد» — بالای محتوای هر صفحه، با راهِ
+   برگشت. عمداً در جاوااسکریپت ساخته می‌شود (نه در PHP)، پس قاعده‌ی
+   `[hidden]` لازم ندارد: هیچ‌وقت پنهان رندر نمی‌شود، یا هست یا نیست. */
+.sms-auto-bar {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 14px; padding: 11px 14px;
+    background: var(--warn-wash); color: var(--warn-ink);
+    border-radius: var(--r-sm);
+    font-size: 12.5px; line-height: 1.8;
+}
+.sms-auto-bar-text { flex: 1; }
+/* ⚠ رنگِ متن `--warn-wash` است نه `#fff`: در حالتِ شب، `--warn-ink`
+   خودش **روشن** می‌شود (کهربایی کم‌رنگ) و سفید رویش عملاً خوانده
+   نمی‌شود. اندازه‌گیری شد: #e5b45f با متنِ سفید. با این جفت، متن در هر
+   دو حالت وارونه‌ی زمینه‌اش است و کنتراست حفظ می‌شود. */
+.sms-auto-bar-undo {
+    flex-shrink: 0;
+    background: var(--warn-ink); color: var(--warn-wash); border: 0;
+    padding: 6px 16px; border-radius: var(--r-sm);
+    font: inherit; font-weight: 700; cursor: pointer;
+}
+.sms-auto-bar-undo[disabled] { opacity: .55; cursor: default; }
+.sms-auto-bar-close {
+    flex-shrink: 0;
+    background: none; border: 0; color: inherit;
+    font-size: 19px; line-height: 1; cursor: pointer; padding: 0 4px;
+}
+
+.verdict-bad  { border-inline-start-color: var(--out); }
+/* ⚠ `--warn-ink` است نه `--gold`: آن متغیر با پالتِ دومِ همین فایل به
+   **آبی** (#2563eb) بازتعریف شده، پس نوارِ «هشدار» دقیقاً مثل نوارِ
+   «اطلاع» دیده می‌شد و تفاوتِ دو حکم از بین می‌رفت. `--warn-ink` همان
+   کهربایی است که بقیه‌ی اپ برای هشدار به کار می‌برد (`.debt-badge-pending`،
+   نشانِ «کم‌فعال»، و همین صفحه در سرآیندِ «بیش از ۱۴ روز»). */
+.verdict-warn { border-inline-start-color: var(--warn-ink); }
+.verdict-good { border-inline-start-color: var(--in); }
+
+/* ⛔ کارتِ جمله‌های بینش — تنها جایی که اپ حرف می‌زند.
+   عمداً padding کارت را صفر می‌کند و هر جمله خودش یک ردیفِ کامل و
+   قابلِ زدن است: جمله‌ای که «۴۰٪ بیشتر خرجِ خوراک» می‌گوید باید همان‌جا
+   به گزارشِ همان دسته ببرد، وگرنه کاربر خبر را می‌خواند و کاری نمی‌تواند
+   بکند — و خبری که به اقدام نرسد دفعه‌ی بعد خوانده نمی‌شود. */
+.insight-card { padding: 0; overflow: hidden; }
+.insight-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 13px 15px;
+    color: var(--ink); text-decoration: none;
+    font-size: 13.5px; line-height: 1.75;
+    border-bottom: 1px solid var(--line-soft);
+}
+.insight-row:last-child { border-bottom: none; }
+.insight-row:hover { background: var(--line-soft); }
+.insight-text { flex: 1; min-width: 0; }
+/* ⚠ فلشِ راهنما رو به **چپ** است چون صفحه راست‌به‌چپ است؛ همان جهتی که
+   بقیه‌ی «مشاهده همه»های اپ دارند. */
+.insight-go { color: var(--muted-2); flex-shrink: 0; }
+.insight-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    flex-shrink: 0; background: var(--muted-2);
+}
+/* رنگ اینجا **معنا** دارد نه تزئین:
+     • قرمز (`--out`) فقط برای چیزی که **همین حالا** هزینه دارد —
+       سررسیدِ گذشته و بودجه‌ی ردشده.
+     • سبز (`--in`) برای خبرِ خوب.
+     • رنگِ تأکید برای خبرِ خنثی («بیشتر خرج شده») — عمداً قرمز نیست،
+       وگرنه کارت یک دیوارِ قرمز می‌شد و آن‌وقت هشدارِ واقعی هم دیده
+       نمی‌شد. همان درسِ «هشدارِ همیشگی بدتر از نبودنش است».
+
+   ⚠ `--gold` دیگر طلایی نیست: پالتِ بعدیِ همین فایل (خطِ ~۲۲۱۴) آن را
+     به آبیِ تأکید (`#2563eb`) عوض کرده و نامش جا مانده. اگر روزی دنبالِ
+     رنگِ طلایی گشتید، اینجا پیدایش نمی‌کنید. */
+.insight-warn .insight-dot { background: var(--out); }
+.insight-up   .insight-dot { background: var(--gold); }
+.insight-down .insight-dot,
+.insight-good .insight-dot { background: var(--in); }
+
 /* پیش‌نمایشِ زنده‌ی هدفِ پس‌انداز — همان اجزای کارتِ واقعی، تا آنچه
    کاربر می‌بیند با آنچه بعد از ذخیره می‌گیرد یکی باشد. */
 .goal-preview {

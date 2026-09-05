@@ -48,6 +48,12 @@ $monthIncome  = (int)$monthRow['income'];
 $monthExpense = (int)$monthRow['expense'];
 $monthNet     = $monthIncome - $monthExpense;
 
+// ⛔ جمله‌ها **بعد از** جمع‌های بالا ساخته می‌شوند و خودشان هیچ استثنایی
+//    پرتاب نمی‌کنند (`financialHighlights` هر بخش را جدا `try` می‌کند).
+//    این یک کارِ جانبی است؛ اگر یک جدول نیامده باشد نباید صفحه‌ی خانه —
+//    یعنی اولین چیزی که کاربر می‌بیند — بشکند.
+$highlights = financialHighlights($userId);
+
 $pageTitle = 'خانه';
 include __DIR__ . '/includes/header.php';
 ?>
@@ -66,6 +72,24 @@ include __DIR__ . '/includes/header.php';
         </div>
     </div>
 </div>
+
+<?php /* ⛔ جای این کارت عمداً **بلافاصله زیرِ عددِ ماه** است.
+         کاربر عدد را می‌بیند و بلافاصله می‌پرسد «خب یعنی چه؟» — جواب
+         باید همان‌جا باشد، نه دو صفحه آن‌طرف‌تر. اگر جمله‌ای نبود، کارت
+         اصلاً رندر نمی‌شود: کارتِ خالیِ «بینشی نیست» بدتر از نبودنش
+         است. */ ?>
+<?php if ($highlights): ?>
+<div class="card insight-card">
+    <?php foreach ($highlights as $h): ?>
+        <a class="insight-row insight-<?= h($h['tone']) ?>"
+           href="<?= APP_BASE_PATH ?>/<?= h($h['link'] ?? 'dashboard.php') ?>">
+            <span class="insight-dot"></span>
+            <span class="insight-text"><?= h($h['text']) ?></span>
+            <svg class="insight-go" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+        </a>
+    <?php endforeach; ?>
+</div>
+<?php endif; ?>
 
 <div class="card">
     <div class="card-header-row">
