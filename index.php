@@ -105,55 +105,75 @@ include __DIR__ . '/includes/header.php';
 </div>
 <?php endif; ?>
 
-<div class="balance-ribbon">
-    <div class="balance-label">مانده این ماه</div>
-    <div class="balance-value"><span class="bv-num"><?= $monthNet < 0 ? '−' : '' ?><?= formatMoney(abs($monthNet)) ?></span><span class="bv-unit">تومان</span></div>
-    <div class="balance-split">
-        <div>
-            <div class="bs-label">دریافتی</div>
-            <div class="bs-value bs-in"><?= formatMoney($monthIncome) ?></div>
-        </div>
-        <div>
-            <div class="bs-label">پرداختی</div>
-            <div class="bs-value bs-out"><?= formatMoney($monthExpense) ?></div>
-        </div>
-    </div>
-</div>
+<?php /* اسلایدرِ خانه — یک نوار، چند اسلاید.
 
-<?php /* حساب‌های پین‌شده — یک نوارِ افقیِ اسنپ‌دار.
+         ⛔ **اسلاید اول همیشه «مانده این ماه» است** و دقیقاً همان‌جا و
+            همان اندازه‌ای می‌ماند که همیشه بوده. حساب‌های پین‌شده
+            اسلایدهای بعدی‌اند، نه یک نوارِ تازه زیرِ آن: با نوارِ جدا،
+            هر چیزی که پایین‌تر است ۱۲۰ پیکسل پایین می‌رفت و صفحه‌ی
+            خانه‌ی کسی که یک حساب پین می‌کند عوض می‌شد.
 
-         ⛔ جایش **بلافاصله زیرِ نوارِ ماه** است و این ترتیب معنا دارد:
-            بالا می‌گوید «این ماه چطور گذشت»، اینجا می‌گوید «الان چقدر
-            دارم». دو سؤالِ متفاوت و پشتِ سرِ هم.
+         ⛔ کارت‌ها **هم‌قدِ نوارِ ماه** می‌شوند، بدونِ هیچ عددِ ثابتی:
+            `align-items` پیش‌فرضِ فلکس `stretch` است و ارتفاعِ ردیف را
+            بلندترین اسلاید (همان نوار) تعیین می‌کند.
 
          ⛔ شماره‌ی کارت اینجا **نمی‌آید** — نه کامل، نه چهار رقمِ آخر.
             آن ستون‌ها حساس‌اند و طبق قاعده‌ی خودشان فقط داخلِ نمای کارت
             باز می‌شوند. صفحه‌ی خانه چیزی است که کاربر جلوی دیگران هم
             بازش می‌کند. */ ?>
-<?php if ($pinned): ?>
-<div class="wallet-strip" role="list">
-    <?php foreach ($pinned as $pw): ?>
-        <?php $__neg = (int)$pw['balance'] < 0; ?>
-        <a class="wallet-tile" role="listitem"
-           href="<?= APP_BASE_PATH ?>/transactions.php?wallet=<?= (int)$pw['id'] ?>"
-           style="--wt1: <?= h($pw['color']) ?>; --wt2: <?= h(shadeColor($pw['color'])) ?>;">
-            <span class="wallet-tile-name"><?= h($pw['name']) ?></span>
-            <span class="wallet-tile-sub">
-                <?= h(walletKindLabel($pw['kind'], $pw['kind_label'] ?? null)) ?>
-                <?php if (!empty($pw['bank_name'])): ?> · <?= h($pw['bank_name']) ?><?php endif; ?>
-            </span>
-            <?php /* ⚠ `.ltr-num` روی **خودِ عدد** است، نه روی ظرفش: ظرف
-                     واحدِ فارسیِ «تومان» را هم دارد و چپ‌چین کردنش
-                     چیدمانِ آن را خراب می‌کند — همان قاعده‌ای که برای
-                     `.money-card` و `.balance-ribbon` نوشته شده. */ ?>
-            <span class="wallet-tile-bal<?= $__neg ? ' is-neg' : '' ?>">
-                <span class="ltr-num"><?= $__neg ? '−' : '' ?><?= formatMoney(abs((int)$pw['balance'])) ?></span>
-                <span class="wallet-tile-unit">تومان</span>
-            </span>
-        </a>
-    <?php endforeach; ?>
+<div class="home-carousel">
+    <div class="home-slides" id="homeSlides">
+        <div class="balance-ribbon">
+            <div class="balance-label">مانده این ماه</div>
+            <div class="balance-value"><span class="bv-num"><?= $monthNet < 0 ? '−' : '' ?><?= formatMoney(abs($monthNet)) ?></span><span class="bv-unit">تومان</span></div>
+            <div class="balance-split">
+                <div>
+                    <div class="bs-label">دریافتی</div>
+                    <div class="bs-value bs-in"><?= formatMoney($monthIncome) ?></div>
+                </div>
+                <div>
+                    <div class="bs-label">پرداختی</div>
+                    <div class="bs-value bs-out"><?= formatMoney($monthExpense) ?></div>
+                </div>
+            </div>
+        </div>
+
+        <?php foreach ($pinned as $pw): ?>
+            <?php $__neg = (int)$pw['balance'] < 0; ?>
+            <a class="wallet-tile"
+               href="<?= APP_BASE_PATH ?>/transactions.php?wallet=<?= (int)$pw['id'] ?>"
+               style="--wt1: <?= h($pw['color']) ?>; --wt2: <?= h(shadeColor($pw['color'])) ?>;">
+                <span class="wallet-tile-name"><?= h($pw['name']) ?></span>
+                <span class="wallet-tile-sub">
+                    <?= h(walletKindLabel($pw['kind'], $pw['kind_label'] ?? null)) ?>
+                    <?php if (!empty($pw['bank_name'])): ?> · <?= h($pw['bank_name']) ?><?php endif; ?>
+                </span>
+                <?php /* ⚠ `.ltr-num` روی **خودِ عدد** است، نه روی ظرفش: ظرف
+                         واحدِ فارسیِ «تومان» را هم دارد و چپ‌چین کردنش
+                         چیدمانِ آن را خراب می‌کند — همان قاعده‌ای که برای
+                         `.money-card` و `.balance-ribbon` نوشته شده. */ ?>
+                <span class="wallet-tile-bal<?= $__neg ? ' is-neg' : '' ?>">
+                    <span class="ltr-num"><?= $__neg ? '−' : '' ?><?= formatMoney(abs((int)$pw['balance'])) ?></span>
+                    <span class="wallet-tile-unit">تومان</span>
+                </span>
+            </a>
+        <?php endforeach; ?>
+    </div>
+
+    <?php /* ⛔ با اسلایدِ تمام‌عرض، «سرک کشیدنِ» کارتِ بعدی از بین می‌رود —
+             و همان تنها چیزی بود که می‌گفت نوار کشیدنی است. نقطه‌ها
+             جایگزینِ آن نشانه‌اند، پس اختیاری نیستند. با یک اسلاید
+             اصلاً رندر نمی‌شوند: نشانگرِ تک‌نقطه‌ای چیزی نمی‌گوید. */ ?>
+    <?php if ($pinned): ?>
+    <div class="home-dots">
+        <?php for ($i = 0; $i <= count($pinned); $i++): ?>
+            <button type="button" class="home-dot<?= $i === 0 ? ' is-on' : '' ?>"
+                    data-slide="<?= $i ?>"
+                    aria-label="<?= $i === 0 ? 'مانده این ماه' : h($pinned[$i - 1]['name']) ?>"></button>
+        <?php endfor; ?>
+    </div>
+    <?php endif; ?>
 </div>
-<?php endif; ?>
 
 <?php /* ⛔ جای این کارت عمداً **بلافاصله زیرِ عددِ ماه** است.
          کاربر عدد را می‌بیند و بلافاصله می‌پرسد «خب یعنی چه؟» — جواب

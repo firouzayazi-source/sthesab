@@ -862,6 +862,58 @@ if (!$navHasMin) { $navBad[] = '.sidebar-nav — `min-height: 0` ندارد؛ ف
 T::bulk(2, $navBad, 'منوی کناری هم overflow دارد هم min-height صفر');
 
 // ---------------------------------------------------------------
+// ⛔ قاعده ۲۳ — اسلایدرِ خانه: اسلاید دقیقاً به اندازه‌ی نوارِ ماه.
+//
+// خواسته‌ی صریح این است که کارتِ حساب روی صفحه‌ی خانه **دقیقاً ابعادِ
+// «مانده این ماه»** را داشته باشد و چیزی هم پایین‌تر نرود. سه چیز آن را
+// نگه می‌دارند و هر سه بی‌صدا شکستنی‌اند:
+//
+//  ۱. `flex: 0 0 100%` روی اسلایدها — با هر عرضِ دیگری (`auto`, `63%`,
+//     یک `max-width`) اسلاید دیگر هم‌اندازه‌ی نوار نیست و همان چیزی
+//     می‌شود که قرار بود نباشد.
+//  ۲. `margin-bottom: 0` روی نوار **داخلِ** اسلایدر — حاشیه‌ی یک آیتمِ
+//     فلکس از ارتفاعِ جعبه‌اش کم می‌شود، پس با حاشیه‌ی ۱۲ پیکسلیِ خودش
+//     نوار دوازده پیکسل **کوتاه‌تر** از کارت‌های کنارش می‌شد. هیچ خطایی
+//     هم نمی‌داد.
+//  ۳. `scroll-padding-inline` وقتی اسلایدر هم padding افقی دارد هم
+//     `scroll-snap-type` — وگرنه اسنپ لبه‌ی اسلاید را به لبه‌ی جعبه‌ی
+//     padding می‌چسباند و همان padding را خنثی می‌کند. یک بار روی نسخه‌ی
+//     نواریِ همین قابلیت واقعاً همین شد و فقط با `scrollLeft` دیده شد.
+//
+// ⚠ هر سه فقط در مرورگر دیده می‌شوند و هیچ‌کدام خطا نمی‌دهند، پس
+//   `php -l` و تستِ رندر هم نمی‌گیرندشان.
+T::group('قاعده ۲۳ — اسلایدرِ خانه هم‌اندازه‌ی نوارِ ماه می‌ماند');
+
+$carBad  = [];
+$carFlex = $carRibbon = $carSnapPad = false;
+$carHasPad = $carHasSnap = false;
+
+preg_match_all('~([^{}]+)\{([^{}]*)\}~', $navCss, $carRules, PREG_SET_ORDER);
+foreach ($carRules as $r) {
+    foreach (explode(',', $r[1]) as $sel) {
+        $sel = trim($sel);
+        if ($sel === '.home-slides > *') {
+            if (preg_match('~flex\s*:\s*0\s+0\s+100%~', $r[2])) { $carFlex = true; }
+        } elseif ($sel === '.home-slides .balance-ribbon') {
+            if (preg_match('~margin-bottom\s*:\s*0~', $r[2])) { $carRibbon = true; }
+        } elseif ($sel === '.home-slides') {
+            // ⚠ شورتهندِ `padding` هم شمرده می‌شود، نه فقط `padding-inline`:
+            //   `padding: 0 14px 26px` همان ۱۴ پیکسل افقی را می‌دهد.
+            if (preg_match('~padding(-inline|-left|-right)?\s*:\s*[^;]*\d~', $r[2])
+                && !preg_match('~padding(-bottom|-top)\s*:~', $r[2])) { $carHasPad = true; }
+            if (preg_match('~scroll-snap-type\s*:~', $r[2]))          { $carHasSnap = true; }
+            if (preg_match('~scroll-padding(-inline|-left|-right)?\s*:~', $r[2])) { $carSnapPad = true; }
+        }
+    }
+}
+if (!$carFlex)   { $carBad[] = '`.home-slides > *` — `flex: 0 0 100%` ندارد؛ اسلاید دیگر هم‌اندازه‌ی نوارِ ماه نیست'; }
+if (!$carRibbon) { $carBad[] = '`.home-slides .balance-ribbon` — `margin-bottom: 0` ندارد؛ نوار از کارت‌های کنارش کوتاه‌تر می‌شود'; }
+if ($carHasPad && $carHasSnap && !$carSnapPad) {
+    $carBad[] = '`.home-slides` — با padding افقی و scroll-snap، `scroll-padding-inline` هم لازم است';
+}
+T::bulk(3, $carBad, 'اسلایدهای خانه دقیقاً هم‌اندازه‌ی نوارِ ماه می‌مانند');
+
+// ---------------------------------------------------------------
 // ⛔ قاعده ۱۹ — متنِ پیامکِ بانک هرگز روی سیم نمی‌رود.
 //
 // این تنها تضمینِ حریمِ خصوصیِ کلِ این قابلیت است و تا امروز «رایگان»

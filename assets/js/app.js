@@ -2106,6 +2106,39 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    /* ---------- اسلایدرِ خانه: هم‌گام کردنِ نقطه‌ها ----------
+       ⚠ در راست‌به‌چپ `scrollLeft` از صفر شروع می‌شود و **منفی** می‌رود،
+         پس قدرِ مطلق لازم است؛ بدونش نقطه همیشه روی اسلاید اول می‌ماند.
+       ⚠ پرش با `scrollIntoView` است نه با نوشتنِ `scrollLeft`: علامتِ آن
+         عدد بین موتورها یکی نیست و محاسبه‌ی دستی‌اش روی یکی از آن‌ها
+         بی‌صدا برعکس می‌شد. `block: 'nearest'` هم لازم است، وگرنه صفحه
+         عمودی هم می‌پرد. */
+    var homeSlides = document.getElementById('homeSlides');
+    var homeDots = homeSlides ? homeSlides.parentNode.querySelectorAll('.home-dot') : [];
+    if (homeSlides && homeDots.length) {
+        var syncHomeDots = function () {
+            /* ⚠ گامِ اسلاید از فاصله‌ی **واقعیِ** دو اسلایدِ اول خوانده
+               می‌شود، نه از `عرض + عددِ gap`: با عددِ ثابت، اولین باری که
+               `gap` در CSS عوض شود نقطه‌ها بی‌صدا از اسلاید عقب می‌افتند. */
+            var kids = homeSlides.children;
+            var step = kids.length > 1
+                ? Math.abs(kids[1].getBoundingClientRect().x - kids[0].getBoundingClientRect().x)
+                : 1;
+            if (!step) { return; }
+            var idx = Math.round(Math.abs(homeSlides.scrollLeft) / step);
+            homeDots.forEach(function (d, n) { d.classList.toggle('is-on', n === idx); });
+        };
+        homeDots.forEach(function (d, n) {
+            d.addEventListener('click', function () {
+                var slide = homeSlides.children[n];
+                if (slide) { slide.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' }); }
+            });
+        });
+        homeSlides.addEventListener('scroll', syncHomeDots, { passive: true });
+        window.addEventListener('resize', syncHomeDots);
+        syncHomeDots();
+    }
+
     /* ---------- پین کردنِ حساب روی صفحه‌ی خانه ----------
        ⚠ صفحه **تازه‌سازی نمی‌شود** و این عمدی است، برخلافِ بیشترِ
          تغییرهای این اپ: هیچ عددی روی همین صفحه عوض نمی‌شود (نوارِ

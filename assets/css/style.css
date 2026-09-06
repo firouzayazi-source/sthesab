@@ -3490,53 +3490,97 @@ html[data-theme="dark"] .stay-chip.active { box-shadow: none; }
 .insight-down .insight-dot,
 .insight-good .insight-dot { background: var(--in); }
 
-/* ---------- نوارِ حساب‌های پین‌شده روی صفحه‌ی خانه ----------
-   الگویش همان `.filter-bar` است (تک‌ردیف، `overflow-x`, حاشیه‌ی منفی تا
-   لبه‌ی صفحه) به‌علاوه‌ی scroll-snap تا هر کارت سرِ جای خودش بایستد.
+/* ---------- اسلایدرِ خانه: «مانده این ماه» + حساب‌های پین‌شده ----------
+   ⛔ یک نوار است، نه دو تا. اسلاید اول همان نوارِ ماه است و کارت‌های
+     حساب پشتِ سرش می‌آیند — نه زیرش. با نوارِ جدا، هر چیزی که پایین‌تر
+     است ۱۲۰ پیکسل پایین می‌رفت.
 
-   ⚠ حاشیه‌ی منفی اینجا تزئین نیست: کارتِ بعدی از لبه‌ی صفحه «سرک
-     می‌کشد» و همان تنها چیزی است که به کاربر می‌گوید نوار کشیدنی است.
-     بدونش نوار شبیهِ یک کارتِ ثابت دیده می‌شود و کسی اسکرولش نمی‌کند. */
-.wallet-strip {
+   ⛔ هیچ عرض و ارتفاعِ ثابتی اینجا نیست و نباید باشد: عرضِ هر اسلاید
+     `100%` است (یعنی دقیقاً عرضِ نوارِ ماه) و ارتفاعش را
+     `align-items: stretch`ِ پیش‌فرض از بلندترین اسلاید می‌گیرد. عددِ
+     ثابت یعنی هر بار که محتوای نوار عوض شود، کارت‌ها بی‌صدا از قدِ آن
+     می‌افتند. */
+/* ⚠ ‎−۱۴ پیکسل چون `.home-slides` زیرِ خودش ۲۶ پیکسل padding دارد (توضیحش
+   پایین‌تر): جمعشان همان ۱۲ پیکسلی می‌شود که نوارِ ماه همیشه داشت، پس
+   صفحه‌ی خانه‌ی کسی که هیچ حسابی پین نکرده **مو نمی‌زند**. */
+.home-carousel { margin-bottom: -14px; }
+
+.home-slides {
     display: flex;
-    gap: 10px;
+    /* ⛔ فاصله‌ی اسلایدها از padding افقیِ پایین **کمتر نباشد**، وگرنه
+       لبه‌ی اسلایدِ بعدی داخلِ همان ۱۴ پیکسل «سرک می‌کشد»: یک نوارِ
+       باریکِ رنگی کنارِ صفحه که شبیهِ خرابیِ رندر دیده می‌شود، نه شبیهِ
+       نشانه‌ی کشیدنی بودن. آن نشانه کارِ نقطه‌هاست. */
+    gap: 28px;
     flex-wrap: nowrap;
     overflow-x: auto;
-    margin: 0 -14px 12px;
-    padding: 2px 14px 6px;
+    /* ⛔ `overflow-x: auto` مقدارِ `overflow-y` را هم به `auto` می‌برد، پس
+       جعبه‌ی برش دقیقاً روی لبه‌ی اسلایدها می‌افتد و **سایه بریده
+       می‌شود** — نه محو، بلکه با یک لبه‌ی صافِ دیدنی. اندازه‌گیری شد:
+       ۸ پیکسل زیرِ کارت هنوز `#D5D3E9` بود و ۱۲ پیکسل زیرش ناگهان
+       `#F6F7FB`ِ زمینه. این padding جا برای همان سایه است و اندازه‌اش
+       هم اندازه‌گیری شده، نه حدس: با ۱۶ پیکسل لبه هنوز دیده می‌شد.
+       ⚠ و حاشیه‌ی منفیِ قرینه‌اش اجباری است: با padding تنها، عرضِ
+       اسلاید (که `100%`ِ جعبه‌ی محتواست) ۲۸ پیکسل کم می‌شد و دیگر
+       «دقیقاً به اندازه‌ی نوارِ ماه» نبود. ۱۴ از paddingِ خودِ صفحه هم
+       بیشتر نیست، پس چیزی از لبه بیرون نمی‌زند. */
+    padding: 0 14px 26px;
+    margin: 0 -14px;
     scroll-snap-type: x mandatory;
-    /* ⚠ بدونِ این، اسنپ لبه‌ی کارت را به لبه‌ی **جعبه‌ی padding** می‌چسباند
-       و همان `padding-inline: 14px` بالا را خنثی می‌کند: مرورگر خودش
-       ۱۴ پیکسل اسکرول می‌کرد و کارتِ اول به لبه‌ی صفحه می‌چسبید، ۱۴px
-       بیرون‌تر از لبه‌ی نوارِ ماه که بالای سرش است. اندازه‌گیری شد
-       (`scrollLeft: -14`)، نه حدس. */
+    /* ⛔ نیمه‌ی دومِ همان رفع: بدونِ این، اسنپ لبه‌ی اسلاید را به لبه‌ی
+       **جعبه‌ی padding** می‌چسباند و همان ۱۴ پیکسل بالا را خنثی می‌کند —
+       مرورگر خودش ۱۴ پیکسل اسکرول می‌کند و اسلاید ۱۴ پیکسل بیرون‌تر از
+       بقیه‌ی کارت‌های صفحه می‌ایستد. یک بار واقعاً همین شد. */
     scroll-padding-inline: 14px;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-x: contain;
 }
-.wallet-strip::-webkit-scrollbar { display: none; }
+.home-slides::-webkit-scrollbar { display: none; }
+
+.home-slides > * {
+    flex: 0 0 100%;
+    /* ⛔ `start` است نه `center`: با `center` و `scroll-snap-type:
+       mandatory`، مرورگر همان هنگامِ چیدمان اسلایدِ **دوم** را وسط
+       می‌آورد و کاربر اصلاً نوارِ ماه را نمی‌دید. یک بار واقعاً همین شد
+       و در اسکرین‌شات دیده شد، نه در بازبینی. */
+    scroll-snap-align: start;
+}
+
+/* ⛔ حاشیه‌ی پایینِ خودِ نوار داخلِ اسلایدر صفر می‌شود. نه فقط برای
+   فاصله: حاشیه‌ی یک آیتمِ فلکس در `stretch` از ارتفاعِ جعبه‌اش کم
+   می‌شود، پس بدونِ این خط نوارِ ماه ۱۲ پیکسل **کوتاه‌تر** از کارت‌های
+   کنارش می‌شد. */
+.home-slides .balance-ribbon { margin-bottom: 0; }
+
+/* نقطه‌های نشانگر — جایگزینِ «سرک کشیدنِ» کارتِ بعدی. */
+.home-dots { display: flex; justify-content: center; gap: 2px; padding-bottom: 8px; }
+.home-dot {
+    width: 22px; height: 18px; padding: 0; border: 0;
+    background: none; cursor: pointer; position: relative;
+}
+.home-dot::before {
+    content: '';
+    position: absolute; inset: 0; margin: auto;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--line);
+    transition: width .18s ease, background-color .18s ease;
+}
+.home-dot.is-on::before { width: 16px; border-radius: 3px; background: var(--muted-2); }
 
 .wallet-tile {
-    flex: 0 0 auto;
-    width: 63%;
-    max-width: 250px;
-    min-width: 190px;
-    /* ⛔ `start` است نه `center`، و این یک باگِ واقعی بود: با `center` و
-       `scroll-snap-type: mandatory`، مرورگر همان هنگامِ چیدمان کارتِ
-       **دوم** را وسط می‌آورد و کارتِ اول نیمه بیرونِ صفحه می‌ماند —
-       یعنی کاربر اولین حسابش را اصلاً نمی‌دید و نوار از وسط شروع
-       می‌شد. در اسکرین‌شات دیده شد، نه در بازبینی. */
-    scroll-snap-align: start;
     display: flex;
     flex-direction: column;
     gap: 3px;
-    padding: 15px 16px 16px;
-    border-radius: var(--r);
+    /* ⚠ padding و گردی عمداً همان‌هایی است که `.balance-ribbon` دارد
+       (`22px 20px` و `--r-lg`)، وگرنه دو اسلایدِ هم‌اندازه دو شکلِ
+       متفاوت داشتند و کنارِ هم مثل دو چیزِ بی‌ربط دیده می‌شدند. */
+    padding: 22px 20px;
+    border-radius: var(--r-lg);
     text-decoration: none;
     color: #fff;
     background: linear-gradient(145deg, var(--wt1) 0%, var(--wt2) 100%);
-    box-shadow: 0 6px 18px -10px rgba(21, 23, 28, .55);
+    box-shadow: 0 10px 24px -12px rgba(21, 23, 28, .45);
 }
 .wallet-tile-name { font-size: 14px; font-weight: 800; }
 /* ⚠ رنگِ زیرنویس از `#fff` با شفافیت می‌آید، نه از یک توکنِ تم: زمینه
@@ -3546,7 +3590,18 @@ html[data-theme="dark"] .stay-chip.active { box-shadow: none; }
     color: rgba(255, 255, 255, .78);
     margin-bottom: 8px;
 }
-.wallet-tile-bal { font-size: 19px; font-weight: 800; margin-top: auto; }
+/* ⚠ اندازه‌اش عمداً همان `.bv-num` است: دو اسلایدِ کنارِ هم که عددشان
+   دو قد باشد، مثل دو صفحه‌ی متفاوت خوانده می‌شوند. `tabular-nums` هم
+   از همان‌جا می‌آید، وگرنه هنگام اسلاید عرضِ ارقام می‌پرید. */
+.wallet-tile-bal {
+    font-size: 27px;
+    font-weight: 800;
+    margin-top: auto;
+    line-height: 1.2;
+    letter-spacing: -.5px;
+    font-variant-numeric: tabular-nums;
+}
+@media (max-width: 380px) { .wallet-tile-bal { font-size: 23px; } }
 /* ⚠ منفی روی زمینه‌ی رنگی با `--out` خوانده نمی‌شود (کنتراست کم)؛
    کم‌رنگ کردنِ سفید هم «کم‌اهمیت» می‌خواند. علامتِ منها خودش کافی است و
    فقط کمی روشن‌تر می‌شود تا از عددِ مثبت تفکیک شود. */
