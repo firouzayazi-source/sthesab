@@ -2106,6 +2106,43 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    /* ---------- پین کردنِ حساب روی صفحه‌ی خانه ----------
+       ⚠ صفحه **تازه‌سازی نمی‌شود** و این عمدی است، برخلافِ بیشترِ
+         تغییرهای این اپ: هیچ عددی روی همین صفحه عوض نمی‌شود (نوارِ
+         خانه جای دیگری است)، پس تازه‌سازی فقط جای کاربر را در فهرست
+         گم می‌کرد. حالتِ دکمه درجا عوض می‌شود و همان بازخوردِ لازم است. */
+    document.querySelectorAll('.js-pin-wallet').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var on = btn.getAttribute('data-pinned') === '1';
+            var fd = new FormData();
+            fd.set('csrf_token', csrf());
+            fd.set('wallet_id', btn.getAttribute('data-id') || '');
+            fd.set('pinned', on ? '0' : '1');
+            btn.disabled = true;
+
+            fetch(apiUrl('toggle_wallet_pin.php'), {
+                method: 'POST', body: fd,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (j) {
+                    if (!j.success) {
+                        // ⛔ سقفِ تعداد از سرور می‌آید و باید **گفته** شود.
+                        //    سکوت یعنی کاربر می‌زند، هیچ اتفاقی نمی‌افتد،
+                        //    و نتیجه می‌گیرد دکمه خراب است.
+                        alert(j.message || 'انجام نشد.');
+                        return;
+                    }
+                    btn.setAttribute('data-pinned', j.pinned ? '1' : '0');
+                    btn.setAttribute('aria-pressed', j.pinned ? 'true' : 'false');
+                    btn.title = j.pinned ? 'برداشتن از صفحه‌ی خانه' : 'نمایش روی صفحه‌ی خانه';
+                    btn.classList.toggle('is-on', !!j.pinned);
+                })
+                .catch(function () { alert('خطا در ارتباط با سرور.'); })
+                .finally(function () { btn.disabled = false; });
+        });
+    });
+
     // ---------- نمای کارت: زدن روی ردیف حساب ----------
     var cardModal = document.getElementById('bankCardModal');
     if (cardModal) {

@@ -124,6 +124,24 @@ include __DIR__ . '/includes/header.php';
                     <?= (int)$w['balance'] < 0 ? '−' : '' ?><?= formatMoney(abs((int)$w['balance'])) ?>
                 </div>
 
+                <?php /* ⚠ `data-stop="1"` لازم است: کلِ ردیف `js-show-card`
+                         است و بدونِ آن، تپ روی پین نمای کارت را هم باز
+                         می‌کرد. همان الگوی دکمه‌ی ویرایش.
+                         ⚠ فقط برای حسابِ فعال رندر می‌شود، چون
+                         `pinnedWallets()` حسابِ غیرفعال را در هر حال
+                         کنار می‌گذارد — کلیدی که کار نمی‌کند بدتر از
+                         نبودنش است. */ ?>
+                <?php if (tableHasColumn('wallets', 'pinned') && (int)$w['is_active']): ?>
+                <button type="button" class="wallet-pin js-pin-wallet<?= !empty($w['pinned']) ? ' is-on' : '' ?>"
+                    data-stop="1" data-id="<?= (int)$w['id'] ?>"
+                    data-pinned="<?= !empty($w['pinned']) ? '1' : '0' ?>"
+                    aria-pressed="<?= !empty($w['pinned']) ? 'true' : 'false' ?>"
+                    title="<?= !empty($w['pinned']) ? 'برداشتن از صفحه‌ی خانه' : 'نمایش روی صفحه‌ی خانه' ?>"
+                    aria-label="نمایش روی صفحه‌ی خانه">
+                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6l-1 5 3.5 3v2h-11v-2L10 9 9 4z"/><path d="M12 14v6"/></svg>
+                </button>
+                <?php endif; ?>
+
                 <button type="button" class="wallet-menu js-edit-wallet" data-stop="1"
                     data-id="<?= (int)$w['id'] ?>"
                     data-name="<?= h($w['name']) ?>"

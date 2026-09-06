@@ -57,6 +57,11 @@ $highlights = financialHighlights($userId);
 // ⛔ «دقیقه‌ی اول». تصمیمش تنها در `openingBalanceHint()` است.
 $openingHint = openingBalanceHint($userId);
 
+// حساب‌هایی که کاربر خودش برای خانه پین کرده. تصمیمش تنها در
+// `pinnedWallets()` است و اگر چیزی پین نشده باشد، نوار اصلاً رندر
+// نمی‌شود — نه یک نوارِ خالی.
+$pinned = pinnedWallets($userId);
+
 $pageTitle = 'خانه';
 include __DIR__ . '/includes/header.php';
 ?>
@@ -114,6 +119,41 @@ include __DIR__ . '/includes/header.php';
         </div>
     </div>
 </div>
+
+<?php /* حساب‌های پین‌شده — یک نوارِ افقیِ اسنپ‌دار.
+
+         ⛔ جایش **بلافاصله زیرِ نوارِ ماه** است و این ترتیب معنا دارد:
+            بالا می‌گوید «این ماه چطور گذشت»، اینجا می‌گوید «الان چقدر
+            دارم». دو سؤالِ متفاوت و پشتِ سرِ هم.
+
+         ⛔ شماره‌ی کارت اینجا **نمی‌آید** — نه کامل، نه چهار رقمِ آخر.
+            آن ستون‌ها حساس‌اند و طبق قاعده‌ی خودشان فقط داخلِ نمای کارت
+            باز می‌شوند. صفحه‌ی خانه چیزی است که کاربر جلوی دیگران هم
+            بازش می‌کند. */ ?>
+<?php if ($pinned): ?>
+<div class="wallet-strip" role="list">
+    <?php foreach ($pinned as $pw): ?>
+        <?php $__neg = (int)$pw['balance'] < 0; ?>
+        <a class="wallet-tile" role="listitem"
+           href="<?= APP_BASE_PATH ?>/transactions.php?wallet=<?= (int)$pw['id'] ?>"
+           style="--wt1: <?= h($pw['color']) ?>; --wt2: <?= h(shadeColor($pw['color'])) ?>;">
+            <span class="wallet-tile-name"><?= h($pw['name']) ?></span>
+            <span class="wallet-tile-sub">
+                <?= h(walletKindLabel($pw['kind'], $pw['kind_label'] ?? null)) ?>
+                <?php if (!empty($pw['bank_name'])): ?> · <?= h($pw['bank_name']) ?><?php endif; ?>
+            </span>
+            <?php /* ⚠ `.ltr-num` روی **خودِ عدد** است، نه روی ظرفش: ظرف
+                     واحدِ فارسیِ «تومان» را هم دارد و چپ‌چین کردنش
+                     چیدمانِ آن را خراب می‌کند — همان قاعده‌ای که برای
+                     `.money-card` و `.balance-ribbon` نوشته شده. */ ?>
+            <span class="wallet-tile-bal<?= $__neg ? ' is-neg' : '' ?>">
+                <span class="ltr-num"><?= $__neg ? '−' : '' ?><?= formatMoney(abs((int)$pw['balance'])) ?></span>
+                <span class="wallet-tile-unit">تومان</span>
+            </span>
+        </a>
+    <?php endforeach; ?>
+</div>
+<?php endif; ?>
 
 <?php /* ⛔ جای این کارت عمداً **بلافاصله زیرِ عددِ ماه** است.
          کاربر عدد را می‌بیند و بلافاصله می‌پرسد «خب یعنی چه؟» — جواب

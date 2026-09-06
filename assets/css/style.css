@@ -3490,6 +3490,80 @@ html[data-theme="dark"] .stay-chip.active { box-shadow: none; }
 .insight-down .insight-dot,
 .insight-good .insight-dot { background: var(--in); }
 
+/* ---------- نوارِ حساب‌های پین‌شده روی صفحه‌ی خانه ----------
+   الگویش همان `.filter-bar` است (تک‌ردیف، `overflow-x`, حاشیه‌ی منفی تا
+   لبه‌ی صفحه) به‌علاوه‌ی scroll-snap تا هر کارت سرِ جای خودش بایستد.
+
+   ⚠ حاشیه‌ی منفی اینجا تزئین نیست: کارتِ بعدی از لبه‌ی صفحه «سرک
+     می‌کشد» و همان تنها چیزی است که به کاربر می‌گوید نوار کشیدنی است.
+     بدونش نوار شبیهِ یک کارتِ ثابت دیده می‌شود و کسی اسکرولش نمی‌کند. */
+.wallet-strip {
+    display: flex;
+    gap: 10px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: 0 -14px 12px;
+    padding: 2px 14px 6px;
+    scroll-snap-type: x mandatory;
+    /* ⚠ بدونِ این، اسنپ لبه‌ی کارت را به لبه‌ی **جعبه‌ی padding** می‌چسباند
+       و همان `padding-inline: 14px` بالا را خنثی می‌کند: مرورگر خودش
+       ۱۴ پیکسل اسکرول می‌کرد و کارتِ اول به لبه‌ی صفحه می‌چسبید، ۱۴px
+       بیرون‌تر از لبه‌ی نوارِ ماه که بالای سرش است. اندازه‌گیری شد
+       (`scrollLeft: -14`)، نه حدس. */
+    scroll-padding-inline: 14px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+}
+.wallet-strip::-webkit-scrollbar { display: none; }
+
+.wallet-tile {
+    flex: 0 0 auto;
+    width: 63%;
+    max-width: 250px;
+    min-width: 190px;
+    /* ⛔ `start` است نه `center`، و این یک باگِ واقعی بود: با `center` و
+       `scroll-snap-type: mandatory`، مرورگر همان هنگامِ چیدمان کارتِ
+       **دوم** را وسط می‌آورد و کارتِ اول نیمه بیرونِ صفحه می‌ماند —
+       یعنی کاربر اولین حسابش را اصلاً نمی‌دید و نوار از وسط شروع
+       می‌شد. در اسکرین‌شات دیده شد، نه در بازبینی. */
+    scroll-snap-align: start;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 15px 16px 16px;
+    border-radius: var(--r);
+    text-decoration: none;
+    color: #fff;
+    background: linear-gradient(145deg, var(--wt1) 0%, var(--wt2) 100%);
+    box-shadow: 0 6px 18px -10px rgba(21, 23, 28, .55);
+}
+.wallet-tile-name { font-size: 14px; font-weight: 800; }
+/* ⚠ رنگِ زیرنویس از `#fff` با شفافیت می‌آید، نه از یک توکنِ تم: زمینه
+   همیشه گرادیانِ رنگِ خودِ حساب است، پس در حالت شب هم همان می‌ماند. */
+.wallet-tile-sub {
+    font-size: 11.5px;
+    color: rgba(255, 255, 255, .78);
+    margin-bottom: 8px;
+}
+.wallet-tile-bal { font-size: 19px; font-weight: 800; margin-top: auto; }
+/* ⚠ منفی روی زمینه‌ی رنگی با `--out` خوانده نمی‌شود (کنتراست کم)؛
+   کم‌رنگ کردنِ سفید هم «کم‌اهمیت» می‌خواند. علامتِ منها خودش کافی است و
+   فقط کمی روشن‌تر می‌شود تا از عددِ مثبت تفکیک شود. */
+.wallet-tile-bal.is-neg { color: #ffd9d9; }
+.wallet-tile-unit { font-size: 11px; font-weight: 600; opacity: .8; margin-inline-start: 3px; }
+
+/* دکمه‌ی پین در فهرست حساب‌ها */
+.wallet-pin {
+    background: none; border: 0; padding: 6px;
+    color: var(--muted-2); cursor: pointer;
+    flex-shrink: 0; line-height: 0; border-radius: 8px;
+}
+.wallet-pin:hover { color: var(--ink); background: var(--line-soft); }
+.wallet-pin.is-on { color: var(--gold); }
+.wallet-pin.is-on svg { fill: color-mix(in srgb, var(--gold) 22%, transparent); }
+.wallet-pin:disabled { opacity: .5; cursor: default; }
+
 /* ---------- «دقیقه‌ی اول»: کارتِ موجودی اولیه ----------
    ⚠ رنگش آبیِ تعامل است (`--gold`/`--gold-wash`) نه کهربایی: این یک
      **دعوت** است نه هشدار. با رنگِ هشدار، اولین چیزی که کاربرِ تازه

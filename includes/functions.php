@@ -755,6 +755,13 @@ function chequeStatusMeta(string $status): array
  */
 const REMINDER_DAYS = [1, 3, 7, 14];
 
+/**
+ * ⚠ بیشترین کارتِ حسابی که روی صفحه‌ی خانه می‌آید — تنها مرجع.
+ *   نوارِ افقی با ۲۰ کارت دیگر «نگاهِ سریع» نیست، یک فهرستِ دوم است و
+ *   صفحه‌ی حساب‌ها از قبل همان کار را بهتر می‌کند.
+ */
+const PINNED_WALLET_MAX = 8;
+
 /** خواندنِ تنظیمِ یادآوریِ یک کاربر، با پیش‌فرضِ روشن. */
 function reminderPrefs(int $userId): array
 {
@@ -1060,6 +1067,10 @@ function walletBalances(int $userId): array
     if (tableHasColumn('wallets', 'kind_label')) {
         $cardCols .= ' w.kind_label,';
     }
+    // با `migration_wallet_pin` می‌آید؛ نصبی که هنوز اجرا نکرده نباید بشکند.
+    if (tableHasColumn('wallets', 'pinned')) {
+        $cardCols .= ' w.pinned,';
+    }
 
     // چک پاس‌شده و پرداخت طلب/بدهی هم پول جابه‌جا می‌کنند. مثل معامله،
     // عمداً ردیف تراکنش نمی‌سازند (وصول طلب درآمد نیست) پس فقط روی
@@ -1142,6 +1153,41 @@ function walletBalances(int $userId): array
     }
 
     return $rows;
+}
+
+/**
+ * حساب‌هایی که کاربر برای صفحه‌ی خانه پین کرده.
+ *
+ * ⛔ تنها جای این تصمیم است (مثل `chequeActiveSql()`). خانه و
+ *    `wallets.php` هر دو از همین رد می‌شوند؛ با دو نسخه، حسابی که در
+ *    فهرست «پین‌شده» دیده می‌شود روی خانه نمی‌آمد و برعکس.
+ *
+ * ⛔ سه شرط، و هیچ‌کدام اختیاری نیست:
+ *    ۱. `pinned = 1`
+ *    ۲. **حسابِ غیرفعال هرگز نمی‌آید** — کاربری که حسابی را می‌بندد
+ *       انتظار ندارد موجودی‌اش هنوز روی خانه باشد، و پین کردنِ قبلی‌اش
+ *       نباید آن را زنده نگه دارد.
+ *    ۳. سقفِ `PINNED_WALLET_MAX` — نوارِ افقی با ۲۰ کارت دیگر «نگاهِ
+ *       سریع» نیست، یک فهرستِ دوم است. صفحه‌ی حساب‌ها از قبل برای همان
+ *       کار هست.
+ *
+ * ⚠ روی `walletBalances()` سوار است، نه یک کوئریِ تازه: موجودی شش منبع
+ *   دارد (تراکنش، انتقال، معامله، چکِ پاس‌شده، پرداختِ بدهی، موجودی
+ *   اولیه) و کوئریِ دومی دیر یا زود عددِ متفاوتی می‌گفت.
+ *
+ * @return array<int, array<string, mixed>>
+ */
+function pinnedWallets(int $userId): array
+{
+    if ($userId <= 0 || !tableHasColumn('wallets', 'pinned')) { return []; }
+
+    $out = [];
+    foreach (walletBalances($userId) as $w) {
+        if (empty($w['pinned']) || !(int)$w['is_active']) { continue; }
+        $out[] = $w;
+        if (count($out) >= PINNED_WALLET_MAX) { break; }
+    }
+    return $out;
 }
 
 function totalBalance(int $userId): int
