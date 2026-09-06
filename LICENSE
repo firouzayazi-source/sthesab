@@ -1,0 +1,82 @@
+پروانه‌ی اختصاصی — تمام حقوق محفوظ است
+PROPRIETARY LICENSE — ALL RIGHTS RESERVED
+
+Copyright (c) 2026 مالکِ پروژه (the copyright holder). All rights reserved.
+
+--------------------------------------------------------------------
+فارسی
+--------------------------------------------------------------------
+
+این نرم‌افزار و همه‌ی اجزای آن — کدِ منبع، پایگاه داده و ساختار آن،
+مستندات، طراحی، و دارایی‌های گرافیکی — دارایی انحصاری مالکِ حق نشر است.
+
+بدون اجازه‌ی کتبیِ صریحِ مالک، هیچ‌کس حق ندارد:
+
+  ۱. این نرم‌افزار یا هر بخشی از آن را کپی، توزیع، منتشر، یا در دسترس
+     عموم قرار دهد؛
+  ۲. آن را بفروشد، اجاره دهد، واگذار کند، یا به‌عنوان سرویس (SaaS) به
+     دیگران ارائه کند؛
+  ۳. اثرِ اشتقاقی از آن بسازد یا آن را در محصول دیگری بگنجاند؛
+  ۴. آن را روی سروری جز سرورهای مالک نصب یا اجرا کند.
+
+اجازه‌ی مطالعه‌ی کد صرفاً برای بررسی و ارزیابی داده می‌شود و هیچ حقِ
+استفاده‌ای ایجاد نمی‌کند.
+
+⚠ نبودِ این فایل به معنای آزاد بودن نرم‌افزار نبود و نیست؛ این متن فقط
+  همان وضعیتِ حقوقیِ پیش‌فرض را صریح می‌کند تا برای خریدار، همکار، یا
+  هر شخص ثالثی جای ابهام نماند.
+
+**فروش و واگذاری:** مالک می‌تواند تمام یا بخشی از حقوق این نرم‌افزار را
+با قراردادِ کتبیِ جداگانه به دیگری واگذار کند. چنین قراردادی بر این
+پروانه مقدم است.
+
+**سلب مسئولیت:** این نرم‌افزار «همان‌گونه که هست» ارائه می‌شود، بدون هیچ
+ضمانتِ صریح یا ضمنی، از جمله ضمانتِ قابلیتِ فروش، تناسب برای هدفی خاص،
+یا عدم نقضِ حقوق دیگران. مالکِ حق نشر در قبال هیچ ادعا، خسارت، یا
+مسئولیتی که از این نرم‌افزار یا استفاده از آن ناشی شود مسئول نیست.
+مسئولیتِ صحتِ داده‌های مالی و نگهداری از پشتیبان بر عهده‌ی کاربر است.
+
+--------------------------------------------------------------------
+English
+--------------------------------------------------------------------
+
+This software and all of its components — source code, database schema,
+documentation, design, and graphical assets — are the exclusive property
+of the copyright holder.
+
+Without the express prior written permission of the copyright holder, no
+person may:
+
+  1. copy, distribute, publish, or otherwise make the software or any
+     part of it publicly available;
+  2. sell, lease, sublicense, or offer it to third parties as a service;
+  3. create derivative works from it or incorporate it into another
+     product;
+  4. install or run it on any server other than the owner's own.
+
+Permission to read the source is granted for review and evaluation only
+and confers no right of use.
+
+The copyright holder may transfer all or part of the rights in this
+software to another party under a separate written agreement; such an
+agreement takes precedence over this licence.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES
+OR OTHER LIABILITY ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+--------------------------------------------------------------------
+اجزای شخص ثالث / Third-party components
+--------------------------------------------------------------------
+
+این پروژه عمداً هیچ وابستگیِ بسته‌ای ندارد (نه Composer، نه npm). دو
+دارایی از بیرون آمده‌اند و پروانه‌ی خودشان را دارند:
+
+  • Chart.js v4.4.0 — assets/js/chart.umd.js — پروانه‌ی MIT
+  • Vazirmatn — assets/fonts/Vazirmatn.woff2 — پروانه‌ی SIL Open Font
+    License 1.1 (جزئیات در assets/fonts/README.md)
+
+پروانه‌ی این دو دست‌نخورده باقی می‌ماند و این سند شامل آن‌ها نمی‌شود.

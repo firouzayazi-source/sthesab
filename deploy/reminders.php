@@ -59,8 +59,9 @@ if ($cronIns) {
         exit(1);
     }
     $appDir = dirname(__DIR__);
+    $cronApp = defined('APP_NAME') ? APP_NAME : 'دفتر مالی';
     $cron = <<<CRON
-# یادآوری روزانه‌ی سررسیدهای دفتر مالی — فقط مربوط به همین پروژه
+# یادآوری روزانه‌ی سررسیدهای {$cronApp} — فقط مربوط به همین پروژه
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 30 7 * * * root php {$appDir}/deploy/reminders.php --send >/dev/null 2>&1
@@ -183,7 +184,13 @@ foreach ($users as $u) {
     $summary = [];
     if ($overdue) { $summary[] = toPersianDigits(count($overdue)) . ' سررسیدگذشته'; }
     if ($soon)    { $summary[] = toPersianDigits(count($soon)) . ' تا ' . toPersianDigits($days) . ' روز آینده'; }
-    $subject = 'دفتر مالی — ' . implode(' و ', $summary);
+    // ⚠ نامِ برند از `APP_NAME` می‌آید، نه سخت‌کد. این تنها متنی است که
+    //   **بیرون از اپ** به دستِ کاربر می‌رسد (موضوعِ ایمیل)، پس روی
+    //   نصبی که برندش عوض شده، سخت‌کد بودنش یعنی ایمیل‌ها با نامِ ما
+    //   می‌روند — و کسی هم متوجه نمی‌شود، چون خروجیِ این اسکریپت را
+    //   هیچ‌کس نمی‌بیند (با cron اجرا می‌شود).
+    $appName = defined('APP_NAME') ? APP_NAME : 'دفتر مالی';
+    $subject = $appName . ' — ' . implode(' و ', $summary);
 
     [$html, $text] = reminderEmailBody($name, $overdue, $soon, $days);
 

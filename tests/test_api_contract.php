@@ -1204,6 +1204,58 @@ T::bulk(3, $stubBad, 'آدرس‌های قدیمی هنوز به زبانه‌ی
 T::group('نحو — هر فایل PHP باید بدون خطا پارس شود');
 
 $bad = [];
+// ⛔ قاعده ۲۲ — نامِ برند فقط از `APP_NAME` می‌آید.
+//
+// `config.php` ثابتِ `APP_NAME` را دارد و بیشترِ جاها از همان می‌خوانند،
+// ولی دو نقطه‌ی **دیده‌شدنی** سخت‌کد مانده بودند: موضوعِ ایمیلِ یادآوریِ
+// روزانه، و فیلدِ `app` داخلِ خودِ فایلِ بکاپِ کاربر.
+//
+// ⛔ چرا مهم است: خرابی‌اش برای مالکِ نصب **بی‌صداست**. کسی که برند را
+//    عوض می‌کند، اپ را باز می‌کند و همه‌چیز درست است — ولی ایمیل‌هایش با
+//    نامِ ما می‌روند و فایل‌های بکاپش نامِ ما را دارند. و آن ایمیل با
+//    cron می‌رود، پس خروجی‌اش را هیچ‌کس نمی‌بیند.
+//
+// ⚠ با توکنایزر است نه grep: همین توضیح، خودش کلمه‌ی برند را دارد و با
+//   جست‌وجوی متنی تست روی فایلِ **سالم** هم قرمز می‌شد.
+T::group('قاعده ۲۲ — نامِ برند فقط از APP_NAME');
+
+$brand = 'دفتر مالی';
+$brandFiles = [];
+foreach (['.', 'includes', 'api', 'admin', 'deploy'] as $dir) {
+    foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $brandFiles[realpath($p)] = true; }
+}
+// ⚠ متغیرِ جدا، نه `$bad`: بلوکِ بعدی (بررسیِ نحو) هم `$bad[]` می‌زند
+//   بدونِ خالی کردنش، پس با نامِ مشترک، خطاهای این قاعده در گزارشِ آن
+//   یکی هم تکرار می‌شدند — یعنی تست **دروغ** می‌گفت کدام بررسی شکسته.
+//   در همان اولین اجرا دیده شد.
+$badBrand = [];
+$scanned = 0;
+foreach (array_keys($brandFiles) as $path) {
+    // `config/` استثناست: **جای تعریفِ** خودِ ثابت است.
+    if (str_contains($path, '/config/')) { continue; }
+    $src = (string)@file_get_contents($path);
+    if (!str_contains($src, $brand)) { $scanned++; continue; }
+    $scanned++;
+
+    $lines = explode("\n", $src);
+    foreach (token_get_all($src) as $tok) {
+        if (!is_array($tok)) { continue; }
+        // فقط رشته‌ی واقعی — کامنت و docblock اینجا اصلاً نمی‌آیند.
+        if ($tok[0] !== T_CONSTANT_ENCAPSED_STRING && $tok[0] !== T_ENCAPSED_AND_WHITESPACE
+            && $tok[0] !== T_INLINE_HTML) { continue; }
+        if (!str_contains($tok[1], $brand)) { continue; }
+
+        // ⚠ الگوی مجازِ برگشتی: `defined('APP_NAME') ? APP_NAME : 'دفتر مالی'`
+        //   روی همان خط. نصبی که هنوز ثابت را ندارد نباید بشکند.
+        $line = $lines[$tok[2] - 1] ?? '';
+        if (str_contains($line, 'APP_NAME')) { continue; }
+
+        $badBrand[] = basename(dirname($path)) . '/' . basename($path) . ':' . $tok[2]
+               . ' — نامِ برند سخت‌کد شده؛ از APP_NAME بخوانید';
+    }
+}
+T::bulk($scanned, $badBrand, 'هیچ متنِ دیده‌شدنی‌ای نامِ برند را سخت‌کد نکرده');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

@@ -415,7 +415,7 @@ if ($cmd === '--test-mail') {
         'آزمایش تنظیمات ایمیل — ' . (defined('APP_NAME') ? APP_NAME : 'دفتر مالی'),
         '<div style="font-family:Tahoma;direction:rtl;text-align:right">'
         . '<h3>ارسال ایمیل درست کار می‌کند ✅</h3>'
-        . '<p>این پیام آزمایشی از سرور دفتر مالی فرستاده شده است.</p>'
+        . '<p>این پیام آزمایشی از سرور ' . (defined('APP_NAME') ? APP_NAME : 'دفتر مالی') . ' فرستاده شده است.</p>'
         . '<p>حالا بازیابی رمز با ایمیل هم کار می‌کند.</p></div>'
     );
     $ms = (int)round((microtime(true) - $t0) * 1000);
