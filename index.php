@@ -117,10 +117,17 @@ include __DIR__ . '/includes/header.php';
             `align-items` پیش‌فرضِ فلکس `stretch` است و ارتفاعِ ردیف را
             بلندترین اسلاید (همان نوار) تعیین می‌کند.
 
-         ⛔ شماره‌ی کارت اینجا **نمی‌آید** — نه کامل، نه چهار رقمِ آخر.
-            آن ستون‌ها حساس‌اند و طبق قاعده‌ی خودشان فقط داخلِ نمای کارت
-            باز می‌شوند. صفحه‌ی خانه چیزی است که کاربر جلوی دیگران هم
-            بازش می‌کند. */ ?>
+         ⛔ کارت **همان `.bank-card`ِ صفحه‌ی حساب‌هاست**، نه یک طرحِ دوم.
+            با دو طرح، اولین باری که یکی عوض شود کاربر بسته به اینکه از
+            کجا نگاه می‌کند دو چیزِ متفاوت می‌بیند.
+
+         ⚠ شماره‌ی کارت **روی خودِ کارت** دیده می‌شود — این خواسته‌ی صریحِ
+            مالکِ نصب است و جای قاعده‌ی قبلی («فقط داخلِ نمای کارت») را
+            گرفت. هزینه‌اش واقعی است: صفحه‌ی خانه همان صفحه‌ای است که
+            کاربر جلوی دیگران هم بازش می‌کند. شماره‌ی **حساب** و **شبا**
+            عمداً روی کارت نمی‌آیند و فقط داخلِ نما باز می‌شوند، چون
+            آن‌ها در یک نگاه از دور خوانده نمی‌شوند ولی در یک عکس
+            می‌مانند. */ ?>
 <div class="home-carousel">
     <div class="home-slides" id="homeSlides">
         <div class="balance-ribbon">
@@ -139,24 +146,52 @@ include __DIR__ . '/includes/header.php';
         </div>
 
         <?php foreach ($pinned as $pw): ?>
-            <?php $__neg = (int)$pw['balance'] < 0; ?>
-            <a class="wallet-tile"
-               href="<?= APP_BASE_PATH ?>/transactions.php?wallet=<?= (int)$pw['id'] ?>"
-               style="--wt1: <?= h($pw['color']) ?>; --wt2: <?= h(shadeColor($pw['color'])) ?>;">
-                <span class="wallet-tile-name"><?= h($pw['name']) ?></span>
-                <span class="wallet-tile-sub">
-                    <?= h(walletKindLabel($pw['kind'], $pw['kind_label'] ?? null)) ?>
-                    <?php if (!empty($pw['bank_name'])): ?> · <?= h($pw['bank_name']) ?><?php endif; ?>
-                </span>
-                <?php /* ⚠ `.ltr-num` روی **خودِ عدد** است، نه روی ظرفش: ظرف
-                         واحدِ فارسیِ «تومان» را هم دارد و چپ‌چین کردنش
-                         چیدمانِ آن را خراب می‌کند — همان قاعده‌ای که برای
-                         `.money-card` و `.balance-ribbon` نوشته شده. */ ?>
-                <span class="wallet-tile-bal<?= $__neg ? ' is-neg' : '' ?>">
-                    <span class="ltr-num"><?= $__neg ? '−' : '' ?><?= formatMoney(abs((int)$pw['balance'])) ?></span>
-                    <span class="wallet-tile-unit">تومان</span>
-                </span>
-            </a>
+            <?php
+                $__bp   = bankPreset($pw['bank_code'] ?? null);
+                $__bank = $pw['bank_name'] ?: ($__bp['name'] ?? '');
+                $__bal  = ((int)$pw['balance'] < 0 ? '−' : '') . formatMoney(abs((int)$pw['balance']));
+                $__kind = walletKindLabel($pw['kind'], $pw['kind_label'] ?? null);
+                $__card = formatCardNumber($pw['card_number'] ?? '');
+            ?>
+            <?php /* ⚠ همان `data-*`هایی که ردیفِ `wallets.php` دارد، با همان
+                     نام‌ها: `app.js` یک شنونده‌ی مشترک روی `.js-show-card`
+                     دارد و اگر یکی از این کلیدها نامش فرق کند، نما
+                     **بی‌صدا** خالی باز می‌شود. */ ?>
+            <div class="bank-card home-card js-show-card" role="button" tabindex="0"
+                 style="--bc1: <?= h($pw['color']) ?>; --bc2: <?= h(shadeColor($pw['color'])) ?>;"
+                 data-id="<?= (int)$pw['id'] ?>"
+                 data-name="<?= h($pw['name']) ?>"
+                 data-bank="<?= h($__bank) ?>"
+                 data-card="<?= h($__card) ?>"
+                 data-account="<?= h(toPersianDigits($pw['account_number'] ?? '')) ?>"
+                 data-iban="<?= h(formatIban($pw['iban'] ?? '')) ?>"
+                 data-kind="<?= h($__kind) ?>"
+                 data-balance="<?= h($__bal) ?>"
+                 data-c1="<?= h($pw['color']) ?>"
+                 data-c2="<?= h(shadeColor($pw['color'])) ?>">
+                <div class="bank-card-shine"></div>
+                <?php /* ⚠ نگاشتِ فیلدها **دقیقاً** همانِ مودال است: بالا
+                         نامِ بانک (و اگر نبود نامِ حساب)، پایین نامِ خودِ
+                         حساب. برعکسش کارتِ خانه و کارتِ داخلِ نما را دو
+                         چیزِ متفاوت نشان می‌داد، و روی حسابی که نامش با
+                         بانکش یکی است هر دو خط یک کلمه می‌شدند. */ ?>
+                <div class="bank-card-top">
+                    <span class="bank-card-bank"><?= h($__bank ?: $pw['name']) ?></span>
+                    <span class="bank-card-kind"><?= h($__kind) ?></span>
+                </div>
+                <div class="bank-card-chip" aria-hidden="true"></div>
+                <div class="bank-card-number"><?= h($__card) ?></div>
+                <div class="bank-card-bottom">
+                    <div>
+                        <span class="bank-card-label">صاحب حساب</span>
+                        <span class="bank-card-owner"><?= h($pw['name']) ?></span>
+                    </div>
+                    <div class="bank-card-balance-wrap">
+                        <span class="bank-card-label">موجودی</span>
+                        <span class="bank-card-balance"><?= h($__bal) ?></span>
+                    </div>
+                </div>
+            </div>
         <?php endforeach; ?>
     </div>
 
@@ -218,5 +253,12 @@ include __DIR__ . '/includes/header.php';
 <meta name="csrf-token" content="<?= Csrf::token() ?>">
 
 <?php include __DIR__ . '/includes/edit_tx_modal.php'; ?>
+
+<?php /* نمای کارت و تعدیل موجودی — همان دو مودالِ `wallets.php`، از یک
+         فایلِ مشترک. فقط وقتی رندر می‌شوند که کارتی روی خانه باشد؛
+         بدونِ آن دو لایه‌ی پنهان بی‌دلیل در HTML هر بارگذاری می‌ماندند. */ ?>
+<?php if ($pinned): ?>
+<?php include __DIR__ . '/includes/wallet_card_modals.php'; ?>
+<?php endif; ?>
 
 <?php include __DIR__ . '/includes/footer.php'; ?>

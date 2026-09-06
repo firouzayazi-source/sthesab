@@ -3021,7 +3021,7 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
 }
 .iban-field input { border-radius: 0 var(--r-sm) var(--r-sm) 0 !important; flex: 1; min-width: 0; }
 
-.wallet-row.js-show-card { cursor: pointer; }
+.js-show-card { cursor: pointer; }
 
 .bank-card-box { max-width: 400px; }
 .bank-card {
@@ -3568,45 +3568,31 @@ html[data-theme="dark"] .stay-chip.active { box-shadow: none; }
 }
 .home-dot.is-on::before { width: 16px; border-radius: 3px; background: var(--muted-2); }
 
-.wallet-tile {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    /* ⚠ padding و گردی عمداً همان‌هایی است که `.balance-ribbon` دارد
-       (`22px 20px` و `--r-lg`)، وگرنه دو اسلایدِ هم‌اندازه دو شکلِ
-       متفاوت داشتند و کنارِ هم مثل دو چیزِ بی‌ربط دیده می‌شدند. */
-    padding: 22px 20px;
+/* ---------- کارتِ حسابِ پین‌شده روی خانه ----------
+   ⛔ خودِ `.bank-card`ِ صفحه‌ی حساب‌هاست و اینجا فقط سه چیز عوض می‌شود.
+     طرحِ دوم ننویسید: با دو طرح، کاربر بسته به اینکه کارت را از خانه
+     باز کرده یا از فهرست حساب‌ها، دو چیزِ متفاوت می‌بیند. */
+.home-card {
+    /* ⛔ `aspect-ratio` باید برداشته شود. `.bank-card` نسبتِ واقعیِ کارت
+       بانکی (۱.۵۸۶) را دارد و آن با «هم‌قدِ نوارِ ماه» در تضاد است: روی
+       موبایل ۲۱۹ پیکسل می‌شد و روی دسکتاپ **۴۳۴**، در برابر ۱۷۷ِ نوار.
+       ارتفاع را همان `stretch`ِ اسلایدر می‌دهد. */
+    aspect-ratio: auto;
+    /* گردی و padding از نوارِ ماه می‌آید، نه از کارتِ داخلِ مودال:
+       دو اسلایدِ هم‌اندازه با دو گردیِ متفاوت کنارِ هم غلط دیده می‌شوند. */
     border-radius: var(--r-lg);
-    text-decoration: none;
-    color: #fff;
-    background: linear-gradient(145deg, var(--wt1) 0%, var(--wt2) 100%);
+    padding: 22px 20px;
     box-shadow: 0 10px 24px -12px rgba(21, 23, 28, .45);
+    cursor: pointer;
 }
-.wallet-tile-name { font-size: 14px; font-weight: 800; }
-/* ⚠ رنگِ زیرنویس از `#fff` با شفافیت می‌آید، نه از یک توکنِ تم: زمینه
-   همیشه گرادیانِ رنگِ خودِ حساب است، پس در حالت شب هم همان می‌ماند. */
-.wallet-tile-sub {
-    font-size: 11.5px;
-    color: rgba(255, 255, 255, .78);
-    margin-bottom: 8px;
-}
-/* ⚠ اندازه‌اش عمداً همان `.bv-num` است: دو اسلایدِ کنارِ هم که عددشان
-   دو قد باشد، مثل دو صفحه‌ی متفاوت خوانده می‌شوند. `tabular-nums` هم
-   از همان‌جا می‌آید، وگرنه هنگام اسلاید عرضِ ارقام می‌پرید. */
-.wallet-tile-bal {
-    font-size: 27px;
-    font-weight: 800;
-    margin-top: auto;
-    line-height: 1.2;
-    letter-spacing: -.5px;
-    font-variant-numeric: tabular-nums;
-}
-@media (max-width: 380px) { .wallet-tile-bal { font-size: 23px; } }
-/* ⚠ منفی روی زمینه‌ی رنگی با `--out` خوانده نمی‌شود (کنتراست کم)؛
-   کم‌رنگ کردنِ سفید هم «کم‌اهمیت» می‌خواند. علامتِ منها خودش کافی است و
-   فقط کمی روشن‌تر می‌شود تا از عددِ مثبت تفکیک شود. */
-.wallet-tile-bal.is-neg { color: #ffd9d9; }
-.wallet-tile-unit { font-size: 11px; font-weight: 600; opacity: .8; margin-inline-start: 3px; }
+/* ⚠ چیپِ طلایی در ارتفاعِ کمترِ خانه جا را می‌گیرد و شماره‌ی کارت را
+   می‌فشارد؛ کوچک‌تر می‌شود، نه حذف — همان چیزی است که کارت را «کارت»
+   نشان می‌دهد. */
+.home-card .bank-card-chip { width: 32px; height: 23px; }
+.home-card .bank-card-bank { font-size: 15px; }
+.home-card .bank-card-number { font-size: 18px; }
+.home-card .bank-card-balance { font-size: 17px; }
+.home-card:focus-visible { outline: 2px solid #fff; outline-offset: -4px; }
 
 /* دکمه‌ی پین در فهرست حساب‌ها */
 .wallet-pin {

@@ -2179,7 +2179,18 @@ document.addEventListener('DOMContentLoaded', function () {
     // ---------- نمای کارت: زدن روی ردیف حساب ----------
     var cardModal = document.getElementById('bankCardModal');
     if (cardModal) {
-        document.querySelectorAll('.wallet-row.js-show-card').forEach(function (row) {
+        /* ⛔ انتخابگر `.js-show-card` است، نه `.wallet-row.js-show-card`:
+           کارتِ پین‌شده‌ی صفحه‌ی خانه هم همین نما را باز می‌کند و با
+           انتخابگرِ بسته به `.wallet-row` **بی‌صدا** هیچ‌کاری نمی‌کرد —
+           تپ می‌شد و هیچ اتفاقی نمی‌افتاد. */
+        document.querySelectorAll('.js-show-card').forEach(function (row) {
+            // ⚠ کارتِ خانه `role="button"` دارد، پس با کیبورد هم باید باز شود.
+            row.addEventListener('keydown', function (e) {
+                if (this.getAttribute('role') !== 'button') return;
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                this.click();
+            });
             row.addEventListener('click', function (e) {
                 // دکمه‌ی ⋮ کار خودش را دارد
                 if (e.target.closest('[data-stop], button, a')) return;
@@ -2256,12 +2267,19 @@ document.addEventListener('DOMContentLoaded', function () {
                 // ویرایش کامل همین حساب — رنگ، شماره کارت، شبا و بقیه.
                 // دکمه‌ی ⋮ روی ردیف همین کار را می‌کند ولی پیدا کردنش
                 // آسان نبود؛ اینجا کنار خود کارت است.
+                /* ⛔ شیتِ ویرایش فقط در `wallets.php` هست. روی صفحه‌ی خانه
+                   نبودنش یعنی دکمه‌ای که زده می‌شود و هیچ اتفاقی نمی‌افتد —
+                   «دکمه‌ی بی‌کار از نبودنش بدتر است». پس آنجا همان دکمه
+                   کاربر را به صفحه‌ی حساب‌ها می‌برد و برچسبش هم همین را
+                   می‌گوید. */
                 var editBtn = document.getElementById('bcEditBtn');
                 var rowEdit = this.querySelector('.js-edit-wallet');
                 if (editBtn) {
+                    editBtn.textContent = rowEdit ? 'ویرایش حساب' : 'ویرایش در حساب‌ها';
                     editBtn.onclick = function () {
                         closeModal('bankCardModal');
-                        if (rowEdit) { rowEdit.click(); }
+                        if (rowEdit) { rowEdit.click(); return; }
+                        window.location.href = (window.APP_BASE || '') + '/wallets.php';
                     };
                 }
 
