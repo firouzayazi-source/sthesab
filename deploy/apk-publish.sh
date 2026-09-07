@@ -14,7 +14,9 @@
 #    را پاک نمی‌کند و هیچ `git clean` ای در کار نیست).
 #
 # استفاده:
-#   sudo bash deploy/apk-publish.sh /root/daftar-42.apk
+#   sudo bash deploy/apk-publish.sh --from-github          # آخرین نسخه
+#   sudo bash deploy/apk-publish.sh --from-github build-11 # نسخه‌ی مشخص
+#   sudo bash deploy/apk-publish.sh /root/daftar-11.apk    # فایلِ آماده
 #   sudo bash deploy/apk-publish.sh --remove
 #
 set -euo pipefail
@@ -22,10 +24,28 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/opt/hesab/app}"
 DEST_DIR="$APP_DIR/download"
 DEST="$DEST_DIR/daftar.apk"
+GH_REPO="${GH_REPO:-firouzayazi-source/sthesab}"
+GH_API="${GH_API:-https://api.github.com}"
 
 red()  { printf '\033[0;31m%s\033[0m\n' "$*"; }
 grn()  { printf '\033[0;32m%s\033[0m\n' "$*"; }
 info() { printf '\033[0;36m%s\033[0m\n' "$*"; }
+
+TMPDIR_APK=""
+CURL_CFG=""
+cleanup() {
+    [ -n "$CURL_CFG" ] && rm -f "$CURL_CFG"
+    [ -n "$TMPDIR_APK" ] && rm -rf "$TMPDIR_APK"
+    return 0
+}
+trap cleanup EXIT
+
+usage() {
+    echo "  sudo bash deploy/apk-publish.sh --from-github"
+    echo "  sudo bash deploy/apk-publish.sh --from-github build-11"
+    echo "  sudo bash deploy/apk-publish.sh /root/daftar-11.apk"
+    echo "  sudo bash deploy/apk-publish.sh --remove"
+}
 
 if [ "${1:-}" = "--remove" ]; then
     if [ -f "$DEST" ]; then
@@ -37,17 +57,102 @@ if [ "${1:-}" = "--remove" ]; then
     exit 0
 fi
 
-SRC="${1:-}"
-if [ -z "$SRC" ]; then
-    red "مسیرِ فایل APK را بدهید."
-    echo "  sudo bash deploy/apk-publish.sh /root/daftar-42.apk"
-    echo "  sudo bash deploy/apk-publish.sh --remove"
-    exit 1
-fi
+# ---------------------------------------------------------------------
+# گرفتن از GitHub Release
+#
+# ⛔ توکن هرگز روی خطِ فرمان نمی‌رود. هر کاربرِ دیگری روی همین سرور
+#    `ps aux` را می‌بیند و روی این VPS سرویس‌های دیگری هم هستند — همان
+#    دلیلی که `perf-report.sh` رمزِ دیتابیس را با `--defaults-extra-file`
+#    می‌فرستد نه با `mysql -pرمز`. اینجا هم سرآیندِ Authorization داخلِ
+#    یک فایلِ موقتِ ۶۰۰ می‌رود و با `--config` خوانده می‌شود.
+gh_fetch() {
+    local tag="${1:-}"
+    local token="${GH_TOKEN:-${GITHUB_TOKEN:-}}"
 
-if [ ! -f "$SRC" ]; then
-    red "فایل پیدا نشد: $SRC"
-    exit 1
+    if ! command -v curl >/dev/null 2>&1; then
+        red "curl نصب نیست."
+        exit 1
+    fi
+
+    if [ -z "$token" ]; then
+        info "مخزن خصوصی است، پس یک توکنِ گیت‌هاب لازم است (فقط خواندنِ همین مخزن)."
+        info "ساختنش: github.com/settings/tokens  →  Fine-grained  →  Contents: Read-only"
+        printf 'توکن گیت‌هاب: '
+        read -rs token
+        echo
+    fi
+    if [ -z "$token" ]; then
+        red "توکنی وارد نشد."
+        exit 1
+    fi
+
+    CURL_CFG="$(mktemp)"
+    chmod 600 "$CURL_CFG"
+    {
+        printf 'header = "Authorization: Bearer %s"\n' "$token"
+        printf 'header = "X-GitHub-Api-Version: 2022-11-28"\n'
+        printf 'silent\nshow-error\nlocation\nfail\n'
+    } > "$CURL_CFG"
+
+    local rel_url
+    if [ -n "$tag" ]; then
+        rel_url="$GH_API/repos/$GH_REPO/releases/tags/$tag"
+    else
+        rel_url="$GH_API/repos/$GH_REPO/releases/latest"
+    fi
+
+    TMPDIR_APK="$(mktemp -d)"
+    local meta="$TMPDIR_APK/release.json"
+
+    info "خواندن نسخه از گیت‌هاب…"
+    if ! curl --config "$CURL_CFG" -H 'Accept: application/vnd.github+json' \
+              -o "$meta" "$rel_url"; then
+        red "نسخه خوانده نشد. توکن یا نامِ نسخه را بررسی کنید."
+        exit 1
+    fi
+
+    # نامِ نسخه و شناسه‌ی اولین فایلِ .apk — بدونِ jq، چون روی سرور نصب
+    # نیست. فضای خالی حذف می‌شود (پاسخِ گیت‌هاب چندخطی است)، بعد فقط
+    # بخشِ assets نگه داشته می‌شود تا متنِ توضیحِ نسخه با آن قاطی نشود،
+    # و آخر روی `{` شکسته می‌شود تا هر دارایی یک خط شود.
+    local rel_tag assets chunk asset_id asset_name compact
+    compact=$(tr -d ' \t\r\n' < "$meta")
+    rel_tag=$(printf '%s' "$compact" | grep -o '"tag_name":"[^"]*"' \
+              | head -n1 | sed 's/.*:"//; s/"$//')
+    assets="${compact#*\"assets\":\[}"
+    chunk=$(printf '%s' "$assets" | tr '{' '\n' | grep -m1 '"name":"[^"]*\.apk"' || true)
+    asset_id=$(printf '%s' "$chunk" | grep -o '"id":[0-9]*' | head -n1 | cut -d: -f2)
+    asset_name=$(printf '%s' "$chunk" | grep -o '"name":"[^"]*\.apk"' \
+                 | head -n1 | sed 's/.*:"//; s/"$//')
+
+    if [ -z "$asset_id" ]; then
+        red "در نسخه‌ی ${rel_tag:-?} هیچ فایلِ .apk ای نبود."
+        exit 1
+    fi
+
+    info "دریافت $asset_name از نسخه‌ی $rel_tag …"
+    SRC="$TMPDIR_APK/$asset_name"
+    if ! curl --config "$CURL_CFG" -H 'Accept: application/octet-stream' \
+              -o "$SRC" "$GH_API/repos/$GH_REPO/releases/assets/$asset_id"; then
+        red "دانلود نشد."
+        exit 1
+    fi
+}
+
+SRC=""
+if [ "${1:-}" = "--from-github" ]; then
+    gh_fetch "${2:-}"
+else
+    SRC="${1:-}"
+    if [ -z "$SRC" ]; then
+        red "مسیرِ فایل APK را بدهید، یا با --from-github از گیت‌هاب بگیرید."
+        usage
+        exit 1
+    fi
+    if [ ! -f "$SRC" ]; then
+        red "فایل پیدا نشد: $SRC"
+        exit 1
+    fi
 fi
 
 # ⛔ سنجشِ اینکه واقعاً APK است، نه فقط اینکه پسوندش .apk است.

@@ -144,4 +144,22 @@ T::ok(str_contains($sh, 'AndroidManifest.xml'),
 T::ok(str_contains($sh, 'mv -f'),
     '⚠ جابه‌جاییِ اتمی: دانلودِ همان لحظه نصفه نمی‌شود');
 
+/*
+ * ⛔ گرفتن از GitHub Release: مخزن خصوصی است، پس روی سرور بدونِ توکن
+ *   ۴۰۴ می‌آید. توکن اما **نباید روی خطِ فرمان برود** — روی این VPS
+ *   سرویس‌های دیگری هم هستند و `ps aux` را هر کاربری می‌بیند. همان
+ *   دلیلی که `perf-report.sh` رمزِ دیتابیس را با `--defaults-extra-file`
+ *   می‌فرستد.
+ */
+T::ok(str_contains($sh, '--from-github'),
+    'اسکریپت می‌تواند APK را مستقیم از Release بگیرد');
+T::ok(str_contains($sh, '--config'),
+    '⛔ توکن از راهِ فایلِ پیکربندیِ curl می‌رود');
+T::ok(!preg_match('/-H\s*["\']?\s*Authorization/i', $sh),
+    '⛔ سرآیندِ توکن روی argv نمی‌رود — وگرنه در `ps aux` دیده می‌شد');
+T::ok((bool)preg_match('/chmod\s+600\s+"?\$CURL_CFG"?/', $sh),
+    'فایلِ توکن فقط برای خودِ root خواندنی است');
+T::ok(str_contains($sh, 'trap cleanup EXIT'),
+    'و با trap پاک می‌شود، حتی اگر اسکریپت وسطِ کار بمیرد');
+
 exit(T::report());
