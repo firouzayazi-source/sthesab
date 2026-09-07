@@ -31,7 +31,15 @@ SITE_FILE="${SITE_FILE:-/etc/nginx/sites-available/hesab}"
 DOMAIN="${DOMAIN:-hesab.stland.ir}"
 NGINX="${NGINX:-nginx}"
 RELOAD="${RELOAD:-systemctl reload nginx}"
-PROBE_URL="${PROBE_URL:-http://127.0.0.1/__realip}"
+
+# ⛔ سنجش با `--resolve` است نه با آدرسِ خامِ 127.0.0.1 — و این درسِ
+#   ثبت‌شده‌ی همین پروژه است که یک بار دیگر هم زد: روی این سرور چند سایت
+#   روی یک nginx هستند، پس درخواستی که نامِ دامنه را نمی‌برد به بلوکِ
+#   **پیش‌فرض** می‌خورد و صفحه‌ی ۴۰۴ِ یک سایتِ دیگر را می‌گیرد. با
+#   `--resolve` هم نام درست می‌رود هم SNI، و اتصال همچنان از خودِ ماشین
+#   است — که برای سنجشِ «آی‌پیِ نامعتبر» دقیقاً همان چیزی است که لازم داریم.
+PROBE_SCHEME="${PROBE_SCHEME:-https}"
+PROBE_PORT="${PROBE_PORT:-443}"
 
 BEGIN='# >>> hesab realip — deploy/nginx-realip.sh'
 END='# <<< hesab realip'
@@ -187,15 +195,35 @@ sleep 1
 #         بارگذاری نشده یا نامِ سرآیند غلط است و همه‌ی کاربران باز هم
 #         یک آی‌پی می‌گیرند — یعنی همان قفلِ دسته‌جمعی).
 SPOOF='198.51.100.77'
+PROBE_URL="$PROBE_SCHEME://$DOMAIN:$PROBE_PORT/__realip"
 
-SEEN=$(curl -s --max-time 10 -H "CF-Connecting-IP: $SPOOF" "$PROBE_URL" | tr -d '\r\n' || true)
+probe() {
+    curl -s --max-time 10 \
+         --resolve "$DOMAIN:$PROBE_PORT:127.0.0.1" \
+         -H "CF-Connecting-IP: $SPOOF" \
+         "$PROBE_URL" | tr -d '\r\n' || true
+}
+
+# ⛔ پاسخ باید **شکلِ آی‌پی** داشته باشد، نه فقط با مقدارِ جعلی فرق کند.
+#   نسخه‌ی اول همین را نداشت و یک صفحه‌ی ۴۰۴ِ HTML را «موفق» خواند —
+#   یعنی سنجشی که روی خرابی سبز می‌شود، که از نبودِ سنجش بدتر است.
+looks_like_ip() {
+    printf '%s' "$1" | grep -qE '^[0-9a-fA-F:.]{3,45}$'
+}
+
+SEEN=$(probe)
 if [ "$SEEN" = "$SPOOF" ]; then
     red "سنجش شکست خورد: سرآیندِ جعلی از یک آی‌پیِ نامعتبر باور شد."
     restore
     exit 1
 fi
-if [ -z "$SEEN" ]; then
-    red "سنجش شکست خورد: $PROBE_URL پاسخی نداد."
+if ! looks_like_ip "$SEEN"; then
+    red "سنجش شکست خورد: $PROBE_URL آی‌پی برنگرداند."
+    info "پاسخ: ${SEEN:0:120}"
+    echo
+    info "اگر ۴۰۴ است یعنی درخواست به بلوکِ این سایت نخورده."
+    info "دامنه یا پورت را با متغیر بدهید، مثلاً:"
+    info "    sudo DOMAIN=hesab.stland.ir PROBE_PORT=443 bash deploy/nginx-realip.sh --apply"
     restore
     exit 1
 fi
@@ -211,7 +239,7 @@ cp "$SITE_FILE.probe" "$SITE_FILE"
 OK2=0
 if $NGINX -t >/dev/null 2>&1; then
     $RELOAD; sleep 1
-    SEEN2=$(curl -s --max-time 10 -H "CF-Connecting-IP: $SPOOF" "$PROBE_URL" | tr -d '\r\n' || true)
+    SEEN2=$(probe)
     [ "$SEEN2" = "$SPOOF" ] && OK2=1
 fi
 
