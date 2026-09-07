@@ -1498,6 +1498,51 @@ foreach (glob(__DIR__ . '/../*.php') as $path) {
 T::bulk(count(glob(__DIR__ . '/../*.php')), $badLock,
     '⛔ هیچ صفحه‌ای محتوای کاربر را پشتِ صفحه‌ی قفل پنهان نمی‌کند');
 
+// ---------------------------------------------------------------
+// ⛔ قاعده ۲۷ — سرآیندِ آی‌پیِ CDN هرگز در PHP خوانده نمی‌شود.
+//
+// وقتی سایت پشتِ کلادفلر می‌رود، `REMOTE_ADDR` آی‌پیِ لبه است و آی‌پیِ
+// واقعی در `CF-Connecting-IP` می‌آید. وسوسه‌ی طبیعی این است که همان‌جا
+// در PHP خوانده شود — و آن **یک آسیب‌پذیری است، نه یک میان‌بر**:
+// سرآیند را هر کسی می‌تواند بفرستد، پس سدِ حدس رمز، سقفِ بازیابیِ رمز،
+// سدِ ثبت‌نام و سقفِ پیامک همگی با یک خطِ curl دور می‌خورند.
+//
+// جایگزینی باید در nginx باشد (`deploy/nginx-realip.sh`)، چون آنجا فقط
+// وقتی انجام می‌شود که **خودِ اتصال** از یکی از بازه‌های کلادفلر آمده
+// باشد. آن‌وقت `REMOTE_ADDR` خودش درست است و هیچ‌جای PHP عوض نمی‌شود.
+//
+// ⚠ با توکنایزر است نه grep: همین توضیح و متنِ خودِ اسکریپت نامِ آن
+//   سرآیندها را دارند و با جست‌وجوی متنی، تست روی فایلِ **سالم** هم
+//   قرمز می‌شد — همان دامی که قاعده‌های ۹ و ۲۲ هم برایش نوشته شدند.
+T::group('قاعده ۲۷ — آی‌پی فقط از REMOTE_ADDR');
+
+$PROXY_KEYS = [
+    'HTTP_CF_CONNECTING_IP',
+    'HTTP_X_FORWARDED_FOR',
+    'HTTP_X_REAL_IP',
+    'HTTP_TRUE_CLIENT_IP',
+    'HTTP_X_CLIENT_IP',
+];
+$badProxy = [];
+$proxyScanned = 0;
+foreach (['api', 'api/v1', 'includes', 'admin', '.'] as $dir) {
+    foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $path) {
+        $proxyScanned++;
+        $src = (string)@file_get_contents($path);
+        foreach (token_get_all($src) as $t) {
+            // فقط رشته‌های واقعیِ کد، نه کامنت و نه HTML بیرونِ تگ.
+            if (!is_array($t) || $t[0] !== T_CONSTANT_ENCAPSED_STRING) { continue; }
+            $val = trim($t[1], "'\"");
+            if (in_array($val, $PROXY_KEYS, true)) {
+                $badProxy[] = basename($path) . " — «{$val}» جعل‌شدنی است؛ "
+                            . 'جایگزینی باید در nginx باشد (deploy/nginx-realip.sh)';
+            }
+        }
+    }
+}
+T::bulk($proxyScanned, $badProxy,
+    '⛔ هیچ فایلی سرآیندِ آی‌پیِ CDN را باور نمی‌کند');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }
