@@ -146,16 +146,28 @@ gh_fetch() {
     # نیست. فضای خالی حذف می‌شود (پاسخِ گیت‌هاب چندخطی است)، بعد فقط
     # بخشِ assets نگه داشته می‌شود تا متنِ توضیحِ نسخه با آن قاطی نشود،
     # و آخر روی `{` شکسته می‌شود تا هر دارایی یک خط شود.
-    local rel_tag assets chunk asset_id asset_name compact
+    # ⛔ هر استخراج `|| true` دارد، و این احتیاط نیست بلکه رفعِ یک خرابیِ
+    #   واقعی: با `set -euo pipefail`، یک `grep` که چیزی پیدا نکند کلِ
+    #   اسکریپت را **بی‌هیچ پیامی** می‌کشد. یک بار همین شد و کاربر فقط
+    #   دید که فرمان بی‌صدا به prompt برگشت — بدترین شکلِ خرابی، چون
+    #   نه خطایی هست نه نشانه‌ای. حالا هر کدام خالی می‌ماند و نگهبانِ
+    #   پایین‌تر پیامِ درست را می‌دهد.
+    #
+    # ⛔ و شیءِ تودرتوی `uploader` **پیش از** شکستن حذف می‌شود: پاسخِ
+    #   واقعیِ گیت‌هاب `size` را **بعد از** آن می‌گذارد، پس با شکستن روی
+    #   `{` تکه‌ی هر دارایی درست وسطِ خودش بریده می‌شد و `size` بیرون
+    #   می‌ماند. با JSON ساختگی نامرئی بود چون آنجا ترتیب فرق داشت.
+    local rel_tag assets chunk asset_id asset_name compact flat
     compact=$(tr -d ' \t\r\n' < "$meta")
     rel_tag=$(printf '%s' "$compact" | grep -o '"tag_name":"[^"]*"' \
-              | head -n1 | sed 's/.*:"//; s/"$//')
+              | head -n1 | sed 's/.*:"//; s/"$//' || true)
     assets="${compact#*\"assets\":\[}"
-    chunk=$(printf '%s' "$assets" | tr '{' '\n' | grep -m1 '"name":"[^"]*\.apk"' || true)
-    asset_id=$(printf '%s' "$chunk" | grep -o '"id":[0-9]*' | head -n1 | cut -d: -f2)
+    flat=$(printf '%s' "$assets" | sed 's/"uploader":{[^}]*}//g')
+    chunk=$(printf '%s' "$flat" | tr '{' '\n' | grep -m1 '"name":"[^"]*\.apk"' || true)
+    asset_id=$(printf '%s' "$chunk" | grep -o '"id":[0-9]*' | head -n1 | cut -d: -f2 || true)
     asset_name=$(printf '%s' "$chunk" | grep -o '"name":"[^"]*\.apk"' \
-                 | head -n1 | sed 's/.*:"//; s/"$//')
-    ASSET_SIZE=$(printf '%s' "$chunk" | grep -o '"size":[0-9]*' | head -n1 | cut -d: -f2)
+                 | head -n1 | sed 's/.*:"//; s/"$//' || true)
+    ASSET_SIZE=$(printf '%s' "$chunk" | grep -o '"size":[0-9]*' | head -n1 | cut -d: -f2 || true)
 
     if [ -z "$asset_id" ]; then
         red "در نسخه‌ی ${rel_tag:-?} هیچ فایلِ .apk ای نبود."
