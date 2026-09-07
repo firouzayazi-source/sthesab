@@ -91,8 +91,10 @@ gh_fetch() {
     {
         printf 'header = "Authorization: Bearer %s"\n' "$token"
         printf 'header = "X-GitHub-Api-Version: 2022-11-28"\n'
-        printf 'silent\nshow-error\nlocation\nfail\n'
+        printf 'silent\nshow-error\nlocation\n'
     } > "$CURL_CFG"
+    # ⚠ عمداً بدونِ `fail`: کدِ وضعیت خودش خوانده می‌شود تا بشود گفت
+    #   مشکل از توکن است یا از دسترسیِ مخزن یا از خودِ نسخه.
 
     local rel_url
     if [ -n "$tag" ]; then
@@ -105,9 +107,38 @@ gh_fetch() {
     local meta="$TMPDIR_APK/release.json"
 
     info "خواندن نسخه از گیت‌هاب…"
-    if ! curl --config "$CURL_CFG" -H 'Accept: application/vnd.github+json' \
-              -o "$meta" "$rel_url"; then
-        red "نسخه خوانده نشد. توکن یا نامِ نسخه را بررسی کنید."
+    local code
+    code=$(curl --config "$CURL_CFG" -H 'Accept: application/vnd.github+json' \
+                -o "$meta" -w '%{http_code}' "$rel_url" || echo 000)
+
+    # ⛔ گیت‌هاب برای مخزنِ خصوصیِ دور از دسترس **۴۰۴** می‌دهد، نه ۴۰۳ —
+    #   عمداً، تا وجودِ مخزن لو نرود. پس یک «۴۰۴» به‌تنهایی سه معنیِ
+    #   کاملاً جدا دارد و گفتنِ «توکن را بررسی کنید» یعنی رها کردنِ کاربر
+    #   وسطِ همان سه احتمال. اینجا هر سه از هم جدا می‌شوند.
+    if [ "$code" != "200" ]; then
+        if [ "$code" = "401" ]; then
+            red "توکن معتبر نیست (۴۰۱). احتمالاً ناقص کپی شده یا منقضی شده است."
+        elif [ "$code" = "404" ]; then
+            local rc
+            rc=$(curl --config "$CURL_CFG" -H 'Accept: application/vnd.github+json' \
+                      -o /dev/null -w '%{http_code}' "$GH_API/repos/$GH_REPO" || echo 000)
+            if [ "$rc" != "200" ]; then
+                red "توکن به مخزن $GH_REPO دسترسی ندارد."
+                echo
+                info "در فرمِ ساختِ توکن، این دو با هم لازم‌اند:"
+                info "  • Repository access → Only select repositories → sthesab را تیک بزنید"
+                info "  • Permissions → Repository permissions → Contents → Read-only"
+                info "توکنِ موجود را می‌شود ویرایش کرد؛ ساختنِ توکنِ تازه لازم نیست."
+            elif [ -n "$tag" ]; then
+                red "نسخه‌ای به نامِ «$tag» پیدا نشد."
+                info "بدونِ نام اجرا کنید تا آخرین نسخه گرفته شود."
+            else
+                red "هیچ نسخه‌ی منتشرشده‌ای پیدا نشد."
+                info "اگر نسخه‌ها draft یا pre-release اند، نامشان را صریح بدهید."
+            fi
+        else
+            red "خواندنِ نسخه شکست خورد (کد $code)."
+        fi
         exit 1
     fi
 
@@ -132,9 +163,14 @@ gh_fetch() {
 
     info "دریافت $asset_name از نسخه‌ی $rel_tag …"
     SRC="$TMPDIR_APK/$asset_name"
-    if ! curl --config "$CURL_CFG" -H 'Accept: application/octet-stream' \
-              -o "$SRC" "$GH_API/repos/$GH_REPO/releases/assets/$asset_id"; then
-        red "دانلود نشد."
+    # ⚠ بدونِ `fail` در پیکربندی، خطای HTTP یک بدنه‌ی JSON می‌دهد و curl
+    #   موفق برمی‌گردد؛ پس کد اینجا هم صریح سنجیده می‌شود، وگرنه همان
+    #   متنِ خطا به‌جای APK ذخیره می‌شد.
+    code=$(curl --config "$CURL_CFG" -H 'Accept: application/octet-stream' \
+                -o "$SRC" -w '%{http_code}' \
+                "$GH_API/repos/$GH_REPO/releases/assets/$asset_id" || echo 000)
+    if [ "$code" != "200" ]; then
+        red "دانلودِ $asset_name شکست خورد (کد $code)."
         exit 1
     fi
 }
