@@ -6,10 +6,11 @@ require_once __DIR__ . '/includes/functions.php';
 Auth::initSession();
 Auth::requireLogin();
 
-// ⛔ گیتِ اشتراک پیش از هر کوئری و هر خروجی: صفحه دیده می‌شود
-//    (منو سرِ جایش است) ولی محتوایش با قفل عوض می‌شود.
+// ⛔ گیتِ اشتراک: صفحه **کامل** رندر می‌شود و همه‌ی رکوردهای قبلی
+//    دیده و ویرایش و تسویه می‌شوند؛ فقط دکمه‌های «ثبتِ تازه» کنار
+//    می‌روند. دلیلش بالای includes/plan_gate.php نوشته شده.
 require_once __DIR__ . '/includes/plan_gate.php';
-requirePlanOrLock('debts');
+$planRO = planReadOnly('debts');
 
 $pdo = Database::getConnection();
 $userId = Auth::userId();
@@ -162,6 +163,10 @@ $defaultWallet = defaultWalletId($userId);
 
 $pageTitle = 'طلب و بدهی';
 include __DIR__ . '/includes/header.php';
+
+// ⛔ نوار «فقط خواندنی» بالای همه چیز است، نه پایین صفحه: حرفش این
+//    است که دکمه‌های ثبت که نمی‌بینید عمداً نیستند، نه اینکه خراب‌اند.
+if ($planRO) { echo planReadOnlyNotice('debts'); }
 
 function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [], array $paymentsByDebt = []): void
 {
@@ -317,7 +322,9 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
 <div class="card">
     <div class="card-header-row">
         <h2 class="card-title">طلب‌های من (از دیگران)</h2>
+        <?php if (!$planRO): ?>
         <button type="button" class="btn btn-primary btn-sm js-add-debt" data-direction="receivable">+ افزودن طلب</button>
+        <?php endif; ?>
     </div>
     <?php if (empty($receivables)): ?>
         <p class="empty-row">هنوز طلبی ثبت نشده است.</p>
@@ -329,7 +336,9 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
 <div class="card">
     <div class="card-header-row">
         <h2 class="card-title">بدهی‌های من (به دیگران)</h2>
+        <?php if (!$planRO): ?>
         <button type="button" class="btn btn-primary btn-sm js-add-debt" data-direction="payable">+ افزودن بدهی</button>
+        <?php endif; ?>
     </div>
     <?php if (empty($payables)): ?>
         <p class="empty-row">هنوز بدهی‌ای ثبت نشده است.</p>

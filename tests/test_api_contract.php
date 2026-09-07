@@ -1427,6 +1427,77 @@ foreach (array_keys($userFiles) as $path) {
 }
 T::bulk($userScanned, $badUser, 'قاعده‌ی نام کاربری فقط یک جا تعریف شده');
 
+// ---------------------------------------------------------------
+// ⛔ قاعده ۲۶ — گیتِ اشتراک فقط روی مسیرِ **ساختِ رکوردِ تازه**.
+//
+// اشتراکِ تمام‌شده نباید دفترِ کاربر را قفل کند: ویرایش، حذف، تسویه و
+// پرداختِ قسط باید کار کنند، وگرنه دفتر روی واقعیتِ ماه‌ها پیش یخ
+// می‌زند — و دفترِ غلط از دفترِ نداشته بدتر است.
+//
+// فهرست **بسته** است و دو طرفه می‌سنجد، چون هر دو خرابی بی‌صدایند:
+//   • گیت روی اندپوینتی که نباید → کاربر نمی‌تواند چکِ خودش را
+//     «پاس شد» کند و فقط یک پیامِ «اشتراک لازم است» می‌بیند.
+//   • نبودِ گیت روی اندپوینتِ ساخت → قفل با یک درخواستِ مستقیم دور
+//     می‌خورد، دقیقاً مثل روزی که فقط صفحه گیت داشت.
+T::group('قاعده ۲۶ — گیتِ اشتراک فقط روی ساختِ رکوردِ تازه');
+
+// اندپوینت‌هایی که **باید** `apiRequirePlan()` داشته باشند.
+// ⚠ `save_recurring` هم می‌سازد هم ویرایش می‌کند، پس گیتش شرطی است
+//   (`$id === 0`) و همین‌جا هم شرطی سنجیده می‌شود.
+const PLAN_GATE_REQUIRED = [
+    'add_cheque.php'    => 'cheques',
+    'add_debt.php'      => 'debts',
+    'save_trade.php'    => 'trades',
+    'save_recurring.php'=> 'recurring',
+];
+
+$planScanned = 0;
+$badPlan     = [];
+
+foreach (glob(__DIR__ . '/../api/*.php') as $path) {
+    $planScanned++;
+    $name = basename($path);
+    $src  = (string)@file_get_contents($path);
+
+    // با توکنایزر، نه با grep: همین توضیح خودش نامِ تابع را دارد و
+    // جست‌وجوی متنی تست را روی فایلِ سالم قرمز می‌کرد.
+    $calls = false;
+    $toks  = token_get_all($src);
+    foreach ($toks as $t) {
+        if (is_array($t) && $t[0] === T_STRING && $t[1] === 'apiRequirePlan') { $calls = true; break; }
+    }
+
+    if (isset(PLAN_GATE_REQUIRED[$name])) {
+        if (!$calls) {
+            $badPlan[] = "api/{$name} — اندپوینتِ ساخت است ولی apiRequirePlan() ندارد؛ "
+                       . 'قفل با یک درخواستِ مستقیم دور می‌خورد';
+        } elseif ($name === 'save_recurring.php' && !str_contains($src, '$id === 0')) {
+            // ⛔ گیتِ بی‌قید اینجا یعنی ویرایشِ قانونِ موجود هم بسته
+            //    می‌شود: کاربرِ منقضی نمی‌تواند مبلغِ قبضِ همیشگی‌اش را
+            //    هم درست کند.
+            $badPlan[] = "api/{$name} — گیت باید فقط برای رکوردِ تازه باشد (\$id === 0)";
+        }
+    } elseif ($calls) {
+        $badPlan[] = "api/{$name} — رکوردِ تازه نمی‌سازد ولی گیت دارد؛ "
+                   . 'با اشتراکِ تمام‌شده کاربر نمی‌تواند داده‌ی خودش را ویرایش/تسویه کند';
+    }
+}
+T::bulk($planScanned, $badPlan, 'گیتِ اشتراک فقط روی اندپوینت‌های ساخت است');
+
+// و نیمه‌ی صفحه: هیچ صفحه‌ای نباید محتوا را با یک صفحه‌ی قفل عوض کند.
+$badLock = [];
+foreach (glob(__DIR__ . '/../*.php') as $path) {
+    $src = (string)@file_get_contents($path);
+    foreach (token_get_all($src) as $t) {
+        if (is_array($t) && $t[0] === T_STRING && $t[1] === 'requirePlanOrLock') {
+            $badLock[] = basename($path) . ' — صفحه نباید با قفل جایگزین شود؛ '
+                       . 'از planReadOnly() + planReadOnlyNotice() رد شوید';
+        }
+    }
+}
+T::bulk(count(glob(__DIR__ . '/../*.php')), $badLock,
+    '⛔ هیچ صفحه‌ای محتوای کاربر را پشتِ صفحه‌ی قفل پنهان نمی‌کند');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

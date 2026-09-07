@@ -6,10 +6,11 @@ require_once __DIR__ . '/includes/functions.php';
 Auth::initSession();
 Auth::requireLogin();
 
-// ⛔ گیتِ اشتراک پیش از هر کوئری و هر خروجی: صفحه دیده می‌شود
-//    (منو سرِ جایش است) ولی محتوایش با قفل عوض می‌شود.
+// ⛔ گیتِ اشتراک: صفحه **کامل** رندر می‌شود و همه‌ی رکوردهای قبلی
+//    دیده و ویرایش و تسویه می‌شوند؛ فقط دکمه‌های «ثبتِ تازه» کنار
+//    می‌روند. دلیلش بالای includes/plan_gate.php نوشته شده.
 require_once __DIR__ . '/includes/plan_gate.php';
-requirePlanOrLock('recurring');
+$planRO = planReadOnly('recurring');
 
 $pdo = Database::getConnection();
 $userId = Auth::userId();
@@ -45,6 +46,10 @@ $walletList = $walletStmt->fetchAll();
 
 $pageTitle = 'تراکنش‌های دوره‌ای';
 include __DIR__ . '/includes/header.php';
+
+// ⛔ نوار «فقط خواندنی» بالای همه چیز است، نه پایین صفحه: حرفش این
+//    است که دکمه‌های ثبت که نمی‌بینید عمداً نیستند، نه اینکه خراب‌اند.
+if ($planRO) { echo planReadOnlyNotice('recurring'); }
 ?>
 
 <?php if (!empty($needsAttention)): ?>
@@ -75,7 +80,9 @@ include __DIR__ . '/includes/header.php';
 <div class="card">
     <div class="card-header-row">
         <h2 class="card-title">قانون‌های تکرارشونده</h2>
+        <?php if (!$planRO): ?>
         <button type="button" class="btn btn-primary btn-sm js-add-recurring" <?= empty($walletList) ? 'disabled' : '' ?>>+ قانون جدید</button>
+        <?php endif; ?>
     </div>
 
     <?php if (empty($allRecurring)): ?>

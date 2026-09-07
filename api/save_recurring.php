@@ -12,10 +12,15 @@ Csrf::verifyOrFail(postParam('csrf_token'));
 // ⛔ قفلِ صفحه بدونِ این فقط تزئین است: کسی که آدرسِ اندپوینت را
 //    بداند مستقیم صدایش می‌زند.
 require_once __DIR__ . '/../includes/plan_gate.php';
-apiRequirePlan('recurring');
 
 $userId    = Auth::userId();
 $id        = (int)postParam('recurring_id');
+
+// ⛔ این تنها اندپوینتی است که هم می‌سازد هم ویرایش می‌کند، پس گیت
+//    **بعد از** خواندنِ شناسه می‌آید: قانونِ تازه اشتراک می‌خواهد،
+//    ویرایشِ قانونی که کاربر از قبل ساخته نه. با گیتِ بالای فایل،
+//    کاربرِ منقضی نمی‌توانست مبلغِ قبضِ همیشگی‌اش را هم درست کند.
+if ($id === 0) { apiRequirePlan('recurring'); }
 $type      = postParam('type');
 $title     = postParam('title');
 $amount    = sanitizeAmount(postParam('amount'));

@@ -16,10 +16,11 @@ require_once __DIR__ . '/includes/functions.php';
 Auth::initSession();
 Auth::requireLogin();
 
-// ⛔ گیتِ اشتراک پیش از هر کوئری و هر خروجی: صفحه دیده می‌شود
-//    (منو سرِ جایش است) ولی محتوایش با قفل عوض می‌شود.
+// ⛔ گیتِ اشتراک: صفحه **کامل** رندر می‌شود و همه‌ی رکوردهای قبلی
+//    دیده و ویرایش و تسویه می‌شوند؛ فقط دکمه‌های «ثبتِ تازه» کنار
+//    می‌روند. دلیلش بالای includes/plan_gate.php نوشته شده.
 require_once __DIR__ . '/includes/plan_gate.php';
-requirePlanOrLock('trades');
+$planRO = planReadOnly('trades');
 
 $pdo = Database::getConnection();
 $userId = Auth::userId();
@@ -70,6 +71,10 @@ if ($enabled) {
 
 $pageTitle = 'معاملات';
 include __DIR__ . '/includes/header.php';
+
+// ⛔ نوار «فقط خواندنی» بالای همه چیز است، نه پایین صفحه: حرفش این
+//    است که دکمه‌های ثبت که نمی‌بینید عمداً نیستند، نه اینکه خراب‌اند.
+if ($planRO) { echo planReadOnlyNotice('trades'); }
 ?>
 
 <?php if (!$tablesReady): ?>
@@ -115,7 +120,9 @@ include __DIR__ . '/includes/header.php';
 <div class="card">
     <div class="card-header-row">
         <h2 class="card-title">معامله‌ها</h2>
+        <?php if (!$planRO): ?>
         <button type="button" class="btn btn-primary btn-sm" id="addTradeBtn">+ خرید جدید</button>
+        <?php endif; ?>
     </div>
     <div class="trade-toolbar">
         <div class="filter-bar" style="margin:0;">

@@ -52,7 +52,7 @@ $moreActive = in_array($bottomPage, $morePages, true);
             <?php if (tradesEnabled(Database::getConnection(), (int)Auth::userId())): ?>
             <a href="<?= APP_BASE_PATH ?>/trades.php" class="tool-card tool-card-wide" style="--tc1:#b8862f; --tc2:#94620d;">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M7 4L3.5 7.5M7 4l3.5 3.5M17 20V4M17 20l3.5-3.5M17 20l-3.5-3.5"/></svg>
-                <span>معاملات خرید و فروش <?= planLocked('trades') ? '<span class="lock-badge" title="با اشتراک باز می‌شود">&#128274;</span>' : '' ?></span>
+                <span>معاملات خرید و فروش <?= planReadOnly('trades') ? '<span class="lock-badge" title="فقط خواندنی — ثبتِ مورد تازه با اشتراک باز می‌شود">&#128274;</span>' : '' ?></span>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M7 4L3.5 7.5M7 4l3.5 3.5M17 20V4M17 20l3.5-3.5M17 20l-3.5-3.5"/></svg>
             </a>
             <?php endif; ?>
@@ -62,11 +62,11 @@ $moreActive = in_array($bottomPage, $morePages, true);
             </a>
             <a href="<?= APP_BASE_PATH ?>/debts.php" class="tool-card" style="--tc1:#f43f5e; --tc2:#ec4899;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                <span>طلب و بدهی <?= planLocked('debts') ? '<span class="lock-badge" title="با اشتراک باز می‌شود">&#128274;</span>' : '' ?></span>
+                <span>طلب و بدهی <?= planReadOnly('debts') ? '<span class="lock-badge" title="فقط خواندنی — ثبتِ مورد تازه با اشتراک باز می‌شود">&#128274;</span>' : '' ?></span>
             </a>
             <a href="<?= APP_BASE_PATH ?>/cheques.php" class="tool-card" style="--tc1:#8b5cf6; --tc2:#6366f1;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2"/><path d="M2 10h20M6 15h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-                <span>چک‌ها <?= planLocked('cheques') ? '<span class="lock-badge" title="با اشتراک باز می‌شود">&#128274;</span>' : '' ?></span>
+                <span>چک‌ها <?= planReadOnly('cheques') ? '<span class="lock-badge" title="فقط خواندنی — ثبتِ مورد تازه با اشتراک باز می‌شود">&#128274;</span>' : '' ?></span>
             </a>
             <a href="<?= APP_BASE_PATH ?>/my-assets.php" class="tool-card" style="--tc1:#f59e0b; --tc2:#eab308;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="6" rx="8" ry="3" stroke="currentColor" stroke-width="2"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" stroke="currentColor" stroke-width="2"/></svg>
@@ -91,7 +91,7 @@ $moreActive = in_array($bottomPage, $morePages, true);
             </a>
             <a href="<?= APP_BASE_PATH ?>/recurring.php" class="tool-card" style="--tc1:#6366f1; --tc2:#4f46e5;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 2l4 4-4 4M3 11V9a4 4 0 014-4h14M7 22l-4-4 4-4M21 13v2a4 4 0 01-4 4H3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-                <span>تراکنش دوره‌ای <?= planLocked('recurring') ? '<span class="lock-badge" title="با اشتراک باز می‌شود">&#128274;</span>' : '' ?></span>
+                <span>تراکنش دوره‌ای <?= planReadOnly('recurring') ? '<span class="lock-badge" title="فقط خواندنی — ثبتِ مورد تازه با اشتراک باز می‌شود">&#128274;</span>' : '' ?></span>
             </a>
             <a href="<?= APP_BASE_PATH ?>/category-report.php" class="tool-card" style="--tc1:#10b981; --tc2:#14b8a6;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 3v9l6 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>

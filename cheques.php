@@ -6,10 +6,11 @@ require_once __DIR__ . '/includes/functions.php';
 Auth::initSession();
 Auth::requireLogin();
 
-// ⛔ گیتِ اشتراک پیش از هر کوئری و هر خروجی: صفحه دیده می‌شود
-//    (منو سرِ جایش است) ولی محتوایش با قفل عوض می‌شود.
+// ⛔ گیتِ اشتراک: صفحه **کامل** رندر می‌شود و همه‌ی رکوردهای قبلی
+//    دیده و ویرایش و تسویه می‌شوند؛ فقط دکمه‌های «ثبتِ تازه» کنار
+//    می‌روند. دلیلش بالای includes/plan_gate.php نوشته شده.
 require_once __DIR__ . '/includes/plan_gate.php';
-requirePlanOrLock('cheques');
+$planRO = planReadOnly('cheques');
 
 $pdo = Database::getConnection();
 $userId = Auth::userId();
@@ -100,6 +101,10 @@ $defaultWallet = defaultWalletId($userId);
 
 $pageTitle = 'چک‌ها';
 include __DIR__ . '/includes/header.php';
+
+// ⛔ نوار «فقط خواندنی» بالای همه چیز است، نه پایین صفحه: حرفش این
+//    است که دکمه‌های ثبت که نمی‌بینید عمداً نیستند، نه اینکه خراب‌اند.
+if ($planRO) { echo planReadOnlyNotice('cheques'); }
 
 function renderChequeCard(array $c, string $todayStr): void
 {
@@ -227,7 +232,9 @@ function renderChequeCard(array $c, string $todayStr): void
 <div class="card">
     <div class="card-header-row">
         <h2 class="card-title">چک‌های دریافتی (از دیگران)</h2>
+        <?php if (!$planRO): ?>
         <button type="button" class="btn btn-primary btn-sm js-add-cheque" data-direction="received">+ ثبت چک دریافتی</button>
+        <?php endif; ?>
     </div>
     <?php if (empty($received)): ?>
         <p class="empty-row">چک دریافتی ثبت نشده است.</p>
@@ -239,7 +246,9 @@ function renderChequeCard(array $c, string $todayStr): void
 <div class="card">
     <div class="card-header-row">
         <h2 class="card-title">چک‌های صادره (خودم دادم)</h2>
+        <?php if (!$planRO): ?>
         <button type="button" class="btn btn-primary btn-sm js-add-cheque" data-direction="issued">+ ثبت چک صادره</button>
+        <?php endif; ?>
     </div>
     <?php if (empty($issued)): ?>
         <p class="empty-row">چک صادره ثبت نشده است.</p>

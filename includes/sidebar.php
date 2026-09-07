@@ -113,7 +113,7 @@ if (Auth::isLoggedIn()) {
             <a href="<?= APP_BASE_PATH ?>/debts.php" class="<?= $currentPage === 'debts.php' ? 'active' : '' ?>">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <span>طلب و بدهی</span>
-                <?= planLocked('debts') ? '<span class="lock-badge" title="با اشتراک باز می‌شود">&#128274;</span>' : '' ?>
+                <?= planReadOnly('debts') ? '<span class="lock-badge" title="فقط خواندنی — ثبتِ مورد تازه با اشتراک باز می‌شود">&#128274;</span>' : '' ?>
                 <?php if ($debtReminderCount > 0): ?><span class="nav-badge"><?= toPersianDigits($debtReminderCount) ?></span><?php endif; ?>
             </a>
         </li>
@@ -122,7 +122,7 @@ if (Auth::isLoggedIn()) {
             <a href="<?= APP_BASE_PATH ?>/trades.php" class="<?= $currentPage === 'trades.php' ? 'active' : '' ?>">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M7 4L3.5 7.5M7 4l3.5 3.5M17 20V4M17 20l3.5-3.5M17 20l-3.5-3.5"/></svg>
                 <span>معاملات</span>
-                <?= planLocked('trades') ? '<span class="lock-badge" title="با اشتراک باز می‌شود">&#128274;</span>' : '' ?>
+                <?= planReadOnly('trades') ? '<span class="lock-badge" title="فقط خواندنی — ثبتِ مورد تازه با اشتراک باز می‌شود">&#128274;</span>' : '' ?>
             </a>
         </li>
         <?php endif; ?>
@@ -130,7 +130,7 @@ if (Auth::isLoggedIn()) {
             <a href="<?= APP_BASE_PATH ?>/cheques.php" class="<?= $currentPage === 'cheques.php' ? 'active' : '' ?>">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="2" y="5" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2"/><path d="M2 10h20M6 15h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                 <span>چک‌ها</span>
-                <?= planLocked('cheques') ? '<span class="lock-badge" title="با اشتراک باز می‌شود">&#128274;</span>' : '' ?>
+                <?= planReadOnly('cheques') ? '<span class="lock-badge" title="فقط خواندنی — ثبتِ مورد تازه با اشتراک باز می‌شود">&#128274;</span>' : '' ?>
                 <?php if ($chequeReminderCount > 0): ?><span class="nav-badge"><?= toPersianDigits($chequeReminderCount) ?></span><?php endif; ?>
             </a>
         </li>

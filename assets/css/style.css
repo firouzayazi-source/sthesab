@@ -1692,22 +1692,23 @@ button.status-badge:active { transform: scale(.96); }
    نمی‌دهد؛ آنچه می‌فروشد دیدنِ همان چیزی است که ندارد. */
 .lock-badge { font-size: 11px; opacity: .75; margin-inline-start: 4px; }
 
-.plan-lock { text-align: center; padding: 34px 22px 30px; }
-.plan-lock-icon {
-    width: 62px; height: 62px; margin: 0 auto 16px;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 50%;
-    background: var(--gold-wash, rgba(217,164,65,.14));
-    color: var(--gold);
+/* ⛔ نوارِ «فقط خواندنی» — جای صفحه‌ی قفلِ قبلی که کلِ محتوا را
+   برمی‌داشت. رنگش کهربایی است نه قرمز: داده‌ی کاربر سرِ جایش است و
+   چیزی خراب نشده، فقط یک در بسته است. با قرمز، کاربر فکر می‌کرد
+   اطلاعاتش رفته. */
+.plan-ro {
+    display: flex; align-items: flex-start; gap: 11px; flex-wrap: wrap;
+    padding: 13px 15px; margin-bottom: 16px;
+    border-radius: 14px;
+    background: var(--warn-wash);
+    color: var(--warn-ink);
+    font-size: 13px; line-height: 1.95;
 }
-.plan-lock-title { font-size: 17px; font-weight: 700; margin-bottom: 10px; }
-.plan-lock-text {
-    font-size: 13.5px; line-height: 2; color: var(--ink-soft);
-    max-width: 380px; margin: 0 auto 14px;
-}
-.plan-lock-price { font-size: 14px; margin-bottom: 18px; }
-.plan-lock .btn-large { max-width: 280px; margin: 0 auto; }
-.plan-lock-back { display: block; margin-top: 14px; }
+.plan-ro-icon { flex-shrink: 0; margin-top: 3px; }
+.plan-ro-body { flex: 1; min-width: 200px; }
+.plan-ro-body strong { font-weight: 700; }
+.plan-ro-body em { font-style: normal; font-weight: 700; }
+.plan-ro-cta { flex-shrink: 0; align-self: center; }
 
 /* نامِ فایلِ بکاپ — قبل از زدنِ دکمه دیده می‌شود تا کاربر بداند دنبالِ
    چه فایلی در فهرستِ دانلود بگردد. `ltr` چون نامِ فایل لاتین است. */
