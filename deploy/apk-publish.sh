@@ -155,6 +155,7 @@ gh_fetch() {
     asset_id=$(printf '%s' "$chunk" | grep -o '"id":[0-9]*' | head -n1 | cut -d: -f2)
     asset_name=$(printf '%s' "$chunk" | grep -o '"name":"[^"]*\.apk"' \
                  | head -n1 | sed 's/.*:"//; s/"$//')
+    ASSET_SIZE=$(printf '%s' "$chunk" | grep -o '"size":[0-9]*' | head -n1 | cut -d: -f2)
 
     if [ -z "$asset_id" ]; then
         red "در نسخه‌ی ${rel_tag:-?} هیچ فایلِ .apk ای نبود."
@@ -172,6 +173,18 @@ gh_fetch() {
     if [ "$code" != "200" ]; then
         red "دانلودِ $asset_name شکست خورد (کد $code)."
         exit 1
+    fi
+
+    # ⛔ اندازه‌ی واقعی با اندازه‌ای که خودِ گیت‌هاب اعلام کرده سنجیده
+    #   می‌شود. دانلودِ نصفه بی‌سروصداترین شکلِ خرابی است: فایل هست، با
+    #   `PK` هم شروع می‌شود، و فقط روی گوشی «برنامه نصب نشد» می‌گیرد.
+    if [ -n "${ASSET_SIZE:-}" ]; then
+        local got
+        got=$(wc -c < "$SRC")
+        if [ "$got" != "$ASSET_SIZE" ]; then
+            red "دانلود ناقص بود: $got بایت آمد، $ASSET_SIZE بایت انتظار می‌رفت."
+            exit 1
+        fi
     fi
 }
 
@@ -201,13 +214,39 @@ if ! head -c2 "$SRC" | grep -q 'PK'; then
     red "این فایل zip نیست، پس APK هم نیست: $SRC"
     exit 1
 fi
-if command -v unzip >/dev/null 2>&1; then
-    if ! unzip -l "$SRC" 2>/dev/null | grep -q 'AndroidManifest.xml'; then
-        red "داخلِ این zip فایلِ AndroidManifest.xml نیست — APK نیست."
-        exit 1
+# ⚠ دو راهِ سنجش، و دومی تکراری نیست:
+#
+#    نامِ هر عضوِ zip در فهرستِ مرکزی **فشرده‌نشده** ذخیره می‌شود، پس
+#    رشته‌ی `AndroidManifest.xml` عیناً داخلِ بایت‌های فایل هست. این
+#    سنجش به `unzip` و به توانایی‌اش در خواندنِ ساختارِ APK بند نیست —
+#    و APKهای امضای v2/v3 روی بعضی نسخه‌های unzip فهرست نمی‌شوند.
+#    ولی همان‌قدر هم سخت‌گیر است: zipِ آرتیفکت که یک APK داخلش دارد،
+#    این رشته را در فهرستِ مرکزیِ خودش ندارد (نامِ عضوش `daftar.apk`
+#    است) و بایت‌های فشرده‌ی داخلی هم آن را به‌صورت خام نشان نمی‌دهند.
+HAS_MANIFEST=0
+if command -v unzip >/dev/null 2>&1 && unzip -l "$SRC" 2>/dev/null | grep -q 'AndroidManifest.xml'; then
+    HAS_MANIFEST=1
+elif grep -qa 'AndroidManifest.xml' "$SRC" 2>/dev/null; then
+    HAS_MANIFEST=1
+fi
+
+if [ "$HAS_MANIFEST" != "1" ]; then
+    red "داخلِ این فایل AndroidManifest.xml نیست — APK نیست: $SRC"
+    echo
+    # ⛔ «APK نیست» به‌تنهایی کاربر را وسطِ سه احتمال رها می‌کند: فایلِ
+    #    اشتباه، دانلودِ ناقص، یا خرابیِ خودِ همین سنجش. پس شواهد چاپ
+    #    می‌شود، نه فقط حکم.
+    info "اندازه: $(wc -c < "$SRC") بایت"
+    if command -v file >/dev/null 2>&1; then
+        info "نوع: $(file -b "$SRC")"
     fi
-else
-    info "⚠ unzip نصب نیست؛ فقط امضای zip سنجیده شد."
+    if command -v unzip >/dev/null 2>&1; then
+        info "خروجی unzip:"
+        unzip -l "$SRC" 2>&1 | head -12 | sed 's/^/    /'
+    else
+        info "unzip نصب نیست."
+    fi
+    exit 1
 fi
 
 mkdir -p "$DEST_DIR"
