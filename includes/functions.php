@@ -2645,13 +2645,23 @@ function countOtherActiveAdmins(PDO $pdo, int $excludeUserId): int
  * هیچ اثری رویش ندارد. یعنی کاربر رمز را عوض می‌کند، خیالش راحت
  * می‌شود، و مهاجم همچنان داخل است — **بی‌هیچ نشانه‌ای**.
  *
- * دو چیز جدا باید باطل شوند و یادِ هر دو در یک جا می‌ماند:
+ * سه چیز جدا باید باطل شوند و یادِ هر سه در یک جا می‌ماند:
  *   ۱. دستگاه‌های مورد اعتماد (کوکیِ مرورگر)
  *   ۲. توکن‌های api/v1 (اپ موبایل و هر مشتری غیرمرورگری)
+ *   ۳. ⛔ نشست‌های وبِ **زنده** — با `users.access_revoked_at`. نشستِ PHP
+ *      فقط یک فایل روی دیسک است و به هیچ چیزی در دیتابیس بند نیست؛ تا
+ *      پیش از این، مرورگری که همان لحظه وارد بود با وجودِ تغییرِ رمز یا
+ *      غیرفعال شدن تا ابد وارد می‌ماند. `Auth::isLoggedIn()` این مهر را
+ *      با `login_time`ِ نشست می‌سنجد و نشستِ قدیمی‌تر را خالی می‌کند.
  *
  * ⚠ هر جایی که `users.password_hash` را می‌نویسد باید این را صدا بزند.
  *   قاعده ۱۴ در `test_api_contract.php` همین را می‌سنجد، وگرنه مسیرِ
  *   چهارمی که فردا اضافه شود بی‌صدا از قلم می‌افتد.
+ *
+ * ⚠ اگر کاربر **خودش** صدا می‌زند (تغییر رمز در پروفایل)، نشستِ جاری‌اش
+ *   هم قدیمی‌تر از مهر است و تا یک دقیقه‌ی بعد بیرون می‌افتد. فراخواننده
+ *   باید بعدش `Auth::renewCurrentSession()` را صدا بزند تا خودش نماند
+ *   بیرون (`api/change_password.php` می‌زند).
  */
 function revokeAllAccessFor(int $userId): void
 {
@@ -2671,6 +2681,15 @@ function revokeAllAccessFor(int $userId): void
 
     Auth::revokeAllDevices($userId);
     ApiAuth::revokeAllFor($userId);
+
+    // ستون با migration_access_revoke می‌آید؛ نصبِ عقب‌مانده نباید بشکند.
+    if (tableHasColumn('users', 'access_revoked_at')) {
+        try {
+            Database::getConnection()
+                ->prepare('UPDATE users SET access_revoked_at = NOW() WHERE id = :id')
+                ->execute(['id' => $userId]);
+        } catch (PDOException $e) { /* بقیه‌ی ابطال انجام شده؛ این یکی نباید مسیر را بشکند */ }
+    }
 }
 
 /**

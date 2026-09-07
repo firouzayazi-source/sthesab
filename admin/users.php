@@ -186,7 +186,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt = $pdo->prepare('UPDATE users SET is_active = :status WHERE id = :id');
         $stmt->execute(['status' => $newStatus, 'id' => $targetId]);
 
-        redirectWithMessage('users.php', 'success', $newStatus === 1 ? 'کاربر فعال شد.' : 'کاربر غیرفعال شد.');
+        // ⛔ غیرفعال کردن بدونِ این خط فقط جلوی **ورودِ بعدی** را می‌گرفت.
+        //    مرورگر و اپی که همان لحظه وارد بودند تا هر وقت خودشان خارج
+        //    می‌شدند کار می‌کردند و پیامِ «کاربر غیرفعال شد» دروغ بود.
+        //    نشستِ وبِ زنده هم با همین مهر تا یک دقیقه‌ی بعد خالی می‌شود
+        //    (`Auth::isLoggedIn()`).
+        if ($newStatus === 0) {
+            revokeAllAccessFor($targetId);
+        }
+
+        redirectWithMessage('users.php', 'success', $newStatus === 1
+            ? 'کاربر فعال شد.'
+            : 'کاربر غیرفعال شد و از همه‌ی دستگاه‌ها خارج می‌شود.');
+    } elseif ($action === 'revoke_access') {
+        // «خروج از همه‌ی دستگاه‌ها» — برای وقتی که کاربر می‌گوید گوشی‌اش
+        // را گم کرده یا حسابش دستِ کسی است، ولی حساب باید باز بماند.
+        // همان کاری که تغییرِ رمز می‌کند، بی‌آنکه رمزش عوض شود.
+        $targetId = (int)postParam('user_id');
+
+        if ($targetId === $currentUserId) {
+            redirectWithMessage('users.php', 'error', 'برای خروج از دستگاه‌های خودتان از پروفایل استفاده کنید.');
+        }
+
+        $targetStmt = $pdo->prepare('SELECT id FROM users WHERE id = :id');
+        $targetStmt->execute(['id' => $targetId]);
+        if (!$targetStmt->fetch()) {
+            redirectWithMessage('users.php', 'error', 'کاربر مورد نظر یافت نشد.');
+        }
+
+        revokeAllAccessFor($targetId);
+        redirectWithMessage('users.php', 'success', 'کاربر از همه‌ی دستگاه‌ها و اپ‌ها خارج می‌شود؛ حسابش باز است و با رمزِ خودش دوباره وارد می‌شود.');
     } elseif ($action === 'delete') {
         $targetId = (int)postParam('user_id');
 
@@ -290,6 +319,14 @@ include __DIR__ . '/../includes/header.php';
                                                 <?= (int)$u['is_active'] === 1 ? 'غیرفعال‌سازی' : 'فعال‌سازی' ?>
                                             </button>
                                         </form>
+                                        <?php if ((int)$u['is_active'] === 1): ?>
+                                        <form method="POST" style="display:inline;" onsubmit="return confirm('این کاربر از همه‌ی مرورگرها و اپ‌ها خارج می‌شود و باید دوباره وارد شود. ادامه؟');">
+                                            <?= Csrf::field() ?>
+                                            <input type="hidden" name="action" value="revoke_access">
+                                            <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
+                                            <button type="submit" class="btn btn-secondary btn-sm" title="دستگاه‌های مورد اعتماد، توکن‌های اپ و نشست‌های باز باطل می‌شوند؛ حساب باز می‌ماند">خروج از دستگاه‌ها</button>
+                                        </form>
+                                        <?php endif; ?>
                                         <form method="POST" style="display:inline;" onsubmit="return confirm('آیا از حذف این کاربر مطمئن هستید؟ این عملیات قابل بازگشت نیست.');">
                                             <?= Csrf::field() ?>
                                             <input type="hidden" name="action" value="delete">

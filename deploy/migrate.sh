@@ -105,6 +105,7 @@ MIGRATIONS=(
     migration_goal_wallet.sql
     migration_onboarding.sql
     migration_wallet_pin.sql
+    migration_access_revoke.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -226,6 +227,7 @@ declare -A SENTINEL=(
     [migration_goal_wallet.sql]="savings_goals.wallet_id"
     [migration_onboarding.sql]="users.balance_setup_at"
     [migration_wallet_pin.sql]="wallets.pinned"
+    [migration_access_revoke.sql]="users.access_revoked_at"
     [migration_plans.sql]="payments"
     [migration_sms_login.sql]="sms_codes"
     # شاهدش داده است نه ساختار — توضیحش در sentinel_present.

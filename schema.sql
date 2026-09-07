@@ -27,6 +27,9 @@ CREATE TABLE IF NOT EXISTS `users` (
     -- آخرین خروجیِ کاملِ داده. NULL = هرگز. یادآوریِ ماهانه از همین می‌آید.
     `last_backup_at` DATETIME NULL DEFAULT NULL,
     `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+    -- نشست‌های وبِ ساخته‌شده پیش از این لحظه بی‌اعتبارند (Auth::isLoggedIn
+    -- می‌سنجد). تنها نویسنده‌اش revokeAllAccessFor() است. NULL = هرگز.
+    `access_revoked_at` DATETIME NULL DEFAULT NULL,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),

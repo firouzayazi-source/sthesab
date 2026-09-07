@@ -40,8 +40,11 @@ try {
     // اپ موبایل. توکنِ API به رمز وابسته نیست و ۹۰ روز زنده می‌ماند،
     // پس بدون این، رمزِ تازه مهاجمی را که توکن دارد بیرون نمی‌کرد.
     revokeAllAccessFor($userId);
+    // ⛔ مهرِ ابطال همین حالا نوشته شد و نشستِ **خودِ** این کاربر قدیمی‌تر
+    //    از آن است؛ بدونِ این خط تا یک دقیقه‌ی بعد بیرون می‌افتاد.
+    Auth::renewCurrentSession();
 
-    jsonResponse(['success' => true, 'message' => 'رمز عبور تغییر کرد. دستگاه‌های مورد اعتماد و اپ‌های متصل هم باطل شدند.']);
+    jsonResponse(['success' => true, 'message' => 'رمز عبور تغییر کرد. دستگاه‌های مورد اعتماد، اپ‌های متصل و نشست‌های دیگر هم باطل شدند.']);
 } catch (PDOException $e) {
     error_log('Change Password Error: ' . $e->getMessage());
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);

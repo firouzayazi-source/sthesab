@@ -199,6 +199,24 @@ class Auth
         $_SESSION['last_seen']       = time();
     }
 
+    /**
+     * نشستِ جاری را «تازه‌تر از مهرِ ابطال» می‌کند.
+     *
+     * برای وقتی که خودِ کاربر `revokeAllAccessFor()` را راه می‌اندازد (تغییر
+     * رمز در پروفایل): مهرِ `access_revoked_at` همین حالا نوشته شده و
+     * `login_time`ِ این نشست قدیمی‌تر از آن است، پس بدونِ این خط، همان
+     * کاربری که کارِ درست را کرده تا یک دقیقه‌ی بعد بیرون می‌افتاد.
+     *
+     * ⚠ ساعتِ PHP و MySQL روی همین ماشین یکی است و مهر **پیش از** این
+     *   خط نوشته می‌شود، پس `login_time` هرگز کوچک‌تر از مهر نمی‌شود.
+     */
+    public static function renewCurrentSession(): void
+    {
+        if (empty($_SESSION['user_id'])) { return; }
+        $_SESSION['login_time'] = time();
+        $_SESSION['last_seen']  = time();
+    }
+
     /* ============================================================
        مهلت ماندن در حساب
        ============================================================ */
@@ -281,10 +299,8 @@ class Auth
         // می‌ماند هرگز از loginFromTrustedDevice رد نمی‌شود، و بدون این
         // خط کوکی‌اش بی‌سروصدا به سررسیدِ اولش می‌رسید.
         if ($minutes === 0) {
+            if (!self::touchSession()) { return false; }
             self::slideTrustedCookie();
-            if (time() - (int)($_SESSION['last_seen'] ?? 0) > 60) {
-                $_SESSION['last_seen'] = time();
-            }
             return true;
         }
 
@@ -311,13 +327,99 @@ class Auth
             return self::loginFromTrustedDevice();
         }
 
-        // تمدید فقط هر یک دقیقه یک‌بار نوشته می‌شود تا هزینه نداشته باشد
-        if (time() - $lastSeen > 60) {
-            $_SESSION['last_seen'] = time();
-        }
+        if (!self::touchSession()) { return false; }
 
         self::slideTrustedCookie();
 
+        return true;
+    }
+
+    /**
+     * حداکثر یک بار در دقیقه، ⛔ حسابِ کاربر را از دیتابیس دوباره می‌سنجد.
+     *
+     * چرا: نشست فقط یک فایل روی دیسک است و **هیچ چیزی در دیتابیس به آن
+     * بند نیست**. پس تا پیش از این، غیرفعال کردنِ کاربر در پنلِ مدیر
+     * یا برداشتنِ نقشِ مدیر از او هیچ اثری روی مرورگری که همان لحظه
+     * وارد بود نداشت: تا وقتی خودش خارج نمی‌شد — و با «بدون مهلت» یعنی
+     * هرگز — همه چیز کار می‌کرد. پیامِ «کاربر غیرفعال شد» دروغ بود.
+     *
+     * همان تیکِ «تمدیدِ last_seen هر یک دقیقه» که از قبل بود، حالا یک
+     * کوئریِ سبک هم می‌زند. یعنی بدترین حالت، شصت ثانیه فاصله بینِ
+     * تصمیمِ مدیر و بیرون افتادنِ کاربر است، نه یک کوئری در هر درخواست.
+     *
+     * سه چیز سنجیده می‌شود:
+     *   ۱. ردیف هست و `is_active = 1`، وگرنه نشست خالی می‌شود.
+     *   ۲. `access_revoked_at` — اگر بعد از `login_time`ِ این نشست باشد،
+     *      نشست خالی می‌شود («خروج از همه‌ی دستگاه‌ها»، تغییر رمز).
+     *   ۳. `role` — از دیتابیس در نشست تازه می‌شود، پس مدیری که نقشش
+     *      گرفته شده تا یک دقیقه‌ی بعد دیگر `isAdmin()` نیست.
+     *
+     * ⚠ به `loginFromTrustedDevice()` نمی‌رود: آن مسیر خودش `is_active`
+     *   را می‌سنجد و ردیفِ دستگاه را هم `revokeAllAccessFor()` پاک کرده.
+     *
+     * ⚠ خرابیِ دیتابیس کاربر را بیرون نمی‌اندازد (مثل `LoginThrottle`):
+     *   صفحه به هر حال بدونِ دیتابیس کار نمی‌کند، و بیرون انداختنِ همه
+     *   سرِ یک قطعیِ گذرا فقط خرابی را بزرگ‌تر می‌کند.
+     */
+    private const RECHECK_SECONDS = 60;
+
+    private static function touchSession(): bool
+    {
+        if (time() - (int)($_SESSION['last_seen'] ?? 0) <= self::RECHECK_SECONDS) {
+            return true;
+        }
+
+        if (!self::refreshAccountState((int)$_SESSION['user_id'])) {
+            self::expireSession();
+            return false;
+        }
+
+        $_SESSION['last_seen'] = time();
+        return true;
+    }
+
+    /**
+     * وضعیتِ حساب از دیتابیس. false = این نشست دیگر حق ندارد زنده بماند.
+     *
+     * ستونِ `access_revoked_at` با `migration_access_revoke` می‌آید؛ روی
+     * نصبی که هنوز آن را ندارد، همان دو سنجشِ دیگر انجام می‌شود و چیزی
+     * نمی‌شکند (کوئریِ دوم بدون آن ستون است).
+     */
+    private static function refreshAccountState(int $userId): bool
+    {
+        $login = (int)($_SESSION['login_time'] ?? 0);
+
+        try {
+            $pdo = Database::getConnection();
+            try {
+                // ⛔ مقایسه‌ی زمان در **دیتابیس**، نه در PHP — همان درسِ
+                //    لینکِ بازیابیِ رمز: ساعتِ دو طرف یکی نیست.
+                $st = $pdo->prepare(
+                    'SELECT is_active, role,
+                            (access_revoked_at IS NOT NULL
+                             AND access_revoked_at > FROM_UNIXTIME(:login)) AS revoked
+                     FROM users WHERE id = :id LIMIT 1'
+                );
+                $st->execute(['login' => $login, 'id' => $userId]);
+                $row = $st->fetch();
+            } catch (PDOException $e) {
+                // فقط «ستون ناشناخته» (42S22) یعنی migration نیامده. هر
+                // خطای دیگری به catchِ بیرونی می‌رود؛ وگرنه یک قطعیِ گذرا
+                // بی‌صدا سنجشِ ابطال را خاموش می‌کرد.
+                if ((string)$e->getCode() !== '42S22') { throw $e; }
+                $st = $pdo->prepare('SELECT is_active, role, 0 AS revoked FROM users WHERE id = :id LIMIT 1');
+                $st->execute(['id' => $userId]);
+                $row = $st->fetch();
+            }
+        } catch (PDOException $e) {
+            return true;    // خرابیِ دیتابیس نباید همه را بیرون بیندازد
+        }
+
+        if (!$row || (int)$row['is_active'] !== 1 || (int)$row['revoked'] === 1) {
+            return false;
+        }
+
+        $_SESSION['role'] = $row['role'];
         return true;
     }
 
