@@ -122,6 +122,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="alert alert-error"><?= h($error) ?></div>
         <?php endif; ?>
 
+        <?php /* ⛔ صفحه‌ی ورود هم لازمش دارد، نه فقط صفحه‌های داخلی:
+                 کسی که آدرس را تازه در مرورگرِ گوشی زده دقیقاً همین‌جا
+                 می‌ایستد، و اگر پیشنهاد فقط بعد از ورود بیاید بیشترِ
+                 نصب‌های ممکن از دست می‌رود. `header.php` اینجا لود
+                 نمی‌شود، پس فراخوانی جداست — ولی تابع همان یکی است. */ ?>
+        <?= androidInstallBanner() ?>
+
         <?php if ($rememberedUsername !== null): ?>
             <!-- فقط رمز عبور — نام کاربری روی همین دستگاه ذخیره شده -->
             <form method="POST" class="auth-form" autocomplete="off">

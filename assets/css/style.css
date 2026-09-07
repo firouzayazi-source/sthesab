@@ -1710,6 +1710,37 @@ button.status-badge:active { transform: scale(.96); }
 .plan-ro-body em { font-style: normal; font-weight: 700; }
 .plan-ro-cta { flex-shrink: 0; align-self: center; }
 
+/* ---------- پیشنهادِ نصبِ اپ اندروید ---------- */
+/* ⛔ هیچ `position: fixed` ای اینجا نیست و نباید بیاید: نوارِ شناور با
+   `.bottom-nav` و `env(safe-area-inset-bottom)` درگیر می‌شود و آن دسته
+   خرابی فقط روی گوشیِ نصب‌شده دیده می‌شود. این یک کارتِ معمولی است.
+   ⚠ `[hidden]` صریح لازم است (قاعده ۱۸): `display: flex` بر قاعده‌ی UA
+   غلبه می‌کند و نوار **پیش از** تصمیمِ جاوااسکریپت یک لحظه دیده می‌شد. */
+.apk-bar {
+    display: flex; align-items: flex-start; gap: 11px; flex-wrap: wrap;
+    padding: 13px 15px; margin-bottom: 16px;
+    border-radius: 14px;
+    background: var(--gold-wash);
+    color: var(--ink);
+    font-size: 13px; line-height: 1.95;
+    position: relative;
+}
+/* ⚠ رنگش همان رنگِ «دعوت» است که `.start-card` هم دارد (`--gold`، که
+   پالتِ دوم آبی‌اش می‌کند) نه رنگِ هشدار: این یک پیشنهاد است، نه اخطار. */
+.apk-bar[hidden] { display: none !important; }
+.apk-bar-icon { flex-shrink: 0; margin-top: 3px; color: var(--gold); }
+.apk-bar-body { flex: 1; min-width: 190px; }
+.apk-bar-body strong { display: block; font-weight: 700; }
+.apk-bar-cta { flex-shrink: 0; align-self: center; }
+/* ⚠ دکمه‌ی بستن گوشه است نه داخلِ ردیف: با `flex-wrap` وسطِ متن و دکمه
+   می‌افتاد و شبیهِ یک تکه‌ی جامانده دیده می‌شد. */
+.apk-bar-x {
+    position: absolute; inset-inline-end: 6px; inset-block-start: 4px;
+    background: none; border: 0; cursor: pointer;
+    font-size: 19px; line-height: 1; padding: 2px 6px;
+    color: var(--muted);
+}
+
 /* نامِ فایلِ بکاپ — قبل از زدنِ دکمه دیده می‌شود تا کاربر بداند دنبالِ
    چه فایلی در فهرستِ دانلود بگردد. `ltr` چون نامِ فایل لاتین است. */
 .backup-file {

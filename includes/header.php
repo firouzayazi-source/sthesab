@@ -104,6 +104,10 @@ if (!isset($pageTitle)) {
         </header>
 
         <div class="page-content">
+            <?php /* پیشنهادِ نصبِ اپ اندروید — بالای همه چیز، ولی فقط
+                     روی اندروید و فقط وقتی APK واقعاً وجود دارد. خودش
+                     تصمیم می‌گیرد که رندر شود یا نه. */ ?>
+            <?= androidInstallBanner() ?>
             <?php $flash = getFlash(); ?>
             <?php if ($flash): ?>
                 <div class="alert alert-<?= h($flash['type']) ?>"><?= h($flash['message']) ?></div>

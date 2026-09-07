@@ -3168,3 +3168,111 @@ function formatIban(?string $iban): string
     if ($d === '') { return ''; }
     return 'IR' . toPersianDigits(trim(chunk_split($d, 4, ' ')));
 }
+
+// ---------------------------------------------------------------
+// پیشنهادِ نصبِ اپ اندروید
+// ---------------------------------------------------------------
+
+/**
+ * آدرسِ دانلودِ APK — یا رشته‌ی خالی اگر هنوز چیزی برای دانلود نیست.
+ *
+ * ⛔ **تنها جای این تصمیم** (مثل `categoryScopeSql()`): نوارِ پیشنهاد،
+ *    لینکِ صفحه‌ی ورود و لینکِ پروفایل هر سه از همین می‌پرسند. با دو
+ *    نسخه، دیر یا زود یکی لینک نشان می‌داد که فایلش نیست.
+ *
+ * ⛔ **لینکِ GitHub Release عمداً اینجا نیست.** مخزن خصوصی است و
+ *    دارایی‌های Release یک مخزنِ خصوصی برای کاربرِ ناشناس ۴۰۴ می‌دهند —
+ *    یعنی دکمه‌ای که فقط برای *ما* کار می‌کند و برای کاربر نه. APK باید
+ *    روی خودِ دامنه بنشیند: `deploy/apk-publish.sh` می‌گذاردش.
+ *
+ * ترتیب: ثابتِ `config.php` (برای میزبانیِ جای دیگر، مثلاً بازار) و بعد
+ * فایلِ محلی. هیچ‌کدام نبود → رشته‌ی خالی و **هیچ چیزی رندر نمی‌شود**؛
+ * دکمه‌ای که کار نمی‌کند بدتر از نبودنش است.
+ */
+function androidApkUrl(): string
+{
+    if (defined('ANDROID_APK_URL') && trim((string)ANDROID_APK_URL) !== '') {
+        return trim((string)ANDROID_APK_URL);
+    }
+
+    $path = __DIR__ . '/../download/daftar.apk';
+    if (is_file($path) && filesize($path) > 0) {
+        // ⚠ `?v=` از زمانِ فایل می‌آید تا نسخه‌ی تازه واقعاً دانلود شود.
+        //   بدونش، مرورگرِ کسی که یک بار دانلود کرده ممکن است همان
+        //   فایلِ قدیمی را بدهد و کاربر فکر کند به‌روزرسانی نشده.
+        return APP_BASE_PATH . '/download/daftar.apk?v=' . (int)filemtime($path);
+    }
+
+    return '';
+}
+
+/** آیا این درخواست از یک دستگاهِ اندرویدی آمده؟ */
+function isAndroidRequest(): bool
+{
+    return stripos((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 'android') !== false;
+}
+
+/**
+ * نوارِ «اپ اندروید را نصب کنید» — یا رشته‌ی خالی.
+ *
+ * ⛔ **هیچ `position: fixed` ای ندارد و نباید داشته باشد.** نوارِ شناور
+ *    با `.bottom-nav` و حاشیه‌ی امن درگیر می‌شد — همان دسته خرابی که
+ *    بارها در این پروژه فقط روی گوشیِ نصب‌شده دیده شد. این یک کارتِ
+ *    معمولیِ بالای محتواست، پس هیچ چیزی نمی‌تواند رویش بیفتد.
+ *
+ * ⛔ **گیتِ نهایی سمتِ مرورگر است، نه اینجا.** سرور نمی‌تواند بفهمد
+ *    کاربر همین حالا *داخلِ خودِ اپ* است: TWA با کرومِ معمولی رندر
+ *    می‌شود و User-Agent اش هیچ فرقی ندارد. تنها نشانه‌ی قابل اتکا
+ *    `document.referrer` است که در اولین ناوبریِ TWA با
+ *    `android-app://` شروع می‌شود.
+ */
+function androidInstallBanner(): string
+{
+    $url = androidApkUrl();
+    if ($url === '' || !isAndroidRequest()) { return ''; }
+
+    $app = defined('APP_NAME') ? APP_NAME : 'دفتر مالی';
+
+    ob_start(); ?>
+<div class="apk-bar" id="apkBar" hidden>
+    <span class="apk-bar-icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7.5 10.5L12 15l4.5-4.5"/><path d="M4 18.5h16"/></svg>
+    </span>
+    <div class="apk-bar-body">
+        <strong>«<?= h($app) ?>» را روی گوشی نصب کنید.</strong>
+        همین برنامه، تمام‌صفحه و بدون نوار آدرس — با یک آیکون روی صفحه‌ی گوشی.
+    </div>
+    <a class="btn btn-primary btn-sm apk-bar-cta" href="<?= h($url) ?>" download>دریافت اپ</a>
+    <button type="button" class="apk-bar-x" id="apkBarNo" aria-label="بستن">&times;</button>
+</div>
+<script>
+(function () {
+    var bar = document.getElementById('apkBar');
+    if (!bar) { return; }
+
+    var HAS = 'daftar_has_apk';     // یک بار از داخلِ اپ باز شده؟
+    var NO  = 'daftar_apk_hide';    // کاربر خودش بست؟
+
+    function get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+    function set(k) { try { localStorage.setItem(k, '1'); } catch (e) {} }
+
+    /* ⛔ نشانه‌ی «اپ نصب است» فقط در **اولین** ناوبریِ TWA می‌آید؛
+       ناوبری‌های بعدی referrer هم‌ریشه دارند. پس همان یک بار ثبت
+       می‌شود و برای همیشه می‌ماند — وگرنه کاربری که اپ را نصب کرده
+       از صفحه‌ی دوم به بعد دوباره پیشنهادِ نصب می‌گرفت. */
+    if (document.referrer && document.referrer.indexOf('android-app://') === 0) { set(HAS); }
+
+    /* حالتِ نصب‌شده‌ی PWA هم یعنی از صفحه‌ی گوشی باز شده و پیشنهاد
+       بی‌معناست. */
+    var standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches;
+
+    if (get(HAS) || get(NO) || standalone) { return; }
+
+    bar.hidden = false;
+    var no = document.getElementById('apkBarNo');
+    if (no) { no.addEventListener('click', function () { set(NO); bar.hidden = true; }); }
+})();
+</script>
+<?php
+    return (string)ob_get_clean();
+}

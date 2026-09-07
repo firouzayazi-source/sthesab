@@ -27,3 +27,7 @@ verify.php
 .DS_Store
 Thumbs.db
 *.log
+
+# APK اندروید که deploy/apk-publish.sh می‌گذارد — باینریِ ساختِ CI،
+# نه سورس. داخل گیت مخزن را برای همیشه سنگین می‌کند.
+download/
