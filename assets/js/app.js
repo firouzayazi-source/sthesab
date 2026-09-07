@@ -4560,6 +4560,11 @@ document.addEventListener('DOMContentLoaded', function () {
             form.querySelector('[name="username"]').value = this.getAttribute('data-username');
             var emailField = form.querySelector('[name="email"]');
             if (emailField) emailField.value = this.getAttribute('data-email') || '';
+            // ⚠ مثل ایمیل: اگر این خط اجرا نشود فیلد خالی می‌ماند، ولی
+            //   `saveUserPhone()` خالی را «دست نزن» می‌فهمد نه «پاک کن» —
+            //   پس بدترین حالتش این است که مدیر مقدارِ فعلی را نبیند.
+            var phoneField = form.querySelector('[name="phone"]');
+            if (phoneField) phoneField.value = this.getAttribute('data-phone') || '';
             form.querySelector('[name="role"]').value = this.getAttribute('data-role');
             form.querySelector('[name="password"]').value = '';
             form.querySelector('[name="password_confirm"]').value = '';

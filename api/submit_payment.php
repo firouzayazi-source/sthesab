@@ -17,7 +17,11 @@ $res = submitPayment(
     $userId,
     (int)postParam('months', '1'),
     postParam('reference'),
-    postParam('note')
+    postParam('note'),
+    // ⚠ کد از فرم می‌آید ولی **اینجا مدرک نیست**: `submitPayment()` خودش
+    //   زیرِ قفل دوباره می‌سنجدش. بین دیدنِ صفحه و زدنِ دکمه ممکن است
+    //   ظرفیت تمام شده باشد، و پیلودِ مرورگر هم دست‌کاری‌شدنی است.
+    postParam('discount_code')
 );
 
 if (!$res['ok']) {

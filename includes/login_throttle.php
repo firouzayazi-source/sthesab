@@ -113,6 +113,49 @@ class LoginThrottle
         return null;
     }
 
+    /**
+     * تلاش‌های ناموفقِ داخلِ پنجره، به تفکیکِ نام کاربری.
+     *
+     * ⛔ برای پنل مدیر است، و بدونش دکمه‌ی «باز کردن قفل» یک دکمه‌ی
+     *    همیشه‌روشن می‌شد که معلوم نیست کاری می‌کند یا نه — همان
+     *    «دکمه‌ای که کار نمی‌کند از نبودنش بدتر است». حالا فقط کنارِ
+     *    کاربری رندر می‌شود که واقعاً تلاشِ ناموفق دارد.
+     *
+     * ⚠ **یک کوئری برای کلِ فهرست**، نه یکی به‌ازای هر ردیف: صفحه‌ی
+     *   کاربران می‌تواند ده‌ها ردیف داشته باشد و N+1 همان چیزی است که
+     *   در «سرعت» بارها گرفته شده.
+     *
+     * ⚠ عمداً `lockedFor()` را تکرار نمی‌کند: آن یکی سابقه‌ی **IP** را هم
+     *   می‌سنجد و مدیر IP کاربر را ندارد؛ اینجا فقط همان چیزی شمرده
+     *   می‌شود که با «باز کردن قفل» پاک می‌شود.
+     *
+     * @return array<string,int> نامِ نرمال‌شده => تعداد
+     */
+    public static function failureCounts(): array
+    {
+        if (!self::available()) { return []; }
+        $w = self::WINDOW_MIN;
+        try {
+            $rows = Database::getConnection()->query(
+                "SELECT username_tried, COUNT(*) AS c FROM login_attempts
+                 WHERE created_at > (NOW() - INTERVAL $w MINUTE)
+                 GROUP BY username_tried"
+            )->fetchAll();
+        } catch (PDOException $e) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($rows as $r) { $out[(string)$r['username_tried']] = (int)$r['c']; }
+        return $out;
+    }
+
+    /** نامِ کاربری را همان‌طور نرمال می‌کند که هنگام شمردن نرمال شده. */
+    public static function key(string $username): string
+    {
+        return self::normalizeUsername($username);
+    }
+
     /** یک تلاش ناموفق را ثبت می‌کند. */
     public static function recordFailure(string $username, string $ip): void
     {

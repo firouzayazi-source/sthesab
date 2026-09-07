@@ -162,5 +162,36 @@ $pruned = LoginThrottle::prune();
 T::ok($pruned >= LoginThrottle::MAX_PER_USER, 'prune ردیف‌های کهنه را پاک می‌کند', "پاک‌شده: {$pruned}");
 
 // ---------------------------------------------------------------
+T::group('⛔ شمارشِ تلاش برای پنل مدیر');
+
+/*
+ * سد بین کاربرِ واقعی و مهاجم فرق نمی‌گذارد، پس کاربری که رمزش را چند
+ * بار غلط زده تا پایانِ پنجره بیرون می‌ماند. تا امروز تنها راهِ باز
+ * کردنش `deploy/user-admin.php --unlock` از راهِ SSH بود — یعنی مالکِ
+ * نصبی که SSH ندارد اصلاً راهی نداشت. پنل مدیر حالا دکمه‌اش را دارد،
+ * ولی **فقط کنارِ کاربری که واقعاً قفل است**؛ همین شمارش آن را
+ * تصمیم می‌گیرد.
+ */
+$pdo->prepare('DELETE FROM login_attempts WHERE username_tried = :u')
+    ->execute(['u' => mb_strtolower($USER)]);
+
+T::same(0, LoginThrottle::failureCounts()[LoginThrottle::key($USER)] ?? 0,
+    'کاربرِ سالم هیچ نشانی نمی‌گیرد');
+
+LoginThrottle::recordFailure($USER, $IP);
+LoginThrottle::recordFailure($USER, $IP);
+T::same(2, LoginThrottle::failureCounts()[LoginThrottle::key($USER)] ?? 0,
+    'دو تلاشِ ناموفق شمرده می‌شود');
+
+// ⚠ کلید همان‌طور نرمال می‌شود که هنگام شمردن؛ وگرنه نشان کنارِ
+//   کاربری با نامِ بزرگ‌حرف هرگز دیده نمی‌شد.
+T::same(2, LoginThrottle::failureCounts()[LoginThrottle::key(mb_strtoupper($USER))] ?? 0,
+    '⛔ نرمال‌سازیِ کلید با شمارش یکی است');
+
+LoginThrottle::clear($USER);
+T::same(0, LoginThrottle::failureCounts()[LoginThrottle::key($USER)] ?? 0,
+    '⛔ «باز کردن قفل» شمارنده را واقعاً صفر می‌کند');
+
+// ---------------------------------------------------------------
 $cleanup();
 exit(T::report());

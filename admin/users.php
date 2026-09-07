@@ -3,6 +3,8 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/signup.php';
+require_once __DIR__ . '/../includes/login_throttle.php';
+require_once __DIR__ . '/../includes/user_data.php';
 
 Auth::initSession();
 Auth::requireAdmin();
@@ -104,10 +106,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'نام و نام کاربری الزامی است.';
         } elseif (mb_strlen($fullName) > 100) {
             $error = 'نام و نام خانوادگی نباید بیشتر از ۱۰۰ کاراکتر باشد.';
-        } elseif (mb_strlen($username) > 50) {
-            $error = 'نام کاربری نباید بیشتر از ۵۰ کاراکتر باشد.';
-        } elseif (!preg_match('/^[a-zA-Z0-9_.]+$/', $username)) {
-            $error = 'نام کاربری فقط می‌تواند شامل حروف انگلیسی، عدد، نقطه و آندرلاین باشد.';
+        // ⛔ قاعده‌ی نام کاربری از `usernameRuleError()` می‌آید، نه یک
+        //    الگوی محلی — وگرنه ساخت و ویرایش و پروفایل سه قاعده‌ی
+        //    متفاوت داشتند، که دقیقاً همان چیزی بود که کاربرِ نقطه‌دار را
+        //    از پروفایلِ خودش بیرون می‌کرد.
+        } elseif (($usernameErr = usernameRuleError($username)) !== '') {
+            $error = $usernameErr;
         } elseif ($password !== '' && mb_strlen($password) < 6) {
             $error = 'رمز عبور جدید باید حداقل ۶ کاراکتر باشد.';
         } elseif ($password !== '' && $password !== $passwordConfirm) {
@@ -150,6 +154,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($emailErr !== '') {
                         redirectWithMessage('users.php', 'error',
                             'اطلاعات ذخیره شد، ولی ایمیل ثبت نشد: ' . $emailErr);
+                    }
+                    // ⛔ شماره از `saveUserPhone()` رد می‌شود، نه یک
+                    //    `UPDATE` دستی: نرمال‌سازی و بررسیِ تکراری باید با
+                    //    `SmsLogin::normalizePhone()` یکی بماند، وگرنه
+                    //    شماره‌ای ذخیره می‌شود که ورودِ پیامکی پیدایش
+                    //    نمی‌کند و خرابی **بی‌صداست**. خالی هم یعنی «دست
+                    //    نزن» (همان قاعده‌ی ایمیل).
+                    $phoneErr = saveUserPhone($pdo, $targetId, postParam('phone'));
+                    if ($phoneErr !== '') {
+                        redirectWithMessage('users.php', 'error',
+                            'اطلاعات ذخیره شد، ولی شماره موبایل ثبت نشد: ' . $phoneErr);
                     }
                     redirectWithMessage('users.php', 'success', 'اطلاعات کاربر بروزرسانی شد.');
                 } catch (PDOException $e) {
@@ -216,6 +231,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         revokeAllAccessFor($targetId);
         redirectWithMessage('users.php', 'success', 'کاربر از همه‌ی دستگاه‌ها و اپ‌ها خارج می‌شود؛ حسابش باز است و با رمزِ خودش دوباره وارد می‌شود.');
+    } elseif ($action === 'unlock_login') {
+        // ⛔ سدِ حدسِ رمز بین کاربرِ واقعی و مهاجم فرق نمی‌گذارد، پس
+        //    کاربری که رمزش را چند بار غلط زده تا پایانِ پنجره بیرون
+        //    می‌ماند و **هیچ کاری هم از دستش برنمی‌آید**. تا امروز راهِ
+        //    باز کردنش فقط `deploy/user-admin.php --unlock` از راهِ SSH
+        //    بود — یعنی مالکِ نصبی که SSH ندارد اصلاً راهی نداشت.
+        $targetName = trim(postParam('username'));
+        if ($targetName === '') {
+            redirectWithMessage('users.php', 'error', 'کاربر مشخص نشد.');
+        }
+        LoginThrottle::clear($targetName);
+        redirectWithMessage('users.php', 'success',
+            'قفلِ ورودِ «' . $targetName . '» باز شد. حالا می‌تواند دوباره رمزش را وارد کند.');
     } elseif ($action === 'delete') {
         $targetId = (int)postParam('user_id');
 
@@ -235,24 +263,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirectWithMessage('users.php', 'error', 'حداقل باید یک مدیر فعال در سیستم باقی بماند.');
         }
 
-        try {
-            $stmt = $pdo->prepare('DELETE FROM users WHERE id = :id');
-            $stmt->execute(['id' => $targetId]);
-            redirectWithMessage('users.php', 'success', 'کاربر حذف شد.');
-        } catch (PDOException $e) {
-            redirectWithMessage('users.php', 'error', 'این کاربر دارای تراکنش ثبت‌شده است و قابل حذف نیست. می‌توانید آن را غیرفعال کنید.');
+        // ⛔ از `deleteUserAccount()` رد می‌شود، نه یک `DELETE FROM users`
+        //    خام. نسخه‌ی قبلی روی اولین کلیدِ خارجی می‌خورد و پیام می‌داد
+        //    «این کاربر تراکنش دارد و قابل حذف نیست» — یعنی **هر کاربری
+        //    که یک بار از اپ استفاده کرده باشد اصلاً حذف‌شدنی نبود**، و
+        //    این دقیقاً همان کاربری است که می‌خواهد پاک شود. تابعِ مشترک
+        //    ترتیبِ جدول‌ها را خودش پیدا می‌کند، همه را در یک تراکنش
+        //    می‌برد، و پیش از commit می‌شمارد که از هیچ جدولی بیش از سهمِ
+        //    همین کاربر حذف نشده باشد.
+        $res = deleteUserAccount($targetId);
+        if ($res['ok']) {
+            redirectWithMessage('users.php', 'success',
+                'کاربر و همه‌ی داده‌هایش حذف شد.');
         }
+        redirectWithMessage('users.php', 'error',
+            'حذف انجام نشد: ' . ($res['reason'] ?? 'خطای نامشخص') . ' — می‌توانید کاربر را غیرفعال کنید.');
     }
 }
 
 // ستون ایمیل با migration_password_reset آمده؛ اگر هنوز اجرا نشده باشد
 // صفحه باید بدون خطا کار کند.
 $hasEmailColumn = usersHaveEmailColumn($pdo);
+// ستون شماره با `migration_sms_login` آمده؛ نصبِ عقب‌مانده نباید بشکند.
+$hasPhoneColumn = tableHasColumn('users', 'phone');
 
-$users = $pdo->query($hasEmailColumn
-    ? 'SELECT id, full_name, username, email, role, is_active, created_at FROM users ORDER BY created_at ASC'
-    : 'SELECT id, full_name, username, role, is_active, created_at FROM users ORDER BY created_at ASC'
-)->fetchAll();
+$cols = 'id, full_name, username, role, is_active, created_at';
+if ($hasEmailColumn) { $cols .= ', email'; }
+if ($hasPhoneColumn) { $cols .= ', phone'; }
+// ⚠ نامِ ستون‌ها از ثابت‌های خودِ کد می‌آید نه از ورودی، پس درجِ مستقیمش امن است.
+$users = $pdo->query("SELECT {$cols} FROM users ORDER BY created_at ASC")->fetchAll();
+
+// ⚠ یک کوئری برای کلِ فهرست، نه یکی به‌ازای هر ردیف.
+$lockCounts = LoginThrottle::failureCounts();
 $pageTitle = 'مدیریت کاربران';
 include __DIR__ . '/../includes/header.php';
 ?>
@@ -289,8 +331,21 @@ include __DIR__ . '/../includes/header.php';
                 <?php else: ?>
                     <?php foreach ($users as $u): ?>
                         <tr>
+                            <?php $fails = $lockCounts[LoginThrottle::key($u['username'])] ?? 0; ?>
                             <td data-label="نام"><?= h($u['full_name']) ?></td>
-                            <td data-label="نام کاربری"><?= h($u['username']) ?></td>
+                            <td data-label="نام کاربری">
+                                <?= h($u['username']) ?>
+                                <?php if ($fails > 0): ?>
+                                    <?php /* ⚠ نشان فقط وقتی می‌آید که واقعاً تلاشِ ناموفق
+                                             در پنجره باشد؛ وگرنه هر ردیف یک برچسبِ
+                                             بی‌معنا می‌گرفت. */ ?>
+                                    <span class="lock-chip <?= $fails >= LoginThrottle::MAX_PER_USER ? 'is-locked' : '' ?>"
+                                          title="<?= $fails >= LoginThrottle::MAX_PER_USER
+                                              ? 'ورود این کاربر قفل است' : 'تلاش ناموفق اخیر' ?>">
+                                        <?= toPersianDigits($fails) ?> تلاش ناموفق
+                                    </span>
+                                <?php endif; ?>
+                            </td>
 <?php if ($hasEmailColumn): ?>
                             <td data-label="ایمیل"><?= $u['email'] ? h($u['email']) : '<span style="color:var(--muted)">—</span>' ?></td>
 <?php endif; ?>
@@ -308,7 +363,18 @@ include __DIR__ . '/../includes/header.php';
                                         data-full-name="<?= h($u['full_name']) ?>"
                                         data-username="<?= h($u['username']) ?>"
                                         data-email="<?= h($u['email'] ?? '') ?>"
+                                        data-phone="<?= h($u['phone'] ?? '') ?>"
                                         data-role="<?= h($u['role']) ?>">ویرایش</button>
+
+                                    <?php if ($fails > 0): ?>
+                                        <form method="POST" style="display:inline;">
+                                            <?= Csrf::field() ?>
+                                            <input type="hidden" name="action" value="unlock_login">
+                                            <input type="hidden" name="username" value="<?= h($u['username']) ?>">
+                                            <button type="submit" class="btn btn-secondary btn-sm"
+                                                    title="شمارنده‌ی تلاش ناموفق این نام کاربری پاک می‌شود">باز کردن قفل</button>
+                                        </form>
+                                    <?php endif; ?>
 
                                     <?php if ((int)$u['id'] !== $currentUserId): ?>
                                         <form method="POST" style="display:inline;">
@@ -327,7 +393,12 @@ include __DIR__ . '/../includes/header.php';
                                             <button type="submit" class="btn btn-secondary btn-sm" title="دستگاه‌های مورد اعتماد، توکن‌های اپ و نشست‌های باز باطل می‌شوند؛ حساب باز می‌ماند">خروج از دستگاه‌ها</button>
                                         </form>
                                         <?php endif; ?>
-                                        <form method="POST" style="display:inline;" onsubmit="return confirm('آیا از حذف این کاربر مطمئن هستید؟ این عملیات قابل بازگشت نیست.');">
+                                        <?php /* ⚠ اینجا عمداً `confirm()` مانده و «لغو» نشده:
+                                                 حذفِ کاربر داده‌ی هر جدولی را می‌برد و
+                                                 `Undo` فقط یک ردیف و فرزندانِ CASCADE اش را
+                                                 عکس می‌گیرد — همان دلیلی که حذفِ حساب و
+                                                 معامله هم `confirm()` نگه داشتند. */ ?>
+                                        <form method="POST" style="display:inline;" onsubmit="return confirm('کاربر و همه‌ی داده‌هایش (تراکنش، حساب، چک، …) برای همیشه حذف می‌شود. این کار برگشت ندارد. ادامه؟');">
                                             <?= Csrf::field() ?>
                                             <input type="hidden" name="action" value="delete">
                                             <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
@@ -430,6 +501,22 @@ include __DIR__ . '/../includes/header.php';
                        placeholder="برای بازیابی رمز عبور"
                        value="<?= $reopenModal === 'edit' ? h(postParam('email')) : '' ?>">
                 <p class="hint">اگر خالی بماند، ایمیل فعلی کاربر دست‌نخورده می‌ماند.</p>
+            </div>
+<?php endif; ?>
+<?php if ($hasPhoneColumn): ?>
+            <?php /* ⛔ بدونِ این فیلد، تنها راهِ ثبتِ شماره برای یک کاربر
+                     `deploy/user-admin.php --set-phone` از راهِ SSH بود.
+                     همان بن‌بستِ مرغ و تخم‌مرغِ «ورود با کد پیامکی»:
+                     روزِ اولی که پنل راه می‌افتد هیچ‌کس شماره ندارد، پس
+                     هیچ‌کس نمی‌تواند با پیامک وارد شود — و مالکِ نصب
+                     ممکن است خودش هم بیرون مانده باشد. */ ?>
+            <div class="form-group">
+                <label>شماره موبایل</label>
+                <input type="text" name="phone" maxlength="20" inputmode="numeric"
+                       dir="ltr" placeholder="۰۹۱۲۳۴۵۶۷۸۹">
+                <p class="hint">
+                    برای «ورود با کد پیامکی». اگر خالی بماند، شماره‌ی فعلی دست‌نخورده می‌ماند.
+                </p>
             </div>
 <?php endif; ?>
             <div class="form-group">

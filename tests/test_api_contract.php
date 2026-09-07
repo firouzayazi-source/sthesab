@@ -1380,6 +1380,53 @@ foreach (array_keys($brandFiles) as $path) {
 }
 T::bulk($scanned, $badBrand, 'هیچ متنِ دیده‌شدنی‌ای نامِ برند را سخت‌کد نکرده');
 
+// ---------------------------------------------------------------
+T::group('قاعده ۲۵ — قاعده‌ی نام کاربری فقط در usernameRuleError()');
+
+/*
+ * سه مسیر نام کاربری می‌نویسند (ثبت‌نام، پنل مدیر، پروفایل) و هر کدام
+ * الگوی خودش را داشت. دو تا با هم نمی‌خواندند: یکی نقطه را می‌ساخت و
+ * دیگری ردش می‌کرد — پس کاربری با نامِ `ali.k` **هرگز** نمی‌توانست
+ * پروفایلش را ذخیره کند، و خطا درباره‌ی فیلدی بود که دست نزده بود.
+ *
+ * ⚠ با توکنایزر است نه grep: همین توضیح خودش الگو را در متن دارد و با
+ *   جست‌وجوی متنی، تست روی فایلِ **سالم** هم قرمز می‌شد — همان درسی که
+ *   قاعده ۲۲ داد.
+ */
+$badUser = [];
+$userScanned = 0;
+$userFiles = [];
+foreach (['.', 'includes', 'api', 'admin'] as $dir) {
+    foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $userFiles[realpath($p)] = true; }
+}
+foreach (array_keys($userFiles) as $path) {
+    $userScanned++;
+    // ⛔ تنها استثناء: خودِ جای تعریفِ قاعده.
+    if (basename($path) === 'signup.php') { continue; }
+
+    $src = (string)@file_get_contents($path);
+    if (!str_contains($src, 'username')) { continue; }
+    $lines = explode("\n", $src);
+
+    foreach (token_get_all($src) as $tok) {
+        if (!is_array($tok) || $tok[0] !== T_CONSTANT_ENCAPSED_STRING) { continue; }
+        // الگویی که کلاسِ کاراکترِ نام کاربری را تعریف می‌کند: هم
+        // `[a-zA-Z0-9_.]` هم `[A-Za-z0-9_]{3,50}` را می‌گیرد.
+        if (!preg_match('/\[[aA]-[zZ][A-Za-z]*-?[A-Za-z]*0-9[_.\-]/', $tok[1])) { continue; }
+
+        // ⚠ فقط وقتی که همان خط واقعاً روی **نام کاربری** اعمالش کند.
+        //   بدونِ این شرط، توصیفِ شکلِ کلیدِ پنلِ پیامک در
+        //   `includes/sms.php` هم قرمز می‌شد — یعنی هشدارِ الکی روی
+        //   فایلِ سالم، که از نبودِ تست بدتر است. در همان اجرای اول شد.
+        $line = $lines[$tok[2] - 1] ?? '';
+        if (!str_contains($line, 'username')) { continue; }
+
+        $badUser[] = basename(dirname($path)) . '/' . basename($path) . ':' . $tok[2]
+            . ' — الگوی نام کاربری اینجا تکرار شده؛ از usernameRuleError() رد شوید';
+    }
+}
+T::bulk($userScanned, $badUser, 'قاعده‌ی نام کاربری فقط یک جا تعریف شده');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

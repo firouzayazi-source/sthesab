@@ -53,6 +53,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $r = revokePro((int)postParam('grant_user'), $currentUserId);
         redirectWithMessage('billing.php', $r['ok'] ? 'success' : 'error',
             $r['ok'] ? 'دسترسی پس گرفته شد.' : ($r['error'] ?? 'انجام نشد.'));
+    } elseif ($action === 'save_code') {
+        // ⛔ همه‌ی اعتبارسنجی در `saveDiscountCode()` است، نه اینجا: با
+        //    نسخه‌ی دومِ «درصد بین ۱ تا ۱۰۰»، فردا یک مسیرِ تازه از
+        //    کنارش رد می‌شد.
+        $r = saveDiscountCode([
+            'code'       => postParam('code'),
+            'percent'    => postParam('percent'),
+            'months'     => postParam('months'),
+            'max_uses'   => postParam('max_uses'),
+            'expires_at' => postParam('expires_at'),
+            'note'       => postParam('note'),
+        ], $currentUserId);
+        redirectWithMessage('billing.php', $r['ok'] ? 'success' : 'error',
+            $r['ok'] ? 'کد «' . ($r['code'] ?? '') . '» ذخیره شد.' : ($r['error'] ?? 'ذخیره نشد.'));
+    } elseif ($action === 'toggle_code') {
+        // ⚠ کد **حذف نمی‌شود**، فقط خاموش: ردیف‌های `payments` به آن
+        //   اشاره دارند و تاریخچه‌ی مالی باید بماند — همان قاعده‌ی
+        //   «پرداخت‌ها حذف نمی‌شوند».
+        $on = postParam('on') === '1';
+        setDiscountCodeActive((int)postParam('code_id'), $on);
+        redirectWithMessage('billing.php', 'success', $on ? 'کد روشن شد.' : 'کد خاموش شد.');
     }
 }
 
@@ -72,6 +93,12 @@ if (plansAvailable()) {
          FROM users WHERE is_active = 1 ORDER BY full_name, username"
     )->fetchAll();
 }
+
+$codes       = allDiscountCodes();
+$codesReady  = discountCodesAvailable();
+// یک کدِ پیشنهادی که مدیر فقط قبولش کند — تایپِ دستیِ کد رایج‌ترین جای
+// اشتباه است و کدِ ساخته‌شده حروفِ اشتباه‌گیر (O/0 و I/1) ندارد.
+$suggestCode = $codesReady ? generateDiscountCode() : '';
 
 $pageTitle = 'اشتراک و پرداخت';
 include __DIR__ . '/../includes/header.php';
@@ -208,6 +235,152 @@ include __DIR__ . '/../includes/header.php';
     <?php endif; ?>
 </div>
 
+<?php /* ⛔ کد تخفیف — دو کار با یک ابزار:
+         «۱۰۰٪» یعنی دسترسی کامل و رایگان، که همان «۱۰۰ نفر اول» را
+         ممکن می‌کند؛ کمتر از ۱۰۰ یعنی تخفیف روی خرید.
+         سقفِ تعداد روی خودِ کد است و شمارنده‌اش اتمی بالا می‌رود، پس
+         «۱۰ نفر اول» واقعاً ۱۰ نفر است حتی اگر همه هم‌زمان بزنند. */ ?>
+<div class="card">
+    <h2 class="card-title">کد تخفیف</h2>
+
+    <?php if (!$codesReady): ?>
+        <p class="hint">
+            جدولِ کد تخفیف هنوز ساخته نشده است. ابتدا migration ها را اعمال کنید
+            (<code>deploy/migrate.sh --apply</code>).
+        </p>
+    <?php else: ?>
+
+    <?php if ($codes): ?>
+        <div class="dcode-list">
+        <?php foreach ($codes as $c): ?>
+            <?php
+                $state = discountCodeState($c);
+                $used  = (int)$c['used_count'];
+                $max   = (int)$c['max_uses'];
+                // ⚠ نوارِ پیشرفت فقط وقتی معنا دارد که مخرجی باشد؛ با
+                //   سقفِ «بی‌نهایت» یک نوارِ همیشه‌خالی چیزی نمی‌گوید.
+                $pct   = $max > 0 ? min(100, (int)round($used * 100 / $max)) : null;
+            ?>
+            <div class="dcode-row">
+                <div class="dcode-head">
+                    <span class="code-tag"><?= h($c['code']) ?></span>
+                    <span class="status-badge <?= $state === 'active' ? 'status-badge-in' : 'status-badge-muted' ?>">
+                        <?= h(discountCodeStateLabel($state)) ?>
+                    </span>
+                </div>
+
+                <p class="dcode-meta">
+                    <?= toPersianDigits((int)$c['percent']) ?>٪ تخفیف
+                    <?php if (discountIsFree($c)): ?>
+                        · دسترسی <?= h(PLAN_GRANT_PERIODS[(int)$c['months']] ?? '') ?> رایگان
+                    <?php else: ?>
+                        · روی خرید
+                    <?php endif; ?>
+                    <?php if (!empty($c['expires_at'])): ?>
+                        · تا <?= toPersianDigits(toJalali($c['expires_at'])) ?>
+                    <?php endif; ?>
+                    <?php if (!empty($c['note'])): ?>
+                        · <?= h($c['note']) ?>
+                    <?php endif; ?>
+                </p>
+
+                <?php if ($pct !== null): ?>
+                    <?php /* از همان `.budget-bar-track` است، نه یک نوارِ تازه:
+                             آن کلاس `direction: ltr` دارد و بدونش میله در
+                             صفحه‌ی راست‌به‌چپ از راست پر می‌شد. */ ?>
+                    <div class="budget-bar-track">
+                        <div class="budget-bar <?= $pct >= 100 ? 'budget-bar-over' : 'budget-bar-good' ?>"
+                             style="width: <?= $pct ?>%"></div>
+                    </div>
+                <?php endif; ?>
+
+                <div class="dcode-foot">
+                    <span class="dcode-count">
+                        <span class="ltr-num"><?= toPersianDigits($used) ?></span>
+                        <?php if ($max > 0): ?>
+                            از <span class="ltr-num"><?= toPersianDigits($max) ?></span> استفاده
+                        <?php else: ?>
+                            استفاده · بدون سقف
+                        <?php endif; ?>
+                    </span>
+                    <form method="POST">
+                        <?= Csrf::field() ?>
+                        <input type="hidden" name="action" value="toggle_code">
+                        <input type="hidden" name="code_id" value="<?= (int)$c['id'] ?>">
+                        <input type="hidden" name="on" value="<?= (int)$c['is_active'] === 1 ? '0' : '1' ?>">
+                        <button type="submit" class="btn btn-secondary btn-sm">
+                            <?= (int)$c['is_active'] === 1 ? 'خاموش کن' : 'روشن کن' ?>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        <?php endforeach; ?>
+        </div>
+    <?php else: ?>
+        <p class="hint">هنوز کدی ساخته نشده است.</p>
+    <?php endif; ?>
+
+    <h3 class="dcode-form-title">ساختن کد تازه</h3>
+    <form method="POST" autocomplete="off">
+        <?= Csrf::field() ?>
+        <input type="hidden" name="action" value="save_code">
+
+        <div class="form-group">
+            <label for="dc_code">کد</label>
+            <input type="text" id="dc_code" name="code" class="code-input" required
+                   maxlength="<?= DISCOUNT_CODE_MAX_LEN ?>" value="<?= h($suggestCode) ?>"
+                   autocapitalize="characters" autocorrect="off" spellcheck="false">
+            <p class="hint">
+                حروف انگلیسی و عدد. همین که پیشنهاد شده هم خوب است —
+                حرف‌های اشتباه‌گیر (O و 0، I و 1) در آن نیست.
+                کدِ تکراری، همان کدِ قبلی را <strong>به‌روز</strong> می‌کند.
+            </p>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group" style="flex:1;">
+                <label for="dc_percent">درصد تخفیف</label>
+                <input type="number" id="dc_percent" name="percent" min="1" max="100" value="100" required>
+            </div>
+            <div class="form-group" style="flex:1;">
+                <label for="dc_max">سقف تعداد</label>
+                <input type="text" id="dc_max" name="max_uses" inputmode="numeric" value="۱۰"
+                       placeholder="۰ = بی‌نهایت">
+            </div>
+        </div>
+        <p class="hint" style="margin-top:-6px; margin-bottom:12px;">
+            «۱۰۰ درصد» یعنی دسترسی کامل و رایگان — همان چیزی که برای
+            «۱۰۰ نفر اول» لازم است. عددِ کمتر، تخفیف روی قیمتِ خرید است.
+        </p>
+
+        <div class="form-group">
+            <label for="dc_months">مدت دسترسی (فقط برای کد ۱۰۰ درصد)</label>
+            <select id="dc_months" name="months">
+                <?php foreach (PLAN_GRANT_PERIODS as $m => $label): ?>
+                    <option value="<?= (int)$m ?>" <?= $m === 12 ? 'selected' : '' ?>><?= h($label) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <p class="hint">کدِ ۱۰۰ درصد همین مدت را همان لحظه به کاربر می‌دهد، بدون هیچ پرداختی.</p>
+        </div>
+
+        <div class="form-group">
+            <label for="dc_exp">تاریخ انقضا (اختیاری)</label>
+            <input type="text" id="dc_exp" name="expires_at" class="ltr-num" inputmode="numeric"
+                   placeholder="۱۴۰۴/۱۲/۲۹">
+            <p class="hint">خالی یعنی بدون مهلت؛ فقط سقفِ تعداد آن را می‌بندد.</p>
+        </div>
+
+        <div class="form-group">
+            <label for="dc_note">توضیح (اختیاری)</label>
+            <input type="text" id="dc_note" name="note" maxlength="255"
+                   placeholder="مثلاً: صد نفر اول، کمپین نوروز">
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-sm">ذخیره کد</button>
+    </form>
+    <?php endif; ?>
+</div>
+
 <?php /* از اینجا به بعد کارتِ اشتراک است — فرمِ خودش را دارد. */ ?>
 <div class="card">
     <h2 class="card-title">اشتراک و پرداخت‌ها</h2>
@@ -224,8 +397,15 @@ include __DIR__ . '/../includes/header.php';
                     <span class="hint">
                         <?= toPersianDigits($p['months']) ?> ماه ·
                         <?= formatMoney($p['amount']) ?> تومان ·
-                        کد: <?= h($p['reference']) ?>
+                        کد پیگیری: <?= h($p['reference']) ?>
                     </span>
+                    <?php if (!empty($p['discount_code'])): ?>
+                        <?php /* ⚠ بدونِ این، مدیر مبلغی کمتر از قیمتِ دوره
+                                 می‌دید و فکر می‌کرد کاربر کم واریز کرده. */ ?>
+                        <br><span class="hint">با کد تخفیف
+                            <span class="code-tag code-tag-sm"><?= h($p['discount_code']) ?></span>
+                        </span>
+                    <?php endif; ?>
                 </div>
                 <div style="display:flex; gap:6px;">
                     <form method="POST" style="display:inline;">

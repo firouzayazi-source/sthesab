@@ -43,6 +43,41 @@ function isValidDate(string $date): bool
     return $d && $d->format('Y-m-d') === $date;
 }
 
+/**
+ * تاریخِ شمسیِ تایپ‌شده (`۱۴۰۴/۱۲/۲۹` یا `1404-12-29`) → میلادیِ `Y-m-d`.
+ *
+ * ⛔ این یک تقویمِ تازه **نیست**: فقط رشته را به سه عدد می‌شکند و
+ *    `jalaliToGregorian()` را صدا می‌زند — همان مبدأیی که کلِ اپ و
+ *    `assets/js/jalali-datepicker.js` از آن می‌خوانند و
+ *    `test_jalali_parity` هم‌خوانی‌شان را می‌سنجد. پیاده‌سازیِ دومِ
+ *    تقویم دیر یا زود یک روز اختلاف پیدا می‌کند.
+ *
+ * ⚠ درستیِ تاریخ با **رفت‌وبرگشت** سنجیده می‌شود، نه با بازه‌ی عددی:
+ *   «۳۱ آبان» هم ۱ تا ۱۲ است هم ۱ تا ۳۱، ولی وجود ندارد. اگر برگشت
+ *   همان ورودی را ندهد، تاریخ ساختگی است.
+ *
+ * @return string|null null یعنی ورودی خالی یا تاریخِ ناموجود
+ */
+function jalaliStringToGregorian(string $input): ?string
+{
+    $s = trim(toLatinDigits($input));
+    if ($s === '') { return null; }
+
+    if (!preg_match('/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/', $s, $m)) {
+        return null;
+    }
+    [$jy, $jm, $jd] = [(int)$m[1], (int)$m[2], (int)$m[3]];
+    if ($jm < 1 || $jm > 12 || $jd < 1 || $jd > 31) { return null; }
+
+    [$gy, $gm, $gd] = jalaliToGregorian($jy, $jm, $jd);
+    $greg = sprintf('%04d-%02d-%02d', $gy, $gm, $gd);
+    if (!isValidDate($greg)) { return null; }
+
+    // رفت‌وبرگشت: تاریخِ ناموجود از اینجا رد نمی‌شود.
+    $back = toLatinDigits(toJalali($greg));
+    return $back === sprintf('%04d/%02d/%02d', $jy, $jm, $jd) ? $greg : null;
+}
+
 function jsonResponse(array $data, int $statusCode = 200): void
 {
     http_response_code($statusCode);

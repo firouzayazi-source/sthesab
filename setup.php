@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/signup.php';   // برای usernameRuleError()
 
 Auth::initSession();
 
@@ -33,8 +34,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'رمز عبور باید حداقل ۶ کاراکتر باشد.';
     } elseif ($password !== $passwordConfirm) {
         $error = 'رمز عبور و تکرار آن یکسان نیستند.';
-    } elseif (!preg_match('/^[a-zA-Z0-9_.]+$/', $username)) {
-        $error = 'نام کاربری فقط می‌تواند شامل حروف انگلیسی، عدد، نقطه و آندرلاین باشد.';
+    // ⛔ از قاعده‌ی مشترک، نه یک الگوی محلی. این **چهارمین** جایی بود که
+    //    قاعده‌ی نام کاربری را از نو نوشته بود و قاعده ۲۵ در
+    //    `test_api_contract.php` همان اجرای اول پیدایش کرد — یعنی
+    //    نامی که همین صفحه می‌سازد ممکن بود بعداً در پروفایل رد شود.
+    } elseif (($usernameErr = usernameRuleError($username)) !== '') {
+        $error = $usernameErr;
     } else {
         $pdo = Database::getConnection();
         try {
