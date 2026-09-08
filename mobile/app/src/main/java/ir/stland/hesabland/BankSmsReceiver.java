@@ -48,6 +48,34 @@ public class BankSmsReceiver extends BroadcastReceiver {
     public  static final String PREF_ON    = "sms_capture_on";
 
     /**
+     * ⛔ ردِ آخرین پیامک — چون بدونش این قابلیت **سه** خرابیِ کاملاً
+     *    متفاوت دارد که از بیرون دقیقاً یک شکل‌اند: «هیچ اعلانی نیامد».
+     *
+     *    ۱. پیامک اصلاً به گیرنده نرسید (محدودیتِ پس‌زمینه‌ی رام، یا اپ
+     *       در حالتِ stopped).
+     *    ۲. رسید ولی از صافی رد نشد (کلمه‌ی جهت نداشت یا عددِ درشت).
+     *    ۳. رسید و اعلان ساخته شد، ولی اعلان‌ها بسته‌اند.
+     *
+     *    راهِ حلِ هر سه فرق می‌کند و حدس زدن بینشان یعنی چند نوبت ساختِ
+     *    APK و آزمایشِ روی گوشی. با این سه کلید، صفحه‌ی تنظیم همان‌جا
+     *    می‌گوید کدام‌یک بوده.
+     *
+     * ⚠ **متنِ پیامک ذخیره نمی‌شود** — فقط زمان، فرستنده، و نتیجه.
+     *   همان قاعده‌ای که متن را در فرگمنت نگه می‌دارد: یک نسخه‌ی دائمیِ
+     *   تازه از پیامکِ بانک روی دیسک نمی‌سازیم، آن هم برای چیزی که
+     *   تشخیصش به متن نیازی ندارد.
+     */
+    public static final String PREF_LAST_AT   = "sms_last_at";
+    public static final String PREF_LAST_FROM = "sms_last_from";
+    public static final String PREF_LAST_WHY  = "sms_last_why";
+
+    /** نتیجه‌ی صافی — همان دو شرطی که از قبل بود، فقط حالا نام دارند. */
+    public static final String WHY_OK        = "ok";
+    public static final String WHY_NO_HINT   = "no_hint";
+    public static final String WHY_NO_AMOUNT = "no_amount";
+    public static final String WHY_SHORT     = "short";
+
+    /**
      * فهرستِ درشتِ کلماتِ جهت — **زیرمجموعه‌ی سخت‌گیرانه‌ای از آن چیزی که
      * `parseBankSms()` می‌شناسد نیست، بلکه ابرمجموعه‌ی ساده‌ی آن است.**
      *
@@ -85,9 +113,21 @@ public class BankSmsReceiver extends BroadcastReceiver {
         }
 
         String text = body.toString();
-        if (text.length() < 12 || !looksLikeBankSms(text)) { return; }
+        String why  = classify(text);
 
-        notifyUser(ctx, sender, text);
+        // ⛔ **پیش از** هر خروجِ زودهنگام ثبت می‌شود، نه فقط در مسیرِ
+        //    موفق. کلِ ارزشِ این ردْ همان حالتی است که اعلانی ساخته
+        //    نمی‌شود؛ اگر فقط مسیرِ موفق ثبت می‌شد، دقیقاً در خرابی
+        //    ساکت می‌ماند.
+        sp.edit()
+          .putLong(PREF_LAST_AT, System.currentTimeMillis())
+          .putString(PREF_LAST_FROM, sender)
+          .putString(PREF_LAST_WHY, why)
+          .apply();
+
+        if (!WHY_OK.equals(why)) { return; }
+
+        postNotification(ctx, sender, text);
     }
 
     /**
@@ -95,15 +135,26 @@ public class BankSmsReceiver extends BroadcastReceiver {
      *   چهاررقمی. بدونِ شرطِ دوم، پیامکِ «واریز حقوق شما انجام شد» هم
      *   اعلان می‌ساخت و کاربر یک فرمِ خالی می‌دید؛ بدونِ شرطِ اول، هر
      *   پیامکِ حاویِ عدد (کدِ تأیید، تبلیغ) اعلان می‌شد.
+     *
+     * ⚠ **همان دو شرطِ قبلی است، نه یک صافیِ تازه** — فقط به‌جای
+     *   `true/false` می‌گوید کدام‌یک رد کرد. منطقِ تصمیم عوض نشده؛ اگر
+     *   عوض می‌شد، صافیِ اینجا از `parseBankSms()` دور می‌افتاد و همان
+     *   خرابیِ بی‌صدایی می‌شد که بالای این فایل نوشته شده.
      */
-    private static boolean looksLikeBankSms(String text) {
+    static String classify(String text) {
+        if (text.length() < 12) { return WHY_SHORT; }
+
         boolean hint = false;
         for (String h : HINTS) {
             if (text.contains(h)) { hint = true; break; }
         }
-        if (!hint) { return false; }
+        if (!hint) { return WHY_NO_HINT; }
 
-        // عددِ چهاررقمی یا بیشتر — با ارقامِ لاتین یا فارسی.
+        return hasBigNumber(text) ? WHY_OK : WHY_NO_AMOUNT;
+    }
+
+    /** عددِ چهاررقمی یا بیشتر — با ارقامِ لاتین یا فارسی. */
+    private static boolean hasBigNumber(String text) {
         int run = 0;
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
@@ -117,7 +168,13 @@ public class BankSmsReceiver extends BroadcastReceiver {
         return false;
     }
 
-    private void notifyUser(Context ctx, String sender, String text) {
+    /**
+     * ⛔ `static` و package-visible است تا **صفحه‌ی تنظیم هم از همین
+     *    مسیر** اعلانِ آزمایشی بسازد. با یک نسخه‌ی دومِ ساختِ اعلان،
+     *    آزمایش می‌توانست موفق شود در حالی که مسیرِ واقعی خراب است —
+     *    یعنی بدترین نوعِ سنجش: سبز روی خرابی.
+     */
+    static void postNotification(Context ctx, String sender, String text) {
         String url;
         try {
             // ⛔ فرگمنت، نه query: سرور هرگز این متن را نمی‌بیند.

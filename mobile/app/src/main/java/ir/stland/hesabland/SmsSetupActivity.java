@@ -70,6 +70,7 @@ public class SmsSetupActivity extends AppCompatActivity {
     private static final int REQ_NOTIF = 4022;
 
     private TextView state;
+    private TextView diag;
     private Button   toggle;
     private Button   fixNotif;
 
@@ -141,6 +142,23 @@ public class SmsSetupActivity extends AppCompatActivity {
         });
         root.addView(fixNotif);
 
+        // ⛔ خطِ تشخیص — کم‌رنگ‌تر از خطِ وضعیت، چون جوابِ سؤالِ دوم است
+        //    نه اول: «روشن است یا نه» را بالا می‌گوید، این می‌گوید
+        //    «آخرین پیامک چه شد».
+        diag = new TextView(this);
+        diag.setTextColor(Color.parseColor("#8C93A0"));
+        diag.setTextSize(13);
+        diag.setGravity(Gravity.END);
+        diag.setPadding(0, 32, 0, 16);
+        root.addView(diag);
+
+        Button test = new Button(this);
+        test.setText(R.string.sms_test);
+        test.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { sendTestNotification(); }
+        });
+        root.addView(test);
+
         Button bottom = new Button(this);
         bottom.setText(R.string.sms_setup_back);
         bottom.setOnClickListener(new View.OnClickListener() {
@@ -204,6 +222,71 @@ public class SmsSetupActivity extends AppCompatActivity {
         //   همیشه باشد و بیشترِ وقت‌ها کاری نکند، همان «دکمه‌ی بی‌کار از
         //   نبودنش بدتر است».
         fixNotif.setVisibility(on && !notifVisible() ? View.VISIBLE : View.GONE);
+
+        diag.setText(lastEventLine());
+    }
+
+    /**
+     * ⛔ «هیچ اعلانی نیامد» سه علت دارد و از بیرون یک شکل‌اند. این خط
+     *    آن‌ها را از هم جدا می‌کند:
+     *
+     *    - «هنوز هیچ پیامکی نرسیده» → پیامک اصلاً به گیرنده نمی‌رسد
+     *      (محدودیتِ پس‌زمینه‌ی رام، یا اپ هرگز باز نشده).
+     *    - «رد شد چون …» → رسید ولی از صافی نگذشت؛ متنِ آن بانک با
+     *      فهرستِ کلمات نمی‌خواند.
+     *    - «شناخته شد و اعلان ساخته شد» → مسیر کامل درست کار کرده و
+     *      اعلان‌ها بسته‌اند.
+     *
+     *    بدونِ این، تشخیص فقط با چند نوبت ساختِ APK و آزمایشِ حدسی
+     *    ممکن بود.
+     */
+    private String lastEventLine() {
+        long at = prefs().getLong(BankSmsReceiver.PREF_LAST_AT, 0L);
+        if (at <= 0L) { return getString(R.string.sms_diag_none); }
+
+        String from = prefs().getString(BankSmsReceiver.PREF_LAST_FROM, "");
+        String why  = prefs().getString(BankSmsReceiver.PREF_LAST_WHY, "");
+        if (from == null || from.isEmpty()) { from = "—"; }
+
+        int msg;
+        if (BankSmsReceiver.WHY_OK.equals(why))              { msg = R.string.sms_diag_ok; }
+        else if (BankSmsReceiver.WHY_NO_HINT.equals(why))    { msg = R.string.sms_diag_no_hint; }
+        else if (BankSmsReceiver.WHY_NO_AMOUNT.equals(why))  { msg = R.string.sms_diag_no_amount; }
+        else                                                 { msg = R.string.sms_diag_short; }
+
+        return getString(msg, ago(at), from);
+    }
+
+    /**
+     * فاصله‌ی زمانی، نه تاریخ.
+     *
+     * ⛔ عمداً هیچ تقویمی در کار نیست: تبدیلِ شمسی فقط در توابعِ خودِ
+     *    پروژه انجام می‌شود و پیاده‌سازیِ دومش در جاوا همان چیزی است که
+     *    قاعده‌ی پروژه ممنوع کرده. برای تشخیص هم «۳ دقیقه پیش» از یک
+     *    تاریخِ کامل گویاتر است.
+     */
+    private String ago(long at) {
+        long min = (System.currentTimeMillis() - at) / 60000L;
+        if (min < 1)    { return getString(R.string.sms_diag_now); }
+        if (min < 60)   { return getString(R.string.sms_diag_min, min); }
+        if (min < 1440) { return getString(R.string.sms_diag_hour, min / 60); }
+        return getString(R.string.sms_diag_day, min / 1440);
+    }
+
+    /**
+     * ⛔ از **همان** مسیرِ اعلانِ واقعی می‌رود (`postNotification`)، نه یک
+     *    نسخه‌ی دوم. با نسخه‌ی دوم، آزمایش می‌توانست سبز شود در حالی که
+     *    مسیرِ واقعی خراب است — همان «سنجشی که روی خرابی سبز می‌شود».
+     *
+     * ⚠ متنِ نمونه در `strings.xml` است نه اینجا: منطقِ دامنه (مبلغ و
+     *   واحدِ پول) داخلِ فایلِ بومی نمی‌آید.
+     */
+    private void sendTestNotification() {
+        BankSmsReceiver.postNotification(
+                this,
+                getString(R.string.sms_test_from),
+                getString(R.string.sms_test_body));
+        Toast.makeText(this, R.string.sms_test_sent, Toast.LENGTH_LONG).show();
     }
 
     private void onToggle() {
