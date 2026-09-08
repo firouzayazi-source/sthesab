@@ -98,7 +98,7 @@ function exportUserData(int $userId): array
         //   خودِ کاربر می‌نشیند، پس روی هر نصبی نامِ همان نصب را باید
         //   بگوید. سخت‌کد بودنش یعنی نصبی که برندش عوض شده، فایل‌هایی
         //   با نامِ برندِ ما بیرون می‌دهد.
-        'app'         => defined('APP_NAME') ? APP_NAME : 'دفتر مالی',
+        'app'         => defined('APP_NAME') ? APP_NAME : 'حساب لند',
         'version'     => appVersion(),
         'exported_at' => date('c'),
         'exported_jalali' => toJalali(date('Y-m-d')),

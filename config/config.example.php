@@ -11,7 +11,7 @@ define('DB_USER', 'your_username');
 define('DB_PASSWORD', 'your_password');
 define('DB_CHARSET', 'utf8mb4');
 
-define('APP_NAME', 'دفتر مالی');
+define('APP_NAME', 'حساب لند');
 define('APP_TIMEZONE', 'Asia/Tehran');
 define('APP_CURRENCY', 'تومان');
 
@@ -36,7 +36,7 @@ define('APP_FORCE_HTTPS', false);
 
 /**
  * اگر پروژه را مستقیم روی ریشه دامنه/ساب‌دامنه نصب کرده‌اید، این مقدار را خالی بگذارید.
- * اگر پروژه داخل یک زیرپوشه نصب شده (مثلاً https://example.com/daftar)، مسیر را اینجا بنویسید: '/daftar'
+ * اگر پروژه داخل یک زیرپوشه نصب شده (مثلاً https://example.com/hesabland)، مسیر را اینجا بنویسید: '/hesabland'
  * این مقدار برای درست‌کار کردن لینک‌ها و فایل‌های CSS/JS در صفحات پنل مدیریت (admin/) لازم است.
  */
 define('APP_BASE_PATH', '');
@@ -63,7 +63,7 @@ define('APP_URL', 'https://example.com');
 define('MAIL_METHOD', '');
 
 define('MAIL_FROM', 'no-reply@example.com');
-define('MAIL_FROM_NAME', 'دفتر مالی');
+define('MAIL_FROM_NAME', 'حساب لند');
 
 // فقط وقتی MAIL_METHOD = 'smtp'
 define('SMTP_HOST', '');

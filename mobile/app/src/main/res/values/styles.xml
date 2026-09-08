@@ -3,7 +3,7 @@
     <!-- تمِ پنجره‌ی اندروید تا وقتی کروم اولین فریم را بکشد.
          زمینه‌اش عمداً تیره است تا با خودِ اپ یکی باشد؛ با زمینه‌ی سفیدِ
          پیش‌فرض، هر بار باز کردنِ اپ یک فلاشِ سفید می‌داد. -->
-    <style name="Theme.Daftar" parent="Theme.AppCompat.NoActionBar">
+    <style name="Theme.HesabLand" parent="Theme.AppCompat.NoActionBar">
         <item name="android:windowBackground">@color/colorPrimary</item>
         <item name="android:statusBarColor">@color/colorPrimary</item>
         <item name="android:navigationBarColor">@color/colorPrimary</item>

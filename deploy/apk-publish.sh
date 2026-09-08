@@ -16,14 +16,14 @@
 # استفاده:
 #   sudo bash deploy/apk-publish.sh --from-github          # آخرین نسخه
 #   sudo bash deploy/apk-publish.sh --from-github build-11 # نسخه‌ی مشخص
-#   sudo bash deploy/apk-publish.sh /root/daftar-11.apk    # فایلِ آماده
+#   sudo bash deploy/apk-publish.sh /root/hesabland-11.apk    # فایلِ آماده
 #   sudo bash deploy/apk-publish.sh --remove
 #
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/hesab/app}"
 DEST_DIR="$APP_DIR/download"
-DEST="$DEST_DIR/daftar.apk"
+DEST="$DEST_DIR/hesabland.apk"
 GH_REPO="${GH_REPO:-firouzayazi-source/sthesab}"
 GH_API="${GH_API:-https://api.github.com}"
 
@@ -43,7 +43,7 @@ trap cleanup EXIT
 usage() {
     echo "  sudo bash deploy/apk-publish.sh --from-github"
     echo "  sudo bash deploy/apk-publish.sh --from-github build-11"
-    echo "  sudo bash deploy/apk-publish.sh /root/daftar-11.apk"
+    echo "  sudo bash deploy/apk-publish.sh /root/hesabland-11.apk"
     echo "  sudo bash deploy/apk-publish.sh --remove"
 }
 
@@ -233,7 +233,7 @@ fi
 #    سنجش به `unzip` و به توانایی‌اش در خواندنِ ساختارِ APK بند نیست —
 #    و APKهای امضای v2/v3 روی بعضی نسخه‌های unzip فهرست نمی‌شوند.
 #    ولی همان‌قدر هم سخت‌گیر است: zipِ آرتیفکت که یک APK داخلش دارد،
-#    این رشته را در فهرستِ مرکزیِ خودش ندارد (نامِ عضوش `daftar.apk`
+#    این رشته را در فهرستِ مرکزیِ خودش ندارد (نامِ عضوش `hesabland.apk`
 #    است) و بایت‌های فشرده‌ی داخلی هم آن را به‌صورت خام نشان نمی‌دهند.
 HAS_MANIFEST=0
 if command -v unzip >/dev/null 2>&1 && unzip -l "$SRC" 2>/dev/null | grep -q 'AndroidManifest.xml'; then

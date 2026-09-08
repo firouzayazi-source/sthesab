@@ -70,7 +70,7 @@ jobs:
           KS: ${{ secrets.KEYSTORE_BASE64 }}
           PW: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
-          KEYSTORE="$RUNNER_TEMP/daftar-release.jks"
+          KEYSTORE="$RUNNER_TEMP/hesabland-release.jks"
 
           # ⚠ کلید بیرون از پوشه‌ی کار ساخته می‌شود تا حتی اگر روزی
           # گامی کل پوشه را artifact کند، کلید همراهش نرود.
@@ -92,6 +92,13 @@ jobs:
           PW_TRIM=$(printf '%s' "$PW" | tr -d '[:space:]')
           echo "::add-mask::$PW_TRIM"
 
+          # ⛔ `-alias daftar` عمداً با برند عوض **نشد** و نباید بشود.
+          #    این نامِ ما نیست، نامِ ورودیِ داخلِ همان فایلِ keystore است
+          #    که در `KEYSTORE_BASE64` نشسته. عوض کردنش یعنی `keytool`
+          #    ورودی را پیدا نمی‌کند و همین‌جا با «keystore password was
+          #    incorrect» می‌ایستد — پیامی که هیچ ربطی به علتش ندارد و
+          #    ساعت‌ها دنبالِ رمز می‌گردید. (در `build.gradle.kts` هم
+          #    همین رشته است و هر دو باید یکی بمانند.)
           USED=""
           if keytool -list -keystore "$KEYSTORE" -storepass "$PW" -alias daftar >/dev/null 2>&1; then
             USED="$PW"
@@ -140,7 +147,7 @@ jobs:
       - name: ساخت APK امضاشده
         working-directory: mobile
         env:
-          KEYSTORE_FILE: ${{ runner.temp }}/daftar-release.jks
+          KEYSTORE_FILE: ${{ runner.temp }}/hesabland-release.jks
         run: gradle assembleRelease --no-daemon
 
       # ⛔ سنجشِ نتیجه، نه فقط «ساخت موفق بود».
@@ -180,7 +187,11 @@ jobs:
           AAPT=$(find "$ANDROID_HOME/build-tools" -name aapt2 | sort | tail -1)
           if [ -n "$AAPT" ]; then
             DUMP=$("$AAPT" dump xmltree --file AndroidManifest.xml "$APK" 2>/dev/null || true)
-            for NEEDLE in "RECEIVE_SMS" "BankSmsReceiver" "SmsSetupActivity"; do
+            # ⛔ `POST_NOTIFICATIONS` هم در همین فهرست است و اختیاری نیست:
+            #    روی اندروید ۱۳ به بالا بدونش پیامک خوانده می‌شود و هیچ
+            #    اعلانی دیده نمی‌شود — یعنی همان خرابیِ بی‌صدا، این بار یک
+            #    قدم جلوتر.
+            for NEEDLE in "RECEIVE_SMS" "POST_NOTIFICATIONS" "BankSmsReceiver" "SmsSetupActivity"; do
               if ! printf '%s' "$DUMP" | grep -q "$NEEDLE"; then
                 echo "::error::«$NEEDLE» در manifestِ خودِ APK نیست."
                 echo "::error::اپ ساخته و نصب می‌شود ولی ثبت خودکار از پیامک کار نمی‌کند."
@@ -192,13 +203,13 @@ jobs:
             echo "::warning::aapt2 پیدا نشد؛ بازرسیِ manifestِ APK انجام نشد."
           fi
 
-          cp "$APK" "$GITHUB_WORKSPACE/daftar-${{ github.run_number }}.apk"
-          ls -lh "$GITHUB_WORKSPACE/daftar-${{ github.run_number }}.apk"
+          cp "$APK" "$GITHUB_WORKSPACE/hesabland-${{ github.run_number }}.apk"
+          ls -lh "$GITHUB_WORKSPACE/hesabland-${{ github.run_number }}.apk"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: daftar-apk-${{ github.run_number }}
-          path: daftar-*.apk
+          name: hesabland-apk-${{ github.run_number }}
+          path: hesabland-*.apk
           retention-days: 30
 
       # artifact همیشه zip دانلود می‌شود، حتی با یک فایل. روی گوشی یعنی
@@ -210,7 +221,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "build-${{ github.run_number }}" \
-            "daftar-${{ github.run_number }}.apk" \
+            "hesabland-${{ github.run_number }}.apk" \
             --title "نسخه ${{ github.run_number }}" \
             --notes "ساخته‌شده از ${{ github.sha }}
 

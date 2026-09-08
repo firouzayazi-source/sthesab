@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# backup.sh — بکاپ روزانه از دیتابیس دفتر مالی
+# backup.sh — بکاپ روزانه از دیتابیس حساب لند
 #
 # ─── رعایت قانون جداسازی ───────────────────────────────────────────
 # فقط از دیتابیس همین پروژه بکاپ می‌گیرد (mysqldump روی hesab_db با
@@ -46,7 +46,7 @@ if [[ "${1:-}" == "--install-cron" ]]; then
     [[ $EUID -ne 0 ]] && { red "برای نصب cron باید با sudo اجرا شود."; exit 1; }
     # فایل اختصاصی این پروژه — به cron بقیه‌ی سرویس‌ها دست نمی‌زند
     cat > /etc/cron.d/hesab-backup <<CRON
-# بکاپ روزانه دیتابیس دفتر مالی — فقط مربوط به همین پروژه
+# بکاپ روزانه دیتابیس حساب لند — فقط مربوط به همین پروژه
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 30 3 * * * root $APP_DIR/deploy/backup.sh >> $BACKUP_DIR/backup.log 2>&1

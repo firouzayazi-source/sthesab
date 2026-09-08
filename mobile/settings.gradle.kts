@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "daftar"
+rootProject.name = "hesabland"
 include(":app")

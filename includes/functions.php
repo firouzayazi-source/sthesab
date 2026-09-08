@@ -3246,12 +3246,12 @@ function androidApkUrl(): string
         return trim((string)ANDROID_APK_URL);
     }
 
-    $path = __DIR__ . '/../download/daftar.apk';
+    $path = __DIR__ . '/../download/hesabland.apk';
     if (is_file($path) && filesize($path) > 0) {
         // ⚠ `?v=` از زمانِ فایل می‌آید تا نسخه‌ی تازه واقعاً دانلود شود.
         //   بدونش، مرورگرِ کسی که یک بار دانلود کرده ممکن است همان
         //   فایلِ قدیمی را بدهد و کاربر فکر کند به‌روزرسانی نشده.
-        return APP_BASE_PATH . '/download/daftar.apk?v=' . (int)filemtime($path);
+        return APP_BASE_PATH . '/download/hesabland.apk?v=' . (int)filemtime($path);
     }
 
     return '';
@@ -3282,7 +3282,7 @@ function androidInstallBanner(): string
     $url = androidApkUrl();
     if ($url === '' || !isAndroidRequest()) { return ''; }
 
-    $app = defined('APP_NAME') ? APP_NAME : 'دفتر مالی';
+    $app = defined('APP_NAME') ? APP_NAME : 'حساب لند';
 
     ob_start(); ?>
 <div class="apk-bar" id="apkBar" hidden>
@@ -3301,6 +3301,12 @@ function androidInstallBanner(): string
     var bar = document.getElementById('apkBar');
     if (!bar) { return; }
 
+    /* ⛔ پیشوندِ `daftar_` عمداً با برند عوض **نشد** — نه اینجا و نه در
+       هیچ کلیدِ `localStorage` یا کوکیِ دیگری. این‌ها نامِ ما نیستند،
+       نشانیِ چیزی هستند که همین حالا روی مرورگرِ کاربر نشسته: عوض
+       کردنشان یعنی حالت شب، کارت‌های پین‌شده، فیلترِ دارایی و «دستگاه
+       مورد اعتماد» همه از نو صفر می‌شوند و کاربر دوباره رمز می‌خواهد —
+       بی‌هیچ خطایی و بدونِ اینکه کسی ربطش را به تغییرِ نام پیدا کند. */
     var HAS = 'daftar_has_apk';     // یک بار از داخلِ اپ باز شده؟
     var NO  = 'daftar_apk_hide';    // کاربر خودش بست؟
 

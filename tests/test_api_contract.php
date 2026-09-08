@@ -582,6 +582,126 @@ if (!file_exists($gradlePath)) {
     T::ok(($mApp[1] ?? '') !== '' && ($mApp[1] ?? '') === ($al[0]['target']['package_name'] ?? ''),
           'نام بسته در gradle و assetlinks یکی است');
 
+    // ⛔ و نامِ بسته در **پنج** جای دیگر هم تکرار شده. عوض کردنِ برند یک
+    //    بار انجام می‌شود و هر جای جامانده یک خرابیِ **بی‌صدا**ی جدا
+    //    می‌سازد:
+    //      • پوشه‌ی سورس و خطِ `package` → گریدل ممکن است بسازد ولی
+    //        `R` و کلاس‌ها سرِ جای اشتباه می‌نشینند.
+    //      • `action` در manifest و لینکِ `intent://` در `profile.php` →
+    //        دکمه‌ی «تنظیم در اپ اندروید» زده می‌شود و **هیچ اتفاقی
+    //        نمی‌افتد**؛ نه خطایی، نه صفحه‌ای.
+    //      • `package=` داخلِ همان لینک → اندروید اپ را پیدا نمی‌کند.
+    //    هیچ‌کدام هنگام ساخت دیده نمی‌شوند، پس اینجا سنجیده می‌شوند.
+    $appId  = $mApp[1] ?? '';
+    $mobile = __DIR__ . '/../mobile/app/src/main/';
+    $pkgBad = [];
+
+    if ($appId !== '') {
+        // ۱) `namespace` باید با `applicationId` یکی باشد.
+        preg_match('/namespace\s*=\s*"([^"]+)"/', $gradle, $mNs);
+        if (($mNs[1] ?? '') !== $appId) {
+            $pkgBad[] = 'build.gradle.kts — namespace با applicationId یکی نیست';
+        }
+
+        // ۲) پوشه‌ی سورس و خطِ `package` هر فایلِ جاوا.
+        $pkgDir = $mobile . 'java/' . str_replace('.', '/', $appId);
+        if (!is_dir($pkgDir)) {
+            $pkgBad[] = 'پوشه‌ی سورسِ جاوا با نامِ بسته نمی‌خواند: java/'
+                      . str_replace('.', '/', $appId);
+        }
+        foreach (glob($mobile . 'java/*/*/*/*.java') ?: [] as $j) {
+            if (!preg_match('/^\s*package\s+([A-Za-z0-9_.]+)\s*;/m',
+                            (string)file_get_contents($j), $mPkg)
+                || $mPkg[1] !== $appId) {
+                $pkgBad[] = basename($j) . ' — خطِ package با نامِ بسته نمی‌خواند';
+            }
+        }
+
+        // ۳) `action` صفحه‌ی تنظیمِ پیامک و لینکِ `intent://` در سایت.
+        $mf   = (string)@file_get_contents($mobile . 'AndroidManifest.xml');
+        $prof = (string)@file_get_contents(__DIR__ . '/../profile.php');
+        $act  = $appId . '.SMS_SETUP';
+        if ($mf !== '' && !str_contains($mf, $act)) {
+            $pkgBad[] = "AndroidManifest — action «{$act}» نیست";
+        }
+        if ($prof !== '' && str_contains($prof, 'intent://')) {
+            if (!str_contains($prof, 'action=' . $act)) {
+                $pkgBad[] = 'profile.php — action لینکِ intent با نامِ بسته نمی‌خواند';
+            }
+            if (!str_contains($prof, 'package=' . $appId)) {
+                $pkgBad[] = 'profile.php — package لینکِ intent با نامِ بسته نمی‌خواند';
+            }
+        }
+    }
+    T::bulk(6, $pkgBad, 'نامِ بسته در همه‌ی نقطه‌های وابسته یکی است');
+
+    // ⛔ مسیرِ گرفتنِ مجوز — و هر چهار بندش یک خرابیِ **بی‌صدا** را
+    //    می‌بندد. هیچ‌کدام هنگام ساخت یا نصب دیده نمی‌شوند؛ اپ بالا
+    //    می‌آید و فقط «کار نمی‌کند».
+    $permBad = [];
+    $mf   = (string)@file_get_contents($mobile . 'AndroidManifest.xml');
+    $setup = (string)@file_get_contents($mobile . 'java/'
+                    . str_replace('.', '/', $appId) . '/SmsSetupActivity.java');
+
+    // ۱) `POST_NOTIFICATIONS` هم باید اعلام شود. بدونش روی اندروید ۱۳
+    //    به بالا پیامک خوانده می‌شود، `notify()` بی‌خطا اجرا می‌شود، و
+    //    **هیچ اعلانی دیده نمی‌شود**.
+    foreach (['android.permission.RECEIVE_SMS', 'android.permission.POST_NOTIFICATIONS'] as $p) {
+        if (!str_contains($mf, $p)) { $permBad[] = "AndroidManifest — «{$p}» اعلام نشده"; }
+    }
+
+    // ۲) و `READ_SMS` نباید باشد: این اپ صندوقِ پیامک را نمی‌خواند،
+    //    فقط پیامکِ **رسیده** را می‌گیرد. مجوزی که لازم نیست، هم
+    //    کاربر را می‌ترساند هم اپ را از هر فروشگاهی بیرون می‌اندازد.
+    if (str_contains($mf, 'android.permission.READ_SMS')) {
+        $permBad[] = 'AndroidManifest — READ_SMS لازم نیست و نباید خواسته شود';
+    }
+
+    // ۳) `MAIN`/`LAUNCHER` باید روی `SmsSetupActivity` باشد. تنها راهِ
+    //    پرسیدنِ مجوز در **اولین اجرا** همین است؛ `LauncherActivity`
+    //    مالِ کتابخانه است و از آن نمی‌شود مجوز خواست. اگر برگردد سرِ
+    //    جای قبلی، اپ دقیقاً مثل امروز باز می‌شود و هیچ‌وقت چیزی
+    //    نمی‌پرسد — یعنی همان باگی که این تغییر برای رفعش نوشته شد.
+    if (preg_match('~<activity\b[^>]*\.SmsSetupActivity.*?</activity>~s', $mf, $mAct)) {
+        if (!str_contains($mAct[0], 'android.intent.category.LAUNCHER')) {
+            $permBad[] = 'AndroidManifest — SmsSetupActivity دیگر LAUNCHER نیست؛'
+                       . ' مجوز در اولین اجرا پرسیده نمی‌شود';
+        }
+        // ۴) و `noHistory` روی همان اکتیویتی یعنی هنگام بالا آمدنِ
+        //    دیالوگِ مجوز `finish` می‌شود و `onRequestPermissionsResult`
+        //    هرگز نمی‌رسد: کاربر «اجازه» را می‌زند و هیچ اتفاقی نمی‌افتد.
+        if (str_contains($mAct[0], 'noHistory')) {
+            $permBad[] = 'AndroidManifest — noHistory روی SmsSetupActivity'
+                       . ' پاسخِ دیالوگِ مجوز را از بین می‌برد';
+        }
+    } else {
+        $permBad[] = 'AndroidManifest — بلوکِ SmsSetupActivity پیدا نشد';
+    }
+
+    // ۵) و خودِ کد باید واقعاً هر دو را بخواهد. «در manifest نوشته شده»
+    //    با «از کاربر خواسته می‌شود» یکی نیست — همان درسِ nginx.
+    if ($setup === '') {
+        $permBad[] = 'SmsSetupActivity.java پیدا نشد';
+    } else {
+        // ⚠ کامنت‌ها **پیش از** جست‌وجو حذف می‌شوند، وگرنه این بررسی
+        //   پوچ است: توضیحاتِ همین فایل نامِ هر دو مجوز را دارند، پس با
+        //   جست‌وجوی خام، برداشتنِ کاملِ درخواستِ مجوز هم سبز می‌ماند.
+        //   با آزمونِ جهش دیده شد — نسخه‌ی اول دقیقاً همین‌طور بود.
+        $setupCode = preg_replace('~/\*.*?\*/~s', '', $setup);
+        // `//` فقط وقتی کامنت است که بخشی از `://` نباشد.
+        $setupCode = preg_replace('~(?<!:)//[^\n]*~', '', (string)$setupCode);
+
+        foreach (['RECEIVE_SMS', 'POST_NOTIFICATIONS'] as $p) {
+            if (!str_contains((string)$setupCode, $p)) {
+                $permBad[] = "SmsSetupActivity — «{$p}» در زمانِ اجرا خواسته نمی‌شود";
+            }
+        }
+        if (!str_contains((string)$setupCode, 'requestPermissions')) {
+            $permBad[] = 'SmsSetupActivity — هیچ درخواستِ مجوزی در کار نیست';
+        }
+    }
+    T::bulk(7, $permBad, 'مجوزهای پیامک و اعلان اعلام و در زمانِ اجرا خواسته می‌شوند');
+
     // آدرسِ باز شونده باید روی همان دامنه‌ای باشد که intent-filter
     // تأییدش می‌کند؛ وگرنه اپ صفحه‌ای را باز می‌کند که برایش تأیید ندارد.
     T::ok(($mHost[1] ?? '') !== '' && str_contains($mUrl[1] ?? '', $mHost[1] ?? "\0"),
@@ -1026,7 +1146,26 @@ if ($appJs !== '') {
 
 // سمتِ اندروید: آدرس با `#sms=` ساخته شود، و هیچ درخواستِ شبکه‌ای در
 // کارِ گیرنده نباشد.
-foreach (glob(__DIR__ . '/../mobile/app/src/main/java/ir/stland/daftar/*.java') as $j) {
+// ⛔ مسیرِ پکیج **سخت‌کد نمی‌شود**. نسخه‌ی اول
+//    `java/ir/stland/daftar/*.java` بود، و اولین باری که نامِ بسته عوض
+//    شد آن glob هیچ فایلی برنمی‌گرداند — یعنی همه‌ی بررسی‌های زیر بی‌صدا
+//    ناپدید می‌شدند و تست **سبز** می‌ماند. سنجشی که روی خرابی سبز
+//    می‌شود از نبودِ سنجش بدتر است.
+$nativeJava = [];
+$javaRoot   = __DIR__ . '/../mobile/app/src/main/java';
+if (is_dir($javaRoot)) {
+    $itJ = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($javaRoot, FilesystemIterator::SKIP_DOTS));
+    foreach ($itJ as $f) {
+        if (preg_match('/\.java$/i', $f->getFilename())) { $nativeJava[] = $f->getPathname(); }
+    }
+}
+// و اگر روزی هیچ‌کدام پیدا نشدند، خودِ همین نبودن یک خطاست.
+if (!$nativeJava && is_dir($javaRoot)) {
+    $smsBad[] = 'هیچ فایلِ جاوایی زیر mobile/ پیدا نشد — پلِ پیامک گم شده';
+    $smsSeen++;
+}
+foreach ($nativeJava as $j) {
     $smsSeen++;
     $src  = file_get_contents($j);
     $name = basename($j);
@@ -1343,7 +1482,7 @@ $bad = [];
 //   جست‌وجوی متنی تست روی فایلِ **سالم** هم قرمز می‌شد.
 T::group('قاعده ۲۲ — نامِ برند فقط از APP_NAME');
 
-$brand = 'دفتر مالی';
+$brand = 'حساب لند';
 $brandFiles = [];
 foreach (['.', 'includes', 'api', 'admin', 'deploy'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $brandFiles[realpath($p)] = true; }
@@ -1369,7 +1508,7 @@ foreach (array_keys($brandFiles) as $path) {
             && $tok[0] !== T_INLINE_HTML) { continue; }
         if (!str_contains($tok[1], $brand)) { continue; }
 
-        // ⚠ الگوی مجازِ برگشتی: `defined('APP_NAME') ? APP_NAME : 'دفتر مالی'`
+        // ⚠ الگوی مجازِ برگشتی: `defined('APP_NAME') ? APP_NAME : 'حساب لند'`
         //   روی همان خط. نصبی که هنوز ثابت را ندارد نباید بشکند.
         $line = $lines[$tok[2] - 1] ?? '';
         if (str_contains($line, 'APP_NAME')) { continue; }

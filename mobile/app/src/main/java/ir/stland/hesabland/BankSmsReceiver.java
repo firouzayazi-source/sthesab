@@ -1,4 +1,4 @@
-package ir.stland.daftar;
+package ir.stland.hesabland;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -44,7 +44,7 @@ import java.net.URLEncoder;
 public class BankSmsReceiver extends BroadcastReceiver {
 
     private static final String CHANNEL_ID = "bank_sms";
-    public  static final String PREFS      = "daftar";
+    public  static final String PREFS      = "hesabland";
     public  static final String PREF_ON    = "sms_capture_on";
 
     /**
@@ -145,6 +145,13 @@ public class BankSmsReceiver extends BroadcastReceiver {
         NotificationManager nm =
                 (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) { return; }
+
+        // ⚠ روی اندروید ۱۳ به بالا، بدونِ `POST_NOTIFICATIONS` خطِ
+        //   `nm.notify()` زیر **بی‌هیچ خطایی** اجرا می‌شود و هیچ چیزی
+        //   دیده نمی‌شود. آن مجوز را `SmsSetupActivity` کنارِ همان مجوزِ
+        //   پیامک می‌گیرد و اگر داده نشده باشد همان‌جا صریح می‌گوید —
+        //   اینجا کاری از دستِ گیرنده برنمی‌آید (از یک BroadcastReceiver
+        //   نمی‌شود مجوز خواست).
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel ch = new NotificationChannel(

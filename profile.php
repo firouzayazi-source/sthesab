@@ -274,7 +274,7 @@ include __DIR__ . '/includes/header.php';
         و چیزی به سرور فرستاده نمی‌شود.
     </p>
     <a class="btn btn-secondary btn-sm" id="smsCaptureLink"
-       href="intent://sms-setup#Intent;scheme=daftar;action=ir.stland.daftar.SMS_SETUP;package=ir.stland.daftar;end">
+       href="intent://sms-setup#Intent;scheme=hesabland;action=ir.stland.hesabland.SMS_SETUP;package=ir.stland.hesabland;end">
         تنظیم در اپ اندروید
     </a>
 

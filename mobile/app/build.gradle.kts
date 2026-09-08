@@ -3,17 +3,26 @@ plugins {
 }
 
 android {
-    namespace = "ir.stland.daftar"
+    // ⛔ `namespace` و `applicationId` عمداً یکی‌اند و **تنها مرجعِ** نامِ
+    //    بسته‌اند. چهار جای دیگر باید با همین بخوانند و هیچ‌کدام خودش
+    //    مرجع نیست: پوشه‌ی سورسِ جاوا و خطِ `package` هر دو فایل،
+    //    `action` صفحه‌ی تنظیمِ پیامک در manifest، لینکِ `intent://` در
+    //    `profile.php`، و `package_name` در `.well-known/assetlinks.json`.
+    //    اگر یکی جا بماند، خرابی **بی‌صداست**: یا اپ با نوار آدرس بالا
+    //    می‌آید (assetlinks)، یا دکمه‌ی «تنظیم در اپ اندروید» زده می‌شود و
+    //    هیچ اتفاقی نمی‌افتد (intent). قاعده ۱۲ در `test_api_contract.php`
+    //    هر چهار را با همین خط می‌سنجد.
+    namespace = "ir.stland.hesabland"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "ir.stland.daftar"
+        applicationId = "ir.stland.hesabland"
         // ۲۱ یعنی اندروید ۵ به بالا. TWA خودش به کروم ۷۲+ نیاز دارد که
         // روی همه‌ی این دستگاه‌ها به‌روز می‌شود.
         minSdk = 21
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
 
         // آدرسی که اپ باز می‌کند. کتابخانه‌ی androidbrowserhelper این
         // مقادیر را از manifest می‌خواند و manifest از همین‌جا پر می‌شود،
@@ -46,6 +55,13 @@ android {
             if (ks != null) {
                 storeFile = file(ks)
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
+                // ⛔ نامِ کلید عمداً با برند عوض **نشد** و نباید بشود.
+                //    این رشته نامِ ما نیست، نامِ ورودیِ داخلِ همان فایلِ
+                //    keystore ای است که در `KEYSTORE_BASE64` نشسته. عوض
+                //    کردنش یعنی `keytool` آن ورودی را پیدا نمی‌کند، امضا
+                //    شکست می‌خورد، و ساخت با «keystore password was
+                //    incorrect» می‌ایستد — پیامی که هیچ ربطی به علت ندارد.
+                //    (همین رشته در `.github/workflows/android.yml` هم هست.)
                 keyAlias = "daftar"
                 keyPassword = System.getenv("KEYSTORE_PASSWORD")
             }

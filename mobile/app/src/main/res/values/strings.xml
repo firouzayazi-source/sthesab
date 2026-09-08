@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">دفتر مالی</string>
+    <string name="app_name">حساب لند</string>
 
     <!--
       ⛔ آدرس اینجا **نوشته نمی‌شود**؛ از `manifestPlaceholders` در
@@ -24,4 +24,15 @@
     <string name="sms_state_off">خاموش است — هیچ پیامکی خوانده نمی‌شود.</string>
     <string name="sms_state_no_perm">مجوز خواندن پیامک داده نشده است.</string>
     <string name="sms_perm_denied">بدون این مجوز، ثبت خودکار از پیامک کار نمی‌کند.</string>
+
+    <!-- ⛔ حالتِ سومِ خرابی، و بی‌صداترینشان: مجوزِ پیامک هست، کلید هم
+         روشن است، پیامک هم خوانده می‌شود — ولی اعلان‌های اپ بسته‌اند و
+         هیچ چیزی دیده نمی‌شود. بدونِ این پیام، کاربر فقط نتیجه می‌گرفت
+         قابلیت خراب است. -->
+    <string name="sms_state_no_notif">پیامک خوانده می‌شود ولی اعلان‌های این برنامه بسته‌اند، پس چیزی دیده نمی‌شود.</string>
+    <string name="sms_notif_fix">اجازه‌ی نمایش اعلان</string>
+
+    <!-- اولین اجرا: خواسته می‌شود، ولی رد کردنش هیچ دری را نمی‌بندد. -->
+    <string name="sms_setup_skip">فعلاً نه — رفتن به برنامه</string>
+    <string name="sms_setup_first_run">این را می‌توانید همین حالا روشن کنید یا بعداً از پروفایل. بدون آن هم برنامه کامل کار می‌کند.</string>
 </resources>

@@ -37,7 +37,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/functions.php';
 
 $root = dirname(__DIR__);
-$apk  = $root . '/download/daftar.apk';
+$apk  = $root . '/download/hesabland.apk';
 
 // ⛔ فایلِ واقعیِ کاربر نباید قربانیِ تست شود: اگر از قبل APK ای هست،
 //   کنار گذاشته و در پایان برگردانده می‌شود — حتی اگر تست وسطِ کار
@@ -81,7 +81,7 @@ file_put_contents($apk, "PK\x03\x04" . str_repeat('x', 64));
 
 $url = androidApkUrl();
 T::ok($url !== '', 'با وجود فایل، آدرس ساخته می‌شود', $url);
-T::ok(str_contains($url, 'daftar.apk'), 'و به همان فایل اشاره می‌کند');
+T::ok(str_contains($url, 'hesabland.apk'), 'و به همان فایل اشاره می‌کند');
 T::ok(str_contains($url, '?v='),
     '⚠ نسخه در آدرس هست، وگرنه به‌روزرسانی به دستِ کسی که یک بار دانلود کرده نمی‌رسد');
 

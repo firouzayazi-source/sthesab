@@ -3,7 +3,7 @@
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "ir.stland.daftar",
+      "package_name": "ir.stland.hesabland",
       "sha256_cert_fingerprints": [
         "8C:87:66:39:C0:27:F3:97:A5:9A:DC:26:77:A0:2D:D1:1D:D1:F3:29:C9:FF:B6:FA:0D:15:78:DD:4E:45:03:2C"
       ]
