@@ -1,7 +1,6 @@
 package ir.stland.hesabland;
 
 import android.Manifest;
-import android.app.Activity;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
@@ -18,6 +17,8 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+
+import androidx.appcompat.app.AppCompatActivity;
 
 /**
  * تنها صفحه‌ی «بومی» این اپ — و عمداً همین یکی.
@@ -49,8 +50,16 @@ import android.widget.Toast;
  * ⚠ صفحه عمداً در کد ساخته می‌شود نه با فایل layout: یک کارتِ متن و چند
  *   دکمه است و یک فایلِ XML تازه فقط چیزی می‌شد که باید هم‌زمان با این
  *   نگه داشته شود.
+ *
+ * ⛔ **`AppCompatActivity` است نه `android.app.Activity`ِ خام، و این
+ *    اجباری است.** تمِ این اکتیویتی `Theme.AppCompat.NoActionBar` است و
+ *    همه‌ی `Button` و `TextView` ها در کد ساخته می‌شوند، پس سبکشان را از
+ *    همان تم می‌گیرند. یک اکتیویتیِ فریم‌ورکیِ خام با تمِ AppCompat یک
+ *    جفتِ ناهمخوان است؛ تا وقتی این صفحه فقط از لینکِ `intent://` باز
+ *    می‌شد کسی به آن نمی‌رسید، ولی از لحظه‌ای که **درِ ورودیِ اپ** شد،
+ *    هر خطایی اینجا یعنی اپ اصلاً بالا نمی‌آید.
  */
-public class SmsSetupActivity extends Activity {
+public class SmsSetupActivity extends AppCompatActivity {
 
     private static final int REQ_SMS   = 4021;
     private static final int REQ_NOTIF = 4022;
@@ -74,6 +83,32 @@ public class SmsSetupActivity extends Activity {
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
 
+        // ⛔ درِ ورودیِ اپ **هرگز** نباید بتواند جلوی باز شدنش را بگیرد.
+        //
+        //    از وقتی `MAIN`/`LAUNCHER` روی این اکتیویتی نشست، هر خطای
+        //    اینجا دیگر «صفحه‌ی تنظیم باز نشد» نیست — یعنی کاربر آیکون
+        //    را می‌زند و اپ بسته می‌شود، بدونِ هیچ توضیحی. پس هر
+        //    `Throwable` بلعیده می‌شود و مستقیم می‌رویم داخلِ سایت.
+        //
+        // ⚠ و متنِ خطا **نشان داده می‌شود**، برخلافِ قاعده‌ی همیشگی.
+        //   اینجا تنها جایی است که خطای خام به کاربر گفتن درست است:
+        //   جایگزینش یک اپ است که بی‌صدا بسته می‌شود و هیچ‌کس نمی‌فهمد
+        //   چرا — همان چیزی که این پروژه همه‌جا «خرابیِ بی‌صدا»
+        //   می‌نامدش.
+        try {
+            build();
+        } catch (Throwable t) {
+            try {
+                Toast.makeText(this,
+                        t.getClass().getSimpleName() + ": " + t.getMessage(),
+                        Toast.LENGTH_LONG).show();
+                markOnboarded();
+            } catch (Throwable ignored) { }
+            openSite();
+        }
+    }
+
+    private void build() {
         boolean fromLauncher = Intent.ACTION_MAIN.equals(getIntent().getAction());
         firstRun = fromLauncher && !prefs().getBoolean(PREF_ONBOARDED, false);
 
@@ -154,8 +189,14 @@ public class SmsSetupActivity extends Activity {
     /** رفتن به خودِ برنامه — همان اکتیویتیِ کتابخانه که آدرس را باز می‌کند. */
     private void openSite() {
         try {
-            startActivity(new Intent(this,
-                    com.google.androidbrowserhelper.trusted.LauncherActivity.class));
+            Intent i = new Intent(this,
+                    com.google.androidbrowserhelper.trusted.LauncherActivity.class);
+            // ⚠ `NEW_TASK` را خودِ کتابخانه می‌خواهد: بدونش
+            //   `restartInNewTask()` اکتیویتی را یک بار دور می‌اندازد و
+            //   با همین فلگ از نو می‌سازد — کار می‌کند ولی یک پرشِ
+            //   اضافه است.
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(i);
         } catch (Exception e) {
             // ⚠ عمداً بلعیده می‌شود: این صفحه هیچ‌وقت نباید مانعِ باز
             //   شدنِ اپ شود. حتی اگر اینجا شکست بخورد، `finish()` زیر
@@ -297,6 +338,10 @@ public class SmsSetupActivity extends Activity {
 
     @Override
     public void onRequestPermissionsResult(int req, String[] perms, int[] results) {
+        // ⚠ `AppCompatActivity` این را برای فرگمنت‌ها لازم دارد؛ نبودنش
+        //   امروز چیزی نمی‌شکند ولی یک بدهیِ خاموش است.
+        super.onRequestPermissionsResult(req, perms, results);
+
         boolean ok = results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED;
 
         if (req == REQ_SMS && ok) {

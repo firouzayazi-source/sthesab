@@ -699,8 +699,40 @@ if (!file_exists($gradlePath)) {
         if (!str_contains((string)$setupCode, 'requestPermissions')) {
             $permBad[] = 'SmsSetupActivity — هیچ درخواستِ مجوزی در کار نیست';
         }
+
+        // ⛔ و چون همین اکتیویتی **درِ ورودیِ اپ** است، دو چیز روی آن
+        //    اجباری‌اند — هر دو با یک خرابیِ واقعی خریداری شده‌اند:
+        //    اپ نصب شد و با زدنِ آیکون بسته می‌شد، بی‌هیچ توضیحی.
+        //
+        //    ۱. `AppCompatActivity` باشد نه `android.app.Activity`ِ خام:
+        //       تمش `Theme.AppCompat` است و همه‌ی ویجت‌ها در کد ساخته
+        //       می‌شوند، پس آن جفت باید همخوان بماند.
+        //    ۲. `onCreate` یک گاردِ `Throwable` داشته باشد: هر خطایی
+        //       اینجا دیگر «صفحه باز نشد» نیست، «اپ باز نمی‌شود» است.
+        if (!str_contains((string)$setupCode, 'extends AppCompatActivity')) {
+            $permBad[] = 'SmsSetupActivity — با تمِ AppCompat باید AppCompatActivity باشد';
+        }
+        // ⚠ گارد باید داخلِ **خودِ `onCreate`** باشد، نه هر جای فایل.
+        //   نسخه‌ی اول فقط دنبالِ رشته‌ی `catch (Throwable` در کلِ فایل
+        //   می‌گشت و یک `catch (Throwable ignored)` در جای دیگری سبزش
+        //   می‌کرد — با آزمونِ جهش دیده شد.
+        $oc = '';
+        if (preg_match('~protected void onCreate\b.*?\n    \}~s', (string)$setupCode, $mOc)) {
+            $oc = $mOc[0];
+        }
+        if ($oc === '') {
+            $permBad[] = 'SmsSetupActivity — بدنه‌ی onCreate پیدا نشد';
+        } elseif (!preg_match('~try\s*\{\s*build\(\);\s*\}\s*catch\s*\(\s*Throwable~', $oc)
+                  || !str_contains($oc, 'openSite')) {
+            // ⚠ و دقیقاً روی «`build()` داخلِ try است» می‌نشیند، نه «جایی
+            //   در onCreate یک Throwable هست»: نسخه‌ی دوم هم پوچ بود،
+            //   چون `catch (Throwable ignored)`ِ خودِ همان بلوک سبزش
+            //   می‌کرد. دو جهش لازم شد تا این معلوم شود.
+            $permBad[] = 'SmsSetupActivity — onCreate گاردِ Throwable با راهِ فرار ندارد؛'
+                       . ' یک خطا یعنی اپ اصلاً باز نمی‌شود';
+        }
     }
-    T::bulk(7, $permBad, 'مجوزهای پیامک و اعلان اعلام و در زمانِ اجرا خواسته می‌شوند');
+    T::bulk(9, $permBad, 'مجوزهای پیامک و اعلان اعلام و در زمانِ اجرا خواسته می‌شوند');
 
     // آدرسِ باز شونده باید روی همان دامنه‌ای باشد که intent-filter
     // تأییدش می‌کند؛ وگرنه اپ صفحه‌ای را باز می‌کند که برایش تأیید ندارد.
