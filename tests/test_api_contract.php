@@ -1558,15 +1558,33 @@ T::bulk($proxyScanned, $badProxy,
  *   جایگزینی): بازدیدکننده‌ی بیرونی ۴۰۴ می‌گیرد ولی سنجشِ خودِ اسکریپت —
  *   که از 127.0.0.1 وصل می‌شود و سرآیند می‌فرستد — دست‌نخورده کار می‌کند.
  */
-$realipSh = (string)@file_get_contents(__DIR__ . '/../deploy/nginx-realip.sh');
-T::ok($realipSh !== '', 'deploy/nginx-realip.sh وجود دارد');
-// ⚠ اینجا دنبالِ خودِ **دستور** می‌گردیم، نه صرفِ نامِ متغیر: توضیحی که
-//   داخلِ همان بلوک نوشته شده هم آن نام را دارد، پس یک `str_contains`
-//   ساده حتی با حذفِ کاملِ گیت هم سبز می‌ماند. با جهش دیده شد — همان
-//   درسِ همیشگی که «جهشِ زنده‌مانده یعنی تست ناقص است».
-T::ok((bool)preg_match('/if \(\$realip_remote_addr !~.*\{\s*return 404;/', $realipSh),
+/*
+ * ⚠ و بلوک **رندرشده** سنجیده می‌شود، نه متنِ اسکریپت. اسکریپت آن را از
+ *   راهِ `awk -v` داخلِ فایلِ سایت می‌نویسد و awk هر دنباله‌ی escape را
+ *   **بی‌صدا** می‌خورد: `\.` می‌شود `.`. یعنی چیزی که روی سرور می‌نشیند
+ *   با چیزی که در سورس نوشته شده یکی نبود، و تستی که سورس را می‌سنجید
+ *   چیزی را تأیید می‌کرد که اجرا نمی‌شود. روی سرور واقعی با همان هشدارِ
+ *   awk دیده شد.
+ */
+$realipSh = __DIR__ . '/../deploy/nginx-realip.sh';
+$realipSrc = (string)@file_get_contents($realipSh);
+T::ok($realipSrc !== '', 'deploy/nginx-realip.sh وجود دارد');
+
+$rendered = '';
+if (preg_match('/^build_block\(\) \{.*?\n\}/ms', $realipSrc, $m)) {
+    $tmp = sys_get_temp_dir() . '/realip_block_' . getmypid() . '.sh';
+    file_put_contents($tmp, "BEGIN=''\nEND=''\n" . $m[0] . "\nbuild_block '127.0.0.1'\n");
+    $rendered = (string)@shell_exec('bash ' . escapeshellarg($tmp) . ' 2>/dev/null');
+    @unlink($tmp);
+}
+T::ok($rendered !== '', 'بلوکِ nginx رندر شد');
+T::ok(str_contains($rendered, 'if ($realip_remote_addr !~')
+      && str_contains($rendered, 'return 404;'),
     '⛔ گیتِ /__realip روی آدرسِ واقعیِ اتصال است');
-T::ok(!preg_match('/deny\s+all/', $realipSh),
+T::ok(!preg_match('/awk\s+-v\s+block=/', $realipSrc),
+    '⛔ بلوک با `awk -v` منتقل نمی‌شود — awk مقدارِ -v را تفسیر می‌کند و '
+    . 'هر escape را بی‌صدا عوض می‌کند (`\\.`→`.`، `\\n`→خطِ واقعی)');
+T::ok(!preg_match('/deny\s+all/', $rendered),
     '⛔ allow/deny کنارِ return برنگشته — آنجا اصلاً اجرا نمی‌شود '
     . 'و مسیر را برای کلِ اینترنت باز می‌گذارد');
 

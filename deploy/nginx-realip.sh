@@ -110,7 +110,10 @@ build_block() {
     printf '    # 127.0.0.1 وصل می‌شود و سرآیند می‌فرستد — همچنان کار می‌کند.\n'
     printf '    location = /__realip {\n'
     printf '        default_type text/plain;\n'
-    printf '        if ($realip_remote_addr !~ %s) { return 404; }\n' "'^(127\\.0\\.0\\.1|::1)\$'"
+    # ⚠ نقطه با `[.]` نوشته می‌شود نه `\.` — همان معنا، بدونِ هیچ
+    # بک‌اسلشی. لازم نیست (انتقال به فایل دیگر escape نمی‌خورد) ولی نگه
+    # داشته شد: یک الگوی بی‌بک‌اسلش در برابرِ هر مسیرِ انتقالِ آینده هم امن است.
+    printf '        if ($realip_remote_addr !~ %s) { return 404; }\n' "'^(127[.]0[.]0[.]1|::1)\$'"
     printf '        return 200 "$remote_addr\\n";\n'
     printf '    }\n'
     printf '%s\n' "$END"
@@ -168,14 +171,30 @@ fi
 cp "$SITE_FILE" "$SITE_FILE.realip-bak"
 info "نسخه‌ی پشتیبان: $SITE_FILE.realip-bak"
 
-BLOCK=$(build_block "$TRUSTED")
+BLOCK_FILE=$(mktemp)
+# اسکریپت بینِ اینجا و پایان چند جا `exit 1` دارد (سنجشِ ناموفق، رول‌بک)،
+# پس پاک شدنش با trap است نه با یک `rm` در خطِ آخر.
+trap 'rm -f "$BLOCK_FILE"' EXIT
+build_block "$TRUSTED" > "$BLOCK_FILE"
 
+# ⛔ بلوک از راهِ **فایل** به awk می‌رود، نه `-v block=…`.
+#   awk مقدارِ `-v` را مثل یک رشته‌ی برنامه تفسیر می‌کند و هر دنباله‌ی
+#   escape را **بی‌صدا** عوض می‌کند: `\.` می‌شود `.` و `\n` می‌شود یک
+#   خطِ واقعی. یعنی چیزی که روی سرور می‌نشیند با چیزی که `build_block`
+#   ساخته یکی نیست — و آن‌وقت تستی که خروجیِ `build_block` را می‌سنجد،
+#   چیزی را تأیید می‌کند که اجرا نمی‌شود. روی سرور واقعی با هشدارِ
+#   «escape sequence \. treated as plain .» دیده شد.
+#   با `getline` بایت‌به‌بایت کپی می‌شود و هیچ تفسیری در کار نیست.
+#
 # بلوکِ قبلی (اگر بود) برداشته می‌شود تا اجرای دوباره تکراری نسازد، و
 # بلوکِ تازه بعد از هر `server_name` گذاشته می‌شود — هم در بلوکِ ۸۰ و هم ۴۴۳.
 strip_block "$SITE_FILE" > "$SITE_FILE.tmp"
-awk -v block="$BLOCK" '
+awk -v bf="$BLOCK_FILE" '
     { print }
-    /^[[:space:]]*server_name[[:space:]]/ { print block }
+    /^[[:space:]]*server_name[[:space:]]/ {
+        while ((getline line < bf) > 0) { print line }
+        close(bf)
+    }
 ' "$SITE_FILE.tmp" > "$SITE_FILE.new" && mv "$SITE_FILE.new" "$SITE_FILE"
 rm -f "$SITE_FILE.tmp"
 
