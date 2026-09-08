@@ -657,15 +657,24 @@ if (!file_exists($gradlePath)) {
         $permBad[] = 'AndroidManifest — READ_SMS لازم نیست و نباید خواسته شود';
     }
 
-    // ۳) `MAIN`/`LAUNCHER` باید روی `SmsSetupActivity` باشد. تنها راهِ
-    //    پرسیدنِ مجوز در **اولین اجرا** همین است؛ `LauncherActivity`
-    //    مالِ کتابخانه است و از آن نمی‌شود مجوز خواست. اگر برگردد سرِ
-    //    جای قبلی، اپ دقیقاً مثل امروز باز می‌شود و هیچ‌وقت چیزی
-    //    نمی‌پرسد — یعنی همان باگی که این تغییر برای رفعش نوشته شد.
+    // ۳) `MAIN`/`LAUNCHER` باید روی `LauncherActivity` باشد و روی
+    //    `SmsSetupActivity` **نباشد**. یک بار جابه‌جا شد (برای پرسیدنِ
+    //    مجوز در اولین اجرا) و پس داده شد: هزینه‌اش را **هر** بار باز
+    //    کردنِ اپ می‌داد — یک پنجره‌ی اضافه پیش از کروم، و کاربر «چند
+    //    بار رفرش شدن و صفحه‌ی سفید» می‌دید. مجوز یک بار پرسیده می‌شود،
+    //    اپ هزار بار باز می‌شود.
+    if (preg_match('~<activity\b[^>]*LauncherActivity.*?</activity>~s', $mf, $mLau)) {
+        if (!str_contains($mLau[0], 'android.intent.category.LAUNCHER')) {
+            $permBad[] = 'AndroidManifest — LauncherActivity دیگر LAUNCHER نیست؛'
+                       . ' اپ یک پنجره‌ی اضافه پیش از کروم باز می‌کند';
+        }
+    } else {
+        $permBad[] = 'AndroidManifest — بلوکِ LauncherActivity پیدا نشد';
+    }
     if (preg_match('~<activity\b[^>]*\.SmsSetupActivity.*?</activity>~s', $mf, $mAct)) {
-        if (!str_contains($mAct[0], 'android.intent.category.LAUNCHER')) {
-            $permBad[] = 'AndroidManifest — SmsSetupActivity دیگر LAUNCHER نیست؛'
-                       . ' مجوز در اولین اجرا پرسیده نمی‌شود';
+        if (str_contains($mAct[0], 'android.intent.category.LAUNCHER')) {
+            $permBad[] = 'AndroidManifest — SmsSetupActivity نباید LAUNCHER باشد؛'
+                       . ' درِ ورودی کردنش هر بار یک پنجره‌ی اضافه می‌سازد';
         }
         // ۴) و `noHistory` روی همان اکتیویتی یعنی هنگام بالا آمدنِ
         //    دیالوگِ مجوز `finish` می‌شود و `onRequestPermissionsResult`
@@ -707,8 +716,9 @@ if (!file_exists($gradlePath)) {
         //    ۱. `AppCompatActivity` باشد نه `android.app.Activity`ِ خام:
         //       تمش `Theme.AppCompat` است و همه‌ی ویجت‌ها در کد ساخته
         //       می‌شوند، پس آن جفت باید همخوان بماند.
-        //    ۲. `onCreate` یک گاردِ `Throwable` داشته باشد: هر خطایی
-        //       اینجا دیگر «صفحه باز نشد» نیست، «اپ باز نمی‌شود» است.
+        //    ۲. `onCreate` یک گاردِ `Throwable` داشته باشد: بدونش،
+        //       کاربری که «تنظیم در اپ اندروید» را می‌زند فقط یک اپِ
+        //       بسته‌شده می‌بیند و هیچ راهی برای فهمیدنِ علتش ندارد.
         if (!str_contains((string)$setupCode, 'extends AppCompatActivity')) {
             $permBad[] = 'SmsSetupActivity — با تمِ AppCompat باید AppCompatActivity باشد';
         }
@@ -722,17 +732,25 @@ if (!file_exists($gradlePath)) {
         }
         if ($oc === '') {
             $permBad[] = 'SmsSetupActivity — بدنه‌ی onCreate پیدا نشد';
-        } elseif (!preg_match('~try\s*\{\s*build\(\);\s*\}\s*catch\s*\(\s*Throwable~', $oc)
-                  || !str_contains($oc, 'openSite')) {
+        } else {
             // ⚠ و دقیقاً روی «`build()` داخلِ try است» می‌نشیند، نه «جایی
             //   در onCreate یک Throwable هست»: نسخه‌ی دوم هم پوچ بود،
             //   چون `catch (Throwable ignored)`ِ خودِ همان بلوک سبزش
             //   می‌کرد. دو جهش لازم شد تا این معلوم شود.
-            $permBad[] = 'SmsSetupActivity — onCreate گاردِ Throwable با راهِ فرار ندارد؛'
-                       . ' یک خطا یعنی اپ اصلاً باز نمی‌شود';
+            //   راهِ فرار هم باید **داخلِ همان catch** باشد، نه هر جای
+            //   onCreate: بدونِ `finish()` اکتیویتیِ نیمه‌ساخته روی صفحه
+            //   می‌ماند و کاربر یک صفحه‌ی خالی می‌بیند.
+            $hasTry = preg_match('~try\s*\{\s*build\(\);\s*\}\s*catch\s*\(\s*Throwable~',
+                                 $oc, $mTry, PREG_OFFSET_CAPTURE);
+            $escapes = $hasTry
+                    && str_contains(substr($oc, (int)$mTry[0][1]), 'finish()');
+            if (!$hasTry || !$escapes) {
+                $permBad[] = 'SmsSetupActivity — onCreate گاردِ Throwable با راهِ فرار ندارد؛'
+                           . ' یک خطا یعنی صفحه‌ی خالی، بی‌هیچ توضیحی';
+            }
         }
     }
-    T::bulk(9, $permBad, 'مجوزهای پیامک و اعلان اعلام و در زمانِ اجرا خواسته می‌شوند');
+    T::bulk(10, $permBad, 'مجوزهای پیامک و اعلان اعلام و در زمانِ اجرا خواسته می‌شوند');
 
     // آدرسِ باز شونده باید روی همان دامنه‌ای باشد که intent-filter
     // تأییدش می‌کند؛ وگرنه اپ صفحه‌ای را باز می‌کند که برایش تأیید ندارد.

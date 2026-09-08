@@ -30,12 +30,17 @@ import androidx.appcompat.app.AppCompatActivity;
  *    گرفتنِ مجوز از داخلِ صفحه‌ی وب اصلاً ممکن نیست (وب به SMS دسترسی
  *    ندارد؛ همان محدودیتی که در `CLAUDE.md` توضیح داده شده).
  *
- * ⛔ و از حالا **درِ ورودیِ اپ** هم هست (`MAIN`/`LAUNCHER` در manifest).
- *    دلیلش تنها خواسته‌ی صریح است: مجوز باید در **اولین اجرا** پرسیده
- *    شود، و اولین اجرا یعنی همان لحظه‌ای که کاربر آیکون را می‌زند.
- *    - اجرای اول  → همین صفحه با توضیح، و دو راه: روشن کردن، یا رد شدن.
- *    - اجراهای بعد → هیچ چیزی ساخته نمی‌شود؛ همان اول `LauncherActivity`
- *      باز می‌شود و این بسته. کاربر تفاوتی نمی‌بیند.
+ * ⛔ **و درِ ورودیِ اپ نیست — یک بار شد و پس گرفته شد.**
+ *    `MAIN`/`LAUNCHER` برای «پرسیدنِ مجوز در اولین اجرا» به اینجا منتقل
+ *    شده بود. کار می‌کرد، ولی هزینه‌اش را **هر** بار باز کردنِ اپ
+ *    می‌داد: یک اکتیویتیِ اضافه پیش از کروم، و کاربر «چند بار رفرش شدن
+ *    و صفحه‌ی سفید» می‌دید. مجوز یک بار پرسیده می‌شود و اپ هزار بار باز
+ *    می‌شود؛ گذاشتنِ هزینه روی مسیرِ پرتکرار برای سودِ مسیرِ یک‌باره،
+ *    معامله‌ی بدی است.
+ *    و بدتر از کندی: اولین چیزی که کاربرِ تازه از یک دفترِ مالی می‌دید
+ *    یک صفحه‌ی مجوزِ **پیامک** بود.
+ *    راهش همان لینکِ `intent://` از پروفایل است — تنها راهی که از اولش
+ *    هم بود.
  *
  * ⛔ و **پیش‌فرض همچنان خاموش است.** خواندنِ پیامک‌های ورودی چیزی نیست
  *    که با یک به‌روزرسانی و بی‌خبر روشن شود. اینجا هم فقط با تپِ خودِ
@@ -64,17 +69,6 @@ public class SmsSetupActivity extends AppCompatActivity {
     private static final int REQ_SMS   = 4021;
     private static final int REQ_NOTIF = 4022;
 
-    /**
-     * ⛔ نشانه‌ی «یک بار پرسیده‌ایم». بدونِ آن، هر بار باز کردنِ اپ همان
-     *    صفحه را نشان می‌داد — یعنی یک دیوارِ همیشگی سرِ راهِ کسی که
-     *    جوابش را داده. و «هشدارِ همیشگی بدتر از نبودنش است».
-     *
-     * ⚠ جدا از `PREF_ON` است و باید بماند: کسی که «فعلاً نه» زده هم
-     *   پاسخ داده، هرچند کلید خاموش مانده.
-     */
-    private static final String PREF_ONBOARDED = "sms_onboarded";
-
-    private boolean  firstRun;   // از آیکونِ اپ آمده و هنوز پاسخ نداده
     private TextView state;
     private Button   toggle;
     private Button   fixNotif;
@@ -83,18 +77,17 @@ public class SmsSetupActivity extends AppCompatActivity {
     protected void onCreate(Bundle saved) {
         super.onCreate(saved);
 
-        // ⛔ درِ ورودیِ اپ **هرگز** نباید بتواند جلوی باز شدنش را بگیرد.
+        // ⛔ گاردِ `Throwable` سرِ جایش می‌ماند، هرچند این صفحه دیگر درِ
+        //    ورودیِ اپ نیست.
         //
-        //    از وقتی `MAIN`/`LAUNCHER` روی این اکتیویتی نشست، هر خطای
-        //    اینجا دیگر «صفحه‌ی تنظیم باز نشد» نیست — یعنی کاربر آیکون
-        //    را می‌زند و اپ بسته می‌شود، بدونِ هیچ توضیحی. پس هر
-        //    `Throwable` بلعیده می‌شود و مستقیم می‌رویم داخلِ سایت.
+        //    همه‌ی ویجت‌ها اینجا در کد ساخته می‌شوند و هر ناهمخوانیِ
+        //    تم/اکتیویتی یک استثنا می‌دهد. بدونِ گارد، کاربری که از
+        //    پروفایل «تنظیم در اپ اندروید» را می‌زند یک اپِ بسته‌شده
+        //    می‌بیند — و هیچ راهی برای فهمیدنِ علتش ندارد.
         //
-        // ⚠ و متنِ خطا **نشان داده می‌شود**، برخلافِ قاعده‌ی همیشگی.
-        //   اینجا تنها جایی است که خطای خام به کاربر گفتن درست است:
-        //   جایگزینش یک اپ است که بی‌صدا بسته می‌شود و هیچ‌کس نمی‌فهمد
-        //   چرا — همان چیزی که این پروژه همه‌جا «خرابیِ بی‌صدا»
-        //   می‌نامدش.
+        // ⚠ و متنِ خطا **نشان داده می‌شود**، برخلافِ قاعده‌ی همیشگی:
+        //   جایگزینش سکوتِ کامل است، همان چیزی که این پروژه همه‌جا
+        //   «خرابیِ بی‌صدا» می‌نامدش.
         try {
             build();
         } catch (Throwable t) {
@@ -102,24 +95,12 @@ public class SmsSetupActivity extends AppCompatActivity {
                 Toast.makeText(this,
                         t.getClass().getSimpleName() + ": " + t.getMessage(),
                         Toast.LENGTH_LONG).show();
-                markOnboarded();
             } catch (Throwable ignored) { }
-            openSite();
+            finish();
         }
     }
 
     private void build() {
-        boolean fromLauncher = Intent.ACTION_MAIN.equals(getIntent().getAction());
-        firstRun = fromLauncher && !prefs().getBoolean(PREF_ONBOARDED, false);
-
-        // ⛔ مسیرِ عبور: هیچ view ای ساخته نمی‌شود و هیچ فریمی کشیده
-        //    نمی‌شود. زمینه‌ی تم تیره است، پس همان چیزی دیده می‌شود که
-        //    پیش از این هم دیده می‌شد — تا آمدنِ اولین فریمِ کروم.
-        if (fromLauncher && !firstRun) {
-            openSite();
-            return;
-        }
-
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(48, 64, 48, 48);
@@ -139,19 +120,6 @@ public class SmsSetupActivity extends AppCompatActivity {
         body.setGravity(Gravity.END);
         body.setPadding(0, 32, 0, 32);
         root.addView(body);
-
-        // ⚠ در اولین اجرا صریح گفته می‌شود که رد کردنش چیزی را نمی‌بندد.
-        //   بدونِ این خط، صفحه‌ی اولِ یک اپِ تازه‌نصب که مجوزِ پیامک
-        //   می‌خواهد شبیهِ یک شرطِ اجباری خوانده می‌شود.
-        if (firstRun) {
-            TextView lead = new TextView(this);
-            lead.setText(R.string.sms_setup_first_run);
-            lead.setTextColor(Color.parseColor("#8D93A0"));
-            lead.setTextSize(13);
-            lead.setGravity(Gravity.END);
-            lead.setPadding(0, 0, 0, 32);
-            root.addView(lead);
-        }
 
         state = new TextView(this);
         state.setTextColor(Color.parseColor("#E8B54D"));
@@ -174,40 +142,14 @@ public class SmsSetupActivity extends AppCompatActivity {
         root.addView(fixNotif);
 
         Button bottom = new Button(this);
-        bottom.setText(firstRun ? R.string.sms_setup_skip : R.string.sms_setup_back);
+        bottom.setText(R.string.sms_setup_back);
         bottom.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                if (firstRun) { markOnboarded(); openSite(); } else { finish(); }
-            }
+            @Override public void onClick(View v) { finish(); }
         });
         root.addView(bottom);
 
         setContentView(root);
         render();
-    }
-
-    /** رفتن به خودِ برنامه — همان اکتیویتیِ کتابخانه که آدرس را باز می‌کند. */
-    private void openSite() {
-        try {
-            Intent i = new Intent(this,
-                    com.google.androidbrowserhelper.trusted.LauncherActivity.class);
-            // ⚠ `NEW_TASK` را خودِ کتابخانه می‌خواهد: بدونش
-            //   `restartInNewTask()` اکتیویتی را یک بار دور می‌اندازد و
-            //   با همین فلگ از نو می‌سازد — کار می‌کند ولی یک پرشِ
-            //   اضافه است.
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            startActivity(i);
-        } catch (Exception e) {
-            // ⚠ عمداً بلعیده می‌شود: این صفحه هیچ‌وقت نباید مانعِ باز
-            //   شدنِ اپ شود. حتی اگر اینجا شکست بخورد، `finish()` زیر
-            //   کاربر را به صفحه‌ی خانه‌ی گوشی برمی‌گرداند، نه به یک
-            //   پیامِ خطای بی‌معنا.
-        }
-        finish();
-    }
-
-    private void markOnboarded() {
-        prefs().edit().putBoolean(PREF_ONBOARDED, true).apply();
     }
 
     private SharedPreferences prefs() {
@@ -267,7 +209,6 @@ public class SmsSetupActivity extends AppCompatActivity {
     private void onToggle() {
         if (enabled() && granted()) {
             prefs().edit().putBoolean(BankSmsReceiver.PREF_ON, false).apply();
-            markOnboarded();
             render();
             return;
         }
@@ -294,10 +235,8 @@ public class SmsSetupActivity extends AppCompatActivity {
      */
     private void turnOn() {
         prefs().edit().putBoolean(BankSmsReceiver.PREF_ON, true).apply();
-        markOnboarded();
         if (askNotifPermission()) { return; }   // جواب در callback می‌رسد
         render();
-        if (firstRun) { openSite(); }
     }
 
     /** @return آیا دیالوگی بالا آمد (یعنی جواب بعداً می‌رسد) */
@@ -345,9 +284,7 @@ public class SmsSetupActivity extends AppCompatActivity {
         boolean ok = results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED;
 
         if (req == REQ_SMS && ok) {
-            // `turnOn()` خودش مجوزِ اعلان را می‌پرسد و در اولین اجرا
-            // خودش هم اپ را باز می‌کند.
-            turnOn();
+            turnOn();   // خودش مجوزِ اعلان را هم می‌پرسد
             return;
         }
 
@@ -355,15 +292,12 @@ public class SmsSetupActivity extends AppCompatActivity {
             // ⛔ رد کردن هیچ چیزی را نمی‌شکند: کلید خاموش می‌ماند، پیامی
             //    داده می‌شود، و اپ عادی جلو می‌رود.
             prefs().edit().putBoolean(BankSmsReceiver.PREF_ON, false).apply();
-            markOnboarded();
             Toast.makeText(this, R.string.sms_perm_denied, Toast.LENGTH_LONG).show();
 
             // ⚠ «هرگز نپرس» یعنی درخواستِ بعدی بی‌صدا رد می‌شود؛ پس کاربر
             //   به تنظیماتِ خودِ اپ فرستاده می‌شود، وگرنه دکمه را می‌زند و
-            //   هیچ اتفاقی نمی‌افتد. **ولی نه در اولین اجرا**: پرت کردنِ
-            //   کسی که همین حالا «نه» گفته به صفحه‌ی تنظیماتِ سیستم،
-            //   جوابش را نادیده گرفتن است.
-            if (!firstRun && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+            //   هیچ اتفاقی نمی‌افتد.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                     && !shouldShowRequestPermissionRationale(Manifest.permission.RECEIVE_SMS)) {
                 openAppSettings();
             }
@@ -372,10 +306,6 @@ public class SmsSetupActivity extends AppCompatActivity {
         // مجوزِ اعلان: چه بدهد چه ندهد، قابلیت روشن می‌ماند و `render()`
         // حالتِ «اعلان‌ها بسته‌اند» را نشان می‌دهد.
         render();
-
-        // در اولین اجرا، پس از پاسخ به دیالوگ، خودِ برنامه باز می‌شود —
-        // کاربر برای رسیدن به اپ نباید دکمه‌ی دیگری بزند.
-        if (firstRun) { openSite(); }
     }
 
     @Override
