@@ -25,6 +25,57 @@ const SIGNUP_SETTING = 'allow_signup';
 /** حداکثر ثبت‌نام از یک IP در یک ساعت. */
 const SIGNUP_MAX_PER_IP = 5;
 
+/**
+ * عمرِ نشانه‌ی «مالکیتِ این شماره ثابت شد»، به ثانیه.
+ *
+ * کوتاه است چون فقط باید کاربر را از مرحله‌ی کد تا مرحله‌ی رمز برساند،
+ * ولی نه آن‌قدر کوتاه که کسی که وسطِ کار مکث کرده مجبور شود پیامکِ
+ * دیگری بگیرد — یعنی هزینه‌ی واقعی، هم برای او هم برای اعتبارِ پنل.
+ */
+const PHONE_VERIFY_TTL_SEC = 900;
+
+/** کلیدِ همان نشانه در نشست. */
+const PHONE_VERIFY_KEY = 'phone_verified';
+
+/**
+ * ⛔ «این شماره تأیید شد» فقط در **نشست** می‌ماند، نه در فرم.
+ *
+ * بقیه‌ی این صفحه شماره را در یک فیلدِ پنهان حمل می‌کند و آنجا بی‌خطر
+ * است: خودِ **کد** احراز می‌کند، نه فیلد. ولی از این مرحله به بعد کد
+ * سوخته و تنها چیزی که باقی مانده همین ادعاست — و ادعایی که از مرورگر
+ * بیاید یعنی هر کسی می‌تواند بنویسد «شماره‌ی فلانی تأیید شده» و بدونِ
+ * هیچ پیامکی برایش حساب بسازد. پس نشانه باید سمتِ سرور بماند.
+ *
+ * ⚠ مقایسه‌ی زمان اینجا در PHP است و این استثنا نیست: هر دو طرف
+ *   `time()` اند (اپکِ یونیکس، مستقل از منطقه‌ی زمانی). قاعده‌ی «زمان را
+ *   در دیتابیس بسنج» برای مقایسه‌ی مقدارِ PHP با `NOW()` است.
+ */
+function phoneVerifyRemember(string $phone): void
+{
+    $_SESSION[PHONE_VERIFY_KEY] = ['phone' => $phone, 'exp' => time() + PHONE_VERIFY_TTL_SEC];
+}
+
+/** آیا همین شماره تأییدشده و هنوز معتبر است؟ */
+function phoneVerifyOk(string $phone): bool
+{
+    $m = $_SESSION[PHONE_VERIFY_KEY] ?? null;
+    if (!is_array($m) || $phone === '') { return false; }
+    if (!hash_equals((string)($m['phone'] ?? ''), $phone)) { return false; }
+    return (int)($m['exp'] ?? 0) >= time();
+}
+
+/**
+ * سوزاندنِ نشانه.
+ *
+ * ⚠ فقط **پس از ساختِ حساب** صدا زده می‌شود، نه در هر شکستی: اگر رمزِ
+ *   کوتاه هم نشانه را می‌سوزاند، کاربری که یک بار اشتباه تایپ کرده
+ *   مجبور بود پیامکِ تازه بگیرد — یعنی تنبیهِ اشتباهِ تایپی با هزینه.
+ */
+function phoneVerifyBurn(): void
+{
+    unset($_SESSION[PHONE_VERIFY_KEY]);
+}
+
 /** آیا ثبت‌نامِ خودسرویس روشن است؟ */
 function signupEnabled(): bool
 {
@@ -150,10 +201,21 @@ function validateNewUser(PDO $pdo, string $fullName, string $username,
                          string $email, string $password, string $confirm,
                          string $phone = ''): string
 {
-    // ⛔ رمز فقط در مسیرِ شماره‌دار می‌تواند خالی باشد. آنجا خودِ کدِ
-    //    پیامکی احراز کرده و کاربر عمداً هنوز رمزی نگذاشته؛ در مسیرِ
-    //    معمولی، حسابِ بی‌رمز یعنی حسابی که هیچ‌کس نمی‌تواند واردش شود.
-    if ($fullName === '' || $username === '' || ($password === '' && $phone === '')) {
+    // ⛔ رمز در **همه‌ی** مسیرها الزامی است — و این عوض شد.
+    //
+    //    نسخه‌ی قبلی در مسیرِ شماره‌دار رمز را اختیاری می‌گذاشت، چون کدِ
+    //    پیامکی احراز کرده بود. نتیجه‌اش حسابی بود که **تنها درش پیامک
+    //    است**: روی دستگاهِ دوم، یا وقتی کوکیِ «این دستگاه را به خاطر
+    //    بسپار» پاک شود، کاربر هیچ راهِ دیگری ندارد — و ورودِ پیامکیِ
+    //    همیشگی قرار است قابلیتِ Pro باشد. یعنی حساب‌هایی می‌ساختیم که
+    //    یا باید برای همیشه از گیت معاف بمانند یا کاربرشان بیرونِ دفترِ
+    //    خودش قفل شود. رمز هنگامِ ثبت‌نام هر دو را از بین می‌برد.
+    //
+    // ⚠ حساب‌های **موجودِ** بی‌رمز دست‌نخورده‌اند: `password_hash` هنوز
+    //   nullable است، `userHasPassword()` سرِ جایش، و استثنای
+    //   `no_other_door` در `SmsLogin::loginAllowedFor()` هم. آن‌ها
+    //   میراث‌اند، نه چیزی که از امروز ساخته شود.
+    if ($fullName === '' || $username === '' || $password === '') {
         return 'تمام فیلدهای الزامی را پر کنید.';
     }
     if (mb_strlen($fullName) > 100) {
@@ -174,13 +236,11 @@ function validateNewUser(PDO $pdo, string $fullName, string $username,
     if ($email !== '' && (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 190)) {
         return 'ایمیل معتبر نیست.';
     }
-    if ($password !== '') {
-        if (mb_strlen($password) < 8) {
-            return 'رمز عبور باید حداقل ۸ کاراکتر باشد.';
-        }
-        if ($password !== $confirm) {
-            return 'رمز عبور و تکرار آن یکسان نیستند.';
-        }
+    if (mb_strlen($password) < 8) {
+        return 'رمز عبور باید حداقل ۸ کاراکتر باشد.';
+    }
+    if ($password !== $confirm) {
+        return 'رمز عبور و تکرار آن یکسان نیستند.';
     }
 
     $st = $pdo->prepare('SELECT id FROM users WHERE username = :u');
@@ -297,8 +357,15 @@ function signupThrottleMinutes(string $ip): int
  * معلوم می‌شود، یعنی وقتی که آن آدم مالکیتِ شماره را ثابت کرده و دیگر
  * چیزی برای لو رفتن نمانده.
  *
+ * ⛔ و این تابع **حساب نمی‌سازد**. شماره‌ی ناشناس فقط «تأیید شد» را
+ *    برمی‌گرداند (`need_password`)؛ ساختنِ حساب کارِ
+ *    `phoneSignupComplete()` است، بعد از اینکه کاربر رمز گذاشت. دلیلش
+ *    بالای `validateNewUser()` نوشته شده: حسابِ بی‌رمز روی دستگاهِ دوم
+ *    بن‌بست است.
+ *
  * @return array{
- *   ok:bool, message:string, user?:array, created?:bool, need_pro?:bool
+ *   ok:bool, message:string, user?:array, created?:bool,
+ *   need_pro?:bool, need_password?:bool, phone?:string
  * }
  */
 function phoneAuthComplete(string $rawPhone, string $rawCode, ?string $ip = null): array
@@ -321,7 +388,7 @@ function phoneAuthComplete(string $rawPhone, string $rawCode, ?string $ip = null
                 'message' => 'ورود موفقیت‌آمیز بود.'];
     }
 
-    // ---------- شماره‌ی تازه: ثبت‌نام ----------
+    // ---------- شماره‌ی تازه: یک مرحله مانده ----------
     if (!phoneSignupEnabled()) {
         return ['ok' => false, 'message' => 'ثبت‌نام با شماره موبایل در دسترس نیست.'];
     }
@@ -331,22 +398,66 @@ function phoneAuthComplete(string $rawPhone, string $rawCode, ?string $ip = null
         return ['ok' => false, 'message' => 'شماره موبایل معتبر نیست.'];
     }
 
+    phoneVerifyRemember($phone);
+
+    return [
+        'ok'            => false,
+        'need_password' => true,
+        'phone'         => $phone,
+        'message'       => 'شماره‌ی شما تأیید شد. برای حسابتان یک رمز عبور بگذارید.',
+    ];
+}
+
+/**
+ * ⛔ تنها جایی که حسابِ «ثبت‌نام با شماره» ساخته می‌شود.
+ *
+ * پیش‌شرطش نشانه‌ی نشست است، نه هیچ چیزی که از فرم بیاید — بالای
+ * `phoneVerifyRemember()` توضیح داده شده.
+ *
+ * @return array{ok:bool, message:string, user?:array, created?:bool, restart?:bool}
+ */
+function phoneSignupComplete(string $rawPhone, string $password, string $confirm): array
+{
+    require_once __DIR__ . '/sms_login.php';
+
+    if (!phoneSignupEnabled()) {
+        return ['ok' => false, 'message' => 'ثبت‌نام با شماره موبایل در دسترس نیست.'];
+    }
+
+    $phone = SmsLogin::normalizePhone($rawPhone);
+    if ($phone === null) {
+        return ['ok' => false, 'restart' => true, 'message' => 'شماره موبایل معتبر نیست.'];
+    }
+
+    // ⛔ `restart` یعنی «برگرد به مرحله‌ی شماره». بدونش کاربر روی فرمِ
+    //    رمز می‌ماند و هر بار همان خطا را می‌گیرد، بی‌آنکه بفهمد باید
+    //    کدِ تازه بگیرد — همان بن‌بستی که این پروژه جای دیگری هم برایش
+    //    تست نوشته.
+    if (!phoneVerifyOk($phone)) {
+        return ['ok' => false, 'restart' => true,
+                'message' => 'مهلتِ این مرحله تمام شد. دوباره شماره‌تان را وارد کنید.'];
+    }
+
     $pdo      = Database::getConnection();
     $username = usernameFromPhone($pdo, $phone);
     $fullName = displayNameFromPhone($phone);
 
     // ⚠ از همان `validateNewUser()` رد می‌شود، نه از سنجشِ محلی: قاعده‌ی
-    //   «دست‌کم یک راهِ بازگشت» و قاعده‌ی نام کاربری هر دو آنجا هستند.
-    $err = validateNewUser($pdo, $fullName, $username, '', '', '', $phone);
+    //   «دست‌کم یک راهِ بازگشت»، قاعده‌ی نام کاربری، و قاعده‌ی رمز هر سه
+    //   آنجا هستند.
+    $err = validateNewUser($pdo, $fullName, $username, '', $password, $confirm, $phone);
     if ($err !== '') { return ['ok' => false, 'message' => $err]; }
 
-    $res = createUserAccount($pdo, $fullName, $username, '', '', 'user', $phone);
+    $res = createUserAccount($pdo, $fullName, $username, '', $password, 'user', $phone);
     if (!$res['ok']) {
         return ['ok' => false, 'message' => $res['error'] ?? 'ساخت حساب انجام نشد.'];
     }
     if (($res['error'] ?? '') !== '') {
         return ['ok' => false, 'message' => $res['error']];
     }
+
+    // ⛔ نشانه فقط حالا سوخته می‌شود — نه در شکستِ اعتبارسنجیِ بالا.
+    phoneVerifyBurn();
 
     $st = $pdo->prepare('SELECT id, full_name, username, role, is_active FROM users WHERE id = :i');
     $st->execute(['i' => (int)$res['id']]);

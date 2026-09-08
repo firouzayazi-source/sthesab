@@ -6,10 +6,16 @@
  *    (۴۰۴)، نه اینکه بگوید «غیرفعال است». پیامِ «غیرفعال» به یک اسکنر
  *    می‌گوید اینجا راهِ ورودِ دومی هست که فقط خاموش است.
  *
- * ⛔ دو مرحله در یک صفحه، ولی مرحله‌ی دوم شماره را در یک فیلدِ پنهان
- *    حمل می‌کند نه در نشست: کاربر ممکن است پیامک را روی گوشیِ دیگری
- *    ببیند، صفحه را ببندد، یا اپ نشست را جمع کرده باشد. حمل در فرم
- *    هیچ چیزی را ناامن نمی‌کند — خودِ کد است که احراز می‌کند.
+ * ⛔ سه مرحله در یک صفحه (شماره → کد → رمز، و مرحله‌ی سوم فقط برای
+ *    شماره‌ی تازه). شماره در فیلدِ پنهان حمل می‌شود نه در نشست: کاربر
+ *    ممکن است پیامک را روی گوشیِ دیگری ببیند، صفحه را ببندد، یا اپ
+ *    نشست را جمع کرده باشد. حمل در فرم هیچ چیزی را ناامن نمی‌کند —
+ *    خودِ کد است که احراز می‌کند.
+ *
+ * ⛔ **ولی نتیجه‌ی تأیید در نشست می‌ماند، نه در فرم.** بعد از مرحله‌ی
+ *    دوم کد سوخته و تنها چیزِ باقی‌مانده ادعای «این شماره تأیید شد»
+ *    است؛ اگر آن هم از مرورگر می‌آمد، هر کسی بدونِ هیچ پیامکی حساب
+ *    می‌ساخت. جزئیات بالای `phoneVerifyRemember()`.
  */
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
@@ -44,11 +50,43 @@ $ip      = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 //    ورودِ قبلی است — نه یک صفحه‌ی نیمه‌کاره که وعده‌ی ثبت‌نام بدهد.
 $canSignup = phoneSignupEnabled();
 
+/**
+ * پایانِ مسیرِ موفق — یک جا برای هر دو راه (ورود و ثبت‌نام).
+ *
+ * ⚠ با دو نسخه، «به خاطر بسپار» یا `rememberUsername()` دیر یا زود از
+ *   یکی می‌افتاد و خرابی‌اش بی‌صداست: کاربر دفعه‌ی بعد باز پیامک
+ *   می‌خواست، بی‌آنکه بفهمد چرا.
+ */
+function finishPhoneLogin(array $user, bool $created): void
+{
+    Auth::establishSession($user);
+
+    // ⛔ «این دستگاه را به خاطر بسپار» تیک‌خورده می‌آید و همان چیزی است
+    //    که «دفعه‌ی بعد بدون رمز و بدون پیامک» را می‌سازد. بدونش کاربر
+    //    هر بار یک پیامکِ دیگر می‌گرفت — با هزینه‌اش، و پشتِ گیتِ Pro.
+    if (postParam('trust_device') === '1') {
+        Auth::trustThisDevice((int)$user['id']);
+    }
+    Auth::rememberUsername((string)$user['username']);
+
+    // ⚠ کاربرِ تازه به پروفایل می‌رود نه به خانه: رمز را همین حالا
+    //   گذاشته ولی نام و ایمیلش هنوز خالی است، و اگر همان اول نبیندشان
+    //   هرگز سراغشان نمی‌رود.
+    redirectWithMessage(
+        $created ? 'profile.php' : 'index.php',
+        'success',
+        $created
+            ? 'حساب شما ساخته شد. نام و ایمیلتان را می‌توانید همین‌جا کامل کنید.'
+            : 'خوش آمدید.'
+    );
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ⚠ مثل login.php و register.php: توکنِ کهنه بن‌بست نمی‌سازد.
     if (!Csrf::validate(postParam('csrf_token'))) {
         $error = 'نشست شما منقضی شده بود. دوباره تلاش کنید.';
-        $step  = postParam('step') === 'code' ? 'code' : 'phone';
+        $step  = in_array(postParam('step'), ['code', 'password'], true)
+               ? postParam('step') : 'phone';
     } elseif (postParam('step') === 'code') {
         // ⛔ از `phoneAuthComplete()` رد می‌شود، نه از `verifyCode()` تنها:
         //    تصمیمِ «این کد به ورود می‌رسد یا به ساختِ حساب» یک جا گرفته
@@ -56,30 +94,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         //    بعدی نسخه‌ی دومِ آن را می‌نوشت.
         $res = phoneAuthComplete($phone, postParam('code'), $ip);
         if ($res['ok']) {
-            Auth::establishSession($res['user']);
-
-            // همان دو کارِ همیشگیِ ورودِ موفق. «به خاطر بسپار» اینجا هم
-            // هست، وگرنه کاربری که با پیامک وارد شده دفعه‌ی بعد باز
-            // همان راه را می‌رفت — یعنی یک پیامکِ دیگر، با هزینه‌اش.
-            if (postParam('trust_device') === '1') {
-                Auth::trustThisDevice((int)$res['user']['id']);
-            }
-            Auth::rememberUsername((string)$res['user']['username']);
-
-            // ⚠ کاربرِ تازه به پروفایل می‌رود نه به خانه: حسابِ او هنوز
-            //   نه رمز دارد نه نام. بردنش به خانه یعنی همان کارها را
-            //   هرگز انجام نمی‌دهد و بعداً روی دستگاهِ دوم گیر می‌کند.
-            redirectWithMessage(
-                ($res['created'] ?? false) ? 'profile.php' : 'index.php',
-                'success',
-                ($res['created'] ?? false)
-                    ? 'حساب شما ساخته شد. اگر می‌خواهید با رمز هم وارد شوید، همین‌جا یکی بگذارید.'
-                    : 'خوش آمدید.'
-            );
+            finishPhoneLogin($res['user'], false);
         }
-        $error   = $res['message'];
-        $needPro = (bool)($res['need_pro'] ?? false);
-        $step    = 'code';
+        if ($res['need_password'] ?? false) {
+            // ⚠ این خطا نیست، یک مرحله‌ی دیگر است — پس `notice` می‌شود نه
+            //   `error`. با رنگِ قرمز، کاربری که همه‌چیز را درست انجام
+            //   داده فکر می‌کرد کارش نگرفته.
+            $notice = $res['message'];
+            $phone  = (string)($res['phone'] ?? $phone);
+            $step   = 'password';
+        } else {
+            $error   = $res['message'];
+            $needPro = (bool)($res['need_pro'] ?? false);
+            $step    = 'code';
+        }
+    } elseif (postParam('step') === 'password') {
+        $res = phoneSignupComplete($phone, postParam('password'), postParam('password_confirm'));
+        if ($res['ok']) {
+            finishPhoneLogin($res['user'], true);
+        }
+        $error = $res['message'];
+        $step  = ($res['restart'] ?? false) ? 'phone' : 'password';
     } else {
         $res = SmsLogin::requestCode($phone, $ip);
         if ($res['success']) {
@@ -116,7 +151,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <img src="<?= iconUrl('icon-180.png') ?>" alt="" class="auth-avatar auth-avatar-app" width="76" height="76">
             <h1><?= $canSignup ? 'ورود یا ثبت‌نام' : 'ورود با پیامک' ?></h1>
             <p class="auth-subtitle"><?php
-                if ($step === 'code') {
+                if ($step === 'password') {
+                    echo 'یک رمز عبور بگذارید تا همیشه بتوانید وارد شوید';
+                } elseif ($step === 'code') {
                     echo 'کد پیامک‌شده را وارد کنید';
                 } elseif ($canSignup) {
                     echo 'با شماره موبایل — حساب ندارید؟ همین‌جا ساخته می‌شود';
@@ -146,7 +183,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="alert alert-success"><?= h($notice) ?></div>
         <?php endif; ?>
 
-        <?php if ($step === 'code'): ?>
+        <?php if ($step === 'password'): ?>
+            <?php /* ⛔ مرحله‌ی سوم، فقط برای شماره‌ی تازه. رمز اینجا
+                     الزامی است و دلیلش بالای `validateNewUser()` نوشته
+                     شده: حسابِ بی‌رمز روی دستگاهِ دوم بن‌بست است و
+                     پیامکِ همیشگی قابلیتِ Pro است.
+                     ⚠ شماره فقط **حمل** می‌شود؛ چیزی که اجازه می‌دهد،
+                     نشانه‌ی نشست است. */ ?>
+            <form method="POST" class="auth-form" autocomplete="off">
+                <?= Csrf::field() ?>
+                <input type="hidden" name="step" value="password">
+                <input type="hidden" name="phone" value="<?= h($phone) ?>">
+
+                <div class="form-group">
+                    <label for="password">رمز عبور</label>
+                    <input type="password" id="password" name="password" required autofocus
+                           autocomplete="new-password" minlength="8"
+                           placeholder="حداقل ۸ کاراکتر">
+                </div>
+                <div class="form-group">
+                    <label for="password_confirm">تکرار رمز عبور</label>
+                    <input type="password" id="password_confirm" name="password_confirm" required
+                           autocomplete="new-password" minlength="8"
+                           placeholder="همان رمز را دوباره بنویسید">
+                    <p class="hint">
+                        نام کاربری شما همین شماره است:
+                        <?= toPersianDigits(h($phone)) ?>
+                    </p>
+                </div>
+
+                <label class="switch" style="margin:4px 0 16px;">
+                    <input type="checkbox" name="trust_device" value="1" checked>
+                    <span class="switch-track"><span class="switch-knob"></span></span>
+                    <span class="switch-text">این دستگاه را به خاطر بسپار — دفعه‌ی بعد بدون رمز و بدون پیامک وارد شوید</span>
+                </label>
+
+                <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ساخت حساب…">ساخت حساب</button>
+            </form>
+        <?php elseif ($step === 'code'): ?>
             <form method="POST" class="auth-form" autocomplete="off">
                 <?= Csrf::field() ?>
                 <input type="hidden" name="step" value="code">
@@ -170,7 +244,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <label class="switch" style="margin:4px 0 16px;">
                     <input type="checkbox" name="trust_device" value="1" checked>
                     <span class="switch-track"><span class="switch-knob"></span></span>
-                    <span class="switch-text">این دستگاه را به خاطر بسپار</span>
+                    <span class="switch-text">این دستگاه را به خاطر بسپار — دفعه‌ی بعد بدون رمز و بدون پیامک وارد شوید</span>
                 </label>
 
                 <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ورود…">ورود</button>

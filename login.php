@@ -145,7 +145,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <label class="switch" style="margin:4px 0 16px;">
                     <input type="checkbox" name="trust_device" value="1" checked>
                     <span class="switch-track"><span class="switch-knob"></span></span>
-                    <span class="switch-text">این دستگاه را به خاطر بسپار</span>
+                    <span class="switch-text">این دستگاه را به خاطر بسپار — دفعه‌ی بعد رمز نمی‌خواهد</span>
                 </label>
                 <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ورود…">ورود</button>
                 <a href="forgot-password.php" class="link-back" style="display:block;text-align:center;margin-top:14px">رمز عبور را فراموش کرده‌ام</a>
@@ -179,7 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <label class="switch" style="margin:4px 0 16px;">
                     <input type="checkbox" name="trust_device" value="1" checked>
                     <span class="switch-track"><span class="switch-knob"></span></span>
-                    <span class="switch-text">این دستگاه را به خاطر بسپار</span>
+                    <span class="switch-text">این دستگاه را به خاطر بسپار — دفعه‌ی بعد رمز نمی‌خواهد</span>
                 </label>
                 <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ورود…">ورود</button>
                 <a href="forgot-password.php" class="link-back" style="display:block;text-align:center;margin-top:14px">رمز عبور را فراموش کرده‌ام</a>
