@@ -159,7 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                          هم تنظیم شده باشد؛ وگرنه خودِ صفحه‌اش ۴۰۴ می‌دهد و
                          این لینک به بن‌بست می‌برد. */ ?>
                 <?php if (SmsLogin::available()): ?>
-                    <a href="<?= APP_BASE_PATH ?>/sms-login.php" class="link-back" style="display:block;text-align:center;margin-top:10px">ورود با کد پیامکی</a>
+                    <a href="<?= APP_BASE_PATH ?>/sms-login.php" class="link-back" style="display:block;text-align:center;margin-top:10px"><?= phoneSignupEnabled() ? 'ورود یا ثبت‌نام با شماره موبایل' : 'ورود با کد پیامکی' ?></a>
                 <?php endif; ?>
             </form>
         <?php else: ?>
@@ -193,7 +193,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                          هم تنظیم شده باشد؛ وگرنه خودِ صفحه‌اش ۴۰۴ می‌دهد و
                          این لینک به بن‌بست می‌برد. */ ?>
                 <?php if (SmsLogin::available()): ?>
-                    <a href="<?= APP_BASE_PATH ?>/sms-login.php" class="link-back" style="display:block;text-align:center;margin-top:10px">ورود با کد پیامکی</a>
+                    <a href="<?= APP_BASE_PATH ?>/sms-login.php" class="link-back" style="display:block;text-align:center;margin-top:10px"><?= phoneSignupEnabled() ? 'ورود یا ثبت‌نام با شماره موبایل' : 'ورود با کد پیامکی' ?></a>
                 <?php endif; ?>
             </form>
         <?php endif; ?>

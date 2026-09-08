@@ -2757,6 +2757,57 @@ function revokeAllAccessFor(int $userId): void
  * تازه — وگرنه شماره‌ای که اینجا ثبت می‌شود با شماره‌ای که در ورود
  * جست‌وجو می‌شود یکی نمی‌ماند و تطبیق **بی‌صدا** شکست می‌خورد.
  */
+/**
+ * ⛔ آیا این حساب اصلاً رمزی دارد؟ — تنها جای این پرسش.
+ *
+ * حسابی که با شماره موبایل ساخته شده `password_hash = NULL` دارد و این
+ * **تنها** معنای «رمز ندارد» است (ستونِ بولینِ دومی وجود ندارد؛ دلیلش
+ * در `migration_phone_signup.sql` نوشته شده).
+ *
+ * ⚠ هر جایی که بخواهد `password_verify()` صدا بزند باید اول از اینجا —
+ *   یا از خودِ همان ردیف — نبودنِ رمز را بسنجد. آن تابع با `null` امروز
+ *   خطای کشنده نمی‌دهد (فقط `Deprecated` و `false`) ولی در PHP 9 می‌دهد،
+ *   و آن هشدار در هر تلاشِ ورود تکرار می‌شود.
+ *
+ * ⚠ خطای دیتابیس یا کاربرِ ناموجود «رمز دارد» جواب می‌گیرد، نه «ندارد».
+ *   شکست باید به سمتِ سخت‌گیرانه بیفتد: با `false`، هر خرابیِ گذرا یک
+ *   حسابِ رمزدار را «بی‌رمز» نشان می‌داد و مسیرهای سهل‌گیرانه باز می‌شدند.
+ */
+function userHasPassword(int $userId): bool
+{
+    try {
+        $st = Database::getConnection()->prepare(
+            'SELECT password_hash FROM users WHERE id = :i LIMIT 1'
+        );
+        $st->execute(['i' => $userId]);
+        $row = $st->fetch();
+    } catch (PDOException $e) {
+        return true;
+    }
+    if (!$row) { return true; }
+    return ($row['password_hash'] ?? '') !== '' && $row['password_hash'] !== null;
+}
+
+/**
+ * شماره‌ی ثبت‌شده‌ی یک کاربر، یا `null`.
+ *
+ * ⚠ نصبی که هنوز `migration_sms_login` را نخورده ستونِ `phone` را ندارد؛
+ *   آنجا `null` برمی‌گردد و قاعده‌ی «دست‌کم یک راهِ بازگشت» دقیقاً مثل
+ *   قبل ایمیل را الزامی می‌کند.
+ */
+function userPhone(int $userId): ?string
+{
+    if (!tableHasColumn('users', 'phone')) { return null; }
+    try {
+        $st = Database::getConnection()->prepare('SELECT phone FROM users WHERE id = :i LIMIT 1');
+        $st->execute(['i' => $userId]);
+        $v = $st->fetchColumn();
+    } catch (PDOException $e) {
+        return null;
+    }
+    return ($v === false || $v === null || $v === '') ? null : (string)$v;
+}
+
 function saveUserPhone(PDO $pdo, int $userId, string $phone, bool $allowClear = false): string
 {
     if (!tableHasColumn('users', 'phone')) {

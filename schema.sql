@@ -14,7 +14,13 @@ CREATE TABLE IF NOT EXISTS `users` (
     -- اختیاری، و فقط برای «ورود با کد پیامکی» که پیش‌فرض خاموش است.
     -- نرمال‌سازی‌اش تنها در SmsLogin::normalizePhone() است.
     `phone` VARCHAR(20) NULL DEFAULT NULL COMMENT 'شماره موبایل نرمال‌شده: 09xxxxxxxxx',
-    `password_hash` VARCHAR(255) NOT NULL,
+    -- ⛔ `NULL` تنها معنای «این حساب رمز ندارد» است — حسابی که با
+    --    شماره موبایل ساخته شده و هنوز رمزی نگذاشته. ستونِ بولینِ
+    --    جدا (`has_password`) عمداً ساخته نشد: دو منبعِ حقیقت دیر یا
+    --    زود از هم دور می‌افتند. جزئیات در migration_phone_signup.sql
+    -- ⚠ پیش از هر `password_verify()` باید نبودنش سنجیده شود؛ آن تابع
+    --   با `null` امروز `Deprecated` می‌دهد و در PHP 9 خطای کشنده.
+    `password_hash` VARCHAR(255) NULL DEFAULT NULL,
     `role` ENUM('admin', 'user') NOT NULL DEFAULT 'user',
     -- بعد از چند دقیقه بی‌فعالیتی دوباره رمز پرسیده شود. ۰ = هرگز.
     -- مقدارهای مجاز در Auth::SESSION_WINDOWS تعریف شده‌اند.

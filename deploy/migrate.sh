@@ -107,6 +107,7 @@ MIGRATIONS=(
     migration_wallet_pin.sql
     migration_access_revoke.sql
     migration_discount_codes.sql
+    migration_phone_signup.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -234,6 +235,12 @@ declare -A SENTINEL=(
     [migration_discount_codes.sql]="payments.discount_code"
     [migration_plans.sql]="payments"
     [migration_sms_login.sql]="sms_codes"
+    # ⛔ شاهدش «ستون هست» نیست بلکه «ستون NULL می‌پذیرد» است. این
+    #    migration ستونی نمی‌سازد، فقط اجازه‌ی NULL می‌دهد — پس شاهدِ
+    #    وجود همیشه «هست» می‌گفت و --verify دقیقاً همان دروغی را
+    #    می‌گفت که برای گرفتنش ساخته شده. همان درسِ
+    #    migration_wallet_encrypt، این بار روی nullable بودن.
+    [migration_phone_signup.sql]="users.password_hash:null"
     # شاهدش داده است نه ساختار — توضیحش در sentinel_present.
     [migration_more_categories.sql]="app_settings~setting_key=more_categories_seeded"
 )
@@ -271,6 +278,21 @@ sentinel_present() {
         local c="${rest%%=*}" v="${rest#*=}" n
         n=$(mysql_q -N -e "SELECT COUNT(*) FROM \`$t\` WHERE \`$c\` = '$v';" 2>/dev/null)
         [[ -n "$n" && "$n" -ge 1 ]]
+        return
+    fi
+
+    # ⛔ شکلِ پنجم: `جدول.ستون:null` — برای migration ای که ستون را
+    #    **nullable** می‌کند، نه اینکه بسازد. بی این شکل، شاهدش باید
+    #    «ستون هست» می‌بود که از قبل هم هست، پس --verify همیشه سبز
+    #    می‌گفت — همان دروغِ `users.avatar` و همان دلیلی که شکلِ سوم
+    #    (`>=طول`) نوشته شد.
+    if [[ "$spec" == *":null" ]]; then
+        local path="${spec%:null}"
+        local t="${path%%.*}" c="${path#*.}" nullable
+        nullable=$(mysql_q -N -e "SELECT COALESCE(MAX(IS_NULLABLE), '')
+                                  FROM information_schema.columns
+                                  WHERE table_schema=DATABASE() AND table_name='$t' AND column_name='$c';")
+        [[ "$nullable" == "YES" ]]
         return
     fi
 

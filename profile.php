@@ -47,6 +47,19 @@ $hasEmailColumn = usersHaveEmailColumn($pdo);
 $tradesOn = tradesEnabled($pdo, $userId);
 $tradesColumnReady = usersHaveColumn($pdo, 'trades_enabled');
 
+// ⛔ حسابی که با شماره موبایل ساخته شده هنوز رمزی ندارد. صفحه باید
+//    همین را بگوید و فرم‌هایش را با آن هماهنگ کند، وگرنه کاربر یک فیلدِ
+//    «رمز فعلی» می‌بیند که هیچ مقداری برایش درست نیست — یعنی بن‌بست.
+// ⚠ از تنها جای این پرسش می‌آید (`userHasPassword()`), نه از خواندنِ
+//   مستقیمِ ستون: `$me` بالاتر عمداً `password_hash` را دور انداخته.
+$hasPassword = userHasPassword($userId);
+
+// ⚠ شماره وقتی هم نشان داده می‌شود که مدیر ورودِ پیامکی را خاموش کرده
+//   باشد ولی این حساب شماره‌ای **دارد**: پنهان کردنش یعنی کاربر نه
+//   می‌بیند چه شماره‌ای ثبت است نه می‌تواند عوضش کند، در حالی که همان
+//   شماره هنوز یک شناسه‌ی ورود با رمز است.
+$showPhoneField = SmsLogin::available() || ($me['phone'] ?? '') !== '';
+
 // فهرست از خودِ Auth می‌آید تا با اعتبارسنجیِ اندپوینت یکی بماند.
 $sessionOptions = Auth::SESSION_WINDOWS;
 $sessionMinutes = Auth::sessionMinutesFor($userId);
@@ -109,12 +122,20 @@ include __DIR__ . '/includes/header.php';
 <?php if ($hasEmailColumn): ?>
             <div class="form-group">
                 <label for="pf_email">ایمیل</label>
-                <input type="email" id="pf_email" name="email" maxlength="190" required
+                <?php /* ⛔ `required` مشروط است، نه همیشگی: کسی که با شماره
+                         ثبت‌نام کرده ایمیلی ندارد و اجبارِ آن یعنی نتواند
+                         حتی نامش را ذخیره کند. قاعده‌ی سرور همان
+                         «دست‌کم یک راهِ بازگشت» است و اینجا فقط بازتابش
+                         می‌دهد — اعتبارسنجیِ واقعی در اندپوینت است. */ ?>
+                <input type="email" id="pf_email" name="email" maxlength="190"
+                       <?= ($me['phone'] ?? '') === '' ? 'required' : '' ?>
                        autocapitalize="none" autocorrect="off" spellcheck="false"
                        autocomplete="email" placeholder="مثلاً: you@gmail.com"
                        value="<?= h($me['email'] ?? '') ?>">
                 <p class="hint">
-                    <?php if (empty($me['email'])): ?>
+                    <?php if (empty($me['email']) && ($me['phone'] ?? '') !== ''): ?>
+                        اختیاری است، چون شماره‌ی موبایلتان ثبت شده. با ثبت ایمیل می‌توانید با آن هم وارد شوید.
+                    <?php elseif (empty($me['email'])): ?>
                         هنوز ایمیلی ثبت نکرده‌اید. بدون آن، اگر رمزتان را فراموش کنید راهی برای بازیابی ندارید.
                     <?php else: ?>
                         با همین ایمیل هم می‌توانید وارد شوید، و لینک بازیابی رمز به همین آدرس می‌رود.
@@ -127,9 +148,9 @@ include __DIR__ . '/includes/header.php';
          کرده باشد. اگر خاموش است، این فیلد هیچ کاری نمی‌کند و فقط یک
          فیلدِ اضافه در سرراهِ کاربر است — و فیلدی که کاری نمی‌کند از
          نبودنش بدتر است. */ ?>
-<?php if (SmsLogin::available()): ?>
+<?php if ($showPhoneField): ?>
             <div class="form-group">
-                <label for="pf_phone">شماره موبایل (اختیاری)</label>
+                <label for="pf_phone">شماره موبایل<?= ($me['phone'] ?? '') === '' ? ' (اختیاری)' : '' ?></label>
                 <input type="tel" id="pf_phone" name="phone" maxlength="20"
                        inputmode="tel" autocomplete="tel" placeholder="۰۹۱۲۳۴۵۶۷۸۹"
                        value="<?= h(toPersianDigits($me['phone'] ?? '')) ?>">
@@ -143,10 +164,15 @@ include __DIR__ . '/includes/header.php';
             </div>
 <?php endif; ?>
 
+            <?php /* ⚠ حسابِ بی‌رمز (ثبت‌نام با شماره) اصلاً این فیلد را
+                     نمی‌بیند: هیچ مقداری برایش درست نیست و نشان دادنش
+                     یعنی کاربر نتواند پروفایلش را ذخیره کند. */ ?>
+            <?php if ($hasPassword): ?>
             <div class="form-group">
                 <label for="pf_current_pass_1">رمز عبور فعلی (برای تأیید)</label>
                 <input type="password" id="pf_current_pass_1" name="current_password" required autocomplete="current-password">
             </div>
+            <?php endif; ?>
 
             <div id="profileMessage" class="form-message" hidden></div>
             <button type="submit" class="btn btn-primary btn-block" id="profileSubmitBtn">ذخیره</button>
@@ -155,33 +181,46 @@ include __DIR__ . '/includes/header.php';
 </div>
 
 <!-- ---------- رمز عبور ---------- -->
-<div class="card collapsible-card collapsed">
+<?php /* ⛔ کارتِ حسابِ بی‌رمز **باز** رندر می‌شود، نه جمع‌شده. این تنها
+         کاری است که آن کاربر واقعاً باید انجام بدهد و پنهان کردنش پشتِ
+         یک تیتر یعنی هرگز انجام نمی‌شود — همان استدلالِ «کارتِ دقیقه‌ی
+         اول بالای همه چیز است». */ ?>
+<div class="card collapsible-card<?= $hasPassword ? ' collapsed' : '' ?>">
     <div class="collapsible-header">
-        <h2 class="card-title" style="margin-bottom:0;">تغییر رمز عبور</h2>
+        <h2 class="card-title" style="margin-bottom:0;"><?= $hasPassword ? 'تغییر رمز عبور' : 'تعیین رمز عبور' ?></h2>
         <span class="collapse-chevron">▾</span>
     </div>
     <div class="collapsible-body">
         <form id="passwordForm" autocomplete="off">
             <?= Csrf::field() ?>
 
+            <?php if ($hasPassword): ?>
             <div class="form-group">
                 <label for="pf_old_pass">رمز فعلی</label>
                 <input type="password" id="pf_old_pass" name="current_password" required autocomplete="current-password">
             </div>
+            <?php else: ?>
+            <?php /* ⚠ رنگِ دعوت است نه هشدار: چیزی خراب نشده و حسابش کار
+                     می‌کند — فقط یک درِ دوم هنوز باز نشده. */ ?>
+            <p class="hint" style="margin-bottom:12px;">
+                حساب شما با شماره موبایل ساخته شده و هنوز رمزی ندارد. با تعیین رمز
+                می‌توانید از هر دستگاهی بدون کد پیامکی هم وارد شوید.
+            </p>
+            <?php endif; ?>
 
             <div class="form-group">
-                <label for="pf_new_pass">رمز جدید</label>
+                <label for="pf_new_pass"><?= $hasPassword ? 'رمز جدید' : 'رمز عبور' ?></label>
                 <input type="password" id="pf_new_pass" name="new_password" required autocomplete="new-password">
                 <p class="hint">حداقل ۶ کاراکتر.</p>
             </div>
 
             <div class="form-group">
-                <label for="pf_new_pass2">تکرار رمز جدید</label>
+                <label for="pf_new_pass2"><?= $hasPassword ? 'تکرار رمز جدید' : 'تکرار رمز' ?></label>
                 <input type="password" id="pf_new_pass2" name="new_password_confirm" required autocomplete="new-password">
             </div>
 
             <div id="passwordMessage" class="form-message" hidden></div>
-            <button type="submit" class="btn btn-primary btn-block" id="passwordSubmitBtn">تغییر رمز</button>
+            <button type="submit" class="btn btn-primary btn-block" id="passwordSubmitBtn"><?= $hasPassword ? 'تغییر رمز' : 'تعیین رمز' ?></button>
         </form>
     </div>
 </div>
@@ -473,10 +512,16 @@ $remind      = $remindReady ? reminderPrefs($userId) : ['email_on' => true, 'day
             <p class="hint" style="margin-bottom:14px;">
                 همه‌ی داده‌ی شما پاک می‌شود و قابل بازگشت نیست.
             </p>
+            <?php /* ⚠ حسابِ بی‌رمز این فیلد را نمی‌بیند — هیچ مقداری
+                     برایش درست نیست. سدهایش می‌شود دو تا (نشستِ خودش و
+                     تایپِ عبارتِ تأیید)، و اندپوینت هم دقیقاً همین را
+                     می‌سنجد. */ ?>
+            <?php if ($hasPassword): ?>
             <div class="form-group">
                 <label for="del_password">رمز عبور فعلی</label>
                 <input type="password" id="del_password" name="password" required>
             </div>
+            <?php endif; ?>
             <div class="form-group">
                 <label for="del_confirm">برای تأیید بنویسید: <strong>حذف حساب</strong></label>
                 <input type="text" id="del_confirm" name="confirm" required placeholder="حذف حساب">

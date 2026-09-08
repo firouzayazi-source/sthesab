@@ -114,8 +114,26 @@ class Auth
         // ⚠ مهلتِ نشست عمداً اینجا خوانده نمی‌شود.
         //   `sessionMinutesFor()` جدا و با محافظِ خودش می‌خواندش، تا
         //   افزودنِ هر ستونِ تازه، این زنجیره‌ی جایگزین را شکننده‌تر نکند.
+        // ⛔ شماره‌ی موبایل هم یک شناسه‌ی ورود است، دقیقاً مثل ایمیل.
+        //    خواسته‌ی صریح این بود که «شماره مثل نام کاربری عمل کند»؛ و
+        //    حسابی که با شماره ساخته می‌شود نامِ کاربری‌اش هم همان شماره
+        //    است، ولی کاربر می‌تواند بعداً نامش را عوض کند — از آن لحظه
+        //    بدونِ این شرط، شماره‌اش دیگر او را وارد نمی‌کرد.
+        // ⚠ شماره پیش از مقایسه نرمال می‌شود، وگرنه `+98912…` و
+        //   `0912…` دو چیزِ متفاوت بودند و خرابی **بی‌صدا**: پیام همان
+        //   «نام کاربری یا رمز عبور اشتباه است» می‌ماند.
+        // ⚠ لود کردنش اینجاست نه بالای فایل: `sms_login.php` خودش
+        //   `functions.php` را می‌خواهد و `auth.php` عمداً به آن وابسته
+        //   نیست (چند مسیر فقط همین یکی را لود می‌کنند).
+        require_once __DIR__ . '/sms_login.php';
+        $phoneId = SmsLogin::normalizePhone($identifier);
+
         $user = null;
         $queries = [
+            'SELECT id, full_name, username, password_hash, role, is_active
+             FROM users
+             WHERE username = :id OR (email IS NOT NULL AND email = :id2)
+                OR (phone IS NOT NULL AND phone = :id3) LIMIT 1',
             'SELECT id, full_name, username, password_hash, role, is_active
              FROM users WHERE username = :id OR (email IS NOT NULL AND email = :id2) LIMIT 1',
             'SELECT id, full_name, username, password_hash, role, is_active
@@ -124,16 +142,44 @@ class Auth
         foreach ($queries as $sql) {
             try {
                 $stmt = $pdo->prepare($sql);
-                $stmt->execute(
-                    str_contains($sql, ':id2')
-                        ? ['id' => $identifier, 'id2' => $identifier]
-                        : ['id' => $identifier]
-                );
+                $params = ['id' => $identifier];
+                if (str_contains($sql, ':id2')) { $params['id2'] = $identifier; }
+                // ⚠ اگر شماره نرمال نشد، مقدارِ خودِ شناسه می‌رود — با یک
+                //   شناسه‌ی غیرِ شماره هیچ ردیفی نمی‌خورد، و `null` دادن
+                //   به‌جایش شرط را همیشه‌نادرست می‌کرد (فرقی نمی‌کند ولی
+                //   خواندنش گمراه‌کننده است).
+                if (str_contains($sql, ':id3')) { $params['id3'] = $phoneId ?? $identifier; }
+                $stmt->execute($params);
                 $user = $stmt->fetch();
                 break;
             } catch (PDOException $e) {
-                continue;   // ستون email هنوز نیست
+                continue;   // ستون email یا phone هنوز نیست
             }
+        }
+
+        // ⛔ حسابِ **بی‌رمز** (ثبت‌نام با شماره) هرگز به `password_verify()`
+        //    نمی‌رسد.
+        //
+        //    ⚠ و دقیق بگویم چرا، چون اولین توضیحی که نوشتم **غلط** بود و
+        //      آزمونِ جهش نشانش داد: `password_verify($p, null)` روی
+        //      PHP 8.4 خطای کشنده **نمی‌دهد**؛ `null` را به رشته‌ی خالی
+        //      تبدیل می‌کند، `false` برمی‌گرداند، و فقط یک
+        //      `Deprecated: Passing null to parameter #2` می‌نویسد. پس
+        //      این نگهبان امروز رفتار را عوض نمی‌کند و جهشش زنده می‌ماند
+        //      مگر با سنجشِ خودِ آن هشدار.
+        //
+        //    دو دلیل که با این حال می‌ماند: (۱) آن هشدار در **هر** تلاشِ
+        //    ورود روی چنین حسابی در لاگ می‌نشیند، و هشدارِ همیشگی همان
+        //    چیزی است که آدم را عادت می‌دهد هشدارها را نادیده بگیرد؛
+        //    (۲) در PHP 9 همین تبدیل به `TypeError` می‌شود، یعنی صفحه‌ی
+        //    ورود واقعاً ۵۰۰ می‌دهد. `test_phone_signup` هر دو نیمه را
+        //    می‌سنجد: رفتار، و نبودِ آن هشدار.
+        //
+        //    ⚠ پیامش عمداً همان پیامِ همیشگی است — «این حساب رمز ندارد»
+        //      به مهاجم می‌گفت کدام حساب‌ها را با پیامک می‌شود گرفت.
+        if ($user && ($user['password_hash'] === null || $user['password_hash'] === '')) {
+            LoginThrottle::recordFailure($identifier, $ip);
+            return ['success' => false, 'message' => 'نام کاربری یا رمز عبور اشتباه است.'];
         }
 
         if (!$user || !password_verify($password, $user['password_hash'])) {

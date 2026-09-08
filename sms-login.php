@@ -15,6 +15,7 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/sms_login.php';
+require_once __DIR__ . '/includes/signup.php';
 
 Auth::initSession();
 
@@ -33,9 +34,15 @@ if (!SmsLogin::available()) {
 
 $error   = '';
 $notice  = '';
+$needPro = false;
 $phone   = trim(postParam('phone'));
 $step    = 'phone';
 $ip      = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+
+// ⛔ ثبت‌نام با شماره پشتِ **دو** کلیدِ مدیر است و از تنها جای این
+//    تصمیم پرسیده می‌شود. اگر باز نباشد، این صفحه دقیقاً همان صفحه‌ی
+//    ورودِ قبلی است — نه یک صفحه‌ی نیمه‌کاره که وعده‌ی ثبت‌نام بدهد.
+$canSignup = phoneSignupEnabled();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ⚠ مثل login.php و register.php: توکنِ کهنه بن‌بست نمی‌سازد.
@@ -43,8 +50,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'نشست شما منقضی شده بود. دوباره تلاش کنید.';
         $step  = postParam('step') === 'code' ? 'code' : 'phone';
     } elseif (postParam('step') === 'code') {
-        $res = SmsLogin::verifyCode($phone, postParam('code'), $ip);
-        if ($res['success']) {
+        // ⛔ از `phoneAuthComplete()` رد می‌شود، نه از `verifyCode()` تنها:
+        //    تصمیمِ «این کد به ورود می‌رسد یا به ساختِ حساب» یک جا گرفته
+        //    می‌شود. با تصمیم‌گیری در همین صفحه، اپِ موبایل یا هر ورودیِ
+        //    بعدی نسخه‌ی دومِ آن را می‌نوشت.
+        $res = phoneAuthComplete($phone, postParam('code'), $ip);
+        if ($res['ok']) {
             Auth::establishSession($res['user']);
 
             // همان دو کارِ همیشگیِ ورودِ موفق. «به خاطر بسپار» اینجا هم
@@ -55,11 +66,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             Auth::rememberUsername((string)$res['user']['username']);
 
-            header('Location: index.php');
-            exit;
+            // ⚠ کاربرِ تازه به پروفایل می‌رود نه به خانه: حسابِ او هنوز
+            //   نه رمز دارد نه نام. بردنش به خانه یعنی همان کارها را
+            //   هرگز انجام نمی‌دهد و بعداً روی دستگاهِ دوم گیر می‌کند.
+            redirectWithMessage(
+                ($res['created'] ?? false) ? 'profile.php' : 'index.php',
+                'success',
+                ($res['created'] ?? false)
+                    ? 'حساب شما ساخته شد. اگر می‌خواهید با رمز هم وارد شوید، همین‌جا یکی بگذارید.'
+                    : 'خوش آمدید.'
+            );
         }
-        $error = $res['message'];
-        $step  = 'code';
+        $error   = $res['message'];
+        $needPro = (bool)($res['need_pro'] ?? false);
+        $step    = 'code';
     } else {
         $res = SmsLogin::requestCode($phone, $ip);
         if ($res['success']) {
@@ -79,7 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-    <title>ورود با پیامک | <?= h(APP_NAME) ?></title>
+    <title><?= $canSignup ? 'ورود یا ثبت‌نام با شماره موبایل' : 'ورود با پیامک' ?> | <?= h(APP_NAME) ?></title>
     <?php foreach (assetUrls(['css/style.css']) as $__u): ?>
     <link rel="stylesheet" href="<?= h($__u) ?>">
     <?php endforeach; ?>
@@ -94,12 +114,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="auth-box">
         <div class="auth-logo">
             <img src="<?= iconUrl('icon-180.png') ?>" alt="" class="auth-avatar auth-avatar-app" width="76" height="76">
-            <h1>ورود با پیامک</h1>
-            <p class="auth-subtitle"><?= $step === 'code' ? 'کد پیامک‌شده را وارد کنید' : 'شماره موبایلِ ثبت‌شده در حساب' ?></p>
+            <h1><?= $canSignup ? 'ورود یا ثبت‌نام' : 'ورود با پیامک' ?></h1>
+            <p class="auth-subtitle"><?php
+                if ($step === 'code') {
+                    echo 'کد پیامک‌شده را وارد کنید';
+                } elseif ($canSignup) {
+                    echo 'با شماره موبایل — حساب ندارید؟ همین‌جا ساخته می‌شود';
+                } else {
+                    echo 'شماره موبایلِ ثبت‌شده در حساب';
+                }
+            ?></p>
         </div>
 
         <?php if ($error): ?>
             <div class="alert alert-error"><?= h($error) ?></div>
+            <?php /* ⛔ پیامِ «نسخه‌ی کامل لازم است» بدونِ راهِ خروج، همان
+                     بن‌بستی است که این پروژه جای دیگری برایش تست نوشته:
+                     کاربر می‌داند نمی‌تواند وارد شود ولی نمی‌داند بعدش
+                     چه کند. پس هر دو درِ باز کنارش گذاشته می‌شوند. */ ?>
+            <?php if ($needPro): ?>
+                <?php /* ⚠ دکمه‌ی «نسخه‌ی کامل» عمداً اینجا نیست: `pro.php`
+                         خودش ورود می‌خواهد، پس این کاربرِ واردنشده را به
+                         همین صفحه‌ی ورود برمی‌گرداند — یک حلقه. و او رمز
+                         **دارد** (وگرنه اصلاً گیت نمی‌خورد)، پس راهِ
+                         درستش همین یک دکمه است. */ ?>
+                <a href="<?= APP_BASE_PATH ?>/login.php" class="btn btn-primary btn-block"
+                   style="margin:-6px 0 14px;">ورود با رمز عبور</a>
+            <?php endif; ?>
         <?php endif; ?>
         <?php if ($notice): ?>
             <div class="alert alert-success"><?= h($notice) ?></div>
@@ -153,7 +194,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                            inputmode="numeric" autocomplete="tel" maxlength="20"
                            class="phone-input" placeholder="09123456789"
                            value="<?= h($phone) ?>">
-                    <p class="hint">همان شماره‌ای که در پروفایلِ حسابتان ثبت شده است.</p>
+                    <p class="hint"><?= $canSignup
+                        ? 'اگر حساب دارید وارد می‌شوید، وگرنه با همین شماره برایتان ساخته می‌شود.'
+                        : 'همان شماره‌ای که در پروفایلِ حسابتان ثبت شده است.' ?></p>
                 </div>
                 <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ارسال…">فرستادن کد</button>
             </form>

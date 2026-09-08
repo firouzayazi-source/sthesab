@@ -184,7 +184,13 @@ function planAllows(int $userId, string $feature): bool
     // ⛔ هسته‌ی ثبتِ پول (تراکنش، حساب، دسته‌بندی، بودجه، پس‌انداز،
     //    دارایی، گزارش) عمداً بیرون مانده: اگر کاربر نتواند حتی خرجش
     //    را ثبت کند، اپ برایش بی‌فایده است و اصلاً امتحانش نمی‌کند.
-    $proOnly = ['trades', 'cheques', 'debts', 'recurring', 'api', 'reminders'];
+    //
+    // ⛔ `sms_login` = **ورودِ همیشگی** با کد پیامکی، نه ثبت‌نام. ساختنِ
+    //    حساب با شماره همیشه رایگان است و از این فهرست رد نمی‌شود؛ اگر
+    //    می‌شد، کاربرِ تازه باید پیش از داشتنِ حساب پول می‌داد. جزئیاتِ
+    //    این مرز و استثنای «حسابِ بی‌رمز» در `SmsLogin::loginAllowedFor()`
+    //    است — تنها جایی که این گیت خوانده می‌شود.
+    $proOnly = ['trades', 'cheques', 'debts', 'recurring', 'api', 'reminders', 'sms_login'];
 
     return !in_array($feature, $proOnly, true);
 }

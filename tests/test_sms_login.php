@@ -99,6 +99,16 @@ $originalSetting = getSetting(SMS_LOGIN_SETTING, '0');
 $originalSmsMethod = getSetting('sms_method', '');
 setSetting('sms_method', 'log');
 
+// ⛔ این فایل دنیای «فقط ورود» را می‌سنجد و باید همان را **تثبیت** کند.
+//    با روشن بودنِ ثبت‌نامِ خودسرویس، شماره‌ی ناشناس هم کد می‌گیرد (چون
+//    ثبت‌نام با شماره باز است) و بررسیِ «برای شماره‌ی ناموجود هیچ کدی
+//    ساخته نمی‌شود» شکست می‌خورد — نه چون کد خراب است، بلکه چون تست
+//    وضعیتِ اطرافش را به شانس سپرده بود. مسیرِ ثبت‌نام در
+//    `test_phone_signup.php` جدا سنجیده می‌شود.
+require_once __DIR__ . '/../includes/signup.php';
+$originalSignup = getSetting(SIGNUP_SETTING, '0');
+setSetting(SIGNUP_SETTING, '0');
+
 // ⛔ مهم‌ترین بررسیِ این فایل.
 $pdo->prepare('DELETE FROM app_settings WHERE setting_key = :k')
     ->execute(['k' => SMS_LOGIN_SETTING]);
@@ -125,8 +135,9 @@ $victimId = (int)$pdo->lastInsertId();
 
 $otherPhone = '0913' . random_int(1000000, 9999999);
 
-register_shutdown_function(function () use ($pdo, $victimId, $originalSetting, $originalSmsMethod, $phone, $otherPhone) {
+register_shutdown_function(function () use ($pdo, $victimId, $originalSetting, $originalSmsMethod, $originalSignup, $phone, $otherPhone) {
     setSetting('sms_method', $originalSmsMethod);
+    setSetting(SIGNUP_SETTING, $originalSignup);
     $pdo->prepare('DELETE FROM sms_codes WHERE phone IN (:p, :o)')
         ->execute(['p' => $phone, 'o' => $otherPhone]);
     $pdo->prepare('DELETE FROM login_attempts WHERE username_tried IN (:p, :o)')

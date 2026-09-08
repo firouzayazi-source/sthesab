@@ -46,7 +46,16 @@ $pdo = Database::getConnection();
 $st = $pdo->prepare('SELECT username, password_hash FROM users WHERE id = :id');
 $st->execute(['id' => $userId]);
 $row = $st->fetch();
-if (!$row || !password_verify($password, $row['password_hash'])) {
+
+// ⛔ حسابی که با شماره ساخته شده رمزی ندارد، پس این سد برایش وجود
+//    خارجی ندارد و **دو** سد می‌ماند: نشستِ خودِ کاربر، و تایپِ دقیقِ
+//    عبارتِ تأیید. جایگزین کردنش با «اول رمز بگذار» یعنی گروگان گرفتنِ
+//    داده — دقیقاً چیزی که این قابلیت برای نفیِ آن ساخته شد.
+// ⚠ و بدونِ این شرط، `password_verify()` با `null` هشدارِ `Deprecated`
+//   می‌داد (و در PHP 9 خطای کشنده) — توضیحش در `Auth::verifyCredentials()`.
+$needsPassword = ($row['password_hash'] ?? null) !== null && $row['password_hash'] !== '';
+
+if (!$row || ($needsPassword && !password_verify($password, (string)$row['password_hash']))) {
     jsonResponse(['success' => false, 'message' => 'رمز عبور اشتباه است.'], 403);
 }
 

@@ -32,6 +32,66 @@ function signupEnabled(): bool
 }
 
 /**
+ * ⛔ آیا «ثبت‌نام با شماره موبایل» در دسترس است؟ — تنها جای این تصمیم.
+ *
+ * **دو کلید لازم است و هیچ‌کدام به‌تنهایی کافی نیست:**
+ *   ۱. `allow_signup` — همان کلیدی که ثبت‌نامِ معمولی را باز می‌کند.
+ *   ۲. `SmsLogin::available()` — کلیدِ پیامک، جدولش، و پنلِ تنظیم‌شده.
+ *
+ * ⛔ کلیدِ سومی ساخته نشد، عمداً. مالکِ نصب باید بتواند کلِ قابلیتِ
+ *    پیامک را با **یک** کلید بخواباند — حتی برای کاربرِ Pro — و آن
+ *    کلید همان `allow_sms_login` است. با کلیدِ سوم، خاموش کردنِ آن یکی
+ *    این یکی را باز می‌گذاشت و مالکِ نصب فکر می‌کرد پیامک خاموش است در
+ *    حالی که مسیرِ ثبت‌نام هنوز کد می‌فرستاد.
+ *
+ * ⚠ فهرستِ دومی از این شرط‌ها نسازید: صفحه و اندپوینت هر دو باید از
+ *   همین بپرسند، وگرنه صفحه‌ای باز می‌ماند که کارش را انجام نمی‌دهد.
+ */
+function phoneSignupEnabled(): bool
+{
+    require_once __DIR__ . '/sms_login.php';
+    return signupEnabled() && SmsLogin::available();
+}
+
+/**
+ * نامِ کاربریِ حسابی که با شماره ساخته می‌شود.
+ *
+ * ⛔ خودِ شماره است، نه یک رشته‌ی تصادفی. خواسته‌ی صریح این بود که
+ *    «شماره مثل نام کاربری عمل کند»؛ با نامِ تصادفی، کاربر یک نامِ
+ *    بی‌معنا می‌گرفت که نه یادش می‌ماند نه با آن وارد می‌شد.
+ *
+ * ⚠ `09xxxxxxxxx` از `usernameRuleError()` رد می‌شود (فقط رقم است)، پس
+ *   ویرایشِ بعدیِ پروفایل بی‌آنکه کاربر نامش را عوض کرده باشد رد
+ *   نمی‌شود — همان بن‌بستی که یک بار سرِ `ali.k` پیش آمد.
+ *
+ * ⚠ شماره در `users` یکتاست ولی **نامِ کاربری** ممکن است از قبل به
+ *   دستِ کسِ دیگری همین رشته را گرفته باشد (مثلاً کاربری که نامش را
+ *   دستی روی همان ارقام گذاشته). پس تکراری بودن سنجیده می‌شود.
+ */
+function usernameFromPhone(PDO $pdo, string $phone): string
+{
+    $st = $pdo->prepare('SELECT id FROM users WHERE username = :u LIMIT 1');
+    for ($i = 1; $i <= 30; $i++) {
+        $try = $i === 1 ? $phone : $phone . '.' . $i;
+        $st->execute(['u' => $try]);
+        if (!$st->fetch()) { return $try; }
+    }
+    return $phone . '.' . random_int(1000, 9999);
+}
+
+/**
+ * نامِ نمایشیِ پیش‌فرضِ حسابی که با شماره ساخته می‌شود.
+ *
+ * ⚠ عمداً خودِ شماره نیست: نامِ نمایشی بالای هر صفحه و در نوارِ کناری
+ *   دیده می‌شود و کاربر گاهی صفحه را جلوی دیگران باز می‌کند — همان
+ *   استدلالی که شماره‌ی حساب و شبا را از رویِ کارتِ خانه برداشت.
+ */
+function displayNameFromPhone(string $phone): string
+{
+    return 'کاربر ' . substr($phone, -4);
+}
+
+/**
  * ⛔ تنها جایی که «نام کاربریِ معتبر» تعریف می‌شود.
  *
  * سه مسیر نام کاربری می‌نویسند و هر سه باید از همین رد شوند: ثبت‌نامِ
@@ -72,32 +132,55 @@ function usernameRuleError(string $username): string
 /**
  * ⛔ همه‌ی قواعدِ اعتبارسنجیِ یک حسابِ تازه، در یک جا.
  *
+ * ⛔ **قاعده‌ی «دست‌کم یک راهِ بازگشت»** جای قاعده‌ی قبلیِ «ایمیل الزامی
+ *    است» را گرفت، و جایگزینی‌اش عمدی است نه حذف. استدلالِ قبلی این
+ *    بود که «کسی که خودش ثبت‌نام می‌کند مدیری ندارد که رمزش را عوض
+ *    کند، پس بدون ایمیل اولین فراموشیِ رمز یعنی از دست رفتنِ حساب» —
+ *    و آن استدلال هنوز درست است. ولی **شماره‌ی موبایلِ تأییدشده هم
+ *    دقیقاً همان کار را می‌کند**: کدِ پیامکی راهِ بازگشت است.
+ *
+ *    پس شرط این شد: ایمیل **یا** شماره. هیچ حسابی بدونِ هیچ‌کدام ساخته
+ *    نمی‌شود، چون آن حساب از روزِ اول یک بن‌بست است.
+ *
+ * @param string $phone شماره‌ی **تأییدشده** (نرمال‌شده). خالی یعنی
+ *        مسیرِ ثبت‌نامِ معمولی، و آن‌وقت ایمیل و رمز هر دو الزامی‌اند.
  * @return string '' یعنی معتبر، وگرنه متنِ خطا.
  */
 function validateNewUser(PDO $pdo, string $fullName, string $username,
-                         string $email, string $password, string $confirm): string
+                         string $email, string $password, string $confirm,
+                         string $phone = ''): string
 {
-    if ($fullName === '' || $username === '' || $password === '') {
+    // ⛔ رمز فقط در مسیرِ شماره‌دار می‌تواند خالی باشد. آنجا خودِ کدِ
+    //    پیامکی احراز کرده و کاربر عمداً هنوز رمزی نگذاشته؛ در مسیرِ
+    //    معمولی، حسابِ بی‌رمز یعنی حسابی که هیچ‌کس نمی‌تواند واردش شود.
+    if ($fullName === '' || $username === '' || ($password === '' && $phone === '')) {
         return 'تمام فیلدهای الزامی را پر کنید.';
     }
     if (mb_strlen($fullName) > 100) {
         return 'نام و نام خانوادگی نباید بیشتر از ۱۰۰ کاراکتر باشد.';
     }
     if (($e = usernameRuleError($username)) !== '') { return $e; }
-    // ⚠ ایمیل اینجا **الزامی** است، برخلافِ ویرایشِ کاربر در پنل مدیر.
-    //   کاربری که خودش ثبت‌نام می‌کند هیچ مدیری ندارد که رمزش را برایش
-    //   عوض کند؛ بدون ایمیل، اولین فراموشیِ رمز یعنی از دست رفتنِ حساب.
-    if ($email === '') {
+
+    if ($phone !== '' && SmsLogin::normalizePhone($phone) === null) {
+        return 'شماره موبایل معتبر نیست (مثل ۰۹۱۲۳۴۵۶۷۸۹).';
+    }
+
+    // ⛔ «دست‌کم یک راهِ بازگشت» — بالا توضیح داده شد. متنِ پیام عمداً
+    //    دست‌نخورده ماند: مسیرِ بی‌شماره دقیقاً همان خطای قبلی را
+    //    می‌گیرد و کاربرِ آن مسیر تفاوتی حس نمی‌کند.
+    if ($email === '' && $phone === '') {
         return 'ایمیل الزامی است — بدون آن نمی‌توانید رمزتان را بازیابی کنید.';
     }
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 190) {
+    if ($email !== '' && (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 190)) {
         return 'ایمیل معتبر نیست.';
     }
-    if (mb_strlen($password) < 8) {
-        return 'رمز عبور باید حداقل ۸ کاراکتر باشد.';
-    }
-    if ($password !== $confirm) {
-        return 'رمز عبور و تکرار آن یکسان نیستند.';
+    if ($password !== '') {
+        if (mb_strlen($password) < 8) {
+            return 'رمز عبور باید حداقل ۸ کاراکتر باشد.';
+        }
+        if ($password !== $confirm) {
+            return 'رمز عبور و تکرار آن یکسان نیستند.';
+        }
     }
 
     $st = $pdo->prepare('SELECT id FROM users WHERE username = :u');
@@ -113,7 +196,8 @@ function validateNewUser(PDO $pdo, string $fullName, string $username,
  * @return array{ok:bool, id?:int, error?:string}
  */
 function createUserAccount(PDO $pdo, string $fullName, string $username,
-                           string $email, string $password, string $role = 'user'): array
+                           string $email, string $password, string $role = 'user',
+                           string $phone = ''): array
 {
     if (!in_array($role, ['admin', 'user'], true)) { $role = 'user'; }
 
@@ -125,13 +209,28 @@ function createUserAccount(PDO $pdo, string $fullName, string $username,
         $st->execute([
             'f' => $fullName,
             'u' => $username,
-            'p' => password_hash($password, PASSWORD_DEFAULT),
+            // ⛔ رمزِ خالی به `NULL` می‌رود، نه به هشِ رشته‌ی خالی. با هشِ
+            //    رشته‌ی خالی، هر کسی که فرمِ ورود را با رمزِ خالی بفرستد
+            //    وارد می‌شد — و «حسابِ بی‌رمز» از «حسابِ با رمزِ خالی»
+            //    قابل تشخیص نبود. `NULL` تنها معنای «رمز ندارد» است.
+            'p' => $password === '' ? null : password_hash($password, PASSWORD_DEFAULT),
             'r' => $role,
         ]);
         $id = (int)$pdo->lastInsertId();
     } catch (PDOException $e) {
         error_log('createUserAccount: ' . $e->getMessage());
         return ['ok' => false, 'error' => 'خطایی در ساخت حساب رخ داد.'];
+    }
+
+    // ⚠ شماره هم مثل ایمیل از تابعِ مشترکِ خودش رد می‌شود
+    //   (`saveUserPhone()`)، نه از کوئریِ بالا: نرمال‌سازی و بررسیِ
+    //   تکراری بودن یک جا می‌ماند، وگرنه شماره‌ای ذخیره می‌شد که
+    //   `SmsLogin::requestCode()` پیدایش نمی‌کند — و آن خرابی بی‌صداست.
+    if ($phone !== '') {
+        $perr = saveUserPhone($pdo, $id, $phone);
+        if ($perr !== '') {
+            return ['ok' => true, 'id' => $id, 'error' => $perr];
+        }
     }
 
     // ⚠ ایمیل از `saveUserEmail()` رد می‌شود، نه از کوئریِ بالا: همه‌ی
@@ -186,6 +285,76 @@ function signupThrottleMinutes(string $ip): int
         // جدول نیست — سد بی‌سروصدا خاموش می‌ماند، نه اینکه صفحه بخوابد
         return 0;
     }
+}
+
+/**
+ * ⛔ تنها جایی که تصمیم گرفته می‌شود «کدِ پیامکیِ درست چه کاری می‌کند».
+ *
+ * کدِ ورود و کدِ ثبت‌نام از یک مسیر می‌روند و **باید** همین‌طور بماند:
+ * صفحه از روی شماره نمی‌فهمد (و نباید بفهمد) که این شماره از قبل حسابی
+ * دارد یا نه — گفتنش یعنی هر کسی می‌تواند فهرستِ کاربرانِ سایت را
+ * بسازد. پس هر دو شاخه یک پیام می‌گیرند و تفاوت **بعد از** تأییدِ کد
+ * معلوم می‌شود، یعنی وقتی که آن آدم مالکیتِ شماره را ثابت کرده و دیگر
+ * چیزی برای لو رفتن نمانده.
+ *
+ * @return array{
+ *   ok:bool, message:string, user?:array, created?:bool, need_pro?:bool
+ * }
+ */
+function phoneAuthComplete(string $rawPhone, string $rawCode, ?string $ip = null): array
+{
+    require_once __DIR__ . '/sms_login.php';
+
+    $res = SmsLogin::verifyCode($rawPhone, $rawCode, $ip);
+    if (!$res['success']) { return ['ok' => false, 'message' => $res['message']]; }
+
+    // ---------- حسابِ موجود: ورود ----------
+    if (!empty($res['user'])) {
+        $user  = $res['user'];
+        $allow = SmsLogin::loginAllowedFor((int)$user['id']);
+        if (!$allow['ok']) {
+            // ⛔ اینجا و نه پیش از فرستادنِ کد: تا وقتی کد تأیید نشده،
+            //    هر پیامِ متفاوتی می‌گوید «این شماره کاربرِ ماست».
+            return ['ok' => false, 'need_pro' => true, 'message' => $allow['message']];
+        }
+        return ['ok' => true, 'created' => false, 'user' => $user,
+                'message' => 'ورود موفقیت‌آمیز بود.'];
+    }
+
+    // ---------- شماره‌ی تازه: ثبت‌نام ----------
+    if (!phoneSignupEnabled()) {
+        return ['ok' => false, 'message' => 'ثبت‌نام با شماره موبایل در دسترس نیست.'];
+    }
+
+    $phone = SmsLogin::normalizePhone($rawPhone);
+    if ($phone === null) {
+        return ['ok' => false, 'message' => 'شماره موبایل معتبر نیست.'];
+    }
+
+    $pdo      = Database::getConnection();
+    $username = usernameFromPhone($pdo, $phone);
+    $fullName = displayNameFromPhone($phone);
+
+    // ⚠ از همان `validateNewUser()` رد می‌شود، نه از سنجشِ محلی: قاعده‌ی
+    //   «دست‌کم یک راهِ بازگشت» و قاعده‌ی نام کاربری هر دو آنجا هستند.
+    $err = validateNewUser($pdo, $fullName, $username, '', '', '', $phone);
+    if ($err !== '') { return ['ok' => false, 'message' => $err]; }
+
+    $res = createUserAccount($pdo, $fullName, $username, '', '', 'user', $phone);
+    if (!$res['ok']) {
+        return ['ok' => false, 'message' => $res['error'] ?? 'ساخت حساب انجام نشد.'];
+    }
+    if (($res['error'] ?? '') !== '') {
+        return ['ok' => false, 'message' => $res['error']];
+    }
+
+    $st = $pdo->prepare('SELECT id, full_name, username, role, is_active FROM users WHERE id = :i');
+    $st->execute(['i' => (int)$res['id']]);
+    $user = $st->fetch();
+    if (!$user) { return ['ok' => false, 'message' => 'ساخت حساب انجام نشد.']; }
+
+    return ['ok' => true, 'created' => true, 'user' => $user,
+            'message' => 'حساب شما ساخته شد.'];
 }
 
 /** ثبتِ یک ثبت‌نامِ انجام‌شده برای شمارشِ سد. */

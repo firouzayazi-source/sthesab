@@ -24,13 +24,23 @@ if ($fullName === '' || mb_strlen($fullName) > 100) { $errors[] = 'نام نما
 //    نامش را عوض کرده باشد، و ایمیل و شماره‌اش هم ذخیره نمی‌شد.
 require_once __DIR__ . '/../includes/signup.php';
 if (($usernameErr = usernameRuleError($username)) !== '') { $errors[] = $usernameErr; }
-if ($current === '') { $errors[] = 'برای تأیید، رمز فعلی را وارد کنید.'; }
-// ایمیل اجباری است. کاربران قدیمی که هنوز ایمیل ندارند با اولین
-// ویرایش پروفایل مجبور می‌شوند یکی ثبت کنند — و همان چیزی است که
-// بازیابی رمز به آن نیاز دارد.
-if ($email === '') {
+
+// ⛔ حسابِ ساخته‌شده با شماره رمزی ندارد، پس «برای تأیید رمز فعلی را
+//    وارد کنید» برای او یک بن‌بست است: نه می‌تواند نامش را عوض کند، نه
+//    ایمیل بگذارد، نه شماره‌اش را ویرایش کند. همان درسِ `ali.k`.
+$hasPassword = userHasPassword($userId);
+if ($hasPassword && $current === '') { $errors[] = 'برای تأیید، رمز فعلی را وارد کنید.'; }
+
+// ⛔ **قاعده‌ی «دست‌کم یک راهِ بازگشت»** — همان قاعده‌ای که
+//    `validateNewUser()` هم از آن رد می‌شود. ایمیل تا دیروز بی‌قید و
+//    شرط الزامی بود؛ حالا اگر شماره‌ی موبایل ثبت شده باشد، آن خودش
+//    راهِ بازگشت است (کدِ پیامکی) و اجبارِ ایمیل فقط کاربری را که با
+//    شماره ثبت‌نام کرده از ذخیره‌ی پروفایلش بازمی‌داشت.
+// ⚠ ولی حسابِ بی‌شماره همچنان همان اجبارِ قبلی را دارد، با همان متن.
+$phoneOnFile = $phone !== '' ? $phone : (string)(userPhone($userId) ?? '');
+if ($email === '' && $phoneOnFile === '') {
     $errors[] = 'ایمیل الزامی است — بدون آن امکان بازیابی رمز وجود ندارد.';
-} elseif (mb_strlen($email) > 190 || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+} elseif ($email !== '' && (mb_strlen($email) > 190 || !filter_var($email, FILTER_VALIDATE_EMAIL))) {
     $errors[] = 'ایمیل معتبر نیست.';
 }
 
@@ -41,7 +51,9 @@ $pdo = Database::getConnection();
 $stmt = $pdo->prepare('SELECT password_hash FROM users WHERE id = :id');
 $stmt->execute(['id' => $userId]);
 $row = $stmt->fetch();
-if (!$row || !password_verify($current, $row['password_hash'])) {
+// ⚠ شاخه‌ی بی‌رمز اصلاً به `password_verify()` نمی‌رسد. (توضیحِ اینکه
+//   آن تابع با `null` امروز چه می‌کند در `Auth::verifyCredentials()` است.)
+if (!$row || ($hasPassword && !password_verify($current, (string)$row['password_hash']))) {
     jsonResponse(['success' => false, 'message' => 'رمز فعلی اشتباه است.'], 403);
 }
 

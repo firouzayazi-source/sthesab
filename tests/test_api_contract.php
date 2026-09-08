@@ -1588,6 +1588,83 @@ T::ok(!preg_match('/deny\s+all/', $rendered),
     '⛔ allow/deny کنارِ return برنگشته — آنجا اصلاً اجرا نمی‌شود '
     . 'و مسیر را برای کلِ اینترنت باز می‌گذارد');
 
+// ---------------------------------------------------------------
+// ⛔ قاعده ۲۸ — دو تصمیمِ تازه، هر کدام فقط یک جا.
+//
+// نیمه‌ی اول: **گیتِ ورودِ پیامکی**. `SmsLogin::loginAllowedFor()` تنها
+// جایی است که `planAllows(..., 'sms_login')` خوانده می‌شود، چون آن گیت
+// دو استثنای عمدی دارد (کلیدِ مدیر که از پرداخت هم بالاتر است، و
+// حسابِ بی‌رمز که پیامک تنها درِ اوست). صفحه‌ای که مستقیم `planAllows`
+// را بپرسد آن دو را نمی‌بیند و **بی‌صدا** کاربر را بیرونِ دفترِ خودش
+// قفل می‌کند.
+//
+// نیمه‌ی دوم: **هیچ `password_verify()` بدونِ سنجشِ حسابِ بی‌رمز**.
+// از وقتی `password_hash` می‌تواند `NULL` باشد، هر مسیرِ تازه‌ای که
+// یادش برود این را بسنجد یک هشدارِ `Deprecated` در هر تلاش می‌سازد (و
+// در PHP 9 یک ۵۰۰). همان شکلِ قاعده ۱۴: فایل باید **در همان فایل**
+// نشانه‌ی سنجش را داشته باشد، تا مسیرِ پنجمیِ فردا جا نماند.
+//
+// ⚠ با توکنایزر است نه grep: همین توضیح هر دو نام را دارد و با
+//   جست‌وجوی متنی، تست روی فایلِ سالم هم قرمز می‌شد.
+T::group('قاعده ۲۸ — گیتِ پیامک و نگهبانِ حسابِ بی‌رمز');
+
+$phpFiles = [];
+foreach (['api', 'api/v1', 'includes', 'admin', 'deploy', '.'] as $dir) {
+    foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $phpFiles[realpath($p)] = true; }
+}
+$phpFiles = array_keys($phpFiles);
+
+// ⛔ فقط **کامنت‌ها** حذف می‌شوند، نه رشته‌ها.
+//
+// ⚠ نسخه‌ی اول رشته‌های متنی را هم دور می‌ریخت و روی فایلِ **سالم**
+//   قرمز شد: نگهبانِ واقعی در `auth.php` به شکلِ
+//   `$user['password_hash'] === null` نوشته شده و با حذفِ رشته‌ها به
+//   `$user[] === null` تبدیل می‌شد. کامنت‌ها منشأ هشدارِ الکی‌اند (همین
+//   توضیح خودش هر دو نام را دارد)؛ رشته‌ها بخشِ واقعیِ کدند.
+$noComments = static function (string $src): string {
+    $out = '';
+    foreach (token_get_all($src) as $t) {
+        if (is_array($t)) {
+            if (in_array($t[0], [T_COMMENT, T_DOC_COMMENT, T_INLINE_HTML], true)) {
+                continue;
+            }
+            $out .= $t[1];
+        } else {
+            $out .= $t;
+        }
+    }
+    return $out;
+};
+
+// ⚠ `plan.php` استثناست چون **تعریف** است نه فراخوان: فهرستِ Pro-only
+//   خودش آنجاست. `sms_login.php` هم تنها فراخوانِ مجاز است.
+$gateHome = ['plan.php', 'sms_login.php'];
+
+$badGate = [];
+$badNull = [];
+foreach ($phpFiles as $p) {
+    $code = $noComments((string)@file_get_contents($p));
+    $rel  = basename(dirname($p)) . '/' . basename($p);
+
+    if (str_contains($code, 'planAllows(') && str_contains($code, "'sms_login'")
+        && !in_array(basename($p), $gateHome, true)) {
+        $badGate[] = $rel;
+    }
+
+    if (str_contains($code, 'password_verify(')
+        && !str_contains($code, 'userHasPassword(')
+        && !preg_match("/'password_hash'\]\s*(===|!==)\s*null/", $code)
+        && !str_contains($code, '$needsPassword')
+        && !str_contains($code, '$hasPassword')) {
+        $badNull[] = $rel;
+    }
+}
+
+T::bulk(count($phpFiles), $badGate,
+    "⛔ فقط `SmsLogin::loginAllowedFor()` گیتِ 'sms_login' را می‌خواند");
+T::bulk(count($phpFiles), $badNull,
+    '⛔ هر فایلی که `password_verify()` دارد، حسابِ بی‌رمز را هم می‌سنجد');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

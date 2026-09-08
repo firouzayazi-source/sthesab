@@ -14,11 +14,20 @@ $current = postParam('current_password');
 $new     = postParam('new_password');
 $confirm = postParam('new_password_confirm');
 
+// ⛔ حسابی که با شماره موبایل ساخته شده هنوز **هیچ رمزی ندارد**
+//    (`password_hash IS NULL`). خواستنِ «رمز فعلی» از او یعنی هرگز
+//    نتواند رمز بگذارد — یعنی همان تنظیمی که برای امن کردنِ حسابش
+//    ساخته شده، برای او کار نمی‌کند.
+// ⚠ و این هیچ دری باز نمی‌کند: کاربر همین حالا هم واردِ حسابِ خودش
+//   است. تنها چیزی که عوض می‌شود این است که «رمزِ قبلی» ای که وجود
+//   ندارد، پرسیده نمی‌شود.
+$hasPassword = userHasPassword($userId);
+
 $errors = [];
-if ($current === '') { $errors[] = 'رمز فعلی را وارد کنید.'; }
+if ($hasPassword && $current === '') { $errors[] = 'رمز فعلی را وارد کنید.'; }
 if (mb_strlen($new) < 6) { $errors[] = 'رمز جدید باید حداقل ۶ کاراکتر باشد.'; }
 if ($new !== $confirm) { $errors[] = 'رمز جدید و تکرار آن یکسان نیستند.'; }
-if ($new === $current && $new !== '') { $errors[] = 'رمز جدید نباید با رمز فعلی یکی باشد.'; }
+if ($hasPassword && $new === $current && $new !== '') { $errors[] = 'رمز جدید نباید با رمز فعلی یکی باشد.'; }
 
 if (!empty($errors)) { jsonResponse(['success' => false, 'message' => implode(' ', $errors)], 422); }
 
@@ -27,7 +36,10 @@ $stmt = $pdo->prepare('SELECT password_hash FROM users WHERE id = :id');
 $stmt->execute(['id' => $userId]);
 $row = $stmt->fetch();
 
-if (!$row || !password_verify($current, $row['password_hash'])) {
+// ⚠ شاخه‌ی بی‌رمز اصلاً به `password_verify()` نمی‌رسد. (آن تابع با
+//   `null` امروز فقط `Deprecated` می‌دهد و `false` برمی‌گرداند، نه خطای
+//   کشنده — توضیحِ کاملش در `Auth::verifyCredentials()`.)
+if (!$row || ($hasPassword && !password_verify($current, (string)$row['password_hash']))) {
     jsonResponse(['success' => false, 'message' => 'رمز فعلی اشتباه است.'], 403);
 }
 
@@ -44,7 +56,9 @@ try {
     //    از آن است؛ بدونِ این خط تا یک دقیقه‌ی بعد بیرون می‌افتاد.
     Auth::renewCurrentSession();
 
-    jsonResponse(['success' => true, 'message' => 'رمز عبور تغییر کرد. دستگاه‌های مورد اعتماد، اپ‌های متصل و نشست‌های دیگر هم باطل شدند.']);
+    jsonResponse(['success' => true, 'message' => $hasPassword
+        ? 'رمز عبور تغییر کرد. دستگاه‌های مورد اعتماد، اپ‌های متصل و نشست‌های دیگر هم باطل شدند.'
+        : 'رمز عبور برای حساب شما تنظیم شد. از این پس می‌توانید با رمز هم وارد شوید.']);
 } catch (PDOException $e) {
     error_log('Change Password Error: ' . $e->getMessage());
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
