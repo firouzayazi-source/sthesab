@@ -21,8 +21,8 @@ android {
         // روی همه‌ی این دستگاه‌ها به‌روز می‌شود.
         minSdk = 21
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.3"
+        versionCode = 5
+        versionName = "1.4"
 
         // آدرسی که اپ باز می‌کند. کتابخانه‌ی androidbrowserhelper این
         // مقادیر را از manifest می‌خواند و manifest از همین‌جا پر می‌شود،

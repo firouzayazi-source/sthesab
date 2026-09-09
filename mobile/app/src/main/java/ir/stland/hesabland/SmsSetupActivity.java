@@ -242,7 +242,20 @@ public class SmsSetupActivity extends AppCompatActivity {
      */
     private String lastEventLine() {
         long at = prefs().getLong(BankSmsReceiver.PREF_LAST_AT, 0L);
-        if (at <= 0L) { return getString(R.string.sms_diag_none); }
+        if (at <= 0L) {
+            // ⛔ «هیچ پیامکی نرسیده» فقط وقتی حرفِ درستی است که قابلیت
+            //    واقعاً روشن باشد. با کلیدِ خاموش (یا مجوزِ نداده) گیرنده
+            //    پیش از هر ثبتی برمی‌گردد، پس این خط «نرسید» می‌گفت در
+            //    حالی که اصلاً قرار نبود چیزی خوانده شود — و کاربر دنبالِ
+            //    محدودیتِ رام می‌گشت. همان تشخیصِ غلطی که این خط برای
+            //    نفیِ آن نوشته شد.
+            //
+            // ⚠ و این حالت **بعد از نصبِ دوباره طبیعی است**: پاک شدنِ اپ
+            //   تنظیماتش را هم می‌برد، پس کلید به پیش‌فرضِ خاموش برمی‌گردد.
+            return getString(enabled() && granted()
+                             ? R.string.sms_diag_none
+                             : R.string.sms_diag_off);
+        }
 
         String from = prefs().getString(BankSmsReceiver.PREF_LAST_FROM, "");
         String why  = prefs().getString(BankSmsReceiver.PREF_LAST_WHY, "");
