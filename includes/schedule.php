@@ -261,16 +261,57 @@ class Schedule
         if ($ins->rowCount() > 0) { $made++; }
     }
 
-    /** همه‌ی قانون‌های فعالِ کاربر را تا امروز جلو می‌برد. */
+    /**
+     * همه‌ی قانون‌های فعالِ کاربر را تا امروز جلو می‌برد.
+     *
+     * ⛔ **دو کوئریِ گروهی به‌جای دو کوئری در هر قانون.** نسخه‌ی قبلی
+     *    برای هر قانون `materialize()` را صدا می‌زد و آن هم بی‌قید یک
+     *    `COUNT` و یک `UPDATE` می‌زد — حتی وقتی هیچ کارِ تازه‌ای نبود،
+     *    که حالتِ **همیشگی** است. روی `due.php` با هفت یادآور یعنی ۱۴
+     *    کوئریِ اضافه در هر بارگذاری، و این عدد با تعدادِ یادآورهای
+     *    کاربر خطی بالا می‌رفت. اندازه‌گیری شد: `due.php` روی ۵۴ کوئری،
+     *    بیشترین صفحه‌ی کلِ اپ.
+     *
+     * ⚠ سوییپِ `overdue` بدونِ `reminder_id` هم **دقیقاً همان کار** را
+     *   می‌کند: شرطِ قانون افزونه بود، چون همه‌ی قانون‌های همین کاربر
+     *   به هر حال یکی‌یکی از آن رد می‌شدند.
+     *
+     * ⚠ فقط قانون‌هایی که سررسیدِ باز **ندارند** وارد `materialize()`
+     *   می‌شوند. آن‌ها همان `COUNT` را دوباره می‌زنند و این عمدی است:
+     *   `materialize()` باید به‌تنهایی هم درست باشد (از `close()` هم صدا
+     *   زده می‌شود) و این مسیر نادر است.
+     */
     public static function materializeAll(int $userId, ?string $today = null): int
     {
         if (!self::available()) { return 0; }
-        $st = Database::getConnection()->prepare(
-            "SELECT * FROM reminders WHERE user_id = :u AND status = 'active'"
-        );
+        $today = $today ?? today();
+        $pdo   = Database::getConnection();
+
+        $st = $pdo->prepare("SELECT * FROM reminders WHERE user_id = :u AND status = 'active'");
         $st->execute(['u' => $userId]);
+        $rules = $st->fetchAll();
+        if (!$rules) { return 0; }
+
+        // ۱) هر چیزی که تاریخش گذشته و هنوز pending است — یک‌جا.
+        $pdo->prepare("
+            UPDATE reminder_occurrences SET status = 'overdue'
+             WHERE user_id = :u AND status = 'pending' AND due_date < :t
+        ")->execute(['u' => $userId, 't' => $today]);
+
+        // ۲) کدام قانون‌ها همین حالا سررسیدِ باز دارند — یک‌جا.
+        $op = $pdo->prepare("
+            SELECT reminder_id FROM reminder_occurrences
+             WHERE user_id = :u AND status IN ('pending','overdue')
+             GROUP BY reminder_id
+        ");
+        $op->execute(['u' => $userId]);
+        $open = array_flip(array_map('intval', $op->fetchAll(PDO::FETCH_COLUMN)));
+
         $n = 0;
-        foreach ($st->fetchAll() as $rule) { $n += self::materialize($userId, $rule, $today); }
+        foreach ($rules as $rule) {
+            if (isset($open[(int)$rule['id']])) { continue; }
+            $n += self::materialize($userId, $rule, $today);
+        }
         return $n;
     }
 
@@ -393,29 +434,51 @@ function syncScheduleRules(int $userId): int
     $pdo = Database::getConnection();
     $n   = 0;
 
+    /**
+     * ⛔ ردیف‌ها جمع می‌شوند و با **یک** دستور نوشته می‌شوند، نه یکی‌یکی.
+     *
+     *    نسخه‌ی قبلی به‌ازای هر چک، هر بدهی و هر تراکنشِ دوره‌ای یک
+     *    `INSERT` جدا می‌زد — و این تابع در **هر** بارگذاری `due.php`
+     *    اجرا می‌شود. یعنی کاربری با ۵۰ چک و ۵۰ بدهی، صد کوئریِ
+     *    **نوشتن** در هر بار باز کردنِ آن صفحه می‌داد. با یک کاربرِ
+     *    آزمایشیِ کوچک نامرئی بود؛ اندازه‌گیری نشانش داد.
+     */
+    $buf = [];
+
     $upsert = function (string $type, int $sid, string $title, ?string $date,
                         ?int $amount, ?int $walletId, string $rec = 'once', int $recN = 1)
-                       use ($pdo, $userId, &$n): void {
+                       use (&$buf, $userId): void {
         if ($date === null || $date === '') { return; }
-        $anchor = jalaliDayOf($date);
-        // ⚠ `ON DUPLICATE KEY` تاریخ و مبلغ را هم‌تراز می‌کند ولی به
-        //   وضعیتِ occurrence ها دست نمی‌زند — آن‌ها کارِ خودشان را دارند.
-        $st = $pdo->prepare("
-            INSERT INTO reminders
-                (user_id, source_type, source_id, title, remind_date, amount, wallet_id,
-                 recurrence_type, recurrence_n, anchor_day, status)
-            VALUES (:u, :st, :sid, :t, :d, :a, :w, :rt, :rn, :an, 'active')
-            ON DUPLICATE KEY UPDATE
-                title = VALUES(title), remind_date = VALUES(remind_date),
-                amount = VALUES(amount), wallet_id = VALUES(wallet_id),
-                anchor_day = VALUES(anchor_day),
-                status = IF(status = 'paused', 'paused', 'active')
-        ");
-        $st->execute(['u' => $userId, 'st' => $type, 'sid' => $sid,
-                      't' => mb_substr($title, 0, 200), 'd' => $date,
-                      'a' => $amount, 'w' => $walletId, 'rt' => $rec, 'rn' => $recN,
-                      'an' => $anchor]);
-        if ($st->rowCount() > 0) { $n++; }
+        $buf[] = [$userId, $type, $sid, mb_substr($title, 0, 200), $date,
+                  $amount, $walletId, $rec, $recN, jalaliDayOf($date)];
+    };
+
+    /**
+     * ⚠ `ON DUPLICATE KEY` تاریخ و مبلغ را هم‌تراز می‌کند ولی به وضعیتِ
+     *   occurrence ها دست نمی‌زند — آن‌ها کارِ خودشان را دارند.
+     *
+     * ⚠ تکه‌تکه می‌رود تا تعدادِ جای‌نگهدارها روی کاربری با صدها ردیف
+     *   بی‌مرز بزرگ نشود.
+     */
+    $flush = function () use ($pdo, &$buf, &$n): void {
+        if (!$buf) { return; }
+        foreach (array_chunk($buf, 100) as $chunk) {
+            $rowSql = implode(',', array_fill(0, count($chunk), "(?,?,?,?,?,?,?,?,?,?,'active')"));
+            $st = $pdo->prepare("
+                INSERT INTO reminders
+                    (user_id, source_type, source_id, title, remind_date, amount, wallet_id,
+                     recurrence_type, recurrence_n, anchor_day, status)
+                VALUES {$rowSql}
+                ON DUPLICATE KEY UPDATE
+                    title = VALUES(title), remind_date = VALUES(remind_date),
+                    amount = VALUES(amount), wallet_id = VALUES(wallet_id),
+                    anchor_day = VALUES(anchor_day),
+                    status = IF(status = 'paused', 'paused', 'active')
+            ");
+            $st->execute(array_merge(...$chunk));
+            $n += $st->rowCount();
+        }
+        $buf = [];
     };
 
     // ---------- چک‌های در جریان ----------
@@ -461,6 +524,9 @@ function syncScheduleRules(int $userId): int
                 $rec, max(1, (int)$r['interval_count']));
         }
     } catch (Throwable $e) { /* جدول نیست */ }
+
+    // ⛔ **پیش از** سوییپِ پایین: آن یکی وضعیتِ همین ردیف‌ها را می‌سنجد.
+    $flush();
 
     // ⛔ قانونی که منبعش دیگر در جریان نیست باید بسته شود، وگرنه چکِ
     //    پاس‌شده تا ابد در فهرستِ سررسیدها می‌ماند.

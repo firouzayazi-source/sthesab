@@ -110,8 +110,7 @@ $originalSignup = getSetting(SIGNUP_SETTING, '0');
 setSetting(SIGNUP_SETTING, '0');
 
 // ⛔ مهم‌ترین بررسیِ این فایل.
-$pdo->prepare('DELETE FROM app_settings WHERE setting_key = :k')
-    ->execute(['k' => SMS_LOGIN_SETTING]);
+forgetSetting(SMS_LOGIN_SETTING);
 T::same(false, SmsLogin::switchedOn(), '⛔ بدونِ تنظیم، ورود با پیامک خاموش است');
 T::same(false, SmsLogin::available(),  '⛔ و در دسترس هم نیست');
 

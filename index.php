@@ -52,7 +52,19 @@ $monthNet     = $monthIncome - $monthExpense;
 //    پرتاب نمی‌کنند (`financialHighlights` هر بخش را جدا `try` می‌کند).
 //    این یک کارِ جانبی است؛ اگر یک جدول نیامده باشد نباید صفحه‌ی خانه —
 //    یعنی اولین چیزی که کاربر می‌بیند — بشکند.
-$highlights = financialHighlights($userId);
+// ⛔ موجودیِ حساب‌ها **یک بار** خوانده می‌شود و پاس داده می‌شود.
+//    سنگین‌ترین کوئریِ اپ است (شش منبعِ پول با LEFT JOIN و تجمیع) و
+//    پیش از این در همین یک بارگذاری دو بار اجرا می‌شد: یک بار از
+//    `financialHighlights()` → `safeToSpend()` → `totalBalance()` و یک
+//    بار از `pinnedWallets()`.
+//
+// ⚠ چرا پاس دادن و نه کش: کشِ درخواستی یک بار آزموده شد و تست‌ها
+//   قرمز شدند — هر مسیری که پول می‌نویسد و بعد موجودی می‌خواند عددِ
+//   کهنه می‌گرفت، بی‌هیچ خطایی. اینجا فراخواننده تازگی را خودش
+//   تضمین می‌کند، پس چیزی نمی‌تواند کهنه بماند.
+$walletRows = walletBalances($userId);
+
+$highlights = financialHighlights($userId, $walletRows);
 
 // ⛔ «دقیقه‌ی اول». تصمیمش تنها در `openingBalanceHint()` است.
 $openingHint = openingBalanceHint($userId);
@@ -60,7 +72,7 @@ $openingHint = openingBalanceHint($userId);
 // حساب‌هایی که کاربر خودش برای خانه پین کرده. تصمیمش تنها در
 // `pinnedWallets()` است و اگر چیزی پین نشده باشد، نوار اصلاً رندر
 // نمی‌شود — نه یک نوارِ خالی.
-$pinned = pinnedWallets($userId);
+$pinned = pinnedWallets($userId, $walletRows);
 
 $pageTitle = 'خانه';
 include __DIR__ . '/includes/header.php';

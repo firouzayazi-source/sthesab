@@ -49,8 +49,7 @@ register_shutdown_function(function () use ($originalSetting) {
 T::group('پیش‌فرض خاموش است');
 
 // ⛔ مهم‌ترین بررسیِ این فایل: کلیدِ نبودن باید «خاموش» معنا شود.
-$pdo->prepare('DELETE FROM app_settings WHERE setting_key = :k')
-    ->execute(['k' => SIGNUP_SETTING]);
+forgetSetting(SIGNUP_SETTING);
 T::same(false, signupEnabled(), '⛔ بدونِ تنظیم، ثبت‌نام خاموش است');
 
 setSetting(SIGNUP_SETTING, '0');

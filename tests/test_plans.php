@@ -61,8 +61,7 @@ register_shutdown_function(function () use ($origEnforce, $origPrice) {
 // ---------------------------------------------------------------
 T::group('پیش‌فرض: هیچ چیزی بسته نیست');
 
-$pdo->prepare('DELETE FROM app_settings WHERE setting_key = :k')
-    ->execute(['k' => PLAN_ENFORCE_SETTING]);
+forgetSetting(PLAN_ENFORCE_SETTING);
 T::same(false, planEnforced(), '⛔ بدونِ تنظیم، محدودیت اجرا نمی‌شود');
 
 // ---------------------------------------------------------------

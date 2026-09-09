@@ -227,14 +227,54 @@ function getFlash(): ?array
     return null;
 }
 
+/**
+ * حافظه‌ی کوتاه‌مدتِ `app_settings` — فقط همین درخواست.
+ *
+ * ⚠ `null` یعنی «ردیف نیست» و با «هنوز نخوانده‌ایم» فرق دارد؛ به همین
+ *   دلیل `array_key_exists` می‌سنجد نه `isset`. اگر این دو یکی می‌شدند،
+ *   کلیدِ نبوده در هر بار خواندن دوباره کوئری می‌خورد — یعنی دقیقاً همان
+ *   چیزی که این کش برای رفعش نوشته شده.
+ *
+ * @return array<string, string|null>
+ */
+function &settingsCacheRef(): array
+{
+    static $cache = [];
+    return $cache;
+}
+
+/**
+ * ⛔ یک کلید در یک درخواست فقط **یک بار** از دیتابیس خوانده می‌شود.
+ *
+ * دلیلش یک کندیِ اندازه‌گیری‌شده است: `planReadOnly()` در نوارِ کناری و
+ * شیتِ «بیشتر» **هفت** بار صدا زده می‌شود (هر نشانِ قفل یک بار) و هر
+ * کدام `plan_enforced` را از نو می‌خواند. یعنی **هر صفحه‌ی اپ** شش
+ * کوئریِ کاملاً تکراری داشت، و هر نشانِ قفلِ تازه‌ای که فردا اضافه شود
+ * یکی هم به آن اضافه می‌کرد — رشدی که در هیچ صفحه‌ای دیده نمی‌شد.
+ *
+ * ⚠ عمداً بین درخواست‌ها کش نمی‌شود (همان قاعده‌ی `schemaMap()`): مدیر
+ *   تنظیمی را عوض می‌کند و درخواستِ بعدی باید واقعیت را ببیند.
+ *
+ * ⚠ مقدارِ `$default` کش **نمی‌شود**، فقط نبودنِ ردیف. وگرنه
+ *   `getSetting('x', '0')` و `getSetting('x', '1')` روی کلیدِ نبوده یک
+ *   جواب می‌دادند — و آن یکی از دو تا حتماً غلط بود.
+ */
 function getSetting(string $key, string $default = ''): string
 {
+    $cache = &settingsCacheRef();
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key] ?? $default;
+    }
+
     try {
         $stmt = Database::getConnection()->prepare('SELECT setting_value FROM app_settings WHERE setting_key = :key');
         $stmt->execute(['key' => $key]);
         $row = $stmt->fetch();
-        return $row ? $row['setting_value'] : $default;
+        $cache[$key] = $row ? (string)$row['setting_value'] : null;
+        return $cache[$key] ?? $default;
     } catch (PDOException $e) {
+        // ⚠ خطا کش نمی‌شود: یک قطعیِ گذرا نباید تا آخرِ درخواست
+        //   تنظیمات را «نبوده» نگه دارد.
         return $default;
     }
 }
@@ -247,6 +287,34 @@ function setSetting(string $key, string $value): void
         ON DUPLICATE KEY UPDATE setting_value = :value2
     ');
     $stmt->execute(['key' => $key, 'value' => $value, 'value2' => $value]);
+
+    // ⛔ کش همین‌جا تازه می‌شود، وگرنه صفحه‌ای که تنظیم را ذخیره می‌کند و
+    //    بعد خودش می‌خواندش، مقدارِ **قبلی** را می‌دید — و آن پیامِ
+    //    «ذخیره شد» کنارِ مقدارِ قدیمی، بدترین شکلِ خرابیِ بی‌صداست.
+    $cache = &settingsCacheRef();
+    $cache[$key] = $value;
+}
+
+/**
+ * برداشتنِ یک تنظیم — تنها مسیرِ حذف.
+ *
+ * ⛔ `DELETE FROM app_settings` دستی ننویسید. `getSetting()` در هر
+ *    درخواست کش می‌کند و حذفِ خام آن را نمی‌بیند، پس مقدارِ برداشته‌شده
+ *    تا آخرِ همان درخواست زنده می‌ماند — **بی‌هیچ خطایی**. همان قاعده‌ی
+ *    `saveUserEmail()`: یک نوشتن، یک جا.
+ */
+function forgetSetting(string $key): void
+{
+    try {
+        Database::getConnection()
+            ->prepare('DELETE FROM app_settings WHERE setting_key = :key')
+            ->execute(['key' => $key]);
+    } catch (PDOException $e) {
+        return;   // جدول نیامده — چیزی هم برای حذف نیست
+    }
+
+    $cache = &settingsCacheRef();
+    $cache[$key] = null;
 }
 
 /**
@@ -1066,6 +1134,17 @@ function resolveWalletId(int $userId, $walletId): ?int
     return defaultWalletId($userId);
 }
 
+/**
+ * ⛔ تنها مرجعِ موجودی.
+ *
+ * ⚠ **و عمداً کش نمی‌شود.** یک بار کشِ درخواستی رویش گذاشته شد تا
+ *   فراخوانیِ دوباره‌ی صفحه‌ی خانه ارزان شود، و تست‌ها همان‌جا قرمز شدند:
+ *   هر مسیری که پول می‌نویسد و بعد موجودی می‌خواند، عددِ **پیش از**
+ *   تغییر را می‌گرفت — بی‌هیچ خطایی، فقط یک عددِ غلط. راهِ درست این است
+ *   که فراخواننده نتیجه را **یک بار بگیرد و پاس بدهد** (پارامترِ
+ *   اختیاری `$rows` در `totalBalance()` و `pinnedWallets()`)، نه اینکه
+ *   حقیقتِ پول در حافظه بماند.
+ */
 function walletBalances(int $userId): array
 {
     $pdo = Database::getConnection();
@@ -1212,12 +1291,12 @@ function walletBalances(int $userId): array
  *
  * @return array<int, array<string, mixed>>
  */
-function pinnedWallets(int $userId): array
+function pinnedWallets(int $userId, ?array $rows = null): array
 {
     if ($userId <= 0 || !tableHasColumn('wallets', 'pinned')) { return []; }
 
     $out = [];
-    foreach (walletBalances($userId) as $w) {
+    foreach ($rows ?? walletBalances($userId) as $w) {
         if (empty($w['pinned']) || !(int)$w['is_active']) { continue; }
         $out[] = $w;
         if (count($out) >= PINNED_WALLET_MAX) { break; }
@@ -1225,10 +1304,15 @@ function pinnedWallets(int $userId): array
     return $out;
 }
 
-function totalBalance(int $userId): int
+/**
+ * ⚠ `$rows` برای وقتی است که فراخواننده همین حالا `walletBalances()` را
+ *   گرفته باشد — سنگین‌ترین کوئریِ اپ است و صفحه‌ی خانه دو بار می‌خواستش.
+ *   پاس دادنِ نتیجه از کش کردنش امن‌تر است: حقیقتِ پول در حافظه نمی‌ماند.
+ */
+function totalBalance(int $userId, ?array $rows = null): int
 {
     $sum = 0;
-    foreach (walletBalances($userId) as $w) {
+    foreach ($rows ?? walletBalances($userId) as $w) {
         if ((int)$w['is_active'] === 1) {
             $sum += (int)$w['balance'];
         }
@@ -1296,19 +1380,55 @@ function budgetStatuses(int $userId): array
     ');
     $stmt->execute(['u' => $userId]);
     $budgets = $stmt->fetchAll();
+    if (!$budgets) { return []; }
+
+    /**
+     * ⛔ یک کوئری برای هر **بازه**، نه برای هر بودجه.
+     *
+     * نسخه‌ی قبلی داخلِ حلقه یک `SUM` جدا می‌زد، یعنی کاربری با ده بودجه
+     * ده کوئریِ اضافه می‌داد — و این تابع هم در صفحه‌ی بودجه صدا زده
+     * می‌شود هم در «پول قابل خرج» روی صفحه‌ی خانه. یعنی هزینه‌اش با
+     * تعدادِ بودجه‌های کاربر خطی بالا می‌رفت، بی‌آنکه جایی دیده شود.
+     *
+     * گروه‌بندی روی بازه است نه روی «همه با هم»، چون بودجه‌ی هفتگی و
+     * ماهانه و دلخواه بازه‌های متفاوتی دارند. در عمل تقریباً همه‌ی
+     * بودجه‌ها ماهانه‌اند، پس یک کوئری می‌ماند.
+     */
+    $ranges = [];
+    foreach ($budgets as $i => $b) {
+        [$from, $to] = budgetPeriodRange($b['period_type'], $b['start_date'], $b['end_date']);
+        $budgets[$i]['range_from'] = $from;
+        $budgets[$i]['range_to']   = $to;
+        $ranges["{$from}|{$to}"][] = (int)$b['category_id'];
+    }
+
+    $spentMap = [];
+    foreach ($ranges as $key => $cats) {
+        [$from, $to] = explode('|', $key);
+        $cats = array_values(array_unique($cats));
+        $holes = implode(',', array_fill(0, count($cats), '?'));
+
+        $spentStmt = $pdo->prepare("
+            SELECT category_id, COALESCE(SUM(amount), 0) AS spent
+              FROM transactions
+             WHERE user_id = ? AND type = 'expense'
+               AND transaction_date BETWEEN ? AND ?
+               AND category_id IN ({$holes})
+             GROUP BY category_id
+        ");
+        $spentStmt->execute(array_merge([$userId, $from, $to], $cats));
+        foreach ($spentStmt->fetchAll() as $r) {
+            // ⚠ دسته‌ای که هیچ تراکنشی ندارد در نتیجه نمی‌آید، پس پایین‌تر
+            //   با `?? 0` خوانده می‌شود — نه اینکه از فهرست بیفتد.
+            $spentMap[$key][(int)$r['category_id']] = (int)$r['spent'];
+        }
+    }
 
     $result = [];
     foreach ($budgets as $b) {
-        [$from, $to] = budgetPeriodRange($b['period_type'], $b['start_date'], $b['end_date']);
-
-        $spentStmt = $pdo->prepare('
-            SELECT COALESCE(SUM(amount), 0) AS spent
-            FROM transactions
-            WHERE user_id = :u AND category_id = :c AND type = "expense"
-              AND transaction_date BETWEEN :f AND :t
-        ');
-        $spentStmt->execute(['u' => $userId, 'c' => $b['category_id'], 'f' => $from, 't' => $to]);
-        $spent = (int)$spentStmt->fetch()['spent'];
+        $from  = $b['range_from'];
+        $to    = $b['range_to'];
+        $spent = $spentMap["{$from}|{$to}"][(int)$b['category_id']] ?? 0;
 
         $amount = (int)$b['amount'];
         $pct = $amount > 0 ? round(($spent / $amount) * 100) : 0;
@@ -1774,11 +1894,11 @@ function financialEvents(int $userId, string $fromDate, string $toDate): array
  * «پول قابل خرج» = موجودی فعلی − تعهدات قطعی نزدیک
  * این عدد نباید با موجودی بانکی اشتباه گرفته شود.
  */
-function safeToSpend(int $userId, int $daysAhead = 30): array
+function safeToSpend(int $userId, int $daysAhead = 30, ?array $walletRows = null): array
 {
     $balance = 0;
     try {
-        $balance = totalBalance($userId);
+        $balance = totalBalance($userId, $walletRows);
     } catch (PDOException $e) {
         return ['available' => null, 'balance' => 0, 'commitments' => 0];
     }
@@ -2085,7 +2205,13 @@ function monthComparison(int $userId): array
  *
  * @return array<int, array{tone:string, text:string, link:?string}>
  */
-function financialHighlights(int $userId): array
+/**
+ * ⚠ `$walletRows` همان نتیجه‌ی `walletBalances()` است، اگر فراخواننده
+ *   از قبل گرفته باشدش. صفحه‌ی خانه هم این را صدا می‌زند هم
+ *   `pinnedWallets()` را، و بدونِ پاس دادن، سنگین‌ترین کوئریِ اپ **دو
+ *   بار** در یک بارگذاری اجرا می‌شد.
+ */
+function financialHighlights(int $userId, ?array $walletRows = null): array
 {
     $out = [];
 
@@ -2094,7 +2220,7 @@ function financialHighlights(int $userId): array
     //    چکِ برگشتی عارضه‌ی حقوقی دارد و بدهیِ دیرکرد رابطه را خراب
     //    می‌کند. مقایسه‌ی هزینه‌ی ماه در برابرش تزئین است.
     try {
-        $safe = safeToSpend($userId);
+        $safe = safeToSpend($userId, 30, $walletRows);
         if (!empty($safe['overdue']) && (int)$safe['overdue'] > 0) {
             $out[] = [
                 'tone' => 'warn',

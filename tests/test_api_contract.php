@@ -1898,6 +1898,61 @@ T::bulk(count($phpFiles), $badGate,
 T::bulk(count($phpFiles), $badNull,
     '⛔ هر فایلی که `password_verify()` دارد، حسابِ بی‌رمز را هم می‌سنجد');
 
+// ---------------------------------------------------------------
+// ⛔ قاعده ۲۹ — موجودیِ حساب هرگز کش نمی‌شود.
+//
+// یک بار کشِ درخواستی روی `walletBalances()` گذاشته شد تا فراخوانیِ
+// دوباره‌ی صفحه‌ی خانه ارزان شود. **پنج مجموعه‌ی تست همان‌جا قرمز شدند**:
+// هر مسیری که پول می‌نویسد و بعد موجودی می‌خواند عددِ **پیش از** تغییر
+// را می‌گرفت — نه خطایی، نه استثنایی، فقط یک عددِ غلط در پاسخ.
+//
+// راهِ درستِ ارزان کردنش این است که فراخواننده نتیجه را **یک بار بگیرد و
+// پاس بدهد** (پارامترِ `$rows` در `totalBalance()` / `pinnedWallets()` و
+// `$walletRows` در `safeToSpend()` / `financialHighlights()`)، نه اینکه
+// حقیقتِ پول در حافظه بماند.
+//
+// ⚠ وسوسه‌ی برگرداندنش واقعی است، چون «فقط یک کوئری» به نظر می‌رسد. این
+//   قاعده همان را می‌بندد تا تصمیم آگاهانه باشد، نه تصادفی.
+T::group('قاعده ۲۹ — موجودیِ حساب کش نمی‌شود');
+
+$balSrc  = php_strip_whitespace(__DIR__ . '/../includes/functions.php');
+$badCache = [];
+
+// ⚠ بدنه تا **تعریفِ تابعِ بعدی** بریده می‌شود، نه تا اولین `}`ی که
+//   در متن پیدا شود: هر `if`ِ داخلِ تابع یکی از آن‌ها دارد، و نسخه‌ی اولِ
+//   همین بررسی به همین دلیل تا نصفِ فایل جلو رفت و `static`ِ تابعِ
+//   **دیگری** را پیدا کرد — یعنی روی فایلِ سالم قرمز شد.
+$fnStart = strpos($balSrc, 'function walletBalances(');
+if ($fnStart !== false) {
+    $next = strpos($balSrc, 'function ', $fnStart + 10);
+    $body = substr($balSrc, $fnStart, $next === false ? null : $next - $fnStart);
+
+    if (preg_match('/\bstatic\s+\$/', $body)) {
+        $badCache[] = 'walletBalances() یک `static` دارد — کشِ موجودی برگشته است';
+    }
+    if (preg_match('/\bwalletBalanceCache/i', $balSrc)) {
+        $badCache[] = 'کشِ موجودی (walletBalanceCache…) دوباره ساخته شده است';
+    }
+} else {
+    $badCache[] = 'بدنه‌ی walletBalances() پیدا نشد — قاعده ۲۹ کور شده';
+}
+
+// و راهِ ارزانش باید سرِ جایش بماند، وگرنه کسی که کش را برمی‌دارد
+// جایگزینی هم ندارد و دوباره وسوسه می‌شود.
+foreach ([
+    'totalBalance'        => '/function\s+totalBalance\s*\(\s*int\s+\$userId\s*,\s*\?array\s+\$rows/',
+    'pinnedWallets'       => '/function\s+pinnedWallets\s*\(\s*int\s+\$userId\s*,\s*\?array\s+\$rows/',
+    'safeToSpend'         => '/function\s+safeToSpend\s*\([^)]*\?array\s+\$walletRows/',
+    'financialHighlights' => '/function\s+financialHighlights\s*\([^)]*\?array\s+\$walletRows/',
+] as $fn => $re) {
+    if (!preg_match($re, $balSrc)) {
+        $badCache[] = "{$fn}() دیگر ردیف‌های آماده را نمی‌پذیرد؛"
+                    . ' بدونِ آن صفحه‌ی خانه سنگین‌ترین کوئری را دو بار می‌زند';
+    }
+}
+
+T::bulk(5, $badCache, '⛔ موجودی کش نمی‌شود، بلکه یک بار خوانده و پاس داده می‌شود');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }
