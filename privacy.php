@@ -10,6 +10,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/sms.php';
 require_once __DIR__ . '/includes/user_data.php';
 
 Auth::initSession();
@@ -19,6 +20,7 @@ $pageTitle = 'حریم خصوصی';
 include __DIR__ . '/includes/header.php';
 
 $support = getSetting('support_email', '');
+$flows   = outboundDataFlows();
 ?>
 
 <a href="<?= APP_BASE_PATH ?>/profile.php" class="page-back js-page-back">
@@ -31,10 +33,26 @@ $support = getSetting('support_email', '');
     <h2 class="card-title">داده‌ی شما کجاست</h2>
 
     <p class="privacy-p">
-        همه‌ی داده‌ی این برنامه روی همان سروری می‌ماند که خودتان آن را
-        نصب کرده‌اید. هیچ چیزی به سرویس بیرونی فرستاده نمی‌شود — نه
-        تراکنش، نه شماره حساب، نه آمار استفاده.
+        دفتر شما — تراکنش‌ها، حساب‌ها، چک‌ها، طلب و بدهی — روی همان سروری
+        می‌ماند که این برنامه رویش نصب است. <strong>هیچ آمار استفاده‌ای
+        جمع نمی‌شود</strong>، هیچ ابزار تحلیلی و هیچ اسکریپت یا فونتی از
+        سرویس بیرونی روی این صفحه‌ها بار نمی‌شود.
     </p>
+
+    <?php if ($flows === []): ?>
+        <p class="privacy-p">
+            روی این نصب، <strong>هیچ چیزی به سرویس بیرونی فرستاده
+            نمی‌شود</strong> — نه تراکنش، نه شماره حساب، نه ایمیل.
+        </p>
+    <?php else: ?>
+        <p class="privacy-p">
+            <strong>ولی این‌ها از سرور بیرون می‌روند</strong>، و اینجا
+            نوشته می‌شوند چون همین حالا روی این نصب روشن‌اند:
+        </p>
+        <?php foreach ($flows as $flow): ?>
+            <p class="privacy-p"><?= h($flow['text']) ?></p>
+        <?php endforeach; ?>
+    <?php endif; ?>
 
     <p class="privacy-p">
         <strong>پیامک بانک</strong> که برای ثبت سریع می‌چسبانید، اصلاً از

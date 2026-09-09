@@ -1953,6 +1953,128 @@ foreach ([
 
 T::bulk(5, $badCache, '⛔ موجودی کش نمی‌شود، بلکه یک بار خوانده و پاس داده می‌شود');
 
+// ---------------------------------------------------------------
+// ⛔ قاعده ۳۰ — ادعای «چیزی بیرون نمی‌رود» از پیکربندی خوانده می‌شود.
+//
+// `privacy.php` قرار است **هر ادعایش در کد نشان‌دادنی باشد**. یک بار
+// همان صفحه با یک جمله‌ی ثابت می‌گفت «هیچ چیزی به سرویس بیرونی فرستاده
+// نمی‌شود» — و بردنِ دامنه پشتِ کلادفلر آن را وارونه کرد: TLS روی لبه‌ی
+// آن‌ها باز می‌شود، پس رمز و شماره کارتِ کاربر از دیدشان رد می‌شود.
+// **هیچ خطایی هم نمی‌داد**؛ فقط صفحه‌ی حریم خصوصی دروغ می‌گفت، و
+// `git pull` هم عوضش نمی‌کرد چون جمله ثابت بود.
+//
+// حالا `outboundDataFlows()` تنها جای این تصمیم است و از خودِ پیکربندی
+// می‌خواند. سه چیز باید بسته بماند، و هر سه خرابیِ بی‌صدا می‌سازند:
+//   ۱. صفحه باید واقعاً از همان تابع بخواند، نه از متنِ خودش.
+//   ۲. ادعای مطلق فقط داخلِ شاخه‌ی «فهرست خالی است» گفته شود.
+//   ۳. مصرف‌کننده باید `includes/sms.php` را لود کند — وگرنه
+//      `class_exists('Sms')` نادرست می‌شود و قلمِ پیامک **بی‌صدا** از
+//      فهرست می‌افتد، بی‌آنکه چیزی خطا بدهد.
+T::group('قاعده ۳۰ — حریم خصوصی از روی پیکربندی');
+
+$badPriv  = [];
+$fnSrc    = (string)@file_get_contents(__DIR__ . '/../includes/functions.php');
+$privPath = __DIR__ . '/../privacy.php';
+$privRaw  = (string)@file_get_contents($privPath);
+
+// تنها جای تعریف — نسخه‌ی دوم یعنی صفحه و واقعیت از هم دور می‌افتند.
+foreach (['cdnInFront', 'outboundDataFlows'] as $fn) {
+    $defs = 0;
+    foreach (['api', 'api/v1', 'includes', 'admin', '.'] as $dir) {
+        foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) {
+            $defs += preg_match_all('/function\s+' . $fn . '\s*\(/', (string)@file_get_contents($p));
+        }
+    }
+    if ($defs !== 1) {
+        $badPriv[] = "{$fn}() باید دقیقاً یک بار تعریف شود (شمرده شد: {$defs})";
+    }
+}
+
+// و باید هر سه منبع را بپرسد؛ افتادنِ یکی یعنی قلمی که واقعاً بیرون
+// می‌رود در صفحه دیده نمی‌شود.
+$flowStart = strpos($fnSrc, 'function outboundDataFlows(');
+if ($flowStart === false) {
+    $badPriv[] = 'outboundDataFlows() پیدا نشد — قاعده ۳۰ کور شده';
+} else {
+    $nextFn   = strpos($fnSrc, "\nfunction ", $flowStart + 10);
+    $flowBody = substr($fnSrc, $flowStart, $nextFn === false ? null : $nextFn - $flowStart);
+    foreach ([
+        'cdnInFront('  => 'CDN',
+        'MAIL_METHOD'  => 'ایمیل',
+        'Sms::method(' => 'پیامک',
+    ] as $needle => $label) {
+        if (!str_contains($flowBody, $needle)) {
+            $badPriv[] = "outboundDataFlows() دیگر «{$label}» را نمی‌سنجد؛"
+                       . ' آن قلم بی‌صدا از صفحه‌ی حریم خصوصی می‌افتد';
+        }
+    }
+}
+
+// مصرف‌کننده‌ها: باید تابع را صدا بزنند و کلاسِ Sms را هم لود کنند.
+$privConsumers = 0;
+foreach (['api', 'includes', 'admin', '.'] as $dir) {
+    foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) {
+        $src = (string)@file_get_contents($p);
+        if (!str_contains($src, 'outboundDataFlows(')
+            || preg_match('/function\s+outboundDataFlows\s*\(/', $src)) {
+            continue;
+        }
+        $privConsumers++;
+        if (!preg_match('#includes/sms\.php#', $src)) {
+            $badPriv[] = basename($p) . ' — outboundDataFlows() را صدا می‌زند ولی'
+                       . ' includes/sms.php را لود نمی‌کند؛ قلمِ پیامک بی‌صدا می‌افتد';
+        }
+    }
+}
+if ($privConsumers === 0) {
+    $badPriv[] = 'هیچ صفحه‌ای outboundDataFlows() را صدا نمی‌زند —'
+               . ' یعنی صفحه‌ی حریم خصوصی دوباره از متنِ ثابتِ خودش می‌گوید';
+}
+
+// ⚠ کامنت‌ها پیش از تجزیه خالی می‌شوند (با حفظِ شماره‌ی خط)، وگرنه
+//   توضیحی که *بالای* همین شاخه نوشته شود تست را روی فایلِ سالم قرمز
+//   می‌کند — همان دامی که قاعده‌های ۲۰ و ۲۴ هم برایش نوشته شدند.
+$privLines = [];
+if ($privRaw !== '') {
+    $clean = '';
+    foreach (token_get_all($privRaw) as $t) {
+        if (is_array($t) && ($t[0] === T_COMMENT || $t[0] === T_DOC_COMMENT)) {
+            $clean .= str_repeat("\n", substr_count($t[1], "\n"));
+        } else {
+            $clean .= is_array($t) ? $t[1] : $t;
+        }
+    }
+    $privLines = explode("\n", $clean);
+}
+
+$CLAIM   = 'هیچ چیزی به سرویس بیرونی';
+$ifLine  = -1;
+$elseLine = -1;
+foreach ($privLines as $i => $line) {
+    if ($ifLine < 0 && preg_match('/if\s*\(\s*\$flows\s*===\s*\[\s*\]\s*\)/', $line)) {
+        $ifLine = $i;
+    } elseif ($ifLine >= 0 && $elseLine < 0 && preg_match('/\belse\s*:/', $line)) {
+        $elseLine = $i;
+    }
+}
+if ($ifLine < 0 || $elseLine < 0) {
+    $badPriv[] = 'privacy.php شاخه‌ی «فهرست خالی است» را ندارد؛'
+               . ' ادعای مطلق آن‌وقت بی‌قید گفته می‌شود';
+} else {
+    foreach ($privLines as $i => $line) {
+        if (!str_contains($line, $CLAIM)) { continue; }
+        if ($i <= $ifLine || $i >= $elseLine) {
+            $badPriv[] = 'privacy.php خطِ ' . ($i + 1) . ' — ادعای «چیزی بیرون'
+                       . ' نمی‌رود» بیرونِ شاخه‌ی خالی بودنِ فهرست است';
+        }
+    }
+    if (!preg_match('/foreach\s*\(\s*\$flows\s+as/', $clean)) {
+        $badPriv[] = 'privacy.php فهرستِ خروجی‌ها را رندر نمی‌کند';
+    }
+}
+
+T::bulk(6, $badPriv, '⛔ صفحه‌ی حریم خصوصی از پیکربندیِ واقعی می‌خواند');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

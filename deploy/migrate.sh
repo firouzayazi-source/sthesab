@@ -108,6 +108,7 @@ MIGRATIONS=(
     migration_access_revoke.sql
     migration_discount_codes.sql
     migration_phone_signup.sql
+    migration_indexes2.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -243,6 +244,10 @@ declare -A SENTINEL=(
     [migration_phone_signup.sql]="users.password_hash:null"
     # شاهدش داده است نه ساختار — توضیحش در sentinel_present.
     [migration_more_categories.sql]="app_settings~setting_key=more_categories_seeded"
+    # ⛔ شاهدش خودِ **ایندکس** است، نه خالی. `migration_indexes.sql`ِ قدیمی
+    #    شاهد ندارد و --verify هرگز نسنجیدش؛ برای این یکی آن سوراخ بسته
+    #    شد (شکلِ ششم در sentinel_present).
+    [migration_indexes2.sql]="notifications:idx_notif_unread"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟
@@ -293,6 +298,21 @@ sentinel_present() {
                                   FROM information_schema.columns
                                   WHERE table_schema=DATABASE() AND table_name='$t' AND column_name='$c';")
         [[ "$nullable" == "YES" ]]
+        return
+    fi
+
+    # ⛔ شکلِ ششم: `جدول:ایندکس` — برای migration ای که فقط **ایندکس**
+    #    می‌سازد. تا امروز چنین فایلی شاهدِ خالی می‌گرفت (`""`) و
+    #    --verify اصلاً نمی‌سنجیدش؛ یعنی ثبتِ «اجرا شد» هیچ پشتوانه‌ای
+    #    نداشت — همان حالتی که `users.avatar` را ساخت. حالا وجودِ خودِ
+    #    ایندکس سنجیده می‌شود.
+    #
+    # ⚠ دو نقطه است نه نقطه، وگرنه از شکلِ `جدول.ستون` قابل تشخیص نبود.
+    if [[ "$spec" == *":"* ]]; then
+        local t="${spec%%:*}" ix="${spec#*:}" n
+        n=$(mysql_q -N -e "SELECT COUNT(*) FROM information_schema.statistics
+                           WHERE table_schema=DATABASE() AND table_name='$t' AND index_name='$ix';")
+        [[ -n "$n" && "$n" -ge 1 ]]
         return
     fi
 
