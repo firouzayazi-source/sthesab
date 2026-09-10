@@ -7,6 +7,12 @@ require_once __DIR__ . '/notify.php';
 if (!isset($pageTitle)) {
     $pageTitle = APP_NAME;
 }
+/* عرضِ صفحه — همان الگوی `$pageTitle`: صفحه پیش از این include
+   مقدارش را می‌گذارد و اینجا فقط پیش‌فرض گرفته می‌شود. پیش‌فرض
+   **باریک** است، پس هیچ صفحه‌ای با افزودنِ این خط عوض نمی‌شود. */
+if (!isset($pageWide)) {
+    $pageWide = false;
+}
 // فشرده‌سازی خروجی در includes/db.php و پیش از هر خروجی فعال می‌شود
 ?>
 <!DOCTYPE html>
@@ -103,7 +109,9 @@ if (!isset($pageTitle)) {
             </div>
         </header>
 
-        <div class="page-content">
+        <?php /* صفحه‌ای که جدولِ پهن دارد پیش از این include مقدارِ
+                 `$pageWide = true` می‌گذارد؛ بقیه دست‌نخورده می‌مانند. */ ?>
+        <div class="page-content<?= $pageWide ? ' is-wide' : '' ?>">
             <?php /* پیشنهادِ نصبِ اپ اندروید — بالای همه چیز، ولی فقط
                      روی اندروید و فقط وقتی APK واقعاً وجود دارد. خودش
                      تصمیم می‌گیرد که رندر شود یا نه. */ ?>

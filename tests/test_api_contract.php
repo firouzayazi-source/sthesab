@@ -2075,6 +2075,101 @@ if ($ifLine < 0 || $elseLine < 0) {
 
 T::bulk(6, $badPriv, '⛔ صفحه‌ی حریم خصوصی از پیکربندیِ واقعی می‌خواند');
 
+// ---------------------------------------------------------------
+// ⛔ قاعده ۳۱ — برچسبِ کنترل نمی‌شکند، و ستونِ «عملیات» له نمی‌شود.
+//
+// **خرابیِ واقعی، و فقط روی دسکتاپ دیده می‌شد:** در `admin/users.php`
+// ستونِ عملیات روی ۱۱۵ پیکسل بسته می‌شد، چهار دکمه زیرِ هم می‌افتادند و
+// ارتفاعِ هر ردیف از ۶۱ به **۲۱۱** پیکسل می‌رسید — با برچسب‌هایی مثل
+// «غیرفعال‌ساز» که نصفه دیده می‌شدند. علتش دو چیزِ به‌هم‌بافته بود:
+//   ۱. فارسی **نیم‌فاصله** دارد و مرورگر آن را جای شکستن می‌شناسد، پس
+//      کمترین عرضِ لازمِ یک دکمه به یک تکه‌ی کوچک می‌رسید؛
+//   ۲. ردیفِ دکمه‌ها `flex-wrap: wrap` بود، پس کمترین عرضِ لازمِ کلِ
+//      ستون فقط **یک** دکمه بود و جدول باقیِ عرض را به ستون‌های دیگر داد.
+// روی گوشی بی‌عیب بود (جدول آنجا کارتی می‌شود)، پس **«روی گوشی درست
+// است» اینجا مدرک نبود** — همان درسِ منوی کناری، آینه‌وار.
+//
+// ⚠ هر سه تکه لازم‌اند: `nowrap` روی برچسب، `nowrap` روی ردیفِ دکمه‌ها
+//   در دسکتاپ، و `width: 1%` روی خودِ ستون. با افتادنِ هرکدام ستون دوباره
+//   له می‌شود و هیچ خطایی هم داده نمی‌شود.
+T::group('قاعده ۳۱ — برچسبِ کنترل نمی‌شکند');
+
+$badWrap = [];
+$cssRaw  = (string)@file_get_contents(__DIR__ . '/../assets/css/style.css');
+// ⚠ کامنت‌های CSS پیش از تجزیه حذف می‌شوند، وگرنه همین توضیح‌ها بخشی از
+//   بلوکِ قاعده خوانده می‌شوند — همان دامی که قاعده ۲۰ در آن افتاد.
+$css = preg_replace('#/\*.*?\*/#s', '', $cssRaw);
+
+/** بدنه‌ی یک قاعده‌ی CSS را برمی‌گرداند (اولین تطابقِ دقیقِ انتخابگر). */
+$ruleBody = function (string $haystack, string $selector) {
+    if (!preg_match('/(^|\})\s*' . preg_quote($selector, '/') . '\s*\{([^}]*)\}/m', $haystack, $m)) {
+        return null;
+    }
+    return $m[2];
+};
+
+foreach (['.btn', '.delete-btn'] as $sel) {
+    $body = $ruleBody($css, $sel);
+    if ($body === null) {
+        $badWrap[] = "قاعده‌ی {$sel} پیدا نشد — قاعده ۳۱ کور شده";
+    } elseif (!preg_match('/white-space\s*:\s*nowrap/', $body)) {
+        $badWrap[] = "{$sel} دیگر `white-space: nowrap` ندارد؛ برچسبِ فارسی روی"
+                   . ' نیم‌فاصله می‌شکند و ستونِ جدول له می‌شود';
+    }
+}
+
+$cellBody = $ruleBody($css, '.data-table th.actions-cell, .data-table td.actions-cell');
+if ($cellBody === null || !preg_match('/width\s*:\s*1%/', $cellBody)) {
+    $badWrap[] = 'ستونِ .actions-cell دیگر `width: 1%` ندارد؛ جدول عرضش را'
+               . ' به ستون‌های دیگر می‌دهد';
+}
+
+// و نیمه‌ی دسکتاپ: ردیفِ دکمه‌ها آنجا نباید بشکند.
+// ⚠ بیش از **یک** بلوکِ `min-width: 901px` در فایل هست، پس گرفتنِ اولی
+//   کافی نیست: نسخه‌ی اولِ همین بررسی دقیقاً به این دلیل روی فایلِ
+//   **سالم** قرمز شد. همه‌ی بلوک‌ها با هم سنجیده می‌شوند.
+$desktop = '';
+$off = 0;
+while (preg_match('/@media\s*\(\s*min-width:\s*901px\s*\)\s*\{/', $css, $m, PREG_OFFSET_CAPTURE, $off)) {
+    $start = $m[0][1] + strlen($m[0][0]);
+    $depth = 1; $len = strlen($css);
+    for ($i = $start; $i < $len && $depth > 0; $i++) {
+        if ($css[$i] === '{') { $depth++; }
+        elseif ($css[$i] === '}') { $depth--; }
+    }
+    $desktop .= substr($css, $start, $i - $start - 1);
+    $off = $i;
+}
+if ($desktop === '') {
+    $badWrap[] = 'بلوکِ @media (min-width: 901px) پیدا نشد — قاعده ۳۱ کور شده';
+} elseif (!preg_match('/\.table-actions\s*\{[^}]*flex-wrap\s*:\s*nowrap/', $desktop)) {
+    $badWrap[] = '`.table-actions { flex-wrap: nowrap }` در بلوکِ دسکتاپ نیست؛'
+               . ' بدونش `width: 1%` بی‌اثر است و دکمه‌ها دوباره زیرِ هم می‌افتند';
+}
+
+// و هر صفحه‌ای که ردیفِ عملیات دارد باید ستونش را هم علامت زده باشد —
+// در **هر دو** سر (`th` و `td`)، وگرنه فقط نیمی از رفع اعمال می‌شود.
+$actionPages = 0;
+foreach (['admin', '.'] as $dir) {
+    foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) {
+        $src = (string)@file_get_contents($p);
+        if (!str_contains($src, 'table-actions')) { continue; }
+        $actionPages++;
+        if (!preg_match('/<th[^>]*class="[^"]*actions-cell/', $src)) {
+            $badWrap[] = basename($p) . ' — سرستونِ عملیات کلاسِ actions-cell ندارد';
+        }
+        if (!preg_match('/<td[^>]*class="[^"]*actions-cell/', $src)) {
+            $badWrap[] = basename($p) . ' — سلولِ عملیات کلاسِ actions-cell ندارد';
+        }
+    }
+}
+if ($actionPages === 0) {
+    $badWrap[] = 'هیچ صفحه‌ای `.table-actions` ندارد — یعنی ردیفِ دکمه‌ها دوباره'
+               . ' با استایلِ درون‌خطی نوشته شده و از این قاعده بیرون است';
+}
+
+T::bulk(5 + $actionPages, $badWrap, '⛔ برچسبِ دکمه‌ها نمی‌شکند و ستونِ عملیات عرضِ خودش را دارد');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

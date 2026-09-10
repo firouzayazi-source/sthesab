@@ -296,6 +296,8 @@ $users = $pdo->query("SELECT {$cols} FROM users ORDER BY created_at ASC")->fetch
 // ⚠ یک کوئری برای کلِ فهرست، نه یکی به‌ازای هر ردیف.
 $lockCounts = LoginThrottle::failureCounts();
 $pageTitle = 'مدیریت کاربران';
+/* جدولِ هفت‌ستونه با یک ستونِ دکمه — در ۷۲۰ پیکسل له می‌شود. */
+$pageWide  = true;
 include __DIR__ . '/../includes/header.php';
 ?>
 
@@ -322,7 +324,7 @@ include __DIR__ . '/../includes/header.php';
                     <th>نقش</th>
                     <th>وضعیت</th>
                     <th>تاریخ عضویت</th>
-                    <th>عملیات</th>
+                    <th class="actions-cell">عملیات</th>
                 </tr>
             </thead>
             <tbody>
@@ -356,8 +358,8 @@ include __DIR__ . '/../includes/header.php';
                                 </span>
                             </td>
                             <td data-label="تاریخ عضویت"><?= toJalali(substr($u['created_at'], 0, 10)) ?></td>
-                            <td data-label="عملیات">
-                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <td data-label="عملیات" class="actions-cell">
+                                <div class="table-actions">
                                     <button type="button" class="btn btn-secondary btn-sm js-edit-user"
                                         data-id="<?= (int)$u['id'] ?>"
                                         data-full-name="<?= h($u['full_name']) ?>"
@@ -367,7 +369,7 @@ include __DIR__ . '/../includes/header.php';
                                         data-role="<?= h($u['role']) ?>">ویرایش</button>
 
                                     <?php if ($fails > 0): ?>
-                                        <form method="POST" style="display:inline;">
+                                        <form method="POST">
                                             <?= Csrf::field() ?>
                                             <input type="hidden" name="action" value="unlock_login">
                                             <input type="hidden" name="username" value="<?= h($u['username']) ?>">
@@ -377,7 +379,7 @@ include __DIR__ . '/../includes/header.php';
                                     <?php endif; ?>
 
                                     <?php if ((int)$u['id'] !== $currentUserId): ?>
-                                        <form method="POST" style="display:inline;">
+                                        <form method="POST">
                                             <?= Csrf::field() ?>
                                             <input type="hidden" name="action" value="toggle_status">
                                             <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
@@ -386,7 +388,7 @@ include __DIR__ . '/../includes/header.php';
                                             </button>
                                         </form>
                                         <?php if ((int)$u['is_active'] === 1): ?>
-                                        <form method="POST" style="display:inline;" onsubmit="return confirm('این کاربر از همه‌ی مرورگرها و اپ‌ها خارج می‌شود و باید دوباره وارد شود. ادامه؟');">
+                                        <form method="POST" onsubmit="return confirm('این کاربر از همه‌ی مرورگرها و اپ‌ها خارج می‌شود و باید دوباره وارد شود. ادامه؟');">
                                             <?= Csrf::field() ?>
                                             <input type="hidden" name="action" value="revoke_access">
                                             <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
@@ -398,14 +400,14 @@ include __DIR__ . '/../includes/header.php';
                                                  `Undo` فقط یک ردیف و فرزندانِ CASCADE اش را
                                                  عکس می‌گیرد — همان دلیلی که حذفِ حساب و
                                                  معامله هم `confirm()` نگه داشتند. */ ?>
-                                        <form method="POST" style="display:inline;" onsubmit="return confirm('کاربر و همه‌ی داده‌هایش (تراکنش، حساب، چک، …) برای همیشه حذف می‌شود. این کار برگشت ندارد. ادامه؟');">
+                                        <form method="POST" onsubmit="return confirm('کاربر و همه‌ی داده‌هایش (تراکنش، حساب، چک، …) برای همیشه حذف می‌شود. این کار برگشت ندارد. ادامه؟');">
                                             <?= Csrf::field() ?>
                                             <input type="hidden" name="action" value="delete">
                                             <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
                                             <button type="submit" class="delete-btn">حذف</button>
                                         </form>
                                     <?php else: ?>
-                                        <span style="font-size:12px; color:var(--color-gray-500); align-self:center;">(حساب شما)</span>
+                                        <span class="self-note">(حساب شما)</span>
                                     <?php endif; ?>
                                 </div>
                             </td>

@@ -201,6 +201,13 @@ a { color: inherit; }
 }
 
 .page-content { padding: 16px; max-width: 720px; margin: 0 auto; }
+/* ⛔ ۷۲۰ پیکسل عرضِ **خواندن** است و برای همه‌ی صفحه‌های این اپ درست
+   است، ولی یک جدولِ هفت‌ستونه را روی دسکتاپ در نصفِ صفحه له می‌کند —
+   در حالی که ۴۵۰ پیکسل کنارش خالی مانده. صفحه‌ای که جدولِ پهن دارد با
+   `$pageWide = true` پیش از `header.php` این را باز می‌کند.
+   ⚠ روی موبایل بی‌اثر است (عرضِ پنجره از هر دو کمتر است)، پس چیزی در
+     نمای گوشی عوض نمی‌شود. */
+.page-content.is-wide { max-width: 1120px; }
 
 .theme-toggle {
     background: none; border: none; padding: 7px;
@@ -512,6 +519,14 @@ input::placeholder, textarea::placeholder { color: var(--muted-2); }
 textarea { resize: vertical; }
 .req { color: var(--out); }
 
+/* ⛔ برچسبِ یک کنترل هرگز وسطِ خودش نمی‌شکند.
+   فارسی «نیم‌فاصله» دارد و مرورگر آن را **جای شکستن** می‌شناسد، پس
+   «غیرفعال‌سازی» به «غیرفعال‌» و «سازی» می‌شکند و در یک ستونِ تنگ به
+   شکلِ «غیرفعال‌ساز» دیده می‌شود — یعنی دکمه‌ای که برچسبش دروغ می‌گوید.
+   بدتر از آن: چون کمترین عرضِ لازمِ ستون به همان تکه‌ی کوچک می‌رسد،
+   جدول آن ستون را می‌فشارد و باقیِ عرض را به ستون‌های دیگر می‌دهد.
+   با `nowrap` کمترین عرضِ ستون همان عرضِ واقعیِ دکمه‌هاست و اگر جا نشد
+   `.table-wrapper` اسکرول می‌دهد — که دیدنی است، برخلافِ متنِ بریده. */
 .btn {
     display: inline-flex; align-items: center; justify-content: center;
     gap: 7px;
@@ -520,6 +535,7 @@ textarea { resize: vertical; }
     border-radius: var(--r-sm);
     font-size: 14px; font-weight: 700;
     text-decoration: none;
+    white-space: nowrap;
     transition: opacity .15s, transform .1s;
 }
 .btn:active { transform: scale(.985); }
@@ -791,6 +807,7 @@ textarea { resize: vertical; }
     background: none; border: none;
     color: var(--out); font-size: 12.5px; font-weight: 600;
     padding: 8px 10px; border-radius: var(--r-sm);
+    white-space: nowrap;   /* همان قاعده‌ی `.btn` — برچسب نمی‌شکند */
 }
 .delete-btn:hover { background: var(--out-wash); }
 
@@ -1038,6 +1055,16 @@ button.status-badge:active { transform: scale(.96); }
 .data-table th:last-child  { border-radius: var(--r-sm) 0 0 var(--r-sm); }
 .data-table td { padding: 11px 10px; border-bottom: 1px solid var(--line-soft); }
 .data-table tr:last-child td { border-bottom: none; }
+
+/* ⛔ ستونِ «عملیات» عرضِ **خودش** را می‌گیرد، نه باقی‌ماندهٔ عرض را.
+   `width: 1%` در جدولِ خودکار یعنی «کمترین عرضِ لازم»، پس فشار روی
+   ستون‌هایی می‌افتد که متنشان واقعاً می‌تواند بشکند (نام، ایمیل) نه روی
+   ردیفی از دکمه‌ها. بدونِ این، دکمه‌ها زیرِ هم می‌افتادند و ارتفاعِ هر
+   ردیف از ۴۸ به **۲۱۱** پیکسل می‌رسید — اندازه‌گیری شد، حدس زده نشد. */
+.data-table th.actions-cell, .data-table td.actions-cell { width: 1%; }
+.table-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.table-actions form { display: inline-flex; margin: 0; }
+.table-actions .self-note { font-size: 12px; color: var(--muted); white-space: nowrap; }
 
 /* ============================================================
    ۱۲. مودال
@@ -1767,6 +1794,16 @@ html.is-locked, html.is-locked body {
 @media (min-width: 901px) {
     .bottom-nav, .more-sheet-overlay { display: none !important; }
     .table-wrapper { overflow-x: auto; }
+
+    /* ⛔ نیمه‌ی دومِ رفعِ ستونِ «عملیات»، و بدونش `width: 1%` بی‌اثر است:
+       تا وقتی ردیفِ دکمه‌ها `flex-wrap: wrap` باشد، کمترین عرضِ لازمش
+       فقط **یک** دکمه است — پس جدول ستون را روی ۱۳۹ پیکسل می‌بندد و
+       چهار دکمه زیرِ هم می‌افتند (ارتفاعِ ردیف ۱۹۱ پیکسل، اندازه‌گیری
+       شد). با `nowrap` کمترین عرض همان مجموعِ دکمه‌هاست و اگر جا نشد
+       `.table-wrapper` اسکرول می‌دهد.
+       ⚠ فقط روی دسکتاپ: زیرِ ۹۰۱ پیکسل جدول کارتی می‌شود و آنجا شکستنِ
+         ردیفِ دکمه‌ها دقیقاً همان چیزی است که باید بشود. */
+    .table-actions { flex-wrap: nowrap; }
 
     /* ⛔ روی دسکتاپ شیت باید **وسط** باز شود، نه چسبیده به لبه.
        `.sheet` یک الگوی موبایلی است: تمام‌عرض، چسبیده به کف، و
