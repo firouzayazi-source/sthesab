@@ -58,6 +58,22 @@ API="${TG_API:-https://api.telegram.org}"
 MAX_SEND="${MAX_SEND:-$((50 * 1024 * 1024))}"
 MAX_VERIFY="${MAX_VERIFY:-$((20 * 1024 * 1024))}"
 
+# ⛔ IPv4 اجباری است و این یک تنظیمِ سلیقه‌ای نیست. روی سرورِ واقعی
+#   `api.telegram.org` رکوردِ AAAA دارد و curl **اول** سراغِ IPv6 می‌رود؛
+#   اگر مسیرِ IPv6 مرده باشد (که روی خیلی از VPS ها هست) نتیجه
+#   `curl: (35) Recv failure: Connection reset by peer` است — یعنی خطایی
+#   که شبیهِ «توکن غلط» یا «تلگرام بسته است» دیده می‌شود ولی هیچ‌کدام
+#   نیست. با `-4` همان درخواست `401` گرفت. روی همین نصب دیده شد.
+#   خالی گذاشتنش (`IPFLAG=`) رفتارِ پیش‌فرضِ curl را برمی‌گرداند.
+IPFLAG="${IPFLAG--4}"
+
+# تلاشِ دوباره فقط برای **شکستِ اتصال** است، نه برای پاسخِ منفیِ تلگرام:
+# قطعِ گاه‌به‌گاه روی این مسیر واقعی است و یک بکاپِ نرفته تا فردا شب
+# جبران نمی‌شود. ⚠ هزینه‌اش این است که اگر قطع **بعد از** تحویلِ کامل
+# رخ دهد، همان فایل دو بار در کانال می‌نشیند — که بی‌ضرر است، برخلافِ
+# بکاپی که اصلاً نرفته.
+NET_TRIES="${NET_TRIES:-3}"
+
 green() { printf '\033[0;32m%s\033[0m\n' "$1"; }
 red()   { printf '\033[0;31m%s\033[0m\n' "$1"; }
 warn()  { printf '\033[0;33m%s\033[0m\n' "$1"; }
@@ -128,21 +144,40 @@ load_conf
 # ⛔ توکن روی خطِ فرمان نمی‌رود. آدرسِ متد داخلِ همین فایلِ ۶۰۰ می‌نشیند،
 #    وگرنه هر کاربرِ دیگری روی این VPS آن را در `ps aux` می‌دید — همان
 #    درسی که perf-report.sh و apk-publish.sh هم دارند.
+# ⛔ کدِ خروجیِ curl نگه داشته می‌شود چون «نرسید» و «رد شد» دو خرابیِ
+#    کاملاً متفاوت‌اند با دو راهِ حلِ متفاوت — و نسخه‌ی اول هر دو را
+#    «توکن پذیرفته نشد» می‌نامید. روی سرورِ واقعی همین پیام باعث شد
+#    دنبالِ توکنِ تازه بگردیم در حالی که ایرادْ مسیرِ IPv6 بود.
+TG_RC=0
 tg_call() {
     local method="$1"; shift
     {
         printf 'url = "%s/bot%s/%s"\n' "$API" "$TG_TOKEN" "$method"
         printf 'silent\nshow-error\n'
     } > "$CURL_CFG"
-    : > "$TG_OUT"; : > "$TG_ERR"
-    curl --config "$CURL_CFG" -m 180 "$@" > "$TG_OUT" 2>"$TG_ERR" || true
+    local try=0 pause=2
+    while :; do
+        : > "$TG_OUT"; : > "$TG_ERR"
+        TG_RC=0
+        curl $IPFLAG --config "$CURL_CFG" -m 180 "$@" > "$TG_OUT" 2>"$TG_ERR" || TG_RC=$?
+        (( TG_RC == 0 )) && return 0
+        try=$((try + 1))
+        (( try >= NET_TRIES )) && return 0
+        warn "  اتصال نگرفت (curl $TG_RC) — تلاش دوباره بعد از $pause ثانیه…"
+        sleep "$pause"; pause=$((pause * 3))
+    done
 }
 
 # ⚠ فاصله‌ی اختیاری بعد از `:` عمدی است. تلگرامِ امروز فشرده جواب می‌دهد،
 #   ولی بند بودن به آن یعنی یک تغییرِ قالبِ بی‌ضرر، «ارسال نشد» بدهد برای
 #   بکاپی که رفته — و آن‌وقت cron هر شب خطا می‌دهد بی‌آنکه چیزی خراب باشد.
-tg_ok()  { grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' "$TG_OUT"; }
+tg_ok()  { (( TG_RC == 0 )) && grep -Eq '"ok"[[:space:]]*:[[:space:]]*true' "$TG_OUT"; }
 tg_err() {
+    if (( TG_RC != 0 )); then
+        printf 'به تلگرام نرسید (curl %s): %s' \
+            "$TG_RC" "$(head -c 160 "$TG_ERR" 2>/dev/null | tr '\n' ' ')"
+        return
+    fi
     local d
     d="$(tg_field description)"
     [[ -z "$d" ]] && d="$(head -c 200 "$TG_ERR" 2>/dev/null)"
@@ -287,13 +322,26 @@ do_setup() {
     plain "        مهاجم نباید بتواند بکاپ‌های قبلی را هم پاک کند."
     plain ""
 
+    # ⚠ «نوشته نمی‌شود» گفته می‌شود چون فیلدِ بی‌نمایش از بیرون دقیقاً شبیهِ
+    #   یک ترمینالِ هنگ‌کرده است — کاربر می‌چسباند، چیزی نمی‌بیند، و نتیجه
+    #   می‌گیرد چسباندن کار نکرده. همان سکوتی که این پروژه همه‌جا حذفش می‌کند.
+    plain "توکن را بچسبانید و Enter بزنید — روی صفحه **نوشته نمی‌شود** و این درست است."
     local tok
     read -r -s -p "توکن ربات: " tok; plain ""
     [[ -z "$tok" ]] && { red "توکن خالی بود."; exit 1; }
     TG_TOKEN="$tok"
 
     tg_call getMe
-    tg_ok || { red "توکن پذیرفته نشد — $(tg_err)"; exit 1; }
+    if ! tg_ok; then
+        if (( TG_RC != 0 )); then
+            red "ارتباط با تلگرام برقرار نشد — $(tg_err)"
+            plain "توکن سنجیده **نشد**؛ ایراد از شبکه‌ی این سرور است، نه از توکن."
+            info "سنجشِ دستی:  curl -4 -s -m 15 -o /dev/null -w '%{http_code}\\n' https://api.telegram.org/bot0:0/getMe"
+        else
+            red "توکن پذیرفته نشد — $(tg_err)"
+        fi
+        exit 1
+    fi
     green "ربات شناخته شد: @$(tg_field username)"
     plain ""
 
@@ -463,7 +511,7 @@ sha256: $sum"
                     printf 'url = "%s/file/bot%s/%s"\n' "$API" "$TG_TOKEN" "$fpath"
                     printf 'silent\nshow-error\n'
                 } > "$CURL_CFG"
-                if curl --config "$CURL_CFG" -m 300 -o "$WORKDIR/back.gpg" 2>"$TG_ERR"; then
+                if curl $IPFLAG --config "$CURL_CFG" -m 300 -o "$WORKDIR/back.gpg" 2>"$TG_ERR"; then
                     local back; back="$(sha256sum "$WORKDIR/back.gpg" | cut -d' ' -f1)"
                     if [[ "$back" == "$sum" ]]; then
                         green "سنجش پس از ارسال: فایل پس گرفته شد و sha256 اش یکی بود."
