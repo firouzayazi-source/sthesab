@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS `users` (
     `balance_setup_at` DATETIME NULL DEFAULT NULL,
     -- آخرین خروجیِ کاملِ داده. NULL = هرگز. یادآوریِ ماهانه از همین می‌آید.
     `last_backup_at` DATETIME NULL DEFAULT NULL,
+    -- بانک‌ها و انواع دارایی پیش‌فرضِ این کاربر ساخته شده‌اند. NULL = هنوز نه.
+    -- ⛔ نشانه لازم است: بدونش کاربری که آن‌ها را عمداً پاک کرده، با
+    --    بازدیدِ بعدی همه را پس می‌گیرد. و جایش **اینجاست** نه
+    --    `app_settings` — آنجا ستونِ `user_id` ندارد، پس با حذفِ کاربر
+    --    نشانه‌اش تا ابد جا می‌ماند (`migration_seed_flag`).
+    `defaults_seeded_at` DATETIME NULL DEFAULT NULL,
     `is_active` TINYINT(1) NOT NULL DEFAULT 1,
     -- نشست‌های وبِ ساخته‌شده پیش از این لحظه بی‌اعتبارند (Auth::isLoggedIn
     -- می‌سنجد). تنها نویسنده‌اش revokeAllAccessFor() است. NULL = هرگز.
@@ -80,6 +86,20 @@ CREATE TABLE IF NOT EXISTS `transactions` (
     KEY `idx_category_id` (`category_id`),
     KEY `idx_type` (`type`),
     KEY `idx_transaction_date` (`transaction_date`),
+    -- این سه با `migration_indexes3.sql` به نصب‌های موجود اضافه می‌شوند و
+    -- اینجا هستند تا نصبِ تازه از روزِ اول داشته باشدشان. توضیحِ کامل و
+    -- عددهای اندازه‌گیری‌شده در همان فایل است؛ خلاصه: بدونشان فهرستِ
+    -- «آخرین تراکنش‌ها» و صفحه‌ی تراکنش‌ها برای چند ردیف کلِ تاریخچه‌ی
+    -- کاربر را می‌خوانند و مرتب می‌کنند، و `walletBalances()` برای جمعِ
+    -- هر حساب به‌ازای هر ردیف به جدول برمی‌گردد.
+    KEY `idx_user_created` (`user_id`, `created_at`),
+    KEY `idx_user_date_created` (`user_id`, `transaction_date`, `created_at`, `type`, `amount`),
+    -- ⛔ ایندکسِ سومِ آن فایل (`idx_user_wallet_sum`) عمداً **اینجا
+    --    نیست**: ستونِ `wallet_id` را `migration_repair.sql` بعداً
+    --    اضافه می‌کند، پس نوشتنش در همین `CREATE TABLE` نصبِ **تازه**
+    --    را با «Unknown column 'wallet_id'» می‌خواباند — همان دامی که
+    --    یک بار سرِ ستون‌های `icon`/`color` افتادیم. روی نصبِ موجود
+    --    نامرئی بود و `test_migration_chain` گرفتش.
     CONSTRAINT `fk_transactions_user`
         FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)
         ON DELETE RESTRICT ON UPDATE CASCADE,

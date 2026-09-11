@@ -77,15 +77,15 @@ const BUDGET = [
     'person.php'            => 15,
     'search.php'            => 15,
     'notifications.php'     => 27,
-    'profile.php'           => 24,
+    'profile.php'           => 21,
     'backup.php'            => 16,
     'data.php'              => 17,
-    'privacy.php'           => 16,
-    'pro.php'               => 21,
-    'admin/insights.php'    => 31,
+    'privacy.php'           => 14,
+    'pro.php'               => 17,
+    'admin/insights.php'    => 30,
     'admin/users.php'       => 17,
-    'admin/access.php'      => 28,
-    'admin/billing.php'     => 21,
+    'admin/access.php'      => 15,
+    'admin/billing.php'     => 17,
     'admin/categories.php'  => 16,
 ];
 
@@ -513,6 +513,97 @@ try {
     //    شده؛ عوض کردنِ پنجره یک تصمیم است و باید همین‌جا هم ثبت شود،
     //    نه اینکه بی‌صدا از زیرِ یک بازه‌ی گشاد رد شود.
     T::same(400, RECENT_TITLE_SCAN, 'پنجره‌ی عنوان‌های اخیر همان مقدارِ سنجیده‌شده است');
+
+    // ---------------------------------------------------------------
+    /**
+     * ⛔ فهرستِ کوتاه نباید کلِ تاریخچه را بخواند.
+     *
+     *    این گروه یک خرابیِ **واقعی** را می‌بندد که از زیرِ همه‌ی
+     *    بررسی‌های بالا رد شده بود، و دلیلش دقیقاً همان درسِ پنجره‌ی
+     *    عنوان‌هاست: **تعدادِ کوئری عوض نمی‌شد.**
+     *
+     *    فهرستِ «آخرین تراکنش‌ها» روی صفحه‌ی خانه `ORDER BY created_at
+     *    DESC LIMIT 8` است و هیچ ایندکسی `created_at` نداشت — همه با
+     *    `transaction_date` تمام می‌شدند. پس دیتابیس برای نشان دادنِ
+     *    **۸** ردیف، همه‌ی تراکنش‌های کاربر را می‌خواند و در حافظه مرتب
+     *    می‌کرد. همان برای `transactions.php` هم بود
+     *    (`ORDER BY transaction_date DESC, created_at DESC`: کلیدِ دوم
+     *    در هیچ ایندکسی نبود).
+     *
+     *    اندازه‌گیری روی ۲۰٬۰۰۰ تراکنش: خانه ۱۸٫۰۶ → ۰٫۲۴ ms و
+     *    تراکنش‌ها ۱۸٫۸۸ → ۰٫۳۲ ms. یعنی **یک** کوئری چند برابرِ رندرِ
+     *    کلِ صفحه طول می‌کشید، و روی دیتابیسِ توسعه کاملاً نامرئی بود.
+     *
+     * ⚠ چرا فقط این دو صفحه: داشبورد و گزارشِ دسته‌بندی **عمداً** کلِ
+     *   بازه را می‌خوانند (یک کوئری به‌جای هشت تا) و رشدِ خواندنشان با
+     *   داده درست است. سنجه اینجا «فهرستی که تعدادِ ثابتی ردیف نشان
+     *   می‌دهد» است، نه «هیچ صفحه‌ای زیاد نخواند» — وگرنه تست روی فایلِ
+     *   سالم قرمز می‌شد، و هشدارِ الکی از نبودِ تست بدتر است.
+     *
+     * ⚠ سقف عددِ ثابت است، نه ضریبی از `$DEEP`. همان دامِ
+     *   `BACKUP_AFTER_DAYS`: با مرزِ وابسته، بزرگ کردنِ fixture مرزِ تست
+     *   را هم بزرگ می‌کرد و جهش از زیرش رد می‌شد.
+     */
+    T::group('⛔ فهرستِ کوتاه کلِ تاریخچه را نمی‌خواند');
+
+    // fixture همان ۱۲۰۰ تراکنشِ گروهِ قبل است و دست‌نخورده باقی می‌ماند.
+    $pageReads = function (string $page) use ($get, $handlerReads): int {
+        $get($page);                       // گرم‌کننده — کارهای یک‌بار-در-روز
+        $best = PHP_INT_MAX;
+        for ($i = 0; $i < 3; $i++) {
+            $a = $handlerReads();
+            $get($page);
+            $n = $handlerReads() - $a;
+            if ($n < $best) { $best = $n; }
+        }
+        return $best;
+    };
+
+    // ⚠ عددها اندازه‌گیری شده‌اند، حدس زده نشده‌اند. با ایندکس:
+    //   `index.php` **۳۰۱۰** و `transactions.php` **۲۶۳۳** ردیف. با
+    //   برداشتنِ هر دو ایندکس (همان جهش): **۴۱۴۲** و **۳۷۸۲**.
+    //
+    // ⚠ کفِ هر دو عدد کارِ صفحه‌های دیگر است، نه این فهرست: یک صفحه‌ی
+    //   بی‌فهرست (`privacy.php`) روی همین fixture **۱۳۷۹** ردیف
+    //   می‌خواند، و `walletBalances()` هم عمداً کلِ تاریخچه را جمع
+    //   می‌زند. پس جدایی باریک‌تر از چیزی است که به نظر می‌آید و سقف
+    //   نزدیک به عددِ سالم بسته شده — خطا به سمتِ «قرمزِ الکی» بهتر از
+    //   «سبزِ دروغین» است، چون اولی دیده می‌شود.
+    $LIST_CAP = 3550;
+    foreach (['index.php', 'transactions.php'] as $page) {
+        $read = $pageReads($page);
+        if (getenv('QB_DUMP')) { printf("    %-24s %d ردیف خوانده شد\n", $page, $read); }
+        T::ok($read > 0 && $read <= $LIST_CAP,
+            "⛔ {$page} با تاریخچه‌ی {$DEEP} تراکنشی، خواندن محدود می‌ماند",
+            "خوانده‌شده: {$read} ردیف، سقف {$LIST_CAP}");
+    }
+
+    // ⛔ و خودِ ایندکس‌ها پین می‌شوند. بررسیِ بالا رفتار را می‌سنجد ولی
+    //    اگر روزی fixture کوچک شود بی‌صدا پوچ می‌شود؛ این یکی نه.
+    //    شکلشان هم مهم است نه فقط وجودشان: `idx_user_date_created` باید
+    //    `type` و `amount` را هم داشته باشد، وگرنه جمعِ روزانه‌ی داشبورد
+    //    از ایندکس خوانده نمی‌شود و به جدول برمی‌گردد.
+    $want = [
+        'idx_user_created'      => 'user_id,created_at',
+        'idx_user_date_created' => 'user_id,transaction_date,created_at,type,amount',
+        // ⛔ جمعِ هر حساب در `walletBalances()` — سنگین‌ترین کوئریِ اپ.
+        //   بدونِ `type` و `amount` پوششی نیست و به جدول برمی‌گردد
+        //   (۲۳ → ۷٫۳ میلی‌ثانیه روی ۲۰٬۰۰۰ تراکنش).
+        'idx_user_wallet_sum'   => 'user_id,wallet_id,type,amount',
+    ];
+    $have = [];
+    foreach ($pdo->query(
+        "SELECT INDEX_NAME, COLUMN_NAME FROM INFORMATION_SCHEMA.STATISTICS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'transactions'
+         ORDER BY INDEX_NAME, SEQ_IN_INDEX")->fetchAll() as $r) {
+        $have[$r['INDEX_NAME']][] = $r['COLUMN_NAME'];
+    }
+    $wrong = [];
+    foreach ($want as $name => $cols) {
+        $got = isset($have[$name]) ? implode(',', $have[$name]) : '—';
+        if ($got !== $cols) { $wrong[] = "{$name} باید ({$cols}) باشد، هست ({$got})"; }
+    }
+    T::bulk(count($want), $wrong, '⛔ ایندکس‌های فهرستِ تراکنش همان شکلِ سنجیده‌شده را دارند');
 
 } finally {
     $cleanup();

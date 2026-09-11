@@ -261,16 +261,40 @@ function &settingsCacheRef(): array
  */
 function getSetting(string $key, string $default = ''): string
 {
+    // ⚠ «همه را خوانده‌ایم» جدا از خودِ نگاشت نگه داشته می‌شود، وگرنه
+    //   **کلیدِ نبوده** هر بار کلِ جدول را دوباره می‌خواند — یعنی همان
+    //   کوئریِ تکراری، فقط این بار گران‌تر.
+    static $loadedAll = false;
+
     $cache = &settingsCacheRef();
     if (array_key_exists($key, $cache)) {
         return $cache[$key] ?? $default;
     }
+    if ($loadedAll) {
+        return $default;                 // ردیفی وجود ندارد
+    }
 
     try {
-        $stmt = Database::getConnection()->prepare('SELECT setting_value FROM app_settings WHERE setting_key = :key');
-        $stmt->execute(['key' => $key]);
-        $row = $stmt->fetch();
-        $cache[$key] = $row ? (string)$row['setting_value'] : null;
+        // ⛔ **کلِ جدول با یک کوئری**، نه یک کوئری برای هر کلید. یک صفحه
+        //    سه تا پنج کلیدِ متفاوت می‌خواند (`plan_enforced`،
+        //    `support_email`، `sms_method`، …) و هر کدام یک رفت‌وبرگشتِ
+        //    جدا بود. اندازه‌گیری شد: کلِ جدول ۰٫۱۷۴ میلی‌ثانیه در برابر
+        //    ۰٫۱۱۹ برای **یک** کلید — یعنی از کلیدِ دوم به بعد مجانی است.
+        //
+        // ⛔ و این تا دیروز عاقلانه **نبود**: `seedUserDefaults()` یک ردیف
+        //    به‌ازای هر کاربر اینجا می‌گذاشت و جدول بی‌مرز بزرگ می‌شد.
+        //    با `migration_seed_flag` آن ردیف‌ها رفتند و این جدول دوباره
+        //    همان چند ده تنظیمِ نصب است. **اگر روزی وسوسه شدید کلیدِ
+        //    per-user اینجا بنویسید، این خط همان لحظه غلط می‌شود.**
+        //
+        // ⚠ «در نگاشت نیست» یعنی ردیفش وجود ندارد — چون همه‌ی ردیف‌ها
+        //   خوانده شده‌اند. پس `null` گذاشتن برای کلیدِ نبوده همان معنای
+        //   قبلی را دارد و `$default` همچنان کش نمی‌شود.
+        $rows = Database::getConnection()
+            ->query('SELECT setting_key, setting_value FROM app_settings')
+            ->fetchAll(PDO::FETCH_KEY_PAIR);
+        foreach ($rows as $k => $v) { $cache[$k] = (string)$v; }
+        $loadedAll = true;
         return $cache[$key] ?? $default;
     } catch (PDOException $e) {
         // ⚠ خطا کش نمی‌شود: یک قطعیِ گذرا نباید تا آخرِ درخواست
@@ -2693,15 +2717,34 @@ function defaultAssetTypes(): array
 
 /**
  * اولین بار که کاربر وارد بخش چک یا دارایی می‌شود، مقادیر پیش‌فرض ساخته می‌شوند.
- * از app_settings برای علامت‌گذاری استفاده می‌کنیم تا اگر کاربر همه را پاک کرد،
- * دوباره برنگردند.
+ *
+ * ⛔ نشانه لازم است و حذف‌شدنی نیست: بدونِ آن، کاربری که بانک‌های
+ *    پیش‌فرض را **عمداً** پاک کرده با بازدیدِ بعدی همه را پس می‌گیرد —
+ *    همان استدلالِ `more_categories_seeded`.
+ *
+ * ⛔ ولی جایش `users.defaults_seeded_at` است، نه `app_settings`
+ *    (`migration_seed_flag`). نسخه‌ی قبلی به‌ازای **هر کاربر** یک ردیف
+ *    در جدولِ تنظیماتِ **نصب** می‌گذاشت، و چون آن جدول ستونِ `user_id`
+ *    ندارد `deleteUserAccount()` هرگز پیدایش نمی‌کرد: کاربر حذف می‌شد و
+ *    نشانه‌اش تا ابد می‌ماند.
+ *
+ * ⚠ اگر migration هنوز نیامده باشد، کارِ قبلی انجام می‌شود — نصبِ
+ *   عقب‌مانده نباید بشکند، و نباید هم پیش‌فرض‌های پاک‌شده را پس بدهد.
  */
 function seedUserDefaults(int $userId): void
 {
     $pdo = Database::getConnection();
 
-    $flagKey = 'seeded_user_' . $userId;
-    if (getSetting($flagKey, '0') === '1') {
+    $hasColumn = tableHasColumn('users', 'defaults_seeded_at');
+    $flagKey   = 'seeded_user_' . $userId;
+
+    if ($hasColumn) {
+        $st = $pdo->prepare('SELECT defaults_seeded_at FROM users WHERE id = :id');
+        $st->execute(['id' => $userId]);
+        // ⚠ `false` یعنی کاربری نیست و `null` یعنی هنوز seed نشده — هر
+        //   دو باید ادامه بدهند. فقط یک تاریخِ واقعی «انجام شده» است.
+        if ((string)$st->fetchColumn() !== '') { return; }
+    } elseif (getSetting($flagKey, '0') === '1') {
         return;
     }
 
@@ -2716,7 +2759,12 @@ function seedUserDefaults(int $userId): void
             $assetStmt->execute(['user_id' => $userId, 'name' => $at['name'], 'unit' => $at['unit']]);
         }
 
-        setSetting($flagKey, '1');
+        if ($hasColumn) {
+            $pdo->prepare('UPDATE users SET defaults_seeded_at = NOW() WHERE id = :id')
+                ->execute(['id' => $userId]);
+        } else {
+            setSetting($flagKey, '1');
+        }
     } catch (PDOException $e) {
         error_log('Seeding defaults failed for user ' . $userId . ': ' . $e->getMessage());
     }

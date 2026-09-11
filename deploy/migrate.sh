@@ -109,6 +109,8 @@ MIGRATIONS=(
     migration_discount_codes.sql
     migration_phone_signup.sql
     migration_indexes2.sql
+    migration_indexes3.sql
+    migration_seed_flag.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -248,6 +250,12 @@ declare -A SENTINEL=(
     #    شاهد ندارد و --verify هرگز نسنجیدش؛ برای این یکی آن سوراخ بسته
     #    شد (شکلِ ششم در sentinel_present).
     [migration_indexes2.sql]="notifications:idx_notif_unread"
+    # ⚠ شاهد ایندکسِ **آخر** است نه اولی: آن `ALTER` آخرین کارِ فایل
+    #   است، پس وجودش یعنی کلِ فایل اجرا شده — همان استدلالِ
+    #   `payments.discount_code`. اگر روزی بلوکِ چهارمی اضافه شد، این
+    #   شاهد هم باید با آن جلو برود.
+    [migration_indexes3.sql]="transactions:idx_user_wallet_sum"
+    [migration_seed_flag.sql]="users.defaults_seeded_at"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟
