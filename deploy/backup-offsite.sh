@@ -35,6 +35,7 @@
 #
 # اجرا:
 #     sudo bash deploy/backup-offsite.sh                # فقط گزارش وضعیت
+#     sudo bash deploy/backup-offsite.sh --check        # همان، با نامِ صریح
 #     sudo bash deploy/backup-offsite.sh --setup        # تنظیمِ گام‌به‌گام
 #     sudo bash deploy/backup-offsite.sh --send         # فرستادنِ آخرین بکاپ
 #     sudo bash deploy/backup-offsite.sh --send --force # حتی اگر قبلاً رفته
@@ -103,6 +104,11 @@ TG_ERR="$(mktemp)";   chmod 600 "$TG_ERR"
 MODE="check"; FORCE=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        # ⚠ `--check` همان حالتِ پیش‌فرضِ بی‌آرگومان است، ولی به‌عنوان فلگ
+        #   پذیرفته نمی‌شد و «آرگومان ناشناخته» می‌داد — در حالی که خودِ
+        #   مستندات و پیام‌های همین اسکریپت آن را به همین شکل نام می‌برند.
+        #   فلگی که نوشته شده ولی کار نمی‌کند، همان «دکمه‌ی بی‌کار» است.
+        --check)        MODE="check";   shift ;;
         --setup)        MODE="setup";   shift ;;
         --send)         MODE="send";    shift ;;
         --install-cron) MODE="cron";    shift ;;
