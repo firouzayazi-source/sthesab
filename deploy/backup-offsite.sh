@@ -39,6 +39,8 @@
 #     sudo bash deploy/backup-offsite.sh --send         # فرستادنِ آخرین بکاپ
 #     sudo bash deploy/backup-offsite.sh --send --force # حتی اگر قبلاً رفته
 #     sudo bash deploy/backup-offsite.sh --install-cron # هر شب ۴:۱۰ بامداد
+#     sudo bash deploy/backup-offsite.sh --verify-pass  # عبارتی که نگه داشته‌اید
+#                                                       # واقعاً بکاپ را باز می‌کند؟
 #     sudo bash deploy/backup-offsite.sh --restore-cmd  # دستورِ بازگرداندن
 
 set -euo pipefail
@@ -105,6 +107,7 @@ while [[ $# -gt 0 ]]; do
         --send)         MODE="send";    shift ;;
         --install-cron) MODE="cron";    shift ;;
         --restore-cmd)  MODE="restore"; shift ;;
+        --verify-pass)  MODE="verifypass"; shift ;;
         --force)        FORCE=1;        shift ;;
         -h|--help)      MODE="help";    shift ;;
         *) red "آرگومان ناشناخته: $1"; exit 1 ;;
@@ -306,6 +309,80 @@ do_restore_cmd() {
     warn "⚠ عبارتِ رمز روی این سرور است (offsite.conf). اگر سرور از دست رفته"
     plain "  باشد، تنها نسخه‌ی آن همان است که در مدیرِ رمزِ خودتان گذاشته‌اید."
     plain "  بکاپی که بازش نکرده باشید، بکاپ نیست — یک بار همین امروز بیازماییدش."
+}
+
+# ---------- آزمونِ عبارتِ رمز ----------
+# ⛔ دلیلِ وجودش: «عبارتی که یک بار با آن باز نکرده باشید، عبارتِ رمز نیست
+#    — یک رشته است که روی کاغذ نوشته‌اید.» همان استدلالی که `restore.sh`
+#    را ساخت (بکاپِ بازیابی‌نشده یک فرضیه است)، این بار برای کلیدش.
+#    یک کاراکترِ جاافتاده یا یک فاصله‌ی اضافه هیچ نشانه‌ای ندارد تا روزِ
+#    حادثه — و آن روز دیگر راهی برای فهمیدنش نیست.
+#
+# ⛔ عبارتِ ذخیره‌شده را **چاپ نمی‌کند و با آن مقایسه هم نمی‌کند.** یک
+#    نمونه‌ی واقعی با همان الگوریتمِ `--send` رمز می‌شود و بعد با چیزی که
+#    شما تایپ می‌کنید باز می‌شود. مقایسه‌ی رشته‌ای «شبیهِ» آزمون است ولی
+#    همان چیزی را نمی‌سنجد که روزِ حادثه لازم است.
+#
+# ⚠ به داده دست نمی‌زند: همه چیز در یک پوشه‌ی موقتِ ۷۰۰ است و خودِ فایلِ
+#   بکاپ فقط خوانده می‌شود.
+do_verify_pass() {
+    [[ -r "$CONF" ]] || { red "تنظیم نشده است. اول:  sudo bash $APP_DIR/deploy/backup-offsite.sh --setup"; exit 1; }
+    [[ -n "$OFFSITE_PASS" ]] || { red "عبارتِ رمز در $CONF نیست. دوباره:  --setup"; exit 1; }
+
+    local src; src="$(newest_backup)"
+    [[ -n "$src" ]] || { red "هیچ بکاپی در $BACKUP_DIR نیست."; exit 1; }
+
+    WORKDIR="$(mktemp -d)"; chmod 700 "$WORKDIR"
+    GNUPGHOME_TMP="$(mktemp -d)"; chmod 700 "$GNUPGHOME_TMP"
+    local enc="$WORKDIR/probe.gpg"
+    local stored="$WORKDIR/stored" typedf="$WORKDIR/typed"
+
+    printf '%s' "$OFFSITE_PASS" > "$stored"; chmod 600 "$stored"
+    GNUPGHOME="$GNUPGHOME_TMP" gpg --batch --yes --quiet \
+        --pinentry-mode loopback --passphrase-file "$stored" \
+        --cipher-algo AES256 --symmetric --output "$enc" "$src" \
+        || { red "ساختنِ نمونه شکست خورد."; exit 1; }
+
+    plain "── آزمونِ عبارتِ رمز ──"
+    plain ""
+    plain "نمونه‌ی رمزشده از این فایل ساخته شد:"
+    info  "  $(basename "$src")"
+    plain ""
+    # ⚠ `read -s` از بیرون دقیقاً شبیهِ ترمینالِ هنگ‌کرده است — همان دامی
+    #   که سرِ --setup خوردیم. پس صریح گفته می‌شود.
+    warn "⚠ هنگام تایپ هیچ چیزی روی صفحه دیده نمی‌شود. عادی است."
+    printf 'عبارت رمزی را که نگه داشته‌اید تایپ کنید و Enter بزنید: '
+    local typed=""; read -rs typed || true
+    printf '\n\n'
+    printf '%s' "$typed" > "$typedf"; chmod 600 "$typedf"
+
+    local ok=0
+    if GNUPGHOME="$GNUPGHOME_TMP" gpg --batch --yes --quiet \
+           --pinentry-mode loopback --passphrase-file "$typedf" \
+           --decrypt --output "$WORKDIR/out.gz" "$enc" 2>/dev/null \
+       && gzip -t "$WORKDIR/out.gz" 2>/dev/null \
+       && cmp -s "$src" "$WORKDIR/out.gz"; then
+        # ⚠ `gzip -t` و `cmp` عمداً افزونه‌اند: gpg خودش احرازِ اصالت دارد و
+        #   با عبارتِ غلط اصلاً باز نمی‌کند، پس جهشِ برداشتنشان زنده می‌ماند.
+        #   نوشته شد تا کسی «پس این خط لازم نیست» نخواند — همین شکلِ سنجش
+        #   است که `--send` هم پیش از فرستادن دارد و باید یکی بماند.
+        ok=1
+    fi
+
+    if (( ok )); then
+        green "درست است — همین عبارت، فایل‌های داخلِ تلگرام را باز می‌کند."
+        plain ""
+        plain "نگهش دارید جایی **بیرون از این سرور**. اگر سرور از دست برود،"
+        plain "این تنها چیزی است که آن بکاپ‌ها را از یک فایلِ بی‌مصرف به"
+        plain "دفترِ شما برمی‌گرداند."
+        exit 0
+    fi
+
+    red "غلط است — این عبارت بکاپ را باز نمی‌کند."
+    plain ""
+    plain "عبارتِ درست را از روی همین سرور بردارید و دوباره جایی امن بنویسید:"
+    info  "  sudo grep OFFSITE_PASSPHRASE $CONF"
+    exit 1
 }
 
 # ---------- تنظیم گام‌به‌گام ----------
@@ -569,4 +646,5 @@ case "$MODE" in
     send)    do_send ;;
     cron)    do_cron ;;
     restore) do_restore_cmd ;;
+    verifypass) do_verify_pass ;;
 esac
