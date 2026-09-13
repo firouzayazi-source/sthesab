@@ -2089,6 +2089,16 @@ html[data-theme="dark"] .seg-item.active { background: #2b3037; color: var(--ink
 }
 .search-inline input:focus { outline: none; }
 
+/* دکمه‌ی خروجی CSV — زیرِ نوارِ صافی، هم‌تراز با لبه‌ی راستِ کارت.
+   ⚠ `display`/`gap`/`nowrap` عمداً تکرار نشده‌اند: `.btn` هر سه را
+   دارد (`nowrap` را قاعده ۳۱ نگه می‌دارد). قاعده‌ای که چیزی را عوض
+   نمی‌کند فقط دیف را بزرگ‌تر می‌کند. */
+.tx-export {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 10px;
+}
+
 /* روی موبایل فیلتر نوع و جستجو زیر هم بهتر جا می‌شوند */
 @media (max-width: 400px) {
     .filter-row { flex-direction: column; }

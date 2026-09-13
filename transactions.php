@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/tx_query.php';
 
 Auth::initSession();
 Auth::requireLogin();
@@ -9,72 +10,23 @@ Auth::requireLogin();
 $pdo = Database::getConnection();
 $userId = Auth::userId();
 
-$period = getParam('period', 'all');
-$type   = getParam('type', 'all');
-$search = getParam('search', '');
-$fromDate = getParam('from_date', '');
-$toDate   = getParam('to_date', '');
-$walletId = (int)getParam('wallet', '0');
-
-$conditions = ['t.user_id = :user_id'];
-$params = ['user_id' => $userId];
-
-if ($period === 'today') {
-    $conditions[] = 't.transaction_date = :p_from';
-    $params['p_from'] = today();
-} elseif ($period === 'week') {
-    $conditions[] = 't.transaction_date BETWEEN :p_from AND :p_to';
-    $params['p_from'] = startOfWeek();
-    $params['p_to'] = today();
-} elseif ($period === 'month') {
-    $conditions[] = 't.transaction_date BETWEEN :p_from AND :p_to';
-    $params['p_from'] = startOfJalaliMonth();
-    $params['p_to'] = today();
-} elseif ($period === 'year') {
-    $conditions[] = 't.transaction_date BETWEEN :p_from AND :p_to';
-    $params['p_from'] = startOfJalaliYear();
-    $params['p_to'] = today();
-} elseif ($period === 'custom' && isValidDate($fromDate) && isValidDate($toDate)) {
-    $conditions[] = 't.transaction_date BETWEEN :p_from AND :p_to';
-    $params['p_from'] = $fromDate;
-    $params['p_to'] = $toDate;
-}
-
-if ($type === 'income' || $type === 'expense') {
-    $conditions[] = 't.type = :type';
-    $params['type'] = $type;
-}
-
-if ($search !== '') {
-    $conditions[] = 't.title LIKE :search';
-    $params['search'] = '%' . $search . '%';
-}
-
 // فیلتر حساب: بدون این، موجودی منفی یک حساب دیده می‌شد ولی هیچ راهی
 // نبود بفهمی کدام تراکنش‌ها رویش نشسته‌اند.
-$walletList = [];
-$walletName = '';
-try {
-    $wStmt = $pdo->prepare('SELECT id, name FROM wallets WHERE user_id = :u ORDER BY is_active DESC, sort_order, name');
-    $wStmt->execute(['u' => $userId]);
-    $walletList = $wStmt->fetchAll();
-} catch (PDOException $e) {
-    $walletList = [];   // جدول حساب‌ها هنوز ساخته نشده
-}
+$walletList = txWalletList($userId);
 
-if ($walletId > 0) {
-    foreach ($walletList as $w) {
-        if ((int)$w['id'] === $walletId) { $walletName = $w['name']; break; }
-    }
-    if ($walletName === '') {
-        $walletId = 0;      // مال این کاربر نیست — نادیده گرفته می‌شود
-    } else {
-        $conditions[] = 't.wallet_id = :wallet_id';
-        $params['wallet_id'] = $walletId;
-    }
-}
-
-$whereClause = 'WHERE ' . implode(' AND ', $conditions);
+// ⛔ همه‌ی صافی‌ها و جست‌وجو از `buildTransactionFilter()` می‌آیند، نه
+//    از کدِ همین صفحه: `api/export_transactions.php` باید دقیقاً همین
+//    ردیف‌ها را بدهد و با دو نسخه، فایل با صفحه نمی‌خواند.
+$filter     = buildTransactionFilter($userId, $_GET, $walletList);
+$whereClause = $filter['where'];
+$params      = $filter['params'];
+$period      = $filter['period'];
+$type        = $filter['type'];
+$search      = $filter['search'];
+$fromDate    = $filter['from_date'];
+$toDate      = $filter['to_date'];
+$walletId    = $filter['wallet_id'];
+$walletName  = $filter['wallet_name'];
 
 // ---------- صفحه‌بندی ----------
 // بدون این، با انباشته‌شدن تراکنش‌ها صفحه به مگابایت می‌رسید و روی موبایل کند می‌شد.
@@ -82,7 +34,8 @@ $perPage = 40;
 $page = max(1, (int)getParam('p', '1'));
 $offset = ($page - 1) * $perPage;
 
-$countStmt = $pdo->prepare("SELECT COUNT(*) AS cnt FROM transactions t $whereClause");
+$countJoin = $filter['count_join'];
+$countStmt = $pdo->prepare("SELECT COUNT(*) AS cnt FROM transactions t $countJoin $whereClause");
 $countStmt->execute($params);
 $totalRows = (int)$countStmt->fetch()['cnt'];
 $totalPages = max(1, (int)ceil($totalRows / $perPage));
@@ -133,7 +86,7 @@ include __DIR__ . '/includes/header.php';
             </div>
             <div class="search-inline">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-                <input type="text" name="search" placeholder="جستجو…" value="<?= h($search) ?>">
+                <input type="text" name="search" placeholder="عنوان، یادداشت، دسته یا مبلغ…" value="<?= h($search) ?>">
             </div>
         </div>
 
@@ -167,6 +120,31 @@ include __DIR__ . '/includes/header.php';
         </div>
         <?php endif; ?>
     </form>
+
+    <?php if ($totalRows > 0): ?>
+    <?php
+    // ⛔ POST با CSRF، نه یک لینکِ GET — همان استدلالِ `export_data.php`:
+    //    لینکِ GET را می‌شود در `<img src>` جای دیگری جاسازی کرد و
+    //    مرورگرِ کاربرِ واردشده خودش صدایش می‌زند. اینجا خروجی می‌تواند
+    //    **کلِ** تاریخچه‌ی مالیِ او باشد.
+    //
+    // ⚠ فیلدهای پنهان عیناً همان صافی‌های روی صفحه‌اند، پس فایل دقیقاً
+    //   همان چیزی است که کاربر می‌بیند — «خروجیِ آنچه می‌بینی».
+    ?>
+    <form method="POST" action="<?= h(APP_BASE_PATH) ?>/api/export_transactions.php" class="tx-export">
+        <?= Csrf::field() ?>
+        <input type="hidden" name="period" value="<?= h($period) ?>">
+        <input type="hidden" name="type" value="<?= h($type) ?>">
+        <input type="hidden" name="search" value="<?= h($search) ?>">
+        <input type="hidden" name="from_date" value="<?= h($fromDate) ?>">
+        <input type="hidden" name="to_date" value="<?= h($toDate) ?>">
+        <input type="hidden" name="wallet" value="<?= (int)$walletId ?>">
+        <button type="submit" class="btn btn-secondary btn-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>
+            خروجی اکسل (<?= toPersianDigits($totalRows) ?> تراکنش)
+        </button>
+    </form>
+    <?php endif; ?>
 
     <div class="table-wrapper">
         <?php if (empty($transactions)): ?>
