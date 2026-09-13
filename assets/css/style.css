@@ -1210,62 +1210,6 @@ button.status-badge:active { transform: scale(.96); }
     display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 14px;
 }
-
-/* ---------- انتخابگرِ گزینه‌ها: جعبه‌ی خودمان به‌جای منوی بومیِ select ----------
-   ⛔ این جعبه را خودمان رندر می‌کنیم، پس جهتش را از همین‌جا می‌گیرد.
-   منوی بازشده‌ی <select> روی iOS کرومِ خودِ سیستم است و جهتش را از
-   زبانِ گوشی می‌گیرد، نه از `dir` صفحه — پس هیچ CSS ای به آن نمی‌رسد.
-   توضیح کامل در CLAUDE.md. */
-.opt-overlay {
-    position: fixed; inset: 0;
-    background: rgba(21,23,28,.45);
-    z-index: 340;   /* بالاتر از مودال (۳۰۰)، چون از داخلِ مودال هم باز می‌شود */
-    display: none;
-    align-items: flex-end;
-}
-.opt-overlay.show { display: flex; }
-.opt-sheet {
-    background: var(--surface);
-    width: 100%;
-    border-radius: var(--r-lg) var(--r-lg) 0 0;
-    padding: 9px 0 calc(10px + env(safe-area-inset-bottom));
-    max-height: 80vh;
-    max-height: 80dvh;   /* iOS: vh نوارِ مرورگر را نادیده می‌گیرد */
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    animation: sheetUp .2s ease-out;
-}
-.opt-head {
-    padding: 6px 16px 10px;
-    font-size: 13px; font-weight: 700; color: var(--muted);
-    border-bottom: 1px solid var(--line);
-    margin-bottom: 4px;
-}
-.opt-group {
-    padding: 10px 16px 4px;
-    font-size: 12px; color: var(--muted);
-}
-.opt-item {
-    display: flex; align-items: center; gap: 8px;
-    width: 100%;
-    padding: 13px 16px;
-    background: none; border: 0;
-    font: inherit; color: var(--ink);
-    /* ⛔ فیزیکی، نه `start`: مقدارِ منطقی نسبت به جهتِ پایه دوباره حل
-       می‌شود و همان چیزی است که در منوی بومی غلط از آب درمی‌آمد. */
-    text-align: right;
-    cursor: pointer;
-}
-.opt-item[aria-selected="true"] { font-weight: 700; }
-.opt-item:disabled { opacity: .45; cursor: default; }
-.opt-check {
-    flex-shrink: 0;
-    width: 16px;
-    color: var(--in);
-    font-weight: 700;
-}
-.opt-text { flex: 1; }
-
 /* مبلغ، قهرمانِ فرم ثبت است */
 .amount-input {
     font-size: 24px !important;
@@ -1278,11 +1222,6 @@ button.status-badge:active { transform: scale(.96); }
 @media (min-width: 901px) {
     .sheet-overlay { align-items: center; padding: 20px; }
     .sheet { max-width: 430px; border-radius: var(--r-lg); }
-    /* ⛔ همان قاعده‌ی `.sheet`: الگوی چسبیده‌به‌کف موبایلی است و روی
-       عرضِ ۱۴۰۰ پیکسل یک نوارِ درازِ لبه‌ی پایین می‌شود. اندازه‌گیری
-       شد: بدونِ این بلوک عرضش ۱۳۸۵ پیکسل درمی‌آمد. */
-    .opt-overlay { align-items: center; padding: 20px; }
-    .opt-sheet { max-width: 430px; border-radius: var(--r-lg); }
 }
 
 /* ---------- شیت ابزارها ---------- */
