@@ -2170,6 +2170,113 @@ if ($actionPages === 0) {
 
 T::bulk(5 + $actionPages, $badWrap, '⛔ برچسبِ دکمه‌ها نمی‌شکند و ستونِ عملیات عرضِ خودش را دارد');
 
+// ---------------------------------------------------------------
+// قاعده ۳۲ — انتخابگرِ گزینه‌ها: پاپ‌آپِ باریکِ چسبیده به فیلد
+//
+// ⛔ پاپ‌آپِ بازشده‌ی `<select>` روی iOS کرومِ خودِ سیستم است: جهتش را از
+//   زبانِ گوشی می‌گیرد و عرضش را هم سیستم تعیین می‌کند. با اندازه‌گیریِ
+//   پیکسلیِ اسکرین‌شات ثابت شد که هیچ CSS ای به هیچ‌کدام نمی‌رسد، پس
+//   جعبه را خودمان می‌کشیم. چهار ستونِ این کار اینجا پین می‌شوند، چون
+//   افتادنِ هرکدام **بی‌صداست**:
+//   ۱. `width: max-content` — همان چیزی که فضای خالیِ کنارِ متن را
+//      می‌برد؛ با عرضِ ثابت، همان شکایتِ اولیه برمی‌گردد.
+//   ۲. `text-align: right`ِ **فیزیکی** روی `.opt-item` — مقدارِ منطقی
+//      نسبت به جهتِ پایه‌ی رندرکننده دوباره حل می‌شود و دقیقاً همان
+//      چیزی است که در منوی بومی غلط از آب درآمد.
+//   ۳. جای جعبه از `getBoundingClientRect()`ِ خودِ فیلد خوانده شود —
+//      «چسبیده به فیلد» یعنی همین؛ با جای ثابت می‌شد همان شیتِ کف که
+//      پس داده شد.
+//   ۴. `left` نه `inset-inline-start` در CSS — در راست‌به‌چپ آن به
+//      `right` نگاشت می‌شود و کنارِ `left`ی که JS می‌نویسد جعبه را
+//      بیش‌ازحد مقید می‌کند؛ آن‌وقت جعبه به لبه‌ی **پنجره** می‌چسبد نه
+//      به فیلد. اندازه‌گیری شد و اولین بار دقیقاً همین شد.
+//   و ۵: قفلِ اسکرول باید **دستی** گرفته شود، چون این لایه هنگام
+//   بارگذاری وجود ندارد و `watchOverlays()` فهرستش را همان‌جا یک بار
+//   می‌گیرد.
+T::group('قاعده ۳۲ — انتخابگرِ گزینه‌ها');
+
+$badPick = [];
+
+$popBody = $ruleBody($css, '.opt-pop');
+if ($popBody === null) {
+    $badPick[] = 'قاعده‌ی `.opt-pop` پیدا نشد — انتخابگر برداشته شده یا نامش عوض شده';
+} else {
+    if (!preg_match('/width\s*:\s*max-content/', $popBody)) {
+        $badPick[] = '`.opt-pop` باید `width: max-content` داشته باشد؛ با عرضِ ثابت'
+                   . ' دوباره فضای خالیِ کنارِ متن می‌ماند';
+    }
+    if (preg_match('/inset-inline-start\s*:/', $popBody)) {
+        $badPick[] = '`.opt-pop` نباید `inset-inline-start` بگیرد — در راست‌به‌چپ به'
+                   . ' `right` نگاشت می‌شود و `left`ی که JS می‌نویسد بی‌صدا نادیده'
+                   . ' می‌ماند؛ جعبه به لبه‌ی پنجره می‌چسبد نه به فیلد';
+    }
+    if (!preg_match('/\bleft\s*:/', $popBody)) {
+        $badPick[] = '`.opt-pop` باید `left` داشته باشد (پایه‌ی جایی که JS می‌نویسد)';
+    }
+}
+
+$itemBody = $ruleBody($css, '.opt-item');
+if ($itemBody === null) {
+    $badPick[] = 'قاعده‌ی `.opt-item` پیدا نشد';
+} elseif (!preg_match('/text-align\s*:\s*right/', $itemBody)) {
+    $badPick[] = '`.opt-item` باید `text-align: right`ِ فیزیکی داشته باشد، نه `start`';
+}
+
+if (!preg_match('/\.opt-overlay\s*\.show\s*\{[^}]*display\s*:\s*block/', $css)) {
+    $badPick[] = '`.opt-overlay.show` باید `display: block` بدهد، وگرنه لایه هرگز'
+               . ' دیده نمی‌شود و تپ روی فیلد هیچ کاری نمی‌کند';
+}
+
+$jsSrc = (string)@file_get_contents(__DIR__ . '/../assets/js/app.js');
+$anchor = strpos($jsSrc, '(function optionPicker() {');
+if ($anchor === false) {
+    $badPick[] = 'تابعِ `optionPicker()` در app.js نیست — انتخابگر برداشته شده';
+} else {
+    // بدنه با شمارشِ آکولاد بریده می‌شود، نه «تا اولین }» — همان درسِ
+    // قاعده ۲۹. کامنت‌ها هم اول حذف می‌شوند، وگرنه همین توضیحات تست را
+    // روی فایلِ سالم سبز/قرمز می‌کنند.
+    $tail  = substr($jsSrc, $anchor);
+    $tail  = preg_replace('#//[^\n]*#', '', $tail);
+    $tail  = preg_replace('#/\*.*?\*/#s', '', $tail);
+    $depth = 0; $end = null;
+    for ($i = 0, $n = strlen($tail); $i < $n; $i++) {
+        if ($tail[$i] === '{') { $depth++; }
+        elseif ($tail[$i] === '}') { $depth--; if ($depth === 0) { $end = $i; break; } }
+    }
+    $body = $end === null ? $tail : substr($tail, 0, $end);
+
+    // ⚠ دنبالِ `sel.` است نه هر `getBoundingClientRect`ی: جهشِ «جای ثابت
+    //   بگذار» اول **زنده ماند**، چون خودِ جعبه هم یک بار اندازه گرفته
+    //   می‌شود. جهشِ زنده‌مانده یعنی تست ناقص است، نه اینکه کد امن است.
+    if (!preg_match('/\bsel\.getBoundingClientRect\s*\(/', $body)) {
+        $badPick[] = 'انتخابگر باید جای جعبه را از `getBoundingClientRect()`ِ خودِ فیلد'
+                   . ' بخواند — «چسبیده به فیلد» یعنی همین، نه یک جای ثابت';
+    }
+    if (strpos($body, 'lockBodyScroll') === false || strpos($body, 'unlockBodyScroll') === false) {
+        $badPick[] = 'انتخابگر باید خودش `lockBodyScroll()`/`unlockBodyScroll()` را صدا بزند:'
+                   . ' این لایه هنگام بارگذاری وجود ندارد، پس `watchOverlays()` نمی‌بیندش';
+    }
+    if (strpos($body, 'innerHTML = \'\'') === false && strpos($body, 'innerHTML = ""') === false) {
+        $badPick[] = 'فهرست باید هر بار از نو ساخته شود (خالی کردنِ `innerHTML`)، وگرنه'
+                   . ' فهرستِ دسته‌ها بعد از `setType()` بی‌صدا کهنه می‌ماند';
+    }
+    // ⚠ لوک‌اِهدِ ساده اینجا کار نمی‌کند: `\s*` عقب می‌نشیند و همان
+    //   `innerHTML = ''`ِ سالم را هم تطبیق می‌دهد — روی فایلِ سالم قرمز شد.
+    //   پس شمرده می‌شود: هر انتساب باید دقیقاً «خالی کردن» باشد.
+    $asgAll   = preg_match_all('/innerHTML\s*=/', $body);
+    $asgEmpty = preg_match_all('/innerHTML\s*=\s*(?:\'\'|"")/', $body);
+    if ($asgAll !== $asgEmpty) {
+        $badPick[] = 'نامِ گزینه با `textContent` نوشته شود نه `innerHTML` — نامِ دسته و'
+                   . ' حساب را خودِ کاربر نوشته';
+    }
+    if (!preg_match('/new Event\(\s*[\'"]change[\'"]/', $body)) {
+        $badPick[] = 'انتخاب باید رویدادِ `change` بدهد، وگرنه `setType()` و بقیه‌ی'
+                   . ' شنونده‌ها بی‌صدا اجرا نمی‌شوند';
+    }
+}
+
+T::bulk(9, $badPick, '⛔ انتخابگرِ گزینه‌ها پاپ‌آپِ باریکِ چسبیده به فیلد است');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }
