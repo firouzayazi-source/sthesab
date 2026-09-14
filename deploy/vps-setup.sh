@@ -292,6 +292,22 @@ server {
     add_header X-Frame-Options SAMEORIGIN always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
 
+    # ⛔ Content-Security-Policy — تا امروز اصلاً وجود نداشت.
+    #
+    # این اپ برای CSP وضعِ خوبی دارد: Chart.js و فونت در خودِ مخزن‌اند و
+    # هیچ CDN ای در کار نیست (همه‌ی میزبان‌های بیرونی — کاوه‌نگار،
+    # ملی‌پیامک، sms.ir — سمتِ **سرور** صدا زده می‌شوند، نه از مرورگر).
+    # پس \`default-src 'self'\` هیچ چیزی را نمی‌شکند.
+    #
+    # ⚠ \`'unsafe-inline'\` عمدی است و حدِ این کار را صادقانه می‌گوید:
+    #   ده‌ها \`<script>\` درون‌صفحه‌ای در قالب‌ها هست (نمودارها شنونده‌شان
+    #   را همان‌جا ثبت می‌کنند، به دلیلی که کنارِ \`registerThemedChart\`
+    #   نوشته شده). برداشتنش یعنی بازنویسیِ همه‌ی آن‌ها با nonce، و یک
+    #   قابلیتِ نیمه‌کار که صفحه‌ها را بی‌صدا از کار بیندازد از نبودنش
+    #   بدتر است. همین حالا هم \`object-src 'none'\` و \`base-uri 'self'\`
+    #   و \`form-action 'self'\` سه بردارِ واقعی را می‌بندند.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
+
     client_max_body_size 12M;
 
     # ---- api/v1 : آدرس تمیز برای اپ‌های موبایل ----

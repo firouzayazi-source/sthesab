@@ -26,7 +26,7 @@ $root = realpath(__DIR__ . '/..');
 T::group('آماده‌سازی');
 
 if (!file_exists($root . '/config/config.php')) {
-    T::skip('تست api/v1', 'config/config.php وجود ندارد');
+    T::blocked('تست api/v1', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 
@@ -37,7 +37,7 @@ require_once $root . '/includes/functions.php';
 try {
     $pdo = Database::getConnection();
 } catch (Throwable $e) {
-    T::skip('تست api/v1', 'اتصال به دیتابیس برقرار نشد');
+    T::blocked('تست api/v1', 'اتصال به دیتابیس برقرار نشد');
     exit(T::report());
 }
 

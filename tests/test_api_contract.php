@@ -2353,6 +2353,136 @@ if ($kbDef === false) {
 
 T::bulk(5, $badKb, '⛔ نوارِ پایین با کیبوردِ باز کنار می‌رود');
 
+// =====================================================================
+// قاعده ۳۴ — تست‌رانر روی خرابیِ زیرساخت نباید سبز شود
+// =====================================================================
+/**
+ * ⛔ چرا: یک بار MariaDB خوابیده بود و `bash tests/run.sh` نوشت
+ *    «✅ هر ۴۲ مجموعه تست موفق بود» در حالی که حدود ۲۵ مجموعه اصلاً به
+ *    دیتابیس نرسیده بودند. **دو** چیز با هم این را می‌ساختند:
+ *    ۱. `Database::getConnection()` در شکست `die()` می‌کرد و `die()` کدِ
+ *       خروجِ **صفر** دارد — پس `try/catch`ِ همه‌ی آن تست‌ها کدِ مرده بود.
+ *    ۲. `T::skip()` هیچ شمارنده‌ای را بالا نمی‌برد و `report()` صفر
+ *       برمی‌گرداند، پس «اجرا نشد» از «موفق شد» جدا نبود.
+ *    هر دو نیمه اینجا پین می‌شوند، وگرنه برگشتِ هرکدام دوباره همان
+ *    «سنجشی که روی خرابی سبز می‌شود» را می‌سازد.
+ */
+T::group('قاعده ۳۴ — «اجرا نشد» با «موفق شد» یکی نیست');
+
+$badRun = [];
+
+$assertSrc = (string)file_get_contents(__DIR__ . '/lib/assert.php');
+$runSrc    = (string)file_get_contents(__DIR__ . '/run.sh');
+$dbSrc     = (string)file_get_contents(__DIR__ . '/../includes/db.php');
+
+// ۱. `T::blocked()` وجود دارد و ردش را نگه می‌دارد
+if (!preg_match('/function\s+blocked\s*\(/', $assertSrc)
+    || strpos($assertSrc, 'self::$blocked[]') === false) {
+    $badRun[] = 'tests/lib/assert.php — `T::blocked()` باید وجود داشته باشد و مورد را ثبت کند';
+}
+
+// ۲. و `report()` برایش کدِ ناصفر برمی‌گرداند
+if (strpos($assertSrc, 'return self::EXIT_BLOCKED;') === false
+    || !preg_match('/EXIT_BLOCKED\s*=\s*([1-9])/', $assertSrc)) {
+    $badRun[] = 'tests/lib/assert.php — `report()` برای موردِ بلوک‌شده باید کدِ ناصفر بدهد';
+}
+
+// ۳. `run.sh` آن کد را می‌شناسد و با ناصفر تمام می‌شود
+if (strpos($runSrc, 'BLOCKED') === false || !preg_match('/^\s*2\)\s*BLOCKED/m', $runSrc)) {
+    $badRun[] = 'tests/run.sh — کدِ خروجِ ۲ باید جدا از شکست شمرده شود';
+}
+if (!preg_match('/BLOCKED\[@\]\}\s*>\s*0\s*\)\)(?s:.{0,900}?)exit 1/', $runSrc)) {
+    $badRun[] = 'tests/run.sh — وجودِ مجموعه‌ی اجرانشده باید کدِ خروجِ ناصفر بدهد';
+}
+
+// ۴. ⛔ نیمه‌ی دوم: اتصالِ ناموفق روی CLI باید **پرتاب** شود، نه `die()`.
+//    بدونِ این، بند ۱ تا ۳ بی‌اثرند چون پروسه پیش از رسیدن به
+//    `T::blocked()` با کدِ صفر می‌میرد.
+if (!preg_match('/PHP_SAPI\s*===\s*[\'"]cli[\'"](?s:.{0,200}?)throw\s+\$e/', $dbSrc)) {
+    $badRun[] = 'includes/db.php — شکستِ اتصال روی خط فرمان باید استثنا پرتاب کند، نه die()';
+}
+
+// ۵. و هیچ تستی نباید علتِ **زیرساختی** را ردِ نرم بشمارد
+foreach (glob(__DIR__ . '/test_*.php') as $tf) {
+    $src = (string)file_get_contents($tf);
+    foreach (explode("\n", $src) as $n => $line) {
+        if (strpos($line, 'T::skip(') === false) { continue; }
+        if (strpos($line, 'اتصال به دیتابیس برقرار نشد') !== false
+            || strpos($line, 'config/config.php وجود ندارد') !== false) {
+            $badRun[] = basename($tf) . ':' . ($n + 1) . ' — باید `T::blocked()` باشد نه `T::skip()`';
+        }
+    }
+}
+
+T::bulk(5, $badRun, '⛔ خرابیِ زیرساخت، اجرا را سبز نمی‌کند');
+
+// =====================================================================
+// قاعده ۳۵ — سیاستِ CSP در دو جا نوشته شده و باید یکی بماند
+// =====================================================================
+/**
+ * ⛔ `deploy/vps-setup.sh` سیاست را برای نصبِ **تازه** می‌نویسد و
+ *    `deploy/nginx-csp.sh` همان را روی نصبِ **موجود** می‌گذارد. اگر یکی
+ *    عوض شود و دیگری نه، دو نصب دو رفتارِ متفاوت می‌گیرند — و آن تفاوت
+ *    فقط وقتی دیده می‌شود که صفحه‌ای روی یکی از آن دو بشکند، یعنی
+ *    دیرترین و بدترین لحظه‌ی ممکن.
+ */
+T::group('قاعده ۳۵ — سیاستِ CSP یکی است');
+
+$badCsp = [];
+
+/**
+ * ⚠ دو فایل سیاست را به دو **شکل** نگه می‌دارند و الگوی استخراج هم باید
+ *   دو تا باشد: در `vps-setup.sh` سیاست مستقیم داخلِ `add_header` است،
+ *   در `nginx-csp.sh` یک متغیرِ `CSP=` است (چون همان‌جا هم چاپ می‌شود هم
+ *   نوشته). نسخه‌ی اولِ این قاعده هر دو را با یک الگو می‌خواند و از
+ *   دومی مقدارِ `%s`ِ `printf` را برداشت — یعنی **روی فایلِ سالم قرمز
+ *   شد**، همان اشتباهی که سرِ کامنت‌های CSS در قاعده ۲۰ هم شد.
+ */
+$src = (string)@file_get_contents(__DIR__ . '/../deploy/vps-setup.sh');
+$cspSetup = preg_match('/add_header Content-Security-Policy\s+"([^"]+)"/', $src, $m)
+    ? $m[1] : null;
+
+$src = (string)@file_get_contents(__DIR__ . '/../deploy/nginx-csp.sh');
+$cspApply = preg_match('/^CSP="([^"]+)"/m', $src, $m) ? $m[1] : null;
+
+if ($cspSetup === null) { $badCsp[] = 'deploy/vps-setup.sh — هدر CSP ندارد'; }
+if ($cspApply === null) { $badCsp[] = 'deploy/nginx-csp.sh — سیاستِ CSP ندارد'; }
+
+if ($cspSetup !== null && $cspApply !== null && $cspSetup !== $cspApply) {
+    $badCsp[] = 'سیاستِ دو فایل یکی نیست — نصبِ تازه و نصبِ موجود دو رفتار می‌گیرند';
+}
+
+// و سه دستوری که بدونِ آن‌ها این هدر بیشتر تزئین است تا محافظ.
+foreach (['object-src', 'base-uri', 'form-action', 'frame-ancestors'] as $need) {
+    if ($cspSetup !== null && strpos($cspSetup, $need) === false) {
+        $badCsp[] = "سیاست `{$need}` ندارد";
+    }
+}
+
+// ⛔ و سنجشِ بعد از اعمال اجباری است — «nginx -t سبز شد» چیزی را ثابت
+//    نمی‌کند (همان درسِ `^~` در `nginx-api.sh`).
+$applySrc = (string)@file_get_contents(__DIR__ . '/../deploy/nginx-csp.sh');
+
+/**
+ * ⚠ کامنت‌ها **پیش از** بررسی حذف می‌شوند، وگرنه این بررسی پوچ است:
+ *   توضیحِ بالای همان بخش خودش کلمه‌ی `--resolve` را دارد، پس با
+ *   برداشتنش از خودِ `curl` هم سبز می‌ماند. **جهشِ M3 دقیقاً همین را
+ *   نشان داد و اول زنده ماند** — همان درسی که سرِ `PREF_LAST_WHY` در
+ *   قاعده ۱۹ و `catch (Throwable` در قاعده ۱۲ هم تکرار شد.
+ */
+$applyCode = preg_replace('/^\s*#.*$/m', '', $applySrc) ?? $applySrc;
+if (strpos($applyCode, '--resolve') === false) {
+    $badCsp[] = 'deploy/nginx-csp.sh — سنجش باید با --resolve باشد، نه Host هدر';
+}
+if (preg_match('/-H\s+"Host:/i', $applyCode)) {
+    $badCsp[] = 'deploy/nginx-csp.sh — سنجش با سرآیندِ Host است؛ روی چندسایتی پاسخِ سایتِ دیگر را می‌گیرد';
+}
+if (!preg_match('/ok\s*-ne\s*1(?s:.{0,500}?)cp -a "\$BACKUP"/', $applySrc)) {
+    $badCsp[] = 'deploy/nginx-csp.sh — اگر سنجش رد شد باید پیکربندی را برگرداند';
+}
+
+T::bulk(8, $badCsp, '⛔ CSP در هر دو مسیر یکی و سنجیده است');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

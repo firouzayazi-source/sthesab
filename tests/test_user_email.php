@@ -28,7 +28,7 @@ require_once __DIR__ . '/lib/assert.php';
 
 if (!file_exists(__DIR__ . '/../config/config.php')) {
     T::group('ایمیل کاربر');
-    T::skip('تست ایمیل کاربر', 'config/config.php وجود ندارد');
+    T::blocked('تست ایمیل کاربر', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 
@@ -39,7 +39,7 @@ try {
     $pdo = Database::getConnection();
 } catch (Throwable $e) {
     T::group('ایمیل کاربر');
-    T::skip('تست ایمیل کاربر', 'اتصال به دیتابیس برقرار نشد');
+    T::blocked('تست ایمیل کاربر', 'اتصال به دیتابیس برقرار نشد');
     exit(T::report());
 }
 

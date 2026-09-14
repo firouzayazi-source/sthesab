@@ -21,7 +21,7 @@ require_once __DIR__ . '/lib/assert.php';
 
 if (!file_exists(__DIR__ . '/../config/config.php')) {
     T::group('سد حدس رمز');
-    T::skip('تست سد حدس رمز', 'config/config.php وجود ندارد');
+    T::blocked('تست سد حدس رمز', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 
@@ -33,7 +33,7 @@ try {
     $pdo = Database::getConnection();
 } catch (Throwable $e) {
     T::group('سد حدس رمز');
-    T::skip('تست سد حدس رمز', 'اتصال به دیتابیس برقرار نشد');
+    T::blocked('تست سد حدس رمز', 'اتصال به دیتابیس برقرار نشد');
     exit(T::report());
 }
 

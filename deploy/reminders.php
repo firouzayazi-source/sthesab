@@ -37,6 +37,7 @@ if (PHP_SAPI !== 'cli') {
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/mailer.php';
+require_once __DIR__ . '/../includes/cron_health.php';
 
 $args    = array_slice($argv, 1);
 $send    = in_array('--send', $args, true);
@@ -219,5 +220,9 @@ if (!$send) {
     echo $warn('حالت نمایشی — چیزی فرستاده نشد.') . "\n";
     echo $info('برای ارسال واقعی:  php deploy/reminders.php --send') . "\n\n";
 }
+
+// ⛔ نشانه فقط در حالتِ واقعی ثبت می‌شود: اجرای نمایشی هیچ ایمیلی
+//    نمی‌فرستد، پس ثبتش یعنی «سالم» گفتن به کاری که انجام نشده.
+if ($send) { CronHealth::beat('reminders'); }
 
 exit($failed > 0 ? 1 : 0);

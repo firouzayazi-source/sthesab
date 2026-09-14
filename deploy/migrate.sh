@@ -111,6 +111,7 @@ MIGRATIONS=(
     migration_indexes2.sql
     migration_indexes3.sql
     migration_seed_flag.sql
+    migration_app_errors.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -236,6 +237,7 @@ declare -A SENTINEL=(
     # ⚠ شاهد **ستونِ payments** است نه خودِ جدولِ discount_codes: آن
     #   ALTER آخرین کارِ فایل است، پس وجودش یعنی کلِ فایل اجرا شده.
     [migration_discount_codes.sql]="payments.discount_code"
+    [migration_app_errors.sql]="app_errors"
     [migration_plans.sql]="payments"
     [migration_sms_login.sql]="sms_codes"
     # ⛔ شاهدش «ستون هست» نیست بلکه «ستون NULL می‌پذیرد» است. این

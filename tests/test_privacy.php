@@ -32,7 +32,7 @@ $root = realpath(__DIR__ . '/..');
 
 if (!file_exists($root . '/config/config.php')) {
     T::group('حریم خصوصی');
-    T::skip('تست حریم خصوصی', 'config/config.php وجود ندارد');
+    T::blocked('تست حریم خصوصی', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 

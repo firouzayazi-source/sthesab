@@ -44,7 +44,7 @@ $root = realpath(__DIR__ . '/..');
 
 if (!file_exists($root . '/config/config.php')) {
     T::group('رندر صفحه‌ها');
-    T::skip('تست رندر صفحه‌ها', 'config/config.php وجود ندارد');
+    T::blocked('تست رندر صفحه‌ها', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 

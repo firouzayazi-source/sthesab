@@ -1000,6 +1000,16 @@ textarea { resize: vertical; }
    نه قرمز. خاکستریِ خنثی. */
 .status-badge-muted { background: var(--line-soft); color: var(--muted); }
 
+/* ⛔ سه حالتِ نشانِ «سلامت» در پنل مدیر. `status-badge-in`/`-out` از قبل
+   در `admin/insights.php` نوشته شده بودند ولی **هیچ قاعده‌ای نداشتند**،
+   پس هر دو یک شکلِ بی‌رنگ دیده می‌شدند — یعنی «درست» و «رسیدگی» از هم
+   تشخیص داده نمی‌شدند و کارتِ سلامت عملاً چیزی نمی‌گفت.
+   ⚠ رنگِ حالتِ میانی `--warn-ink` است نه `--gold`: پالتِ دوم `--gold` را
+   آبی بازتعریف می‌کند و آن‌وقت «هشدار» دقیقاً مثل «اطلاع» دیده می‌شود. */
+.status-badge-in   { background: var(--in-wash);   color: var(--in); }
+.status-badge-out  { background: var(--out-wash);  color: var(--out); }
+.status-badge-warn { background: var(--warn-wash); color: var(--warn-ink); }
+
 /* نشانِ وضعیتِ چک دکمه است (جایِ عوض کردنِ وضعیت)، ولی باید دقیقاً مثلِ
    نشانِ معمولی دیده شود — وگرنه دو شکلِ متفاوت برای یک چیز می‌شد.
    ⚠ هدفِ لمس با padding منفی بزرگ می‌شود، نه با بزرگ کردنِ خودِ نشان. */

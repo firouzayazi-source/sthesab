@@ -29,7 +29,7 @@ require_once __DIR__ . '/lib/assert.php';
 
 if (!file_exists(__DIR__ . '/../config/config.php')) {
     T::group('پیشنهاد نصب اپ اندروید');
-    T::skip('تست پیشنهاد نصب', 'config/config.php وجود ندارد');
+    T::blocked('تست پیشنهاد نصب', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 

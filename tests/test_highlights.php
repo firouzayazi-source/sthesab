@@ -24,7 +24,7 @@ require_once __DIR__ . '/lib/assert.php';
 
 if (!file_exists(__DIR__ . '/../config/config.php')) {
     T::group('جمله‌های بینش');
-    T::skip('تست بینش', 'config/config.php وجود ندارد');
+    T::blocked('تست بینش', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 
@@ -35,7 +35,7 @@ try {
     $pdo = Database::getConnection();
 } catch (Throwable $e) {
     T::group('جمله‌های بینش');
-    T::skip('تست بینش', 'اتصال به دیتابیس برقرار نشد');
+    T::blocked('تست بینش', 'اتصال به دیتابیس برقرار نشد');
     exit(T::report());
 }
 

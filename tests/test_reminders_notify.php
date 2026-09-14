@@ -21,7 +21,7 @@ require_once __DIR__ . '/lib/assert.php';
 
 if (!file_exists(__DIR__ . '/../config/config.php')) {
     T::group('یادآور و اعلان');
-    T::skip('تست یادآور و اعلان', 'config/config.php وجود ندارد');
+    T::blocked('تست یادآور و اعلان', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 

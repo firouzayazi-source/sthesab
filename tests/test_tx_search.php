@@ -25,7 +25,7 @@ require_once __DIR__ . '/lib/assert.php';
 
 if (!file_exists(__DIR__ . '/../config/config.php')) {
     T::group('جست‌وجو و خروجی تراکنش');
-    T::skip('جست‌وجوی تراکنش‌ها', 'config/config.php وجود ندارد');
+    T::blocked('جست‌وجوی تراکنش‌ها', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 
@@ -37,7 +37,7 @@ try {
     $pdo = Database::getConnection();
 } catch (Throwable $e) {
     T::group('جست‌وجو و خروجی تراکنش');
-    T::skip('جست‌وجوی تراکنش‌ها', 'اتصال به دیتابیس برقرار نشد');
+    T::blocked('جست‌وجوی تراکنش‌ها', 'اتصال به دیتابیس برقرار نشد');
     exit(T::report());
 }
 

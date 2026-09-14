@@ -24,7 +24,7 @@ require_once __DIR__ . '/lib/assert.php';
 
 if (!file_exists(__DIR__ . '/../config/config.php')) {
     T::group('بازیابی رمز');
-    T::skip('تست بازیابی رمز', 'config/config.php وجود ندارد');
+    T::blocked('تست بازیابی رمز', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 

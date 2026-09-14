@@ -39,7 +39,7 @@ $root = realpath(__DIR__ . '/..');
 
 if (!file_exists($root . '/config/config.php')) {
     T::group('بودجه‌ی کوئری');
-    T::skip('تست بودجه‌ی کوئری', 'config/config.php وجود ندارد');
+    T::blocked('تست بودجه‌ی کوئری', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 

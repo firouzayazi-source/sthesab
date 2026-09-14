@@ -26,7 +26,7 @@ require_once __DIR__ . '/lib/assert.php';
 
 if (!file_exists(__DIR__ . '/../config/config.php')) {
     T::group('لغوِ حذف');
-    T::skip('تست لغو', 'config/config.php وجود ندارد');
+    T::blocked('تست لغو', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 
@@ -39,7 +39,7 @@ try {
     $pdo = Database::getConnection();
 } catch (Throwable $e) {
     T::group('لغوِ حذف');
-    T::skip('تست لغو', 'اتصال به دیتابیس برقرار نشد');
+    T::blocked('تست لغو', 'اتصال به دیتابیس برقرار نشد');
     exit(T::report());
 }
 

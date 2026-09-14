@@ -180,3 +180,6 @@ fi
 after=$(find "$SESSION_DIR" -maxdepth 1 -type f -name 'sess_*' 2>/dev/null | wc -l)
 green "پاک شد: $((total - after)) فایل   (باقی‌مانده: $after)"
 info "  بی‌کاربر: $anon_n    کاربرِ واردشده: $user_n"
+
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cron-beat.sh"
+cron_beat sessions

@@ -24,7 +24,7 @@ require_once __DIR__ . '/lib/assert.php';
 
 if (!file_exists(__DIR__ . '/../config/config.php')) {
     T::group('اعداد تفسیری');
-    T::skip('تست اعداد تفسیری', 'config/config.php وجود ندارد');
+    T::blocked('تست اعداد تفسیری', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 
@@ -35,7 +35,7 @@ try {
     $pdo = Database::getConnection();
 } catch (Throwable $e) {
     T::group('اعداد تفسیری');
-    T::skip('تست اعداد تفسیری', 'اتصال به دیتابیس برقرار نشد');
+    T::blocked('تست اعداد تفسیری', 'اتصال به دیتابیس برقرار نشد');
     exit(T::report());
 }
 

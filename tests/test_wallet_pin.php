@@ -26,7 +26,7 @@ $root = realpath(__DIR__ . '/..');
 
 if (!file_exists($root . '/config/config.php')) {
     T::group('حساب‌های پین‌شده');
-    T::skip('تست پین حساب', 'config/config.php وجود ندارد');
+    T::blocked('تست پین حساب', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 

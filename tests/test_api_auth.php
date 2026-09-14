@@ -28,7 +28,7 @@ $root = realpath(__DIR__ . '/..');
 T::group('آماده‌سازی سرور آزمایشی');
 
 if (!file_exists($root . '/config/config.php')) {
-    T::skip('تست رفتاری اندپوینت‌ها', 'config/config.php وجود ندارد');
+    T::blocked('تست رفتاری اندپوینت‌ها', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 
@@ -220,7 +220,7 @@ try {
     $smokeUserId = (int)$pdo->lastInsertId();
     $pdoOk = true;
 } catch (Throwable $e) {
-    T::skip('تست اندپوینت‌ها با ورود', 'اتصال به دیتابیس برقرار نشد');
+    T::blocked('تست اندپوینت‌ها با ورود', 'اتصال به دیتابیس برقرار نشد');
 }
 
 if ($pdoOk) {

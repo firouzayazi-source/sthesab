@@ -37,7 +37,7 @@ require_once __DIR__ . '/lib/assert.php';
 
 if (!file_exists(__DIR__ . '/../config/config.php')) {
     T::group('ثبت‌نام با شماره موبایل');
-    T::skip('تست ثبت‌نام با شماره', 'config/config.php وجود ندارد');
+    T::blocked('تست ثبت‌نام با شماره', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 
@@ -60,7 +60,7 @@ try {
     $pdo = Database::getConnection();
 } catch (Throwable $e) {
     T::group('ثبت‌نام با شماره موبایل');
-    T::skip('تست ثبت‌نام با شماره', 'اتصال به دیتابیس برقرار نشد');
+    T::blocked('تست ثبت‌نام با شماره', 'اتصال به دیتابیس برقرار نشد');
     exit(T::report());
 }
 

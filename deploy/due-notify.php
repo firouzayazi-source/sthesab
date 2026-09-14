@@ -24,6 +24,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/schedule.php';
 require_once __DIR__ . '/../includes/notify.php';
+require_once __DIR__ . '/../includes/cron_health.php';
 
 $args   = array_slice($argv, 1);
 $send   = in_array('--send', $args, true);
@@ -105,3 +106,6 @@ foreach ($rows as $u) {
 printf("ساعت %s — کاربرانِ این ساعت: %d — اعلانِ %s: %d\n",
     str_pad((string)$hour, 2, '0', STR_PAD_LEFT), $users, $send ? 'ساخته‌شده' : 'قابلِ ساخت', $made);
 if (!$send) { echo "حالت نمایشی — چیزی ساخته نشد. برای اجرا: --send\n"; }
+
+// همان قاعده‌ی `reminders.php`: اجرای نمایشی نشانه نمی‌گذارد.
+if ($send) { CronHealth::beat('due-notify'); }

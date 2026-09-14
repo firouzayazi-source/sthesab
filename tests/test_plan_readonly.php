@@ -30,7 +30,7 @@ require_once __DIR__ . '/lib/assert.php';
 
 if (!file_exists(__DIR__ . '/../config/config.php')) {
     T::group('اشتراک: فقط خواندنی');
-    T::skip('تست فقط‌خواندنی', 'config/config.php وجود ندارد');
+    T::blocked('تست فقط‌خواندنی', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 
@@ -44,7 +44,7 @@ try {
     $pdo = Database::getConnection();
 } catch (Throwable $e) {
     T::group('اشتراک: فقط خواندنی');
-    T::skip('تست فقط‌خواندنی', 'اتصال به دیتابیس برقرار نشد');
+    T::blocked('تست فقط‌خواندنی', 'اتصال به دیتابیس برقرار نشد');
     exit(T::report());
 }
 

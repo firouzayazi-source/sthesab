@@ -68,7 +68,7 @@ if ($rc !== 0) {
 }
 
 if (!file_exists($root . '/config/config.php')) {
-    T::skip('اجرای زنجیره', 'config/config.php وجود ندارد');
+    T::blocked('اجرای زنجیره', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 require_once $root . '/config/config.php';

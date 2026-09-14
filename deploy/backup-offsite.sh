@@ -617,6 +617,11 @@ sha256: $sum"
         "$( (( verified == 1 )) && printf 'سنجیده‌شده' || printf 'سنجیده‌نشده' )" > "$STATE"
     chmod 600 "$STATE"
 
+    # ⚠ `.offsite-state` می‌گوید **کدام فایل** رفته؛ نشانه‌ی cron می‌گوید
+    #   **کِی** اجرا شد. دو سؤالِ متفاوت‌اند و پنل مدیر دومی را می‌پرسد.
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cron-beat.sh"
+    cron_beat offsite
+
     plain ""
     green "تمام. $base به بیرون از این سرور رفت."
     if app_key_present; then

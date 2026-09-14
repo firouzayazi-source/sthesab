@@ -27,7 +27,7 @@ require_once __DIR__ . '/lib/assert.php';
 
 if (!file_exists(__DIR__ . '/../config/config.php')) {
     T::group('چرخه‌ی چک');
-    T::skip('تست چرخه‌ی چک', 'config/config.php وجود ندارد');
+    T::blocked('تست چرخه‌ی چک', 'config/config.php وجود ندارد');
     exit(T::report());
 }
 
@@ -38,7 +38,7 @@ try {
     $pdo = Database::getConnection();
 } catch (Throwable $e) {
     T::group('چرخه‌ی چک');
-    T::skip('تست چرخه‌ی چک', 'اتصال به دیتابیس برقرار نشد');
+    T::blocked('تست چرخه‌ی چک', 'اتصال به دیتابیس برقرار نشد');
     exit(T::report());
 }
 

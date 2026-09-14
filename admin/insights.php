@@ -12,9 +12,19 @@ require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/admin_insights.php';
 require_once __DIR__ . '/../includes/user_data.php';
 require_once __DIR__ . '/../includes/plan.php';
+require_once __DIR__ . '/../includes/cron_health.php';
 
 Auth::initSession();
 Auth::requireAdmin();
+
+// پاک کردنِ فهرستِ خطا — تنها نوشتنِ این صفحه، پس تنها جایی که
+// `Csrf::verifyOrFail()` لازم دارد (قاعده ۳ در راهنما).
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['clear_errors'])) {
+    Csrf::verifyOrFail($_POST['csrf_token'] ?? '');
+    AppErrors::clear();
+    header('Location: ' . APP_BASE_PATH . '/admin/insights.php');
+    exit;
+}
 
 $activity = userActivity();
 $total    = count($activity);
@@ -22,6 +32,9 @@ $funnel   = onboardingFunnel($activity);
 $features = featureAdoption($total);
 $growth   = userGrowthByJalaliMonth();
 $health   = healthChecks();
+$cron     = CronHealth::status();
+$errors   = AppErrors::recent(8);
+$errWeek  = AppErrors::countSince(7);
 
 $never  = array_values(array_filter($activity, fn($r) => $r['state'] === 'never'));
 $stale  = array_values(array_filter($activity, fn($r) => $r['state'] === 'stale'));
@@ -184,6 +197,76 @@ include __DIR__ . '/../includes/header.php';
         </div>
     <?php endforeach; ?>
     <p class="hint version-line">نسخه: <?= h(appVersion()) ?></p>
+</div>
+
+<div class="card">
+    <h2 class="card-title">کارهای زمان‌بندی‌شده</h2>
+    <?php /* ⛔ cronِ مرده هیچ صدایی ندارد. پنج کار با cron اجرا می‌شوند و
+             تا امروز هیچ‌کدام ردی از خودشان نمی‌گذاشتند — یعنی بکاپی که
+             سه هفته نگرفته شده دقیقاً همان‌قدر ساکت است که بکاپِ سالم.
+             توضیحِ کامل کنارِ `CronHealth`. */ ?>
+    <?php foreach ($cron as $c): ?>
+        <div class="pay-row">
+            <div>
+                <strong><?= h($c['label']) ?></strong><br>
+                <span class="hint">
+                    <?php if ($c['state'] === 'never'): ?>
+                        تا امروز اجرا نشده — <?= h($c['script']) ?> --install-cron
+                    <?php else: ?>
+                        آخرین اجرا: <?= h(CronHealth::ago($c['age'])) ?>
+                        <?php if ($c['state'] === 'stale'): ?>
+                            — انتظار می‌رفت هر <?= h(toPersianDigits((string)$c['hours'])) ?> ساعت
+                        <?php endif; ?>
+                    <?php endif; ?>
+                </span>
+            </div>
+            <?php
+            // ⚠ سه حالت، سه رنگ — و «هرگز» عمداً از «کهنه» جداست: اولی
+            //   یعنی نصب نشده، دومی یعنی نصب شده و از کار افتاده.
+            $badge = ['ok' => ['status-badge-in', 'سالم'],
+                      'stale' => ['status-badge-out', 'کهنه'],
+                      'never' => ['status-badge-warn', 'اجرا نشده']][$c['state']];
+            ?>
+            <span class="status-badge <?= $badge[0] ?>"><?= $badge[1] ?></span>
+        </div>
+    <?php endforeach; ?>
+</div>
+
+<div class="card">
+    <h2 class="card-title">خطاهای برنامه</h2>
+    <?php /* ⛔ ۶۱ فایل `error_log()` صدا می‌زنند و تا امروز هیچ صفحه‌ای
+             آن‌ها را نشان نمی‌داد: هر ۵۰۰ بی‌صدا در لاگِ FPM می‌ماند و
+             مالکِ نصب فقط با شکایتِ کاربر می‌فهمید — و بیشترِ کاربرها
+             شکایت نمی‌کنند، فقط اپ را می‌بندند. */ ?>
+    <?php if (!tableExists('app_errors')): ?>
+        <p class="hint">migration_app_errors اجرا نشده.</p>
+    <?php elseif (!$errors): ?>
+        <p class="hint">هیچ خطایی ثبت نشده است.</p>
+    <?php else: ?>
+        <p class="hint" style="margin-top:0;">
+            <?= h(toPersianDigits((string)$errWeek)) ?> خطای متمایز در هفته‌ی گذشته.
+        </p>
+        <?php foreach ($errors as $e): ?>
+            <div class="pay-row">
+                <div>
+                    <strong><?= h($e['file']) ?>:<?= h(toPersianDigits((string)$e['line'])) ?></strong><br>
+                    <span class="hint"><?= h($e['message']) ?></span>
+                </div>
+                <span class="status-badge status-badge-out">
+                    ×<?= h(toPersianDigits((string)$e['hits'])) ?>
+                </span>
+            </div>
+        <?php endforeach; ?>
+        <form method="post" style="margin-top:10px;">
+            <?= Csrf::field() ?>
+            <button type="submit" name="clear_errors" value="1" class="btn btn-sm">پاک کردن فهرست</button>
+        </form>
+    <?php endif; ?>
+    <p class="hint">
+        ⛔ اینجا نه شناسه‌ی کاربر ثبت می‌شود نه آدرسِ صفحه — این فهرست
+        درباره‌ی <strong>کد</strong> است، نه رفتارِ کاربر. عدد و ایمیلِ
+        داخلِ متنِ خطا هم پیش از ذخیره پوشانده می‌شوند.
+    </p>
 </div>
 
 <div class="card">
