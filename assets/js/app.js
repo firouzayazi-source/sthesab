@@ -461,6 +461,32 @@ if ('serviceWorker' in navigator) {
     };
 
     /**
+     * آیا فوکوس روی این عنصر کیبوردِ مجازی را بالا می‌آورد؟
+     *
+     * ⛔ تنها جای این تصمیم (مثل `smsAutoOk()`) و عمداً **بیرون از
+     *    `DOMContentLoaded`** تا در node آزمودنی باشد: نسخه‌ی اولش
+     *    داخلِ `keyboardAwareNav()` بود و آزمونِ جهشِ «همیشه true»
+     *    **زنده ماند**، چون تستِ قرارداد فقط دنبالِ رشته‌ها می‌گشت و
+     *    آن‌ها سرِ جایشان بودند. جهشِ زنده‌مانده یعنی تست ناقص است.
+     *
+     * ⚠ چک‌باکس، رادیو، دکمه و `type="color"` فوکوس می‌گیرند **بدونِ**
+     *   کیبورد. با شمردنشان، تپ روی هر کلیدِ `.switch` نوارِ پایین را
+     *   ناپدید می‌کرد — یعنی رفعِ ما خودش یک خرابیِ تازه می‌ساخت.
+     *
+     * @param {object} el عنصر (یا هر چیزی شبیهش: `tagName` و `type`)
+     * @returns {boolean}
+     */
+    window.kbNeedsKeyboard = function (el) {
+        if (!el) { return false; }
+        if (el.isContentEditable) { return true; }
+        var tag = String(el.tagName || '').toUpperCase();
+        if (tag === 'TEXTAREA') { return true; }
+        if (tag !== 'INPUT') { return false; }
+        var t = String(el.type || 'text').toLowerCase();
+        return !/^(button|submit|reset|checkbox|radio|file|range|color|image|hidden)$/.test(t);
+    };
+
+    /**
      * اثرِ انگشتِ یک پیامک — فقط برای اینکه یک پیامک **دو بار** ثبت نشود.
      *
      * ⛔ چرا لازم است: اعلانِ اندروید ممکن است دو بار زده شود و هر بار
@@ -3625,6 +3651,68 @@ document.addEventListener('DOMContentLoaded', function () {
                 isOpen ? lockBodyScroll() : unlockBodyScroll();
             }).observe(el, { attributes: true, attributeFilter: ['class'] });
         });
+    })();
+
+    // ---------- نوارِ پایین وقتی کیبورد باز است ----------
+    // ⛔ خرابیِ واقعی که کاربر گزارش کرد: «گاهی منوی پایین می‌رود وسطِ
+    //    صفحه». علتش کیبوردِ مجازی است، نه CSS:
+    //      • `.bottom-nav` با `position: fixed` نسبت به **viewport
+    //        چیدمان** جای می‌گیرد.
+    //      • با باز شدنِ کیبورد، iOS (و از کروم ۱۰۸ به بعد اندروید هم،
+    //        که پیش‌فرضش `resizes-visual` است) **viewport چیدمان را
+    //        کوچک نمی‌کند** — فقط viewport دیداری کوچک می‌شود و صفحه
+    //        اسکرول می‌شود تا فیلد دیده شود.
+    //      • نتیجه: کفِ viewport چیدمان جایی **وسطِ صفحه‌ی دیداری**
+    //        می‌افتد و نوار دقیقاً همان‌جا روی محتوا شناور می‌ماند.
+    //    هیچ خطایی نمی‌دهد و در مرورگرِ دسکتاپ اصلاً بازتولید نمی‌شود —
+    //    همان درسِ حاشیه‌ی امن و منوی کناری.
+    //
+    // ⛔ رفعش «جابه‌جا کردنِ نوار» نیست، **برداشتنش** است. جبران‌سازی با
+    //    `visualViewport.offsetTop` یعنی نوار با هر ضربه‌ی اسکرول تکان
+    //    می‌خورد و همان درسِ قفلِ اسکرول تکرار می‌شود: وقتی جبران‌سازی
+    //    جواب نمی‌دهد، صورت‌مسئله را بردارید. ضمناً کاربری که دارد تایپ
+    //    می‌کند به ناوبری نیاز ندارد و فضای بیشتری هم به دست می‌آورد.
+    (function keyboardAwareNav() {
+        var root = document.documentElement;
+        var vv = window.visualViewport;
+
+        // فقط فیلدی که واقعاً کیبورد بالا می‌آورد — تعریفش بالای فایل
+        // است تا در node آزمودنی بماند (`window.kbNeedsKeyboard`).
+        var typing = window.kbNeedsKeyboard;
+
+        // ⚠ کفِ تشخیص: کیبوردِ گوشی دست‌کم یک‌سومِ صفحه را می‌گیرد، ولی
+        //   جمع شدنِ نوارِ آدرسِ مرورگر فقط چند ده پیکسل است. با عددِ
+        //   کوچک‌تر، اسکرولِ ساده هم «کیبورد» خوانده می‌شد.
+        var KB_MIN = 120;
+
+        function set(on) { root.classList.toggle('kb-open', !!on); }
+
+        // ⛔ viewport دیداری دقیق‌ترین نشانه است و تصمیمِ فوکوس را
+        //    **تصحیح** می‌کند: با کیبوردِ سخت‌افزاری (آیپد، دسکتاپ) فیلد
+        //    فوکوس می‌گیرد ولی هیچ چیزی کوچک نمی‌شود، پس نوار باید بماند.
+        function reconcile() {
+            if (!typing(document.activeElement)) { set(false); return; }
+            set(vv ? vv.height < window.innerHeight - KB_MIN : true);
+        }
+
+        document.addEventListener('focusin', function (e) {
+            if (!typing(e.target)) return;
+            // ⚠ فوراً پنهان می‌شود، نه بعد از سنجش: کیبورد چند صد
+            //   میلی‌ثانیه بالا می‌آید و در همان فاصله نوار وسطِ صفحه
+            //   دیده می‌شد — یعنی دقیقاً همان چیزی که رفع شده.
+            set(true);
+            if (vv) { setTimeout(reconcile, 400); }
+        });
+        // ⚠ با تأخیرِ یک تیک: هنگام جابه‌جا شدنِ فوکوس بینِ دو فیلد،
+        //   `focusout` زودتر از `focusin`ِ بعدی می‌آید و بدونِ این تأخیر
+        //   نوار یک لحظه ظاهر و دوباره پنهان می‌شد.
+        document.addEventListener('focusout', function () {
+            setTimeout(function () {
+                if (!typing(document.activeElement)) set(false);
+            }, 0);
+        });
+
+        if (vv) { vv.addEventListener('resize', reconcile); }
     })();
 
     // ---------- انتخابگرِ گزینه‌ها به‌جای منوی بومیِ <select> ----------

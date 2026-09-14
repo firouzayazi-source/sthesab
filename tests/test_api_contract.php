@@ -2277,6 +2277,82 @@ if ($anchor === false) {
 
 T::bulk(9, $badPick, '⛔ انتخابگرِ گزینه‌ها پاپ‌آپِ باریکِ چسبیده به فیلد است');
 
+// ⛔ قاعده ۳۳ — کیبورد که باز است، نوارِ پایین کنار می‌رود
+//
+// خرابیِ گزارش‌شده: «گاهی منوی پایین می‌رود وسطِ صفحه». علتش CSS نیست،
+// کیبوردِ مجازی است: `position: fixed` نسبت به viewport **چیدمان** جای
+// می‌گیرد و کیبورد آن را کوچک نمی‌کند (فقط viewport دیداری کوچک می‌شود
+// و صفحه اسکرول می‌شود تا فیلد دیده شود). پس کفِ چیدمان جایی وسطِ
+// صفحه‌ی دیداری می‌افتد و نوار همان‌جا شناور می‌ماند. در مرورگرِ دسکتاپ
+// اصلاً بازتولید نمی‌شود — همان درسِ حاشیه‌ی امن و منوی کناری.
+//
+// چهار ستونش پین می‌شود، چون افتادنِ هرکدام **بی‌صداست**:
+//   ۱. خودِ قاعده‌ی CSS.
+//   ۲. `focusin` — مرورگری که `visualViewport` ندارد باید هم کار کند،
+//      و روی گوشی کیبورد چند صد میلی‌ثانیه بالا می‌آید: در همان فاصله
+//      نوار باید رفته باشد، وگرنه دقیقاً همان باگ دیده می‌شود.
+//   ۳. صافیِ نوعِ فیلد — چک‌باکس و دکمه و `type="color"` فوکوس می‌گیرند
+//      بدونِ کیبورد؛ بدونِ صافی، تپ روی هر کلیدِ `.switch` نوار را
+//      ناپدید می‌کرد.
+//   ۴. تصحیح با `visualViewport` — با کیبوردِ سخت‌افزاری (آیپد، دسکتاپ)
+//      هیچ چیزی کوچک نمی‌شود، پس نوار باید برگردد.
+T::group('قاعده ۳۳ — نوارِ پایین و کیبوردِ مجازی');
+
+$badKb = [];
+
+if (!preg_match('/html\.kb-open\s+\.bottom-nav\s*\{[^}]*display\s*:\s*none/', $css)) {
+    $badKb[] = 'قاعده‌ی `html.kb-open .bottom-nav { display: none }` در style.css نیست —'
+             . ' نوار با کیبوردِ باز وسطِ صفحه شناور می‌ماند';
+}
+
+$kbAnchor = strpos($jsSrc, '(function keyboardAwareNav() {');
+if ($kbAnchor === false) {
+    $badKb[] = 'تابعِ `keyboardAwareNav()` در app.js نیست — هیچ‌چیز کلاسِ `kb-open` را نمی‌گذارد';
+} else {
+    $tail  = substr($jsSrc, $kbAnchor);
+    $tail  = preg_replace('#//[^\n]*#', '', $tail);
+    $tail  = preg_replace('#/\*.*?\*/#s', '', $tail);
+    $depth = 0; $end = null;
+    for ($i = 0, $n = strlen($tail); $i < $n; $i++) {
+        if ($tail[$i] === '{') { $depth++; }
+        elseif ($tail[$i] === '}') { $depth--; if ($depth === 0) { $end = $i; break; } }
+    }
+    $kbBody = $end === null ? $tail : substr($tail, 0, $end);
+
+    if (!preg_match('/addEventListener\(\s*[\'"]focusin[\'"]/', $kbBody)) {
+        $badKb[] = 'نوار باید با `focusin` پنهان شود، نه فقط با `visualViewport`:'
+                 . ' کیبورد چند صد میلی‌ثانیه بالا می‌آید و مرورگرِ بدونِ آن API هم هست';
+    }
+    if (!preg_match('/visualViewport/', $kbBody)) {
+        $badKb[] = '`visualViewport` باید تصمیمِ فوکوس را تصحیح کند، وگرنه با کیبوردِ'
+                 . ' سخت‌افزاری نوار بی‌دلیل پنهان می‌ماند';
+    }
+    // ⛔ صافیِ نوع باید از `window.kbNeedsKeyboard` بیاید، نه یک کپیِ
+    //    محلی: *رفتارش* در `tests/test_keyboard_nav.php` با node سنجیده
+    //    می‌شود و با کپیِ دوم، آن تست چیزی را می‌آزماید که اجرا نمی‌شود.
+    //    ⚠ نسخه‌ی اولِ همین بررسی دنبالِ رشته‌های `checkbox`/`color` داخلِ
+    //    همین بدنه بود و جهشِ «همیشه true» از زیرش رد شد — فهرست سرِ
+    //    جایش می‌ماند و فقط دیگر خوانده نمی‌شد.
+    if (strpos($kbBody, 'window.kbNeedsKeyboard') === false) {
+        $badKb[] = 'صافیِ نوعِ فیلد باید از `window.kbNeedsKeyboard()` بیاید — تنها'
+                 . ' جای این تصمیم، و تنها چیزی که در node آزمودنی است';
+    }
+}
+
+// و خودِ تابع باید **بیرون از** `DOMContentLoaded` باشد، وگرنه در node
+// تعریف نمی‌شود و تستِ رفتاری بی‌صدا از پوشش می‌افتد — همان قاعده‌ی
+// `parseBankSms()` و `smsAutoOk()`.
+$domReady = strpos($jsSrc, "document.addEventListener('DOMContentLoaded'");
+$kbDef    = strpos($jsSrc, 'window.kbNeedsKeyboard = function');
+if ($kbDef === false) {
+    $badKb[] = '`window.kbNeedsKeyboard` تعریف نشده است';
+} elseif ($domReady !== false && $kbDef > $domReady) {
+    $badKb[] = '`window.kbNeedsKeyboard` باید بیرون از `DOMContentLoaded` تعریف شود،'
+             . ' وگرنه `tests/test_keyboard_nav.php` نمی‌تواند صدایش بزند';
+}
+
+T::bulk(5, $badKb, '⛔ نوارِ پایین با کیبوردِ باز کنار می‌رود');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }
