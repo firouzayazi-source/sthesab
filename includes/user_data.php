@@ -16,6 +16,10 @@
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/crypto.php';
+// ⚠ این فایل از قبل هم به `toJalali()` و `categoryScopeSql()` وابسته بود،
+//   ولی روی وابستگیِ ضمنیِ فراخواننده حساب می‌کرد. صریح شد تا هر مسیرِ
+//   تازه‌ای (cron، تست، خطِ فرمان) بدونِ خطای کشنده بالا بیاید.
+require_once __DIR__ . '/functions.php';
 
 /**
  * جدول‌هایی که در **خروجی** نمی‌آیند.
@@ -127,6 +131,32 @@ function exportUserData(int $userId): array
 
     // شمارشِ خلاصه، تا کاربر بدون باز کردنِ فایل هم بفهمد چه گرفته
     $out['summary'] = array_map('count', $out['tables']);
+
+    /**
+     * ⛔ نامِ دسته‌بندی‌ها کنارِ شناسه‌شان می‌آید — یک کلیدِ **افزوده**.
+     *
+     * بدونِ این، بازگرداندن روی نصبِ دیگر شکست می‌خورد و دلیلش هم
+     * دیدنی نبود: دسته‌ی **پیش‌فرضِ برنامه** (`user_id IS NULL`) در
+     * خروجی نیست (خروجی فقط ردیف‌های خودِ کاربر را دارد)، پس ردیفی
+     * مثل `budgets` که به آن اشاره می‌کند فقط یک **عدد** داشت و آن
+     * عدد روی نصبِ مقصد معنای دیگری دارد. و چون `budgets.category_id`
+     * ستونِ `NOT NULL` است، نتیجه‌اش «Column cannot be null» وسطِ
+     * بازگرداندن بود — یعنی کلِ کار برمی‌گشت.
+     *
+     * ⚠ افزودن است نه تغییر: فایل‌های قدیمی این کلید را ندارند و
+     *   `importUserData()` همچنان با نامِ داخلِ خودِ `tables.categories`
+     *   کار می‌کند. پس هیچ بکاپِ گرفته‌شده‌ای بی‌ارزش نمی‌شود.
+     */
+    $out['category_names'] = [];
+    try {
+        $cs = $pdo->prepare('SELECT id, name, type FROM categories WHERE ' . categoryScopeSql());
+        $cs->execute(categoryScopeParams($userId));
+        foreach ($cs->fetchAll() as $c) {
+            $out['category_names'][(string)$c['id']] = ['name' => $c['name'], 'type' => $c['type']];
+        }
+    } catch (PDOException $e) {
+        error_log('Export Category Names Error: ' . $e->getMessage());
+    }
 
     return $out;
 }

@@ -150,6 +150,27 @@ class Crypto
         return $row;
     }
 
+    /**
+     * قرینه‌ی `decryptRow()`.
+     *
+     * ⛔ لازم شد چون بازگرداندنِ بکاپ دقیقاً راهِ برگشت را می‌رود: خروجی
+     *    این ستون‌ها را **باز** می‌کند (فایلی که خوانده نشود خروجی نیست)،
+     *    پس ورودی باید دوباره ببندد. بدونش، روی نصبی که رمزنگاری روشن
+     *    است شماره‌ها خام می‌نشستند و رمزنگاری **بی‌صدا** بی‌اثر می‌شد —
+     *    خواندن هم درست کار می‌کرد، چون `decrypt()` مقدارِ بی‌پیشوند را
+     *    خودش برمی‌گرداند. یعنی هیچ‌کس نمی‌فهمید.
+     */
+    public static function encryptRow(array $row, array $fields): array
+    {
+        foreach ($fields as $f) {
+            if (array_key_exists($f, $row)) {
+                $v = $row[$f];
+                $row[$f] = ($v === null) ? null : self::encrypt((string)$v);
+            }
+        }
+        return $row;
+    }
+
     /** ستون‌های حساسِ جدول `wallets`. یک جا تعریف شده تا فهرستِ دوم نسازیم. */
     public const WALLET_FIELDS = ['card_number', 'account_number', 'iban'];
 }

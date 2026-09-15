@@ -753,6 +753,54 @@ textarea { resize: vertical; }
 }
 .pay-row:last-child { border-bottom: none; }
 
+/* ---------- بازگرداندن از فایل ---------- */
+
+/* ⚠ رنگ از `--warn-ink` می‌آید نه `--gold`: پالتِ دومِ همین فایل
+   `--gold` را آبی بازتعریف می‌کند، و آن‌وقت هشدارِ «داده‌ات پاک می‌شود»
+   دقیقاً شبیهِ یک نوارِ اطلاع دیده می‌شد. */
+.restore-warn {
+    background: var(--warn-wash);
+    color: var(--warn-ink);
+    border-inline-start: 3px solid var(--warn-ink);
+    border-radius: 10px;
+    padding: 12px 14px;
+    line-height: 1.9;
+    font-size: 13px;
+    margin-bottom: 14px;
+}
+
+.restore-list {
+    list-style: none;
+    margin: 0 0 4px;
+    padding: 0;
+    /* ⚠ با ده‌ها جدول این فهرست بلند می‌شود؛ دو ستون نگهش می‌دارد.
+       `min(190px,100%)` نه `1fr` خام — آیتمِ گرید پیش‌فرض
+       `min-width: auto` دارد و حاضر نیست از محتوایش کوتاه‌تر شود. */
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(190px, 100%), 1fr));
+    gap: 2px 16px;
+}
+.restore-list li {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--muted);
+    padding: 3px 0;
+}
+
+.restore-preview {
+    background: var(--in-wash);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-size: 13px;
+    line-height: 1.9;
+    margin-bottom: 14px;
+}
+/* ⛔ بدونِ این خط ویژگیِ `hidden` بی‌اثر است: آن یک قاعده‌ی UA است و
+   هر `display` ساده بر آن غلبه می‌کند (قاعده ۱۸). */
+.restore-preview[hidden] { display: none; }
+
 /* ---------- فهرستِ توری و صفحه‌بندی ---------- */
 
 /* ⛔ توری با `auto-fill` و `minmax`، نه تعدادِ ستونِ ثابت: با عددِ ثابت

@@ -19,11 +19,18 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/user_data.php';
+require_once __DIR__ . '/includes/user_import.php';
 
 Auth::initSession();
 Auth::requireLogin();
 
 $fileName = backupFileName();
+
+// ⛔ «بازگرداندن» روی همین صفحه است، نه یک صفحه‌ی تازه. کسی که فایل را
+//    اینجا گرفته، روزِ حادثه هم به همین‌جا برمی‌گردد — همان قاعده‌ی
+//    `references.php`: فهرستِ تازه ته یک صفحه‌ی دیگر قایم نمی‌شود.
+$currentRows = importCounts(Auth::userId());
+$currentTotal = array_sum($currentRows);
 
 // ⛔ یادآوریِ ماهانه بدونِ این خط یک ادعای نادیدنی است: کاربر اعلان
 //    می‌گیرد، می‌آید اینجا، و هیچ‌جا نمی‌بیند آخرین بار کِی بوده — پس
@@ -80,6 +87,80 @@ include __DIR__ . '/includes/header.php';
         فایل با تاریخِ همان روز ساخته می‌شود، پس بکاپ‌های مختلف روی هم
         نمی‌افتند. جایی نگهش دارید که خودتان به آن دسترسی داشته باشید —
         این فایل جای دیگری ذخیره نمی‌شود.
+    </p>
+</div>
+
+<?php /* ⛔ نیمه‌ی دومِ همین صفحه: بکاپی که یک بار برگردانده نشده باشد
+         بکاپ نیست، یک فرضیه است. تا امروز این فایل هیچ خواننده‌ای
+         نداشت. */ ?>
+<div class="card">
+    <h2 class="card-title">بازگرداندن از فایل</h2>
+
+    <p class="privacy-p" style="margin-bottom:6px;">
+        اگر فایلِ بکاپ دارید، می‌توانید دفترتان را از روی آن برگردانید —
+        روی همین دستگاه یا روی هر نصبِ دیگری از این برنامه.
+    </p>
+
+    <div class="restore-warn">
+        <strong>داده‌ی فعلیِ شما جایگزین می‌شود.</strong>
+        هر چه الان در دفترتان هست پاک می‌شود و محتوای فایل می‌نشیند.
+        این کار <strong>برگشت ندارد</strong> — اگر مطمئن نیستید، اول از
+        همین بالا یک فایل بکاپ از وضعِ فعلی بگیرید.
+    </div>
+
+    <p class="hint" style="margin-bottom:6px;">
+        <?php if ($currentTotal > 0): ?>
+            الان در دفتر شما <span class="ltr-num"><?= toPersianDigits((string)$currentTotal) ?></span>
+            ردیف هست:
+        <?php else: ?>
+            دفتر شما الان خالی است، پس چیزی از دست نمی‌رود.
+        <?php endif; ?>
+    </p>
+
+    <?php if ($currentRows): ?>
+        <ul class="restore-list">
+            <?php foreach ($currentRows as $t => $n): ?>
+                <li>
+                    <span><?= h(importTableLabel($t)) ?></span>
+                    <span class="ltr-num"><?= toPersianDigits((string)$n) ?></span>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+    <?php endif; ?>
+
+    <form method="post" action="<?= APP_BASE_PATH ?>/api/import_data.php"
+          enctype="multipart/form-data" style="margin-top:16px;">
+        <?= Csrf::field() ?>
+
+        <div class="form-group">
+            <label for="restoreFile">فایل بکاپ</label>
+            <input type="file" id="restoreFile" name="backup"
+                   accept=".<?= h(BACKUP_EXT) ?>,application/json" required>
+        </div>
+
+        <?php /* ⚠ با جاوااسکریپت پر می‌شود: خودِ فایل شمارشش را دارد،
+                 پس پیش‌نمایش هیچ رفت‌وبرگشتی به سرور لازم ندارد و هیچ
+                 چیزی هم جایی ذخیره نمی‌شود. بدونِ جاوااسکریپت فرم
+                 دست‌نخورده کار می‌کند — فقط بی‌پیش‌نمایش. */ ?>
+        <div class="restore-preview" id="restorePreview" hidden></div>
+
+        <div class="form-group">
+            <label for="restoreConfirm">
+                برای تأیید، عبارتِ «<?= h(IMPORT_CONFIRM_PHRASE) ?>» را تایپ کنید
+            </label>
+            <input type="text" id="restoreConfirm" name="confirm"
+                   autocomplete="off" required>
+        </div>
+
+        <button type="submit" class="btn btn-danger btn-block btn-large">
+            بازگرداندن داده از فایل
+        </button>
+    </form>
+
+    <p class="hint" style="margin-top:16px;">
+        رمز عبور، شماره موبایل و اشتراکِ شما از فایل خوانده نمی‌شوند و
+        دست‌نخورده می‌مانند. فایلِ پیوست‌ها هم در بکاپ نیست، پس پیوستی که
+        روی این سرور نباشد برنمی‌گردد.
     </p>
 </div>
 

@@ -4449,6 +4449,53 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // ---------- پیش‌نمایشِ فایلِ بکاپ ----------
+    /* ⛔ فایل خودش شمارشش را دارد (`summary` در خروجی)، پس پیش‌نمایش
+       هیچ رفت‌وبرگشتی به سرور لازم ندارد و محتوای بکاپ هیچ‌جا نمی‌رود —
+       همان قاعده‌ای که متنِ پیامکِ بانک را در فرگمنت نگه می‌دارد.
+       ⚠ و اگر این بلوک اصلاً اجرا نشود فرم دست‌نخورده کار می‌کند؛ فقط
+         بی‌پیش‌نمایش. پیش‌نمایشی که نرسد نباید جلوی بازگرداندن را بگیرد. */
+    var restoreFile = document.getElementById('restoreFile');
+    var restoreBox  = document.getElementById('restorePreview');
+    if (restoreFile && restoreBox && window.FileReader) {
+        restoreFile.addEventListener('change', function () {
+            restoreBox.hidden = true;
+            var f = restoreFile.files && restoreFile.files[0];
+            if (!f) { return; }
+
+            var fr = new FileReader();
+            fr.onload = function () {
+                var d = null;
+                try { d = JSON.parse(String(fr.result)); } catch (e) { d = null; }
+
+                restoreBox.textContent = '';
+                if (!d || !d.tables) {
+                    restoreBox.textContent = 'این فایل خوانده نشد. فایلِ بکاپِ همین برنامه را انتخاب کنید.';
+                    restoreBox.hidden = false;
+                    return;
+                }
+
+                var total = 0;
+                var sum = d.summary || {};
+                Object.keys(sum).forEach(function (k) { total += (parseInt(sum[k], 10) || 0); });
+
+                var line = 'این فایل ' + toPersianDigitsJs(String(total)) + ' ردیف دارد';
+                if (d.exported_jalali) { line += ' — گرفته‌شده در ' + d.exported_jalali; }
+                line += '.';
+
+                /* ⚠ با textContent، نه innerHTML: محتوای فایل دستِ کاربر
+                   است و هر رشته‌ای می‌تواند داخلش باشد. */
+                restoreBox.textContent = line;
+                restoreBox.hidden = false;
+            };
+            fr.onerror = function () {
+                restoreBox.textContent = 'فایل خوانده نشد.';
+                restoreBox.hidden = false;
+            };
+            fr.readAsText(f);
+        });
+    }
+
     // ---------- چک‌ها ----------
     setupAmountFormatter('add_cheque_amount');
     setupAmountFormatter('edit_cheque_amount');

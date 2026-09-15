@@ -3089,6 +3089,120 @@ foreach (['never', 'stale', 'users'] as $k) {
 
 T::bulk(16, $badMerge, '⛔ ادغامِ دسته‌بندی و صفحه‌بندی یک مرجع دارند');
 
+// ---------------------------------------------------------------
+// قاعده ۴۲ — بازگرداندن از فایلِ بکاپ
+// ---------------------------------------------------------------
+//
+// فایلِ `.sthesab` را **خودِ کاربر در دست دارد** و می‌تواند هر خطش را
+// عوض کند. پس هر چیزی که از آن خوانده شود داده است، نه دستور — همان
+// قاعده‌ی «پیلود مرورگر داده است» در `data.php`، این بار روی کلِ دفتر.
+// چهار خرابیِ این مسیر همه بی‌صدایند:
+//
+// ۱. **`profile` نوشته شود** → یک فایلِ دست‌ساز با `"role":"admin"`
+//    ارتقای دسترسی می‌داد، بی‌هیچ خطایی.
+// ۲. **`user_id` از فایل خوانده شود** → ردیف به نامِ کاربرِ دیگری
+//    می‌نشست؛ دقیقاً همان نشتی که `categoryScopeSql()` برای نبودنش
+//    نوشته شد.
+// ۳. **فهرستِ کلیدهای خارجی دستی شود** → جدولِ فردا جا می‌ماند و
+//    نگاشتِ شناسه برایش انجام نمی‌شود: ردیف به رکوردِ **کسِ دیگری**
+//    وصل می‌شود، چون `transactions.id` سراسری است.
+// ۴. **رمزنگاریِ دوباره برداشته شود** → خروجی شماره کارت را **باز**
+//    می‌کند، پس بازگرداندنِ بی‌رمز یعنی رمزنگاری بی‌صدا به یک no-op
+//    تبدیل می‌شود (چون `decrypt()` مقدارِ بی‌پیشوند را دست‌نخورده
+//    برمی‌گرداند و هیچ‌کس متوجه نمی‌شود).
+T::group('قاعده ۴۲ — بازگرداندن از فایلِ بکاپ');
+
+$badImp = [];
+
+// ⚠ کامنت‌ها پیش از بررسی حذف می‌شوند: توضیحِ خودِ آن فایل واژه‌ی
+//   `profile` و نامِ همه‌ی این توابع را دارد و بررسیِ متنی روی فایلِ
+//   **سالم** قرمز می‌شد — همان دامِ قاعده‌های ۱۹ و ۳۵ و ۳۸.
+$impPath = __DIR__ . '/../includes/user_import.php';
+if (!is_file($impPath)) {
+    $badImp[] = 'includes/user_import.php پیدا نشد';
+    $impSrc = '';
+} else {
+    $impSrc = $stripComments($impPath);
+}
+$impApi = $stripComments(__DIR__ . '/../api/import_data.php');
+
+// ⛔ فهرستِ ردشده بسته است: اعتبارنامه‌ها و `payments`.
+foreach (['api_tokens', 'password_resets', 'trusted_devices', 'sms_codes', 'payments'] as $t) {
+    if (!preg_match('/const\s+USER_IMPORT_SKIP\s*=\s*\[[^\]]*\'' . $t . '\'/s', $impSrc)) {
+        $badImp[] = 'USER_IMPORT_SKIP — جدولِ ' . $t . ' باید رد شود';
+    }
+}
+
+if (!preg_match('/function\s+importUserData\s*\(.*?\n\}/s', $impSrc, $im)) {
+    $badImp[] = 'importUserData() پیدا نشد';
+} else {
+    $body = $im[0];
+
+    // ⛔ مالکیت از نشست، هرگز از فایل. شرطی بودنش («اگر نبود بگذار»)
+    //    همان باگ است، پس انتساب باید بی‌قید باشد.
+    // ⚠ الگو به **اولِ خط** بسته است: بدونِ آن، جهشِ
+    //   `if (!isset($write['user_id'])) { $write['user_id'] = $userId; }`
+    //   زنده می‌ماند چون همان متن هنوز در فایل هست. **جهشِ زنده‌مانده
+    //   اول یعنی تست ناقص است، نه اینکه کد امن است.**
+    if (!preg_match('/^\s*\$write\[\'user_id\'\]\s*=\s*\$userId\s*;/m', $body)) {
+        $badImp[] = 'importUserData() — user_id باید بی‌قید از نشست نوشته شود';
+    }
+    // ⛔ `profile` هرگز نوشته نمی‌شود.
+    if (strpos($body, 'profile') !== false) {
+        $badImp[] = 'importUserData() — profile نباید از فایل نوشته شود';
+    }
+    // ⛔ شماره کارت و شبا دوباره رمز می‌شوند.
+    if (strpos($body, 'Crypto::encryptRow(') === false) {
+        $badImp[] = 'importUserData() — ستون‌های حساس دوباره رمز نمی‌شوند';
+    }
+    // ⛔ سدِ پیش از commit — **خودِ دو شرط** سنجیده می‌شود نه رشته‌ی
+    //    `rollBack()`، چون بلوکِ catch یکی دارد و بررسی پوچ می‌شد
+    //    (همان درسِ قاعده‌های ۴۰ و ۴۱).
+    if (!preg_match('/if\s*\(\s*\$othersNow\s*!==\s*\$othersBefore\s*\)/', $body)) {
+        $badImp[] = 'importUserData() — سدِ «ردیفِ بقیه دست نخورد» برداشته شده';
+    }
+    if (!preg_match('/if\s*\(\s*\$mineNow\s*!==\s*\(\s*\$inserted\[\$t\]\s*\?\?\s*0\s*\)\s*\)/', $body)) {
+        $badImp[] = 'importUserData() — سدِ شمارشِ پیش از commit برداشته شده';
+    }
+    // ⛔ جدولِ ناشناخته صریح رد می‌شود، نه اینکه بی‌صدا جا بماند.
+    if (strpos($body, '$unknown') === false) {
+        $badImp[] = 'importUserData() — جدولِ ناشناخته باید صریح رد شود';
+    }
+}
+
+// ⛔ پیوندها و ستون‌های الزامی از دیتابیس کشف می‌شوند، نه فهرستِ دستی
+//    — همان قاعده‌ی `userDataTables()` و `categoryRefTables()`.
+foreach (['importForeignKeys', 'importRequiredLinks'] as $fn) {
+    if (!preg_match('/function\s+' . $fn . '\s*\(.*?\n\}/s', $impSrc, $fm)
+        || strpos($fm[0], 'information_schema') === false) {
+        $badImp[] = $fn . '() — باید از information_schema کشف کند';
+    }
+}
+
+// ⛔ تنها یک درِ ورودی: اندپوینت، با CSRF و عبارتِ تایپ‌شده.
+if (strpos($impApi, 'importUserData(') === false) {
+    $badImp[] = 'api/import_data.php — بازگرداندن از importUserData() رد نمی‌شود';
+}
+if (strpos($impApi, 'Csrf::verifyOrFail(') === false) {
+    $badImp[] = 'api/import_data.php — CSRF ندارد';
+}
+// ⚠ خودِ **مقایسه** سنجیده می‌شود، نه وجودِ نامِ ثابت: پیامِ خطا هم
+//   همان نام را دارد، پس بررسیِ «نام هست» با برداشتنِ گیت هم سبز
+//   می‌ماند — و جهش دقیقاً همین را نشان داد.
+if (!preg_match('/!==\s*IMPORT_CONFIRM_PHRASE/', $impApi)) {
+    $badImp[] = 'api/import_data.php — سدِ عبارتِ تایپ‌شده برداشته شده';
+}
+// و هیچ مصرف‌کننده‌ی دومی نباشد (همان قاعده‌ی «یک مرجع»).
+foreach (glob(__DIR__ . '/../{api,includes,admin,.}/*.php', GLOB_BRACE) as $p) {
+    $base = basename($p);
+    if ($base === 'import_data.php' || $base === 'user_import.php') { continue; }
+    if (strpos($stripComments($p), 'importUserData(') !== false) {
+        $badImp[] = $base . ' — بازگرداندن باید فقط از api/import_data.php برود';
+    }
+}
+
+T::bulk(16, $badImp, '⛔ بازگرداندن از فایل یک مرجع دارد و مالکیت از نشست می‌آید');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }
