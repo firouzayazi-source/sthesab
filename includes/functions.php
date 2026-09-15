@@ -2490,22 +2490,65 @@ function cachedCategories(): array
     //   را می‌خواباند. `tableHasColumn()` از `schemaMap()` می‌خواند که در
     //   همان درخواست کش است، پس این شرط کوئریِ تازه‌ای نمی‌زند.
     $extra = '';
-    if (tableHasColumn('categories', 'icon'))  { $extra .= ', icon'; }
-    if (tableHasColumn('categories', 'color')) { $extra .= ', color'; }
+    if (tableHasColumn('categories', 'icon'))  { $extra .= ', c.icon'; }
+    if (tableHasColumn('categories', 'color')) { $extra .= ', c.color'; }
+
+    // ⛔ پینِ کاربر با **JOIN** به همین کوئری می‌آید، نه با یک کوئریِ
+    //    دوم. شیتِ ثبت در فوترِ **هر** صفحه رندر می‌شود، پس کوئریِ جدا
+    //    یعنی یکی به بودجه‌ی هر ۲۷ صفحه اضافه شود — همان «خزشِ بی‌صدا»
+    //    که کلِ `test_query_budget` برای گرفتنش نوشته شد. اینجا پین یک
+    //    ویژگیِ خودِ ردیف است، پس از همان‌جا که دسته‌ها خوانده می‌شوند
+    //    می‌آید و هزینه‌اش صفر است.
+    $pinSel  = '0 AS pinned';
+    $pinJoin = '';
+    $pinArgs = [];
+    if ($userId > 0 && tableExists('category_pins')) {
+        $pinSel  = '(p.category_id IS NOT NULL) AS pinned';
+        $pinJoin = ' LEFT JOIN category_pins p
+                       ON p.category_id = c.id AND p.user_id = :pin_uid';
+        $pinArgs = ['pin_uid' => $userId];
+    }
 
     try {
         $st = Database::getConnection()->prepare(
-            'SELECT id, name, type, user_id' . $extra . ' FROM categories
-             WHERE is_active = 1 AND ' . categoryScopeSql() . '
-             ORDER BY type, name'
+            'SELECT c.id, c.name, c.type, c.user_id' . $extra . ', ' . $pinSel . '
+             FROM categories c' . $pinJoin . '
+             WHERE c.is_active = 1 AND ' . categoryScopeSql('c.') . '
+             ORDER BY c.type, c.name'
         );
-        $st->execute(categoryScopeParams($userId));
+        $st->execute(categoryScopeParams($userId) + $pinArgs);
         $cats = $st->fetchAll();
     } catch (PDOException $e) {
         $cats = [];
     }
 
     return $cats;
+}
+
+/**
+ * ⛔ تنها جایی که «کدام دسته‌ها روی فرمِ ثبت چیپ می‌گیرند» تعریف می‌شود
+ * (مثل `pinnedWallets()` و `chequeActiveSql()`).
+ *
+ * دو حالت، و ترتیبشان کلِ نکته است:
+ *   ۱. اگر کاربر برای این **نوع** چیزی پین کرده باشد، دقیقاً همان‌ها —
+ *      انتخابِ صریحِ کاربر همیشه برنده است.
+ *   ۲. وگرنه پرکاربردترین‌ها از `categoriesByUse()`.
+ *
+ * ⛔ نبودِ حالتِ دوم یعنی کاربری که هنوز چیزی پین نکرده (یعنی **همه‌ی
+ *    نصب‌های امروز**) ردیفِ چیپ را از دست می‌داد و بودجه‌ی «سه تپ» بی‌صدا
+ *    به چهار برمی‌گشت. هیچ نصبی با `git pull` چیزی از دست نمی‌دهد.
+ *
+ * ⚠ سقف در **هر دو** حالت اعمال می‌شود: ردیف یک خطِ افقیِ اسکرول‌شونده
+ *   است و کاربری که ۲۰ دسته پین کند، عملاً همان منوی شلوغ را ساخته.
+ */
+function categoriesForGrid(array $cats, array $useCounts, string $type): array
+{
+    $ofType = array_values(array_filter($cats, fn($c) => $c['type'] === $type));
+
+    $pinned = array_values(array_filter($ofType, fn($c) => !empty($c['pinned'])));
+    $rows   = $pinned ?: $ofType;
+
+    return array_slice(categoriesByUse($rows, $useCounts), 0, CATEGORY_GRID_MAX);
 }
 
 /**

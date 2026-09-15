@@ -205,4 +205,21 @@ $__catJson = static function (array $cats) use ($__useCounts): string {
     };
     // سقفِ چیپ‌ها از سرور می‌آید تا عددش یک جا بماند (CATEGORY_GRID_MAX).
     window.CATEGORY_GRID_MAX = <?= CATEGORY_GRID_MAX ?>;
+
+    // ⛔ ردیفِ چیپ فهرستِ **جدا** دارد، نه `slice()` روی همان بالا: از
+    //    وقتی کاربر می‌تواند خودش انتخاب کند («فهرست‌های من»)، آنچه چیپ
+    //    می‌گیرد زیرمجموعه‌ی دلخواهِ اوست نه صرفاً هشت‌تای اول. تصمیمش
+    //    فقط در `categoriesForGrid()` گرفته می‌شود و اینجا فقط شناسه‌ها
+    //    می‌آیند — خودِ نام و آیکون از همان `CATEGORY_DATA` خوانده
+    //    می‌شود تا دو نسخه از یک ردیف در صفحه نباشد.
+    window.CATEGORY_GRID = {
+        income: <?= json_encode(array_map(
+            fn($c) => (int)$c['id'],
+            categoriesForGrid(cachedCategories(), $__useCounts, 'income')
+        )) ?>,
+        expense: <?= json_encode(array_map(
+            fn($c) => (int)$c['id'],
+            categoriesForGrid(cachedCategories(), $__useCounts, 'expense')
+        )) ?>
+    };
 </script>

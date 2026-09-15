@@ -1221,73 +1221,6 @@ button.status-badge:active { transform: scale(.96); }
     margin-bottom: 14px;
 }
 
-/* ⛔ انتخابگرِ گزینه‌ها — جعبه‌ی خودمان به‌جای منوی بومیِ iOS.
-   منوی بومی جهتش را از زبانِ خودِ گوشی می‌گیرد و عرضش را هم سیستم
-   تعیین می‌کند؛ هیچ CSS ای به هیچ‌کدام نمی‌رسد. پس جعبه را خودمان
-   می‌کشیم — ولی به شکلِ پاپ‌آپِ باریکِ چسبیده به فیلد، نه شیتِ کف.
-   ⚠ `width: max-content` همان چیزی است که فضای خالیِ کنارِ متن را
-   می‌برد: جعبه دقیقاً به اندازه‌ی بلندترین گزینه می‌شود. */
-.opt-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    background: rgba(21, 23, 28, .18);
-    z-index: 340;
-}
-.opt-overlay.show { display: block; }
-.opt-pop {
-    /* ⚠ عمداً `left` است نه `inset-inline-start`: در راست‌به‌چپ آن به
-       `right` نگاشت می‌شود و کنارِ `left`ی که جاوااسکریپت می‌نویسد
-       جعبه را بیش‌ازحد مقید می‌کند — آن‌وقت `left` بی‌صدا نادیده گرفته
-       می‌شود و پاپ‌آپ به لبه‌ی راستِ **پنجره** می‌چسبد، نه به فیلد.
-       اندازه‌گیری شد: روی عرضِ ۱۴۰۰، لبه‌ی راستِ فیلد ۱۰۳۷ بود و جعبه
-       روی ۱۳۸۵ می‌نشست. */
-    position: fixed;
-    top: 0; left: 0;
-    background: var(--surface);
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    box-shadow: var(--sh-lg);
-    padding: 6px 0;
-    width: max-content;
-    min-width: 120px;
-    max-width: min(300px, calc(100vw - 24px));
-    max-height: min(340px, 60vh);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-}
-.opt-group {
-    padding: 9px 14px 4px;
-    font-size: 11.5px;
-    font-weight: 700;
-    color: var(--muted);
-}
-.opt-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 11px 14px;
-    background: none;
-    border: 0;
-    font: inherit;
-    font-size: 14.5px;
-    color: var(--ink);
-    /* ⚠ فیزیکی و عمدی — مقدارِ منطقی نسبت به جهتِ پایه‌ی رندرکننده
-       دوباره حل می‌شود و همان چیزی است که در منوی بومی غلط از آب درآمد. */
-    text-align: right;
-    cursor: pointer;
-}
-.opt-item[aria-selected="true"] { font-weight: 700; }
-.opt-item:disabled { opacity: .45; cursor: default; }
-.opt-check {
-    flex-shrink: 0;
-    width: 16px;
-    color: var(--in);
-    font-weight: 700;
-}
-.opt-text { flex: 1; }
-
 /* مبلغ، قهرمانِ فرم ثبت است */
 .amount-input {
     font-size: 24px !important;
@@ -1521,6 +1454,23 @@ button.status-badge:active { transform: scale(.96); }
     padding: 0 4px; border-radius: 50%;
 }
 .ref-chip-x:hover { color: var(--out); }
+/* پینِ دسته‌بندی روی فرمِ ثبت — کنارِ نامِ همان دسته، نه یک فهرستِ دوم */
+.ref-chip-pin {
+    display: inline-flex; align-items: center;
+    background: none; border: none; cursor: pointer;
+    color: var(--muted-2);
+    padding: 0 2px; line-height: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+.ref-chip-pin svg { display: block; }
+.ref-chip-pin.is-on { color: var(--brand); }
+/* ⚠ چیپِ پین‌شده باید در **یک نگاه** از بقیه جدا باشد، وگرنه کاربر در
+   فهرستی با ۲۰ دسته نمی‌فهمد کدام‌ها را انتخاب کرده و آیکونِ کوچک را
+   تک‌تک نگاه می‌کند. */
+.ref-chip:has(.ref-chip-pin.is-on) {
+    background: color-mix(in srgb, var(--brand) 12%, var(--surface));
+    border-color: var(--brand);
+}
 .ref-empty { font-size: 12.5px; color: var(--muted-2); }
 .ref-unit-input { max-width: 110px; }
 
@@ -4078,13 +4028,33 @@ html[data-theme="dark"] .start-card {
    `app.js` پرش می‌کند، پس هیچ‌جا ویژگیِ `hidden` روی این کلاس رندر
    نمی‌شود و قاعده ۱۸ موضوعیت ندارد. بدونِ این خط، ظرفِ خالی همان
    `margin-bottom` را می‌گرفت و زیرِ برچسب یک فاصله‌ی بی‌دلیل می‌ماند. */
+/* ⛔ یک خطِ افقی، نه شبکه‌ی چندردیفی — خواسته‌ی صریحِ مالکِ نصب.
+   با `wrap`، هشت چیپ روی عرضِ گوشی سه ردیف می‌شد و کلِ فرمِ ثبت را
+   پایین می‌برد؛ همان شلوغی‌ای که گزارش شد. حالا `nowrap` + اسکرولِ
+   افقی، و انتخابِ اینکه چه چیزی اینجا بیاید دستِ خودِ کاربر است
+   (`categoriesForGrid()`)، پس معمولاً اصلاً اسکرول لازم نمی‌شود. */
 .cat-grid {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     gap: 6px;
     margin-bottom: 8px;
+    overflow-x: auto;
+    /* ⚠ `overflow-x: auto` مقدارِ `overflow-y` را هم به `auto` می‌برد و
+       `:active { transform: scale(.96) }` را لبه‌ی برش می‌گرفت — همان
+       درسِ سایه‌ی کارت‌های خانه. padding + حاشیه‌ی منفیِ قرینه، تا نه
+       چیزی بریده شود نه ردیف از بقیه‌ی فرم تورفته بیفتد. */
+    padding: 3px;
+    margin-inline: -3px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
 }
+.cat-grid::-webkit-scrollbar { display: none; }
 .cat-grid:empty { display: none; }
+/* ⛔ چیپ در یک ردیفِ فلکس نباید فشرده شود: بدونِ این، مرورگر همه را در
+   عرضِ موجود جا می‌دهد و نام‌ها با «…» بریده می‌شوند — یعنی `nowrap`
+   بالا بی‌اثر می‌شد. */
+.cat-grid .cat-chip { flex: 0 0 auto; }
 
 .cat-chip {
     display: inline-flex;

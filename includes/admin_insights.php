@@ -61,14 +61,28 @@ const ACTIVITY_TABLES = [
     'transactions', 'cheques', 'debts', 'debt_payments', 'budgets',
     'savings_goals', 'savings_entries', 'assets', 'trades', 'trade_sales',
     'recurring_transactions', 'transfers', 'reminders', 'attachments',
-    'people', 'categories', 'wallet_kinds',
 ];
 
-/** جدول‌هایی که عمداً «فعالیت» شمرده نمی‌شوند — هر کدام با دلیلش. */
+/**
+ * جدول‌هایی که عمداً «فعالیت» شمرده نمی‌شوند — هر کدام با دلیلش.
+ *
+ * ⛔ **پنج فهرستِ کمکیِ «فهرست‌های من» همه اینجا هستند و باید بمانند.**
+ *    نسخه‌ی اول فقط `banks` و `asset_types` را کنار گذاشته بود و
+ *    `categories`/`people`/`wallet_kinds` را — که دقیقاً هم‌جنسِ
+ *    همان‌هایند و در همان `references.php` مدیریت می‌شوند — جزوِ
+ *    «رکورد» می‌شمرد. نتیجه‌اش عددی بود که مالکِ نصب گزارشش کرد:
+ *    کاربری با **یک** تراکنش «۷ رکورد» می‌گرفت، چون شش دسته‌بندیِ
+ *    شخصی ساخته بود. تنظیمِ فرم رکوردِ دفتر نیست؛ شمردنش یعنی قیفِ
+ *    شروع و «کم‌فعال» هر دو بی‌صدا دروغ می‌گویند.
+ */
 const NON_ACTIVITY_TABLES = [
     'wallets'               => 'هنگامِ ثبت‌نام خودکار ساخته می‌شود (createUserAccount)',
-    'banks'                 => 'seedUserDefaults آن را می‌سازد',
-    'asset_types'           => 'seedUserDefaults آن را می‌سازد',
+    'banks'                 => 'فهرستِ کمکیِ «فهرست‌های من» است، نه رکوردِ دفتر (و seedUserDefaults می‌سازدش)',
+    'asset_types'           => 'فهرستِ کمکیِ «فهرست‌های من» است، نه رکوردِ دفتر (و seedUserDefaults می‌سازدش)',
+    'categories'            => 'فهرستِ کمکیِ «فهرست‌های من» است، نه رکوردِ دفتر',
+    'people'                => 'فهرستِ کمکیِ «فهرست‌های من» است، نه رکوردِ دفتر',
+    'wallet_kinds'          => 'فهرستِ کمکیِ «فهرست‌های من» است، نه رکوردِ دفتر',
+    'category_pins'         => 'یک تنظیمِ نمایش است (کدام دسته روی فرمِ ثبت بیاید)، نه رکورد',
     'notifications'         => 'برنامه تولیدش می‌کند، نه کاربر',
     'net_worth_snapshots'   => 'اولین بازدیدِ روز خودکار می‌سازدش',
     'reminder_occurrences'  => 'Schedule::materialize خودکار می‌سازدش',

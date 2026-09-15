@@ -112,6 +112,7 @@ MIGRATIONS=(
     migration_indexes3.sql
     migration_seed_flag.sql
     migration_app_errors.sql
+    migration_category_pin.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -258,6 +259,7 @@ declare -A SENTINEL=(
     #   شاهد هم باید با آن جلو برود.
     [migration_indexes3.sql]="transactions:idx_user_wallet_sum"
     [migration_seed_flag.sql]="users.defaults_seeded_at"
+    [migration_category_pin.sql]="category_pins"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

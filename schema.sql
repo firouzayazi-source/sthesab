@@ -69,6 +69,24 @@ CREATE TABLE IF NOT EXISTS `categories` (
     PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_persian_ci;
 
+-- انتخابِ کاربر از اینکه کدام دسته‌ها روی فرمِ ثبت چیپ بگیرند
+-- (migration_category_pin.sql).
+--
+-- ⛔ جدولِ جداست و نه ستونی روی `categories`، چون دسته‌ی پیش‌فرض
+--    `user_id IS NULL` دارد و بینِ همه‌ی کاربران مشترک است: یک ستونِ
+--    `pinned` روی آن ردیف، انتخابِ یک نفر را به همه تحمیل می‌کرد.
+CREATE TABLE IF NOT EXISTS `category_pins` (
+    `user_id` INT UNSIGNED NOT NULL,
+    `category_id` INT UNSIGNED NOT NULL,
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (`user_id`, `category_id`),
+    KEY `idx_catpin_cat` (`category_id`),
+    CONSTRAINT `fk_catpin_user` FOREIGN KEY (`user_id`)
+        REFERENCES `users` (`id`) ON DELETE CASCADE,
+    CONSTRAINT `fk_catpin_cat` FOREIGN KEY (`category_id`)
+        REFERENCES `categories` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_persian_ci;
+
 CREATE TABLE IF NOT EXISTS `transactions` (
     `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     `user_id` INT UNSIGNED NOT NULL,

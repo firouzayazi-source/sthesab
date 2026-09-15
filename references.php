@@ -54,21 +54,21 @@ $myCats = ['income' => [], 'expense' => []];
 $defaultCats = ['income' => [], 'expense' => []];
 $catsReady = tableHasColumn('categories', 'user_id');
 if ($catsReady) {
-    try {
-        $st = $pdo->prepare(
-            'SELECT id, name, type, user_id FROM categories
-             WHERE is_active = 1 AND ' . categoryScopeSql() . '
-             ORDER BY type, name'
-        );
-        $st->execute(categoryScopeParams($userId));
-        foreach ($st->fetchAll() as $c) {
-            if ($c['user_id'] === null) { $defaultCats[$c['type']][] = $c; }
-            else                        { $myCats[$c['type']][] = $c; }
-        }
-    } catch (PDOException $e) {
-        $catsReady = false;
+    // ⚠ از `cachedCategories()` می‌آید نه یک کوئریِ دستی: همان ردیف‌ها
+    //   را با همان scope و همان ترتیب می‌دهد، در همین درخواست کش است
+    //   (پس یک کوئری کمتر)، و مهم‌تر — ستونِ `pinned` را هم دارد. با
+    //   کوئریِ دوم، آیکونِ پینِ این صفحه از چیزی می‌خواند که فرمِ ثبت
+    //   نمی‌خواند و دیر یا زود دو جواب می‌دادند.
+    // ⚠ فهرستِ **خالی** با «ستون نیامده» یکی نیست: با یکی گرفتنشان، روی
+    //   دیتابیسی که هنوز هیچ دسته‌ای ندارد کلِ کارت ناپدید می‌شد و
+    //   کاربر هیچ راهی برای ساختنِ اولین دسته نداشت. `$catsReady` فقط
+    //   به وجودِ ستون بند است، همان‌طور که بود.
+    foreach (cachedCategories() as $c) {
+        if ($c['user_id'] === null) { $defaultCats[$c['type']][] = $c; }
+        else                        { $myCats[$c['type']][] = $c; }
     }
 }
+$pinReady = $catsReady && tableExists('category_pins');
 
 // چند تا از دسته‌های پیشنهادیِ خانوار را هنوز ندارد؟ اگر صفر باشد،
 // ردیفِ پیشنهاد اصلاً رندر نمی‌شود — تنظیمی که کارش تمام شده نباید
@@ -325,22 +325,53 @@ include __DIR__ . '/includes/header.php';
                 data-kind="category" data-type="<?= $ctype ?>" data-input="newCat_<?= $ctype ?>">افزودن</button>
     </div>
 
+    <?php
+    /* ⛔ آیکونِ پین کنارِ هر دسته — هم شخصی هم پیش‌فرض.
+       خواسته‌ی صریحِ مالکِ نصب: «امکان انتخاب داشته باشه، مثلاً فقط
+       گوشی و لوازم بیارم که شلوغ نشه». تا وقتی هیچ‌چیز پین نشده،
+       ردیفِ چیپ همان پرکاربردترین‌هاست — پس هیچ نصبی با `git pull`
+       چیزی از دست نمی‌دهد. */
+    $pinChip = function (array $c, bool $locked) use ($pinReady) {
+        $isPinned = $pinReady && !empty($c['pinned']);
+        ?>
+        <span class="ref-chip<?= $locked ? ' ref-chip-locked' : '' ?>">
+            <?php if ($pinReady): ?>
+                <button type="button"
+                        class="ref-chip-pin js-cat-pin<?= $isPinned ? ' is-on' : '' ?>"
+                        data-id="<?= (int)$c['id'] ?>"
+                        data-pinned="<?= $isPinned ? '1' : '0' ?>"
+                        aria-pressed="<?= $isPinned ? 'true' : 'false' ?>"
+                        title="<?= $isPinned ? 'برداشتن از فرم ثبت' : 'نشان دادن روی فرم ثبت' ?>">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5M5 10V3h14v7l3 4H2l3-4z"/></svg>
+                </button>
+            <?php endif; ?>
+            <?= h($c['name']) ?>
+            <?php if (!$locked): ?><button type="button" class="ref-chip-x js-ref-delete" data-kind="category" data-id="<?= (int)$c['id'] ?>" aria-label="حذف">&times;</button><?php endif; ?>
+        </span>
+        <?php
+    };
+    ?>
+
+    <?php if ($pinReady): ?>
+        <p class="ref-locked-title" style="margin-top:0;">
+            با آیکونِ پین انتخاب کنید کدام‌ها روی فرمِ ثبت تراکنش دیده شوند
+            (حداکثر <?= toPersianDigits(CATEGORY_GRID_MAX) ?>). اگر هیچ‌کدام را
+            پین نکنید، پرکاربردترین‌ها خودشان می‌آیند.
+        </p>
+    <?php endif; ?>
+
     <div class="ref-chip-list">
         <?php if (empty($myCats[$ctype])): ?>
             <span class="ref-empty">هنوز دسته‌ی شخصی‌ای اضافه نکرده‌اید.</span>
         <?php else: ?>
-            <?php foreach ($myCats[$ctype] as $c): ?>
-                <span class="ref-chip"><?= h($c['name']) ?><button type="button" class="ref-chip-x js-ref-delete" data-kind="category" data-id="<?= (int)$c['id'] ?>" aria-label="حذف">&times;</button></span>
-            <?php endforeach; ?>
+            <?php foreach ($myCats[$ctype] as $c) { $pinChip($c, false); } ?>
         <?php endif; ?>
     </div>
 
     <?php if (!empty($defaultCats[$ctype])): ?>
         <p class="ref-locked-title">دسته‌های پیش‌فرض برنامه — همیشه در دسترس‌اند و حذف نمی‌شوند:</p>
         <div class="ref-chip-list">
-            <?php foreach ($defaultCats[$ctype] as $c): ?>
-                <span class="ref-chip ref-chip-locked"><?= h($c['name']) ?></span>
-            <?php endforeach; ?>
+            <?php foreach ($defaultCats[$ctype] as $c) { $pinChip($c, true); } ?>
         </div>
     <?php endif; ?>
 </div>

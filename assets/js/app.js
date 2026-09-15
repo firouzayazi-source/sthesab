@@ -645,7 +645,21 @@ document.addEventListener('DOMContentLoaded', function () {
         var max = window.CATEGORY_GRID_MAX || 8;
         gridEl.textContent = '';
 
-        list.slice(0, max).forEach(function (cat) {
+        // ⛔ کدام دسته‌ها چیپ می‌گیرند را **سرور** تصمیم می‌گیرد
+        //    (`categoriesForGrid()`): یا پینِ خودِ کاربر، یا
+        //    پرکاربردترین‌ها. اینجا فقط ترتیبِ همان فهرست پیاده می‌شود.
+        //    با `slice()` در مرورگر، انتخابِ کاربر بی‌صدا نادیده می‌ماند.
+        var wanted = (window.CATEGORY_GRID && window.CATEGORY_GRID[type]) || null;
+        var shown;
+        if (wanted && wanted.length) {
+            var byId = {};
+            list.forEach(function (c) { byId[c.id] = c; });
+            shown = wanted.map(function (id) { return byId[id]; }).filter(Boolean);
+        } else {
+            shown = list.slice(0, max);
+        }
+
+        shown.slice(0, max).forEach(function (cat) {
             var btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'cat-chip';
@@ -3805,156 +3819,18 @@ document.addEventListener('DOMContentLoaded', function () {
         if (vv) { vv.addEventListener('resize', reconcile); }
     })();
 
-    // ---------- انتخابگرِ گزینه‌ها به‌جای منوی بومیِ <select> ----------
-    // ⛔ چرا: پاپ‌آپِ بازشده‌ی <select> روی iOS کرومِ خودِ سیستم است، نه
-    // چیزی که ما رندر می‌کنیم. جهتش را از زبانِ خودِ گوشی می‌گیرد (پس در
-    // اپِ راست‌به‌راستِ ما چپ‌چین دیده می‌شود) و عرضش را هم سیستم تعیین
-    // می‌کند. با اندازه‌گیریِ پیکسلیِ اسکرین‌شات ثابت شد که **هیچ** CSS ای
-    // — نه روی select، نه option، نه ظرفش — به هیچ‌کدام نمی‌رسد.
-    // پس جعبه را خودمان می‌کشیم. شکلش عمداً یک پاپ‌آپِ باریکِ چسبیده به
-    // خودِ فیلد است، نه شیتِ کفِ صفحه: نسخه‌ی شیتی ساخته و پس گرفته شد.
-    // خودِ <select> دست‌نخورده می‌ماند (مقدار، change، اعتبارسنجی، و
-    // setType/resetSelect/syncPersonPicker همه به آن بندند) — ما فقط
-    // جلوی باز شدنِ منوی بومی را می‌گیریم و selectedIndex را می‌نویسیم.
-    (function optionPicker() {
-        var overlay = null, pop = null, current = null, lastTouch = 0;
-
-        function build() {
-            overlay = document.createElement('div');
-            overlay.className = 'opt-overlay';
-            pop = document.createElement('div');
-            pop.className = 'opt-pop';
-            pop.setAttribute('role', 'listbox');
-            overlay.appendChild(pop);
-            document.body.appendChild(overlay);
-            overlay.addEventListener('click', function (e) {
-                if (e.target === overlay) close();
-            });
-        }
-
-        function eligible(el) {
-            return el && el.tagName === 'SELECT' && !el.disabled && !el.multiple
-                && (el.size || 1) <= 1 && el.options.length > 0;
-        }
-
-        function close() {
-            if (!current) return;
-            var sel = current;
-            current = null;
-            overlay.classList.remove('show');
-            unlockBodyScroll();
-            try { sel.focus({ preventScroll: true }); } catch (err) { }
-        }
-
-        function pick(sel, idx) {
-            var changed = sel.selectedIndex !== idx;
-            sel.selectedIndex = idx;
-            close();
-            if (changed) sel.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-
-        // ⚠ جای جعبه از هندسه‌ی واقعیِ فیلد خوانده می‌شود، نه از عددِ ثابت.
-        // راست‌چین با لبه‌ی **راستِ** فیلد تراز می‌شود؛ اگر زیرِ فیلد جا
-        // نبود می‌رود بالایش، و در هر حال داخلِ پنجره نگه داشته می‌شود.
-        function place(sel) {
-            var r = sel.getBoundingClientRect();
-            var pr = pop.getBoundingClientRect();
-            var gap = 6, m = 8;
-            var top = r.bottom + gap;
-            if (top + pr.height > window.innerHeight - m) {
-                top = r.top - gap - pr.height;
-                if (top < m) top = Math.max(m, window.innerHeight - m - pr.height);
-            }
-            var left = r.right - pr.width;
-            if (left < m) left = m;
-            if (left + pr.width > window.innerWidth - m) left = window.innerWidth - m - pr.width;
-            pop.style.top = Math.round(top) + 'px';
-            pop.style.left = Math.round(left) + 'px';
-        }
-
-        function open(sel) {
-            if (!overlay) build();
-            // هر بار از نو ساخته می‌شود: فهرستِ دسته‌ها با setType() عوض
-            // می‌شود و یک نسخه‌ی کش‌شده بی‌صدا کهنه می‌ماند.
-            pop.innerHTML = '';
-            var opts = sel.options;
-            var lastGroup = null;
-            for (var i = 0; i < opts.length; i++) {
-                var o = opts[i];
-                var g = o.parentElement && o.parentElement.tagName === 'OPTGROUP'
-                    ? o.parentElement.label : null;
-                if (g && g !== lastGroup) {
-                    var gl = document.createElement('div');
-                    gl.className = 'opt-group';
-                    gl.textContent = g;
-                    pop.appendChild(gl);
-                }
-                lastGroup = g;
-                var b = document.createElement('button');
-                b.type = 'button';
-                b.className = 'opt-item';
-                b.setAttribute('role', 'option');
-                b.setAttribute('aria-selected', i === sel.selectedIndex ? 'true' : 'false');
-                if (o.disabled) b.disabled = true;
-                var ck = document.createElement('span');
-                ck.className = 'opt-check';
-                ck.textContent = i === sel.selectedIndex ? '✓' : '';
-                var tx = document.createElement('span');
-                tx.className = 'opt-text';
-                // textContent نه innerHTML: نامِ دسته و حساب را کاربر نوشته.
-                tx.textContent = o.textContent;
-                b.appendChild(ck);
-                b.appendChild(tx);
-                (function (idx) {
-                    b.addEventListener('click', function () { pick(sel, idx); });
-                })(i);
-                pop.appendChild(b);
-            }
-            current = sel;
-            overlay.classList.add('show');
-            // ⚠ این لایه هنگام بارگذاری وجود ندارد، پس watchOverlays آن را
-            // نمی‌بیند و قفل باید دستی گرفته شود.
-            lockBodyScroll();
-            place(sel);
-            var on = pop.querySelector('.opt-item[aria-selected="true"]');
-            if (on) on.scrollIntoView({ block: 'nearest' });
-        }
-
-        document.addEventListener('touchend', function (e) {
-            var sel = e.target;
-            if (!eligible(sel)) return;
-            lastTouch = Date.now();
-            e.preventDefault();
-            open(sel);
-        }, { capture: true, passive: false });
-
-        document.addEventListener('mousedown', function (e) {
-            var sel = e.target;
-            if (!eligible(sel)) return;
-            // روی لمس، مرورگر بعدِ touchend یک mousedown شبیه‌سازی‌شده هم
-            // می‌فرستد؛ بدونِ این نگهبان جعبه بسته و دوباره باز می‌شد.
-            if (Date.now() - lastTouch < 900) return;
-            e.preventDefault();
-            open(sel);
-        }, true);
-
-        document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape' && current) close();
-        });
-
-        // جعبه با `position: fixed` جای ثابتی دارد؛ با اسکرول یا تغییر
-        // اندازه از فیلدش جدا می‌شد، پس بسته می‌شود.
-        // ⚠ اسکرولِ خودِ جعبه استثناست: `scrollIntoView` برای رساندنِ
-        // گزینه‌ی انتخاب‌شده یک رویدادِ scroll می‌دهد و بدونِ این شرط
-        // جعبه **در همان لحظه‌ی باز شدن** بسته می‌شد — و فقط وقتی که
-        // فهرست از جعبه بلندتر بود، یعنی یک باگِ گاه‌به‌گاه.
-        window.addEventListener('scroll', function (e) {
-            if (!current) return;
-            if (overlay && e.target && overlay.contains(e.target)) return;
-            close();
-        }, true);
-        window.addEventListener('resize', function () { if (current) close(); });
-    })();
+    // ---------- منوی بومیِ <select> دست‌نخورده می‌ماند ----------
+    // ⛔ یک بار `optionPicker()` ساخته شد — یک پاپ‌آپِ خودمان روی هر
+    // <select> — تا جهتِ راست‌به‌چپ و عرضِ منو را درست کند. کار
+    // می‌کرد و در کرومیوم اندازه‌گیری شده بود، ولی مالکِ نصب پسش
+    // گرفت: روی گوشی فرم‌ها را شلوغ می‌کرد. این دومین باری است
+    // که جعبهٔ خودمان پس گرفته می‌شود (بارِ اول شیتِ کفِ صفحه بود،
+    // کامیت `c8a4384`). تاریخچه‌اش در گیت هست.
+    //
+    // ⚠ هزینه‌اش واقعی است و نوشته می‌ماند: منوی بومیِ iOS باز هم
+    // چپ‌چین دیده می‌شود و عرضش را خودِ سیستم تعیین می‌کند — همان
+    // حدی که در CLAUDE.md نوشته شده. **اگر روزی دوباره سراغش رفتید،
+    // بدانید که دو شکلِ متفاوت امتحان و رد شده‌اند.**
 
     // ---------- شیت «بیشتر» در ناوبری پایین ----------
     var moreBtn = document.getElementById('moreTabBtn');
@@ -4452,6 +4328,37 @@ document.addEventListener('DOMContentLoaded', function () {
                 .then(function (d) {
                     if (d.success) { window.location.reload(); }
                     else { alert(d.message || 'خطایی رخ داد.'); }
+                })
+                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+        });
+    });
+
+    // ---------- پینِ دسته‌بندی روی فرمِ ثبت ----------
+    //
+    // ⚠ برخلافِ حذف، صفحه **تازه نمی‌شود**: هیچ عددی روی همین صفحه عوض
+    //   نمی‌شود (ردیفِ چیپ جای دیگری است)، پس تازه‌سازی فقط جای کاربر را
+    //   در فهرستِ بلندِ دسته‌ها گم می‌کرد — همان استدلالِ پینِ حساب.
+    document.querySelectorAll('.js-cat-pin').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var self = this;
+            var want = self.getAttribute('data-pinned') !== '1';
+
+            var fd = new FormData();
+            fd.append('csrf_token', csrf());
+            fd.append('category_id', self.getAttribute('data-id'));
+            fd.append('pinned', want ? '1' : '0');
+
+            fetch(apiUrl('toggle_category_pin.php'), {
+                method: 'POST', body: fd,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d.success) { alert(d.message || 'خطایی رخ داد.'); return; }
+                    self.setAttribute('data-pinned', want ? '1' : '0');
+                    self.setAttribute('aria-pressed', want ? 'true' : 'false');
+                    self.classList.toggle('is-on', want);
+                    self.title = want ? 'برداشتن از فرم ثبت' : 'نشان دادن روی فرم ثبت';
                 })
                 .catch(function () { alert('خطا در ارتباط با سرور.'); });
         });

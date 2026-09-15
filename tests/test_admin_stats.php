@@ -49,7 +49,7 @@ try {
 // ---------------------------------------------------------------
 // قربانی‌ها را خودمان می‌سازیم — تکیه بر داده‌ی موجود یعنی روی دیتابیسِ
 // خالی تست بی‌صدا رد می‌شود و هیچ چیزی را نگه نمی‌دارد.
-$USERS = ['__stat_tx__', '__stat_cheque__', '__stat_idle__', '__stat_empty__'];
+$USERS = ['__stat_tx__', '__stat_cheque__', '__stat_idle__', '__stat_empty__', '__stat_ref__'];
 
 $wipe = function () use ($pdo, $USERS) {
     foreach ($USERS as $u) {
@@ -98,6 +98,7 @@ try {
     $uCheque = $mk('__stat_cheque__');  // هیچ تراکنشی ندارد، فقط چک و طلب
     $uIdle   = $mk('__stat_idle__');    // رکورد دارد ولی خیلی قدیمی
     $uEmpty  = $mk('__stat_empty__');   // حساب دارد و هیچ چیز دیگر
+    $uRef    = $mk('__stat_ref__');     // یک تراکنش + شش فهرستِ کمکی
 
     // ⛔ `__stat_empty__` عمداً یک کیف پول می‌گیرد — دقیقاً همان چیزی که
     //    `createUserAccount()` به هر کاربرِ تازه می‌دهد. اگر `wallets`
@@ -109,11 +110,22 @@ try {
             ->execute(['u' => $uid, 'n' => $name]);
         return (int)$pdo->lastInsertId();
     };
-    foreach ([$uTx, $uCheque, $uIdle, $uEmpty] as $uid) { $addWallet($uid, 'کیف پول'); }
+    foreach ([$uTx, $uCheque, $uIdle, $uEmpty, $uRef] as $uid) { $addWallet($uid, 'کیف پول'); }
 
     $txStmt = $pdo->prepare('INSERT INTO transactions (user_id, type, amount, title, transaction_date)
                              VALUES (:u, "expense", 1000, "تست", CURDATE())');
     for ($i = 0; $i < 6; $i++) { $txStmt->execute(['u' => $uTx]); }
+    $txStmt->execute(['u' => $uRef]);   // دقیقاً یک تراکنش
+
+    // ⛔ همان چیزی که مالکِ نصب گزارش کرد: یک تراکنش و شش
+    //    دسته‌بندیِ شخصی → صفحه «۷ رکورد» می‌نوشت و آن را «۷
+    //    تراکنش» خواندند. فهرستِ کمکی رکوردِ دفتر نیست.
+    $catStmt = $pdo->prepare('INSERT INTO categories (user_id, name, type) VALUES (:u, :n, "expense")');
+    for ($i = 1; $i <= 6; $i++) { $catStmt->execute(['u' => $uRef, 'n' => 'دستهٔ تست ' . $i]); }
+    $pdo->prepare('INSERT INTO people (user_id, name, role) VALUES (:u, "طرفِ تست", "سایر")')
+        ->execute(['u' => $uRef]);
+    $pdo->prepare('INSERT INTO wallet_kinds (user_id, name) VALUES (:u, "نوعِ تست")')
+        ->execute(['u' => $uRef]);
 
     $chStmt = $pdo->prepare('INSERT INTO cheques (user_id, direction, amount, due_date, counterparty_name)
                              VALUES (:u, "received", 5000, CURDATE(), "طرف")');
@@ -123,8 +135,12 @@ try {
     for ($i = 0; $i < 3; $i++) { $dbStmt->execute(['u' => $uCheque]); }
 
     // کاربرِ کم‌فعال: یک رکوردِ خیلی قدیمی
-    $pdo->prepare('INSERT INTO people (user_id, name, role, created_at)
-                   VALUES (:u, "طرفِ قدیمی", "سایر", DATE_SUB(NOW(), INTERVAL :d DAY))')
+    // ⚠ fixture عمداً از `savings_goals` است نه `people`: فهرست‌های کمکی
+    //    («فهرست‌های من») دیگر فعالیت شمرده نمی‌شوند، پس با `people` این
+    //    کاربر «هرگز شروع نکرده» می‌شد و کلِ این گروه بی‌صدا چیزِ دیگری
+    //    را می‌سنجید.
+    $pdo->prepare('INSERT INTO savings_goals (user_id, title, target_amount, created_at)
+                   VALUES (:u, "هدفِ قدیمی", 100000, DATE_SUB(NOW(), INTERVAL :d DAY))')
         ->execute(['u' => $uIdle, 'd' => ACTIVE_DAYS + 20]);
 
     // ---------------------------------------------------------------
@@ -151,6 +167,15 @@ try {
         T::ok(!in_array($seeded, ACTIVITY_TABLES, true),
               "{$seeded} فعالیت شمرده نمی‌شود (هنگام ثبت‌نام خودکار ساخته می‌شود)");
     }
+
+    // ⛔ و هر پنج فهرستِ کمکیِ «فهرست‌های من» باید بیرون بمانند — نه فقط
+    //    آن دوتایی که seed می‌شوند. این همان خرابی‌ای است که مالکِ نصب
+    //    گزارش کرد: کاربری با **یک** تراکنش و شش دسته‌بندیِ شخصی «۷
+    //    رکورد» می‌گرفت. تنظیمِ فرم رکوردِ دفتر نیست.
+    foreach (['categories', 'people', 'wallet_kinds', 'banks', 'asset_types'] as $ref) {
+        T::ok(!in_array($ref, ACTIVITY_TABLES, true),
+              "⛔ {$ref} فهرستِ کمکی است و «رکورد» شمرده نمی‌شود");
+    }
     T::ok(in_array('transactions', ACTIVITY_TABLES, true), 'transactions در فهرستِ فعالیت است');
     T::ok(in_array('cheques', ACTIVITY_TABLES, true), 'cheques در فهرستِ فعالیت است');
     T::ok(in_array('debts', ACTIVITY_TABLES, true), 'debts در فهرستِ فعالیت است');
@@ -170,6 +195,14 @@ try {
     T::same(6, (int)$r['tx'], 'کاربرِ تراکنشی شش تراکنش دارد');
     T::same(6, (int)$r['records'], 'و همان شش رکوردش است');
     T::same('active', $r['state'], 'فعال است');
+
+    // ⛔ خرابیِ گزارش‌شده، عیناً: یک تراکنش و هشت فهرستِ کمکی (شش
+    //    دسته‌بندی + یک شخص + یک نوع حساب). پیش از این «۹ رکورد»
+    //    می‌شد و مالکِ نصب آن عدد را «۹ تراکنش» خواند.
+    $r = $row('__stat_ref__');
+    T::same(1, (int)$r['tx'], 'کاربرِ فهرست‌دار یک تراکنش دارد');
+    T::same(1, (int)$r['records'],
+            '⛔ و دقیقاً یک رکورد — فهرست‌های کمکی عدد را باد نمی‌کنند');
 
     $r = $row('__stat_idle__');
     T::same(1, (int)$r['records'], 'کاربرِ کم‌فعال یک رکورد دارد');
@@ -191,12 +224,12 @@ try {
     //   ساعتِ سرور، یا ردیفی که پیش از هم‌تراز شدنِ منطقه‌ی زمانی نوشته
     //   شده) به‌صورت «۳ روز پیش» خوانده می‌شد — عددی که هیچ‌کس به آن شک
     //   نمی‌کند چون شکلش کاملاً عادی است.
-    $pdo->prepare('UPDATE people SET created_at = DATE_ADD(NOW(), INTERVAL 3 DAY) WHERE user_id = :u')
+    $pdo->prepare('UPDATE savings_goals SET created_at = DATE_ADD(NOW(), INTERVAL 3 DAY) WHERE user_id = :u')
         ->execute(['u' => $uIdle]);
     $r = $row('__stat_idle__');
     T::same(0, (int)$r['days_since'], 'تاریخِ آینده به صفر («امروز») بریده می‌شود');
     T::same('active', $r['state'], 'و «فعال» می‌ماند، نه «۳ روز پیش»');
-    $pdo->prepare('UPDATE people SET created_at = DATE_SUB(NOW(), INTERVAL :d DAY) WHERE user_id = :u')
+    $pdo->prepare('UPDATE savings_goals SET created_at = DATE_SUB(NOW(), INTERVAL :d DAY) WHERE user_id = :u')
         ->execute(['u' => $uIdle, 'd' => ACTIVE_DAYS + 20]);
 
     // ---------------------------------------------------------------
@@ -258,11 +291,11 @@ try {
     //   تست مقدارش را از کدِ زیرِ آزمون می‌گیرد و با عوض شدنِ ثابت مرزش
     //   هم جابه‌جا می‌شود. همان دامی که یک بار سرِ `BACKUP_AFTER_DAYS`
     //   افتادیم.
-    $pdo->prepare('UPDATE people SET created_at = DATE_SUB(NOW(), INTERVAL 14 DAY) WHERE user_id = :u')
+    $pdo->prepare('UPDATE savings_goals SET created_at = DATE_SUB(NOW(), INTERVAL 14 DAY) WHERE user_id = :u')
         ->execute(['u' => $uIdle]);
     T::same('active', $row('__stat_idle__')['state'], 'دقیقاً ۱۴ روز هنوز «فعال» است');
 
-    $pdo->prepare('UPDATE people SET created_at = DATE_SUB(NOW(), INTERVAL 15 DAY) WHERE user_id = :u')
+    $pdo->prepare('UPDATE savings_goals SET created_at = DATE_SUB(NOW(), INTERVAL 15 DAY) WHERE user_id = :u')
         ->execute(['u' => $uIdle]);
     T::same('stale', $row('__stat_idle__')['state'], '۱۵ روز دیگر «فعال» نیست');
 

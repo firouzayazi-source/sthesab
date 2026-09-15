@@ -89,7 +89,14 @@ include __DIR__ . '/../includes/header.php';
             </div>
             <div class="cat-breakdown-bar-track">
                 <div class="cat-breakdown-bar" style="width:<?= (int)$f['share'] ?>%;
-                     background:<?= $f['share'] >= 50 ? 'var(--in)' : ($f['share'] >= 20 ? 'var(--gold)' : 'var(--out)') ?>;"></div>
+                <?php /* ⚠ پله‌ی میانی `--warn-ink` است نه `--gold`: پالتِ
+                         دومِ `style.css` مقدارِ `--gold` را به **آبی**
+                         (`#2563eb`) بازتعریف می‌کند، پس روی آن پالت
+                         چراغِ سه‌مرحله‌ای پله‌ی وسطش را از دست می‌داد و
+                         «۲۰ تا ۵۰ درصد» رنگی می‌گرفت که هیچ هشداری
+                         نمی‌رساند — همان چیزی که `funnelVerdict()` هم
+                         یک بار سرش خورد و در راهنما نوشته شده. */ ?>
+                     background:<?= $f['share'] >= 50 ? 'var(--in)' : ($f['share'] >= 20 ? 'var(--warn-ink)' : 'var(--out)') ?>;"></div>
             </div>
         </div>
     <?php endforeach; ?>
@@ -155,11 +162,18 @@ include __DIR__ . '/../includes/header.php';
                 <?php /* ⚠ «رکورد» جدا از «تراکنش» نوشته می‌شود و فقط وقتی
                          که فرق داشته باشند. بدونِ آن، کاربری که فقط چک و
                          طلب ثبت کرده «۰ تراکنش · آخرین ثبت ۳ روز پیش»
-                         می‌شد — دو عددِ درست که کنارِ هم بی‌معنا بودند. */ ?>
+                         می‌شد — دو عددِ درست که کنارِ هم بی‌معنا بودند.
+
+                         ⛔ و عددِ دوم **مابه‌التفاوت** است، نه جمعِ کل:
+                         `records` خودش تراکنش‌ها را هم دارد، پس «۱ تراکنش
+                         · ۷ رکورد» را مالکِ نصب «۷ تراکنش» خواند و
+                         گزارشش کرد. دو عددی که کنارِ هم می‌نشینند نباید
+                         هم‌پوشانی داشته باشند. */ ?>
+                <?php $other = (int)$u['records'] - (int)$u['tx']; ?>
                 <span class="hint">
                     <?= toPersianDigits((int)$u['tx']) ?> تراکنش
-                    <?php if ((int)$u['records'] !== (int)$u['tx']): ?>
-                        · <?= toPersianDigits((int)$u['records']) ?> رکورد
+                    <?php if ($other > 0): ?>
+                        · <?= toPersianDigits($other) ?> رکوردِ دیگر
                     <?php endif; ?>
                     ·
                     <?php if ($u['days_since'] === null): ?>
