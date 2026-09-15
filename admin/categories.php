@@ -106,16 +106,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute(['status' => $newStatus, 'id' => $targetId]);
 
         redirectWithMessage('categories.php', 'success', $newStatus === 1 ? 'دسته‌بندی فعال شد.' : 'دسته‌بندی غیرفعال شد.');
+    } elseif ($action === 'privatize') {
+        // ⛔ «شخصی‌سازی» — دسته از فهرستِ عمومی برداشته می‌شود و برای هر
+        //    کاربری که واقعاً از آن استفاده کرده یک نسخه‌ی شخصی می‌ماند.
+        //    منطقش در `privatizeDefaultCategory()` است، نه اینجا: همان
+        //    قاعده‌ی «تنها یک مرجع» — وگرنه مسیرِ دومی (خط فرمان، یا
+        //    صفحه‌ی فردا) نسخه‌ی خودش را می‌ساخت و دیر یا زود از این
+        //    دور می‌افتاد.
+        $res = privatizeDefaultCategory((int)postParam('category_id'));
+        redirectWithMessage('categories.php', $res['ok'] ? 'success' : 'error', $res['message']);
     } elseif ($action === 'delete') {
         $targetId = (int)postParam('category_id');
 
-        $usageStmt = $pdo->prepare('SELECT COUNT(*) AS cnt FROM transactions WHERE category_id = :id');
-        $usageStmt->execute(['id' => $targetId]);
-        $usageCount = (int)$usageStmt->fetch()['cnt'];
+        // ⛔ شمارش روی **همه‌ی** جدول‌های ارجاع‌دهنده است، نه فقط
+        //    `transactions` — و این یک باگِ واقعیِ بی‌صدا را می‌بندد:
+        //    `budgets.category_id` کلیدِ خارجی با `ON DELETE CASCADE`
+        //    دارد، پس حذفِ دسته‌ای که هیچ تراکنشی ندارد ولی روی آن
+        //    بودجه بسته شده، **بودجه‌ی کاربران را هم با خودش می‌برد**،
+        //    بی‌هیچ خطایی و بی‌آنکه مدیر بفهمد. (`transactions` و
+        //    `recurring_transactions` از نوعِ SET NULL اند، یعنی آنجا
+        //    ردیف می‌ماند ولی بی‌دسته می‌شود.)
+        $usage = categoryUsage($targetId);
 
-        if ($usageCount > 0) {
+        if ($usage['rows'] > 0) {
+            $parts = [];
+            foreach ($usage['per'] as $t => $n) { $parts[] = $t . ': ' . toPersianDigits($n); }
             redirectWithMessage('categories.php', 'error',
-                'روی این دسته‌بندی ' . toPersianDigits($usageCount) . ' تراکنش ثبت شده و قابل حذف نیست. می‌توانید آن را غیرفعال کنید.');
+                'روی این دسته‌بندی ' . toPersianDigits($usage['rows']) . ' ردیف ثبت شده و قابل حذف نیست ('
+                . implode('، ', $parts) . '). می‌توانید آن را غیرفعال یا شخصی‌سازی کنید.');
         }
 
         try {
@@ -131,6 +149,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $categories = $pdo->query('SELECT id, name, type, icon, color, is_active, created_at FROM categories WHERE 1=1' . $defaultsOnly . ' ORDER BY type, name')->fetchAll();
 
+// چهار کوئری برای کلِ فهرست، نه یکی به‌ازای هر ردیف.
+$usageMap = $defaultsOnly !== '' ? categoryUsageMap() : [];
+
+// ستونِ «استفاده» و دکمه‌ی شخصی‌سازی جدول را پنج‌ستونه می‌کنند؛ با عرضِ
+// خواندنِ ۷۲۰ پیکسل، همان ستونِ عملیات له می‌شد — قاعده ۳۱.
+$pageWide  = true;
 $pageTitle = 'دسته‌بندی‌ها';
 include __DIR__ . '/../includes/header.php';
 ?>
@@ -143,6 +167,13 @@ include __DIR__ . '/../includes/header.php';
         <button type="button" class="btn btn-primary btn-sm" data-modal-open="addCategoryModal">+ دسته‌بندی جدید</button>
     </div>
 
+    <p class="hint" style="margin:-4px 0 14px;">
+        این‌ها دسته‌بندی‌های <strong>پیش‌فرضِ برنامه</strong>اند و همه‌ی کاربران می‌بینندشان.
+        دسته‌ای که فقط به کارِ یک نفر می‌آید، با <strong>شخصی‌سازی</strong> از این فهرست
+        برداشته می‌شود و برای هر کاربری که از آن استفاده کرده به دسته‌بندی شخصیِ خودش
+        تبدیل می‌شود — تراکنش‌ها و بودجه‌هایش دست‌نخورده می‌مانند.
+    </p>
+
     <?php if ($error && $reopenModal !== 'add' && $reopenModal !== 'edit'): ?>
         <div class="alert alert-error"><?= h($error) ?></div>
     <?php endif; ?>
@@ -153,13 +184,14 @@ include __DIR__ . '/../includes/header.php';
                 <tr>
                     <th>نام</th>
                     <th>نوع</th>
+                    <th>استفاده</th>
                     <th>وضعیت</th>
-                    <th>عملیات</th>
+                    <th class="actions-cell">عملیات</th>
                 </tr>
             </thead>
             <tbody>
                 <?php if (empty($categories)): ?>
-                    <tr><td colspan="4" class="empty-row">هنوز دسته‌بندی‌ای ثبت نشده است.</td></tr>
+                    <tr><td colspan="5" class="empty-row">هنوز دسته‌بندی‌ای ثبت نشده است.</td></tr>
                 <?php else: ?>
                     <?php foreach ($categories as $cat): ?>
                         <tr>
@@ -172,13 +204,24 @@ include __DIR__ . '/../includes/header.php';
                             <td data-label="نوع">
                                 <span class="type-tag type-tag-<?= h($cat['type']) ?>"><?= typeLabel($cat['type']) ?></span>
                             </td>
+                            <?php $use = $usageMap[(int)$cat['id']] ?? ['users' => 0, 'rows' => 0]; ?>
+                            <td data-label="استفاده">
+                                <?php if ($use['rows'] === 0): ?>
+                                    <span class="hint">هیچ‌کس</span>
+                                <?php else: ?>
+                                    <span class="hint">
+                                        <?= toPersianDigits($use['users']) ?> کاربر ·
+                                        <?= toPersianDigits($use['rows']) ?> ردیف
+                                    </span>
+                                <?php endif; ?>
+                            </td>
                             <td data-label="وضعیت">
                                 <span class="status-badge <?= (int)$cat['is_active'] === 1 ? 'status-active' : 'status-inactive' ?>">
                                     <?= (int)$cat['is_active'] === 1 ? 'فعال' : 'غیرفعال' ?>
                                 </span>
                             </td>
-                            <td data-label="عملیات">
-                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <td data-label="عملیات" class="actions-cell">
+                                <div class="table-actions">
                                     <button type="button" class="btn btn-secondary btn-sm js-edit-category"
                                         data-id="<?= (int)$cat['id'] ?>"
                                         data-name="<?= h($cat['name']) ?>"
@@ -194,7 +237,30 @@ include __DIR__ . '/../includes/header.php';
                                             <?= (int)$cat['is_active'] === 1 ? 'غیرفعال‌سازی' : 'فعال‌سازی' ?>
                                         </button>
                                     </form>
-                                    <form method="POST" style="display:inline;" onsubmit="return confirm('آیا از حذف این دسته‌بندی مطمئن هستید؟ فقط دسته‌بندی بدون تراکنش قابل حذف است.');">
+                                    <?php
+                                    /*
+                                     * ⛔ اینجا عمداً `confirm()` است و «لغو» نشده:
+                                     *    `Undo` یک ردیف و فرزندانِ CASCADE اش را عکس
+                                     *    می‌گیرد، ولی شخصی‌سازی چند جدول و چند **کاربر**
+                                     *    را با هم عوض می‌کند — همان دلیلی که حذفِ کاربر
+                                     *    هم `confirm()` نگه داشت.
+                                     *
+                                     * و متنِ تأیید **عددِ واقعی** را می‌گوید، نه یک
+                                     * «مطمئنید؟» خالی: مدیر باید پیش از زدن بداند به
+                                     * چند نفر دست می‌زند.
+                                     */
+                                    $confirmMsg = $use['rows'] === 0
+                                        ? 'این دسته‌بندی از فهرست عمومی برداشته می‌شود. هیچ‌کس از آن استفاده نکرده، پس برای کسی نسخه‌ی شخصی ساخته نمی‌شود. ادامه؟'
+                                        : 'این دسته‌بندی از فهرست عمومی برداشته می‌شود و برای ' . toPersianDigits($use['users'])
+                                          . ' کاربری که از آن استفاده کرده‌اند به دسته‌بندی شخصیِ خودشان تبدیل می‌شود. تراکنش‌هایشان دست‌نخورده می‌ماند. ادامه؟';
+                                    ?>
+                                    <form method="POST" style="display:inline;" onsubmit="return confirm('<?= h($confirmMsg) ?>');">
+                                        <?= Csrf::field() ?>
+                                        <input type="hidden" name="action" value="privatize">
+                                        <input type="hidden" name="category_id" value="<?= (int)$cat['id'] ?>">
+                                        <button type="submit" class="btn btn-secondary btn-sm">شخصی‌سازی</button>
+                                    </form>
+                                    <form method="POST" style="display:inline;" onsubmit="return confirm('آیا از حذف این دسته‌بندی مطمئن هستید؟ فقط دسته‌بندی بدون هیچ ردیفی قابل حذف است.');">
                                         <?= Csrf::field() ?>
                                         <input type="hidden" name="action" value="delete">
                                         <input type="hidden" name="category_id" value="<?= (int)$cat['id'] ?>">

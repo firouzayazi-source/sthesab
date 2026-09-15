@@ -2473,6 +2473,263 @@ function categoryScopeParams(int $userId): array
 }
 
 /**
+ * ⛔ جدول‌هایی که به `categories.id` اشاره می‌کنند — **کشف از خودِ
+ *    دیتابیس، نه فهرستِ دستی** (همان قاعده‌ی `userDataTables()`).
+ *
+ * اینجا فهرست باید **کامل** باشد، نه گزینشی: هر جدولی که جا بماند
+ * یعنی ردیف‌هایی که به دسته اشاره می‌کنند دیده نمی‌شوند، و آن‌وقت
+ * حذف یا شخصی‌سازی بی‌صدا داده را می‌برد. امروز چهار تاست
+ * (`transactions`, `budgets`, `recurring_transactions`, `category_pins`)
+ * و جدولِ فردا هم خودبه‌خود می‌آید.
+ *
+ * @return array<string, bool> نامِ جدول => آیا ستونِ `user_id` هم دارد
+ */
+function categoryRefTables(): array
+{
+    $out = [];
+    foreach (schemaMap() as $table => $cols) {
+        if ($table === 'categories' || !isset($cols['category_id'])) { continue; }
+        $out[$table] = isset($cols['user_id']);
+    }
+    ksort($out);
+    return $out;
+}
+
+/**
+ * چه کسانی از این دسته‌بندی استفاده کرده‌اند و در چند ردیف.
+ *
+ * ⛔ این **پیش‌نمایشِ دامنه‌ی تخریب** است و اختیاری نیست: بدونِ آن،
+ *    مدیر دکمه‌ای می‌زند که نمی‌داند به چند نفر دست می‌زند — و
+ *    «شخصی‌سازی» عملیاتی است که چند جدول و چند کاربر را با هم عوض
+ *    می‌کند.
+ *
+ * `blocked` جدول‌هایی است که `category_id` دارند ولی `user_id` ندارند،
+ * پس ردیفشان به هیچ کاربری منتسب نمی‌شود. امروز خالی است؛ اگر روزی
+ * پر شود، `privatizeDefaultCategory()` صریح امتناع می‌کند — **نه اینکه
+ * آن ردیف‌ها را بی‌صدا جا بگذارد**.
+ *
+ * @return array{users:int[], rows:int, per:array<string,int>, blocked:string[]}
+ */
+function categoryUsage(int $catId): array
+{
+    $pdo   = Database::getConnection();
+    $users = [];
+    $per   = [];
+    $rows  = 0;
+    $blocked = [];
+
+    foreach (categoryRefTables() as $table => $hasUser) {
+        $st = $pdo->prepare("SELECT COUNT(*) FROM `{$table}` WHERE category_id = :c");
+        $st->execute(['c' => $catId]);
+        $n = (int)$st->fetchColumn();
+        if ($n === 0) { continue; }
+
+        $per[$table] = $n;
+        $rows += $n;
+
+        if (!$hasUser) { $blocked[] = $table; continue; }
+
+        $st = $pdo->prepare("SELECT DISTINCT user_id FROM `{$table}`
+                             WHERE category_id = :c AND user_id IS NOT NULL");
+        $st->execute(['c' => $catId]);
+        foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $uid) { $users[(int)$uid] = true; }
+
+        // ردیفی که `user_id` اش خالی است هم به کسی منتسب نمی‌شود.
+        $st = $pdo->prepare("SELECT COUNT(*) FROM `{$table}`
+                             WHERE category_id = :c AND user_id IS NULL");
+        $st->execute(['c' => $catId]);
+        if ((int)$st->fetchColumn() > 0) { $blocked[] = $table; }
+    }
+
+    $ids = array_keys($users);
+    sort($ids);
+    return ['users' => $ids, 'rows' => $rows, 'per' => $per, 'blocked' => array_values(array_unique($blocked))];
+}
+
+/**
+ * همان شمارش، ولی برای **کلِ فهرست** و با چهار کوئری، نه یکی به‌ازای
+ * هر دسته — همان قاعده‌ی N+1 که در «سرعت» بارها گرفته شده.
+ *
+ * ⚠ این فقط برای **نمایش** است. خودِ عملیات همیشه از `categoryUsage()`
+ *   و **زیرِ تراکنش** دوباره می‌شمارد: بین دیدنِ صفحه و زدنِ دکمه
+ *   ممکن است کاربری تراکنشِ تازه‌ای ثبت کرده باشد (همان استدلالِ کدِ
+ *   تخفیف که فرم فقط حمل می‌کند و سرور زیرِ قفل می‌سنجد).
+ *
+ * @return array<int, array{users:int, rows:int}>
+ */
+function categoryUsageMap(): array
+{
+    $pdo  = Database::getConnection();
+    $seen = [];   // catId => [userId => true]
+    $rows = [];   // catId => int
+
+    // ⛔ یک `UNION ALL`، نه یک کوئری به‌ازای هر جدول. این تابع در
+    //    `admin/categories.php` صدا زده می‌شود و نسخه‌ی حلقه‌ای آن صفحه
+    //    را از ۱۳ به ۱۷ کوئری برد — یعنی از بودجه‌اش در
+    //    `test_query_budget` رد شد و **خودِ تست گرفتش**. جدولِ ارجاعِ
+    //    فردا هم فقط یک `SELECT` به همین رشته اضافه می‌کند، نه یک
+    //    رفت‌وبرگشتِ تازه.
+    // ⚠ نامِ جدول‌ها از `schemaMap()` می‌آید (نه ورودیِ کاربر)، پس درجِ
+    //   مستقیمشان همان کاری است که حلقه‌ی قبلی هم می‌کرد.
+    $parts = [];
+    foreach (categoryRefTables() as $table => $hasUser) {
+        if (!$hasUser) { continue; }
+        $parts[] = "SELECT category_id AS cid, user_id AS uid, COUNT(*) AS n
+                    FROM `{$table}` WHERE category_id IS NOT NULL
+                    GROUP BY category_id, user_id";
+    }
+    if (!$parts) { return []; }
+
+    try {
+        $q = $pdo->query(implode("\nUNION ALL\n", $parts));
+    } catch (PDOException $e) {
+        // فقط نمایش است؛ ستونِ «استفاده» خالی می‌ماند و صفحه می‌آید.
+        error_log('Category Usage Map Error: ' . $e->getMessage());
+        return [];
+    }
+    foreach ($q as $r) {
+        $cid = (int)$r['cid'];
+        $rows[$cid] = ($rows[$cid] ?? 0) + (int)$r['n'];
+        if ($r['uid'] !== null) { $seen[$cid][(int)$r['uid']] = true; }
+    }
+
+    $out = [];
+    foreach ($rows as $cid => $n) {
+        $out[$cid] = ['users' => count($seen[$cid] ?? []), 'rows' => $n];
+    }
+    return $out;
+}
+
+/**
+ * ⛔ «شخصی‌سازیِ» یک دسته‌بندیِ پیش‌فرض — تنها جای این تصمیم.
+ *
+ * **مسئله‌ی واقعی:** دسته‌های پیش‌فرض بین همه‌ی کاربران مشترک‌اند
+ * (`user_id IS NULL`)، پس یک دسته‌ی خاصِ کارِ یک نفر — «فروش لوازم»،
+ * «گوشی» — در فرمِ ثبتِ **همه** دیده می‌شود و شلوغش می‌کند. ولی
+ * حذفش هم ممکن نیست، چون رویش تراکنش ثبت شده.
+ *
+ * **کاری که می‌کند:** برای **هر کاربری که واقعاً از آن استفاده کرده**
+ * یک نسخه‌ی شخصی می‌سازد، ردیف‌های خودِ همان کاربر را به نسخه‌ی خودش
+ * می‌برد، و بعد ردیفِ پیش‌فرض را حذف می‌کند. نتیجه: از فهرستِ کسانی
+ * که استفاده‌اش نمی‌کردند می‌رود، و برای کسانی که می‌کردند **دقیقاً
+ * سرِ جایش می‌ماند** — نه تراکنشی بی‌دسته می‌شود نه تاریخچه‌ای گم.
+ *
+ * **⛔ چرا نسخه‌ی جدا به‌ازای هر کاربر، نه یک نسخه برای مدیر:** تراکنشِ
+ * کاربر A را نمی‌شود به دسته‌ی کاربر B چسباند — آن دقیقاً همان نشتیِ
+ * بینِ کاربران است که `categoryScopeSql()` برای نبودنش نوشته شد. پس
+ * هر کس نسخه‌ی خودش را می‌گیرد.
+ *
+ * **⛔ و یک سدِ پیش از `commit`، مثل `deleteUserAccount()`:** جمعِ
+ * ردیف‌هایی که جابه‌جا شدند باید **دقیقاً** برابرِ جمعِ ردیف‌هایی باشد
+ * که پیش از کار به دسته اشاره می‌کردند، و هیچ ردیفی هم نباید روی
+ * شناسه‌ی قدیمی مانده باشد. یک تستِ خوب جلوی `commit` را نمی‌گیرد؛
+ * خودِ کد باید بگیرد.
+ *
+ * @return array{ok:bool, message:string, users:int, rows:int}
+ */
+function privatizeDefaultCategory(int $catId): array
+{
+    $pdo = Database::getConnection();
+
+    if (!tableHasColumn('categories', 'user_id')) {
+        return ['ok' => false, 'message' => 'ستون user_id روی دسته‌بندی‌ها نیامده است.', 'users' => 0, 'rows' => 0];
+    }
+
+    $st = $pdo->prepare('SELECT * FROM categories WHERE id = :id AND user_id IS NULL');
+    $st->execute(['id' => $catId]);
+    $cat = $st->fetch();
+    if (!$cat) {
+        return ['ok' => false, 'message' => 'دسته‌بندی پیش‌فرض با این شناسه پیدا نشد.', 'users' => 0, 'rows' => 0];
+    }
+
+    $usage = categoryUsage($catId);
+    if ($usage['blocked']) {
+        return [
+            'ok' => false,
+            'users' => 0, 'rows' => 0,
+            'message' => 'این دسته ردیف‌هایی دارد که به هیچ کاربری منتسب نمی‌شوند ('
+                . implode('، ', $usage['blocked']) . '). شخصی‌سازی انجام نشد.',
+        ];
+    }
+
+    $hasIcon  = tableHasColumn('categories', 'icon');
+    $hasColor = tableHasColumn('categories', 'color');
+    $refs     = categoryRefTables();
+    $moved    = 0;
+
+    try {
+        $pdo->beginTransaction();
+
+        foreach ($usage['users'] as $uid) {
+            // نسخه‌ی شخصیِ موجود با همان نام و نوع دوباره ساخته نمی‌شود،
+            // وگرنه کاربر دو قلمِ هم‌نام در فهرستش می‌دید.
+            // ⚠ مقایسه‌ی نام با پارامترِ bind‌شده است نه ستون‌به‌ستون، پس
+            //   «Illegal mix of collations» ممکن نیست.
+            $find = $pdo->prepare('SELECT id FROM categories
+                                   WHERE user_id = :u AND name = :n AND type = :t LIMIT 1');
+            $find->execute(['u' => $uid, 'n' => $cat['name'], 't' => $cat['type']]);
+            $newId = (int)$find->fetchColumn();
+
+            if ($newId === 0) {
+                $cols = ['user_id', 'name', 'type', 'is_active'];
+                $vals = [':u', ':n', ':t', ':a'];
+                $args = ['u' => $uid, 'n' => $cat['name'], 't' => $cat['type'], 'a' => (int)$cat['is_active']];
+                if ($hasIcon)  { $cols[] = 'icon';  $vals[] = ':i'; $args['i'] = $cat['icon']; }
+                if ($hasColor) { $cols[] = 'color'; $vals[] = ':c'; $args['c'] = $cat['color']; }
+
+                $ins = $pdo->prepare('INSERT INTO categories (' . implode(', ', $cols) . ')
+                                      VALUES (' . implode(', ', $vals) . ')');
+                $ins->execute($args);
+                $newId = (int)$pdo->lastInsertId();
+            }
+
+            foreach ($refs as $table => $hasUser) {
+                if (!$hasUser) { continue; }
+                // ⛔ شرطِ `user_id` روی خودِ UPDATE اجباری است: بدونش
+                //    ردیفِ کاربرِ دیگری به دسته‌ی این کاربر می‌چسبید.
+                $up = $pdo->prepare("UPDATE `{$table}` SET category_id = :new
+                                     WHERE category_id = :old AND user_id = :u");
+                $up->execute(['new' => $newId, 'old' => $catId, 'u' => $uid]);
+                $moved += $up->rowCount();
+            }
+        }
+
+        // سدِ پیش از commit — هیچ ردیفی نباید روی شناسه‌ی قدیمی مانده باشد.
+        $left = 0;
+        foreach ($refs as $table => $hasUser) {
+            $st = $pdo->prepare("SELECT COUNT(*) FROM `{$table}` WHERE category_id = :c");
+            $st->execute(['c' => $catId]);
+            $left += (int)$st->fetchColumn();
+        }
+        if ($left !== 0 || $moved !== $usage['rows']) {
+            $pdo->rollBack();
+            return [
+                'ok' => false, 'users' => 0, 'rows' => 0,
+                'message' => 'شمارشِ ردیف‌ها نخواند (منتقل‌شده ' . $moved . ' از ' . $usage['rows']
+                    . '، باقی‌مانده ' . $left . '). هیچ تغییری ذخیره نشد.',
+            ];
+        }
+
+        $pdo->prepare('DELETE FROM categories WHERE id = :id AND user_id IS NULL')
+            ->execute(['id' => $catId]);
+
+        $pdo->commit();
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) { $pdo->rollBack(); }
+        error_log('Privatize Category Error: ' . $e->getMessage());
+        return ['ok' => false, 'message' => 'خطایی در شخصی‌سازی رخ داد؛ هیچ تغییری ذخیره نشد.', 'users' => 0, 'rows' => 0];
+    }
+
+    return [
+        'ok'      => true,
+        'users'   => count($usage['users']),
+        'rows'    => $moved,
+        'message' => 'دسته‌بندی «' . $cat['name'] . '» از فهرست عمومی برداشته شد و برای '
+            . count($usage['users']) . ' کاربر به دسته‌بندی شخصی تبدیل شد.',
+    ];
+}
+
+/**
  * دسته‌بندی‌های قابل استفاده‌ی کاربر جاری — پیش‌فرض‌ها به‌علاوه‌ی شخصی‌ها.
  * در همان درخواست کش می‌شود چون چند جا لازم است (فرم ثبت، شیت فوتر، …).
  */

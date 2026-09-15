@@ -2754,6 +2754,94 @@ if (strpos($pgSrc, '۱۴ روز') !== false || preg_match('/بیش از\s*14\s*�
 
 T::bulk(12, $badStat, '⛔ «آخرین استفاده» و آستانه‌ی «فعال» یک مرجع دارند');
 
+// ---------------------------------------------------------------------
+// قاعده ۴۰ — «شخصی‌سازیِ» دسته‌بندی، و نگهبانِ حذف
+//
+// ⛔ **خرابیِ واقعیِ بی‌صدا که این قاعده برایش نوشته شد:** نگهبانِ حذف
+//    در `admin/categories.php` فقط `transactions` را می‌شمرد، در حالی
+//    که `budgets.category_id` کلیدِ خارجی با `ON DELETE CASCADE` دارد.
+//    یعنی حذفِ دسته‌ای که هیچ تراکنشی نداشت ولی رویش بودجه بسته شده
+//    بود، **بودجه‌ی کاربران را هم با خودش می‌برد** — نه خطایی، نه
+//    هشداری، و مدیر پیامِ «دسته‌بندی حذف شد» می‌گرفت.
+//
+//    رفتارش را `tests/test_category_privatize.php` می‌سنجد؛ اینجا
+//    **شکل** پین می‌شود تا برنگردد:
+//
+//    ۱. نگهبانِ حذف از `categoryUsage()` رد شود، نه یک شمارشِ محلی روی
+//       `transactions` — وگرنه جدولِ ارجاع‌دهنده‌ی فردا هم جا می‌ماند.
+//    ۲. فهرستِ جدول‌های ارجاع‌دهنده از **خودِ دیتابیس** کشف شود
+//       (`schemaMap()`)، نه یک آرایه‌ی دستی: اینجا فهرست باید **کامل**
+//       باشد نه گزینشی — همان قاعده‌ی `userDataTables()`، و برعکسِ
+//       `ACTIVITY_TABLES` که عمداً بسته است.
+//    ۳. جابه‌جا کردنِ `category_id` از یک دسته به دسته‌ی دیگر فقط در
+//       `privatizeDefaultCategory()` باشد. نسخه‌ی دومِ آن یعنی مسیری که
+//       شرطِ `user_id` را فراموش می‌کند و ردیفِ یک کاربر را به دسته‌ی
+//       کاربرِ دیگری می‌چسباند — همان نشتی‌ای که `categoryScopeSql()`
+//       برای نبودنش نوشته شد.
+// ---------------------------------------------------------------------
+T::group('قاعده ۴۰ — شخصی‌سازیِ دسته‌بندی و نگهبانِ حذف');
+
+$badPriv = [];
+// ⚠ کامنت‌ها **پیش از** بررسی حذف می‌شوند: همین توضیحاتِ بالا و
+//   توضیحاتِ خودِ آن فایل‌ها نامِ `transactions` و `categoryUsage` را
+//   دارند، پس با سورسِ خام بررسی روی فایلِ **سالم** هم جواب می‌داد —
+//   همان دامِ قاعده ۳۵ و ۳۸.
+$catAdmin = $stripComments(__DIR__ . '/../admin/categories.php');
+$fnSrc    = $stripComments(__DIR__ . '/../includes/functions.php');
+
+// ۱ — نگهبانِ حذف از categoryUsage() رد شود
+if (strpos($catAdmin, 'categoryUsage(') === false) {
+    $badPriv[] = 'admin/categories.php — نگهبانِ حذف باید از categoryUsage() رد شود';
+}
+if (preg_match('/FROM\s+transactions\s+WHERE\s+category_id/i', $catAdmin)) {
+    $badPriv[] = 'admin/categories.php — شمارشِ محلی روی transactions برگشته؛ جدول‌های دیگر جا می‌مانند';
+}
+
+// ۲ — فهرستِ جدول‌های ارجاع‌دهنده کشف می‌شود، نه دستی
+if (preg_match('/function\s+categoryRefTables\s*\([^)]*\)\s*:\s*array\s*\{(.*?)\n\}/s', $fnSrc, $m)) {
+    $body = $m[1];
+    if (strpos($body, 'schemaMap()') === false) {
+        $badPriv[] = 'categoryRefTables() — باید از schemaMap() کشف کند، نه فهرستِ دستی';
+    }
+    foreach (['transactions', 'budgets', 'recurring_transactions', 'category_pins'] as $t) {
+        if (strpos($body, "'{$t}'") !== false) {
+            $badPriv[] = "categoryRefTables() — نامِ {$t} دستی نوشته شده؛ فهرست باید کامل و کشف‌شده باشد";
+        }
+    }
+} else {
+    $badPriv[] = 'categoryRefTables() پیدا نشد';
+}
+
+// ۳ — جابه‌جاییِ category_id فقط در privatizeDefaultCategory()
+$movePat = '/SET\s+category_id\s*=\s*:\w+\s*\n?\s*WHERE\s+category_id/i';
+foreach (['api', 'includes', 'admin', '.'] as $dir) {
+    foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) {
+        $src = $stripComments($p);
+        if (!preg_match($movePat, $src)) { continue; }
+        if (basename($p) === 'functions.php') { continue; }
+        $badPriv[] = basename($p) . ' — جابه‌جاییِ category_id فقط در privatizeDefaultCategory() مجاز است';
+    }
+}
+// و همان‌جا هم شرطِ user_id روی UPDATE باشد
+if (preg_match('/function\s+privatizeDefaultCategory\s*\(.*?\n\}/s', $fnSrc, $m)) {
+    if (!preg_match('/SET\s+category_id\s*=\s*:new\s*\n?\s*WHERE\s+category_id\s*=\s*:old\s+AND\s+user_id\s*=\s*:u/i', $m[0])) {
+        $badPriv[] = 'privatizeDefaultCategory() — شرطِ user_id روی UPDATE برداشته شده (نشتی بینِ کاربران)';
+    }
+    if (strpos($m[0], 'user_id IS NULL') === false) {
+        $badPriv[] = 'privatizeDefaultCategory() — نگهبانِ «فقط دسته‌ی پیش‌فرض» برداشته شده';
+    }
+    // ⚠ نسخه‌ی اول فقط دنبالِ `rollBack()` می‌گشت و **پوچ بود**: بلوکِ
+    //   `catch` خودش یکی دارد، پس با برداشتنِ کاملِ سد هم سبز می‌ماند و
+    //   جهشش زنده ماند. حالا خودِ شرطِ سد سنجیده می‌شود.
+    if (!preg_match('/if\s*\(\s*\$left\s*!==\s*0\s*\|\|\s*\$moved\s*!==\s*\$usage\[.rows.\]\s*\)/', $m[0])) {
+        $badPriv[] = 'privatizeDefaultCategory() — سدِ شمارشِ پیش از commit برداشته شده';
+    }
+} else {
+    $badPriv[] = 'privatizeDefaultCategory() پیدا نشد';
+}
+
+T::bulk(9, $badPriv, '⛔ شخصی‌سازی و حذفِ دسته‌بندی یک مرجع دارند');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

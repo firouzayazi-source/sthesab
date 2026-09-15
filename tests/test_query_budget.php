@@ -86,7 +86,7 @@ const BUDGET = [
     'admin/users.php'       => 17,
     'admin/access.php'      => 15,
     'admin/billing.php'     => 17,
-    'admin/categories.php'  => 16,
+    'admin/categories.php'  => 15,
 ];
 
 /**
