@@ -355,12 +355,26 @@ T::group('قاعده ۸ — deploy.sh پوشه‌های نوشتنی را به �
 // فایل نشست بنویسد. هر درخواست یک نشستِ خالیِ تازه می‌گرفت، توکن CSRF
 // هرگز نمی‌ماند، و صفحه‌ی ورود در حلقه‌ی «نشست شما منقضی شده بود» گیر
 // می‌کرد — هیچ‌کس نمی‌توانست وارد شود.
-$deploySrc = (string)@file_get_contents(__DIR__ . '/../deploy.sh');
-if ($deploySrc === '') {
-    T::skip('تست deploy.sh', 'deploy.sh وجود ندارد');
-} else {
+// ⛔ منطقِ استقرار از `deploy.sh` به `hesabland` منتقل شد، پس این قاعده
+//    هم باید همان‌جا را بسنجد. `deploy.sh` حالا فقط یک پوسته است و
+//    **نباید** نسخه‌ی دومی از این منطق داشته باشد: با دو نسخه، اولین
+//    اصلاحی که فقط به یکی برسد همان باگِ بی‌صدای بالا را برمی‌گرداند.
+$deploySrc = (string)@file_get_contents(__DIR__ . '/../hesabland');
+T::ok($deploySrc !== '', 'فایلِ hesabland پیدا شد');
+
+// ⚠ کامنت‌های تمام‌خطی باید **پیش از** بررسی حذف شوند — همان دامی که
+//    قاعده ۳۵ و ۱۹ و ۳۸ هم در آن افتادند. سرآیندِ همین فایل عبارتِ
+//    `-H "Host:"` و واژه‌ی `--noproxy` را در توضیحاتش دارد، پس بررسی روی
+//    سورسِ خام هم روی فایلِ **سالم** قرمز می‌شد هم جهشِ «--noproxy را
+//    بردار» را زنده نگه می‌داشت. فقط خطِ کاملِ کامنت حذف می‌شود، نه هر
+//    `#`، وگرنه `${url#http://}` هم قربانی می‌شد.
+$deployCode = implode("\n", array_filter(
+    explode("\n", $deploySrc),
+    static fn($ln) => !preg_match('/^\s*#/', $ln)
+));
+if ($deploySrc !== '') {
     $chownAt = strpos($deploySrc, 'chown -R root:root');
-    T::ok($chownAt !== false, 'deploy.sh مالکیت کد را به root می‌دهد');
+    T::ok($chownAt !== false, 'hesabland مالکیت کد را به root می‌دهد');
 
     // هر دو باید *بعد از* آن خط دوباره به کاربر اپ برگردند
     foreach (['uploads', 'var'] as $dir) {
@@ -375,7 +389,80 @@ if ($deploySrc === '') {
         str_contains($deploySrc, 'test -w var/sessions'),
         'نوشتنی بودن var/sessions واقعاً آزموده می‌شود، نه فرض'
     );
+    T::ok(
+        str_contains($deploySrc, 'test -r config/config.php'),
+        'خواندنی ماندنِ config.php هم واقعاً آزموده می‌شود'
+    );
+
+    // ⛔ سنجشِ سلامت باید به 127.0.0.1 بخورد و پراکسیِ محیط را دور بزند،
+    //    وگرنه curl مقدارِ --resolve را نادیده می‌گیرد و پاسخ از جای
+    //    دیگری می‌آید — سنجشی که درباره‌ی چیزِ دیگری حرف می‌زند.
+    T::ok(
+        str_contains($deployCode, '--resolve') && !str_contains($deployCode, '-H "Host:'),
+        'سنجشِ سلامت با --resolve است نه -H "Host:"'
+    );
+    T::ok(
+        str_contains($deployCode, "--noproxy"),
+        'سنجشِ سلامت پراکسیِ محیط را دور می‌زند'
+    );
+    T::ok(
+        str_contains($deployCode, '*"</html>"*'),
+        'سنجه‌ی «رندر تمام شد» وجودِ </html> است، نه طولِ بدنه'
+    );
+
+    // ⛔ باگِ واقعی: `cmd_deploy` تابع را داخلِ `if` صدا می‌زند و bash
+    //    آنجا کلِ بدنه را از `set -e` معاف می‌کند. بدونِ این `|| return`،
+    //    لو رفتنِ سورسِ خامِ api/v1 گزارش می‌شد ولی استقرار **سبز** اعلام
+    //    می‌شد. با سرورِ HTTPS واقعی بازتولید شد.
+    T::ok(
+        (bool)preg_match('/api_ping_check\s+"\$base"\s+"\$resolve"\s+"\$quiet"\s*\|\|\s*return\s+1/', $deployCode),
+        '⛔ شکستِ api_ping_check واقعاً به health_check منتقل می‌شود'
+    );
+
+    // ⛔ کدِ ورودی پیش از `git reset --hard` سنجیده می‌شود، نه بعدش:
+    //    با فرود آمدن، opcache همان لحظه می‌بیندش و سایت پیش از هر
+    //    سنجشی خوابیده است.
+    $preflightAt = strpos($deployCode, 'preflight_syntax "origin/${BRANCH}"');
+    $landAt      = strpos($deployCode, 'git reset --hard "origin/${BRANCH}"');
+    T::ok(
+        $preflightAt !== false && $landAt !== false && $preflightAt < $landAt,
+        '⛔ نحوِ کدِ ورودی **پیش از** نشستنش روی دیسک سنجیده می‌شود'
+    );
+
+    // ⛔ برگشتِ خودکار وقتی migration اعمال شده ممنوع است: کدِ قدیمی روی
+    //    ساختارِ تازه یک خرابیِ دیگر است، نه رفعِ خرابی.
+    T::ok(
+        str_contains($deployCode, 'if (( migrated )); then'),
+        '⛔ بعد از اعمالِ migration برگشتِ خودکار انجام نمی‌شود'
+    );
+
+    // ⛔ بالا بردنِ VERSION در sw.js از ابزارِ استقرار ممنوع است: کلِ کشِ
+    //    سرویس‌ورکر را پاک می‌کند و همان «تورِ نجاتِ نسخه‌ی قبلیِ فایل»
+    //    را می‌برد که برای صفحه‌ی بی‌جان نوشته شد.
+    T::ok(
+        !preg_match('/sed[^\n]*sw\.js|VERSION\s*=\s*.daftar-v/', $deployCode),
+        '⛔ ابزارِ استقرار به VERSION در sw.js دست نمی‌زند'
+    );
 }
+
+// ⛔ و پوسته باید پوسته بماند.
+$wrapSrc = (string)@file_get_contents(__DIR__ . '/../deploy.sh');
+T::ok(
+    str_contains($wrapSrc, 'hesabland'),
+    'deploy.sh به hesabland واگذار می‌کند (بوکمارک و مستندات نمی‌شکنند)'
+);
+T::ok(
+    !str_contains($wrapSrc, 'chown -R root:root'),
+    '⛔ deploy.sh نسخه‌ی دومی از منطقِ استقرار ندارد'
+);
+// ⚠ استقرار خودِ deploy.sh را با git reset بازنویسی می‌کند و bash فایل را
+//   تکه‌تکه می‌خواند؛ با بدنه‌ی تخت، ادامه‌ی اجرا از همان آفست در فایلِ
+//   **تازه** خوانده می‌شود. پس بدنه باید داخلِ یک تابع باشد و فراخوانی‌اش
+//   آخرین خط، تا bash پیش از اجرا کلِ فایل را خوانده باشد.
+T::ok(
+    (bool)preg_match('/^main\s+"\$@"\s*$/m', $wrapSrc),
+    'deploy.sh بدنه‌اش را در تابع نگه می‌دارد و آخرِ فایل صدایش می‌زند'
+);
 
 // ---------------------------------------------------------------
 T::group('قاعده ۹ — api/v1 هویت را از توکن می‌گیرد، نه از نشست');
@@ -2480,13 +2567,22 @@ $shBacktickHits = static function (string $src): array {
 };
 
 $badTick = [];
+// ⚠ `hesabland` پسوند ندارد (یک فرمان است، نه یک اسکریپتِ کمکی)، پس
+//    هیچ‌کدام از الگوهای `*.sh` آن را برنمی‌دارند و بی‌صدا بیرونِ پوشش
+//    می‌ماند — همان درسِ globِ سخت‌کدِ قاعده ۱۹. صریح اضافه می‌شود، و
+//    نبودنش هم خطاست (پایین‌تر شمرده می‌شود).
 $shFiles = array_merge(
     glob(__DIR__ . '/../deploy/*.sh') ?: [],
     glob(__DIR__ . '/../*.sh') ?: [],
-    glob(__DIR__ . '/*.sh') ?: []
+    glob(__DIR__ . '/*.sh') ?: [],
+    array_filter([__DIR__ . '/../hesabland'], 'is_file')
 );
 if (count($shFiles) < 5) {
     $badTick[] = 'هیچ اسکریپتِ پوسته‌ای پیدا نشد — الگوی جست‌وجو خراب است';
+}
+if (!is_file(__DIR__ . '/../hesabland')) {
+    $badTick[] = 'hesabland پیدا نشد — اگر نامش عوض شده، همین‌جا هم به‌روز شود'
+               . ' وگرنه بی‌صدا بیرونِ پوششِ این قاعده می‌ماند';
 }
 foreach ($shFiles as $sh) {
     foreach ($shBacktickHits((string)@file_get_contents($sh)) as $ln) {

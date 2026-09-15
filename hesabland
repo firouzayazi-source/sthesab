@@ -1,0 +1,677 @@
+#!/usr/bin/env bash
+#
+# hesabland — تنها درِ ورودیِ کارهای سرورِ حساب لند.
+#
+#   cd /opt/hesab/app && sudo ./hesabland
+#
+# ⛔ چرا ساخته شد: پیش از این deploy.sh کد را می‌گرفت، دسترسی‌ها را درست
+#    می‌کرد، php-fpm را reload می‌کرد و می‌نوشت «✅ استقرار کامل شد» —
+#    **بی‌آنکه حتی یک صفحه را باز کند**. یعنی اگر همان کامیت یک خطای
+#    کشنده در یک فایلِ مشترک داشت، اسکریپت روی سایتِ **مرده** پیامِ سبز
+#    می‌داد. همان «سنجشی که روی خرابی سبز می‌شود» که کلِ این پروژه جای
+#    دیگری برایش تست نوشته، این بار در خودِ ابزارِ استقرار.
+#
+# چهار چیزی که اضافه شد و هر چهار یک جنس‌اند:
+#
+#   ۱. **نحو پیش از فرود.** کدِ ورودی با `php -l` سنجیده می‌شود در حالی
+#      که هنوز در گیت است، نه بعد از `git reset --hard`. کدِ شکسته اصلاً
+#      روی دیسک نمی‌نشیند. (با فرود آمدن، opcache همان لحظه می‌بیندش و
+#      سایت پیش از هر سنجشی خوابیده است.)
+#   ۲. **سنجشِ سلامت بعد از reload** — با `--resolve`، نه `-H "Host:"`:
+#      روی این سرور چند سایت روی یک nginx هستند و بدونِ SNI پاسخ ممکن
+#      است از سایتِ دیگری بیاید. سنجه‌ی «رندر تمام شد» هم وجودِ
+#      `</html>` است نه طولِ بدنه — خطای کشنده خروجی را همان‌جا می‌بُرد.
+#   ۳. **برگشتِ خودکار** اگر سلامت رد شد و هیچ migration ای اعمال نشده
+#      باشد. اگر شده باشد، **برنمی‌گرداند** و صریح می‌گوید چرا: کدِ
+#      قدیمی روی ساختارِ تازه یک خرابیِ دیگر است، نه رفعِ خرابی.
+#   ۴. **بکاپ پیش از اعمالِ migration**، و اگر بکاپ نگرفت اصلاً جلو
+#      نمی‌رود — همان قاعده‌ی restore.sh.
+#
+# ⛔ و یک چیز عمداً عوض **نشد**: اعمالِ migration پیش‌فرض **نیست**.
+#    تغییرِ ساختارِ دیتابیس باید تصمیمِ آگاهانه باشد نه اثرِ جانبیِ یک
+#    deploy؛ با --migrate اعمال می‌شود.
+#
+# ⛔ قانونِ جداسازیِ سرور دست‌نخورده می‌ماند: این اسکریپت فقط به
+#    /opt/hesab/app، کاربر hesab، pool و سرویسِ php-fpm (آن هم فقط
+#    reload، نه restart)، و /opt/hesab/backups دست می‌زند. هیچ سرویسِ
+#    دیگری، هیچ سایتِ nginx دیگری، و هیچ فایلِ پیکربندیِ مشترکی.
+
+set -euo pipefail
+
+APP_DIR="${APP_DIR:-/opt/hesab/app}"
+APP_USER="${APP_USER:-hesab}"
+
+green() { printf '\033[0;32m%s\033[0m\n' "$1"; }
+red()   { printf '\033[0;31m%s\033[0m\n' "$1"; }
+info()  { printf '\033[0;36m%s\033[0m\n' "$1"; }
+warn()  { printf '\033[0;33m%s\033[0m\n' "$1"; }
+bold()  { printf '\033[1m%s\033[0m\n' "$1"; }
+step()  { echo; printf '\033[1m→ %s\033[0m\n' "$1"; }
+
+usage() {
+    cat <<'HELP'
+hesabland — کارهای سرورِ حساب لند، همه از یک جا
+
+  sudo ./hesabland [فرمان] [گزینه‌ها]
+
+فرمان‌ها:
+  deploy            استقرار کامل (پیش‌فرض اگر فرمانی ندهید)
+  health            فقط سنجشِ سلامت — هیچ چیزی را عوض نمی‌کند
+  cache             فقط پاک کردنِ کش
+  status            گزارشِ کاملِ وضعیتِ نصب (فقط خواندنی)
+  backup            بکاپِ فوریِ دیتابیس
+  rollback          برگشت به نسخه‌ی قبلی
+  logs              آخرین خطاهای ثبت‌شده‌ی اپ
+  help              همین راهنما
+
+گزینه‌های deploy:
+  --migrate         migration های تازه را هم اعمال کن (پیش‌فرض: فقط وضعیت)
+  --no-backup       بکاپِ پیش از استقرار را رد کن
+  --no-health       سنجشِ سلامت را رد کن  ⚠ توصیه نمی‌شود
+  --force           بدونِ پرسیدن، تغییراتِ محلیِ سرور را دور بریز
+
+گزینه‌های دیگر:
+  backup --offsite  بعد از بکاپ، به بیرونِ سرور هم بفرست
+  cache --assets    آدرسِ دارایی‌ها را هم عوض کن  ⚠ هزینه دارد، پایین‌تر
+  rollback --to abc1234   به یک کامیتِ مشخص برگرد
+
+نمونه:
+  sudo ./hesabland                    استقرار عادی
+  sudo ./hesabland deploy --migrate   استقرار + اعمالِ migration
+  sudo ./hesabland status             فقط نگاه کردن
+HELP
+}
+
+# ---------------------------------------------------------------------
+# آدرسِ سایت از خودِ پیکربندی خوانده می‌شود، نه یک مقدارِ سخت‌کد.
+#
+# ⚠ اگر خوانده نشد، سنجشِ سلامت **رد می‌شود و می‌گوید رد شد** — سبز
+#   نمی‌شود. سنجشی که نتوانسته اجرا شود هیچ چیزی را تأیید نکرده.
+# ---------------------------------------------------------------------
+app_host() {
+    if [[ -n "${DOMAIN:-}" ]]; then printf '%s' "$DOMAIN"; return; fi
+    local url
+    url=$(php -r '@include "config/config.php"; echo defined("APP_URL") ? APP_URL : "";' 2>/dev/null || true)
+    url="${url#http://}"
+    url="${url#https://}"
+    url="${url%%/*}"
+    printf '%s' "$url"
+}
+
+# ---------------------------------------------------------------------
+# سنجشِ سلامت — «reload موفق شد» با «سایت کار می‌کند» یکی نیست.
+#
+# ⛔ با --resolve به 127.0.0.1 می‌خورد، نه با -H "Host:". روی این سرور
+#    چند سایت روی یک nginx هستند و درخواستِ بدونِ SNI به بلوکِ پیش‌فرض
+#    می‌خورد — یک بار همین باعث شد nginx-api.sh پیکربندیِ **درست** را
+#    به‌خیالِ خراب بودن برگرداند.
+#
+# ⛔ و تا ۱۰ ثانیه تکرار می‌شود: systemctl reload به‌محضِ فرستادنِ سیگنال
+#    برمی‌گردد ولی کارگرهای قدیمی تا صدها میلی‌ثانیه بعد هنوز جواب
+#    می‌دهند (اندازه‌گیری شده: تا ۱۵۰ms).
+# ---------------------------------------------------------------------
+health_check() {
+    local host quiet="${1:-}"
+    host=$(app_host)
+
+    if [[ -z "$host" ]]; then
+        warn "⚠ آدرس سایت از config.php خوانده نشد (APP_URL)."
+        warn "  سنجشِ سلامت **انجام نشد** — یعنی هیچ چیزی تأیید نشده."
+        return 2
+    fi
+    if ! command -v curl >/dev/null 2>&1; then
+        warn "⚠ curl روی این سرور نیست؛ سنجشِ سلامت انجام نشد."
+        return 2
+    fi
+
+    local base="https://${host}"
+    local resolve="${host}:443:127.0.0.1"
+    # ⛔ --noproxy اجباری است: سنجش عمداً به 127.0.0.1 می‌خورد، پس هر
+    #    پراکسیِ تنظیم‌شده در محیط باید دور زده شود. بدونِ آن curl مقدارِ
+    #    --resolve را نادیده می‌گیرد و درخواست را به پراکسی می‌دهد —
+    #    آن‌وقت «کد 000» یا پاسخِ جای دیگری می‌گیریم و سنجش درباره‌ی
+    #    چیزی حرف می‌زند که اصلاً سنجیده نشده. (در همین محیطِ توسعه
+    #    دیده شد: پراکسی «403 Forbidden» داد و سنجش «سایت خراب است»
+    #    نتیجه گرفت، در حالی که سرور سالم بود.)
+    local CURL=(curl -sk --noproxy '*' --max-time 8 --resolve "$resolve")
+    local deadline=$((SECONDS + 10))
+    local body code last=''
+
+    while (( SECONDS < deadline )); do
+        body=$("${CURL[@]}" "${base}/login.php" 2>/dev/null || true)
+        # ⚠ `|| echo 000` ننویسید: curl در شکست خودش `000` را با `-w`
+        #   چاپ می‌کند و آن `echo` یکی دیگر پشتش می‌چسباند — پیامِ خطا
+        #   «کد 000000» می‌شد، یعنی عددی که هیچ معنایی ندارد و کاربر را
+        #   دنبالِ چیزِ اشتباه می‌فرستد.
+        code=$("${CURL[@]}" -o /dev/null -w '%{http_code}' \
+                    "${base}/login.php" 2>/dev/null || true)
+        code="${code:-000}"
+
+        # ⛔ نشانه‌ی «رندر تمام شد» وجودِ </html> است، نه طولِ بدنه: خطای
+        #    کشنده‌ی وسطِ رندر خروجی را همان‌جا می‌بُرد و آن تگ هرگز
+        #    نوشته نمی‌شود — صفحه‌ای که ناگهان تمام می‌شود، بی‌هیچ خطایی.
+        if [[ "$code" == "200" && "$body" == *"</html>"* ]]; then
+            [[ -n "$quiet" ]] || green "✓ صفحه‌ی ورود: ۲۰۰ و رندر کامل (</html> دیده شد)"
+            # ⛔ `|| return 1` اجباری است و یک باگِ واقعیِ همین فایل را
+            #    بست. نسخه‌ی اول `api_ping_check` را صدا می‌زد و بعد
+            #    بی‌قید `return 0` داشت. با `set -e` در اجرای مستقیم
+            #    درست به نظر می‌رسید — ولی `cmd_deploy` آن را داخلِ
+            #    `if health_check; then` صدا می‌زند و bash در شرطِ `if`
+            #    کلِ بدنه‌ی تابع را از `set -e` معاف می‌کند. یعنی دقیقاً
+            #    در مسیرِ واقعی، لو رفتنِ سورسِ خامِ api/v1 **گزارش
+            #    می‌شد ولی استقرار سبز اعلام می‌شد**. با سرورِ HTTPS
+            #    واقعی بازتولید شد، نه با بازبینی.
+            api_ping_check "$base" "$resolve" "$quiet" || return 1
+            return 0
+        fi
+        last="کد $code"
+        [[ "$code" == "200" ]] && last="کد ۲۰۰ ولی رندر نصفه است (</html> نیامد)"
+        sleep 1
+    done
+
+    red "⛔ سنجشِ سلامت رد شد — $last"
+    red "   آدرس: ${base}/login.php  (با --resolve به 127.0.0.1)"
+    return 1
+}
+
+# ⛔ /api/v1/ping جدا سنجیده می‌شود چون خرابیِ آنجا شکلِ دیگری دارد:
+#    یک بار قاعده‌ی nginx با ^~ نوشته شد و nginx به‌جای اجرای PHP
+#    **سورسِ خام** را تحویل داد. nginx -t سبز بود و reload هم موفق.
+api_ping_check() {
+    local base="$1" resolve="$2" quiet="${3:-}"
+    local out
+    out=$(curl -sk --noproxy '*' --max-time 8 --resolve "$resolve" \
+              "${base}/api/v1/index.php?p=ping" 2>/dev/null || true)
+
+    if [[ "$out" == *"<?php"* ]]; then
+        red "⛔ api/v1 سورسِ خامِ PHP برگرداند — قاعده‌ی nginx خراب است."
+        red "   رفع:  sudo bash deploy/nginx-api.sh --apply"
+        return 1
+    fi
+    if [[ "$out" != *"{"* ]]; then
+        warn "⚠ api/v1 پاسخِ JSON نداد (شاید قاعده‌ی nginx نصب نشده)."
+        return 0
+    fi
+    [[ -n "$quiet" ]] || green "✓ api/v1 پاسخِ JSON می‌دهد (سورس لو نمی‌رود)"
+    return 0
+}
+
+# ---------------------------------------------------------------------
+# پاک کردنِ کش
+#
+# سه کشِ کاملاً جدا در کار است و فقط یکی‌شان از اینجا پاک می‌شود:
+#
+#   ۱. **opcache پی‌اچ‌پی** — با reload (نه restart) خالی می‌شود. تنها
+#      کشی است که این فرمان دست می‌زند.
+#   ۲. **کشِ مرورگر برای دارایی‌ها** — خودکار است: آدرسشان `?v=` دارد و
+#      آن عدد از `filemtime` می‌آید، پس هر فایلی که با git عوض شود
+#      خودبه‌خود آدرسِ تازه می‌گیرد. کارِ دستی لازم ندارد.
+#   ۳. **کشِ سرویس‌ورکر** — با همان `?v=` به‌روز می‌شود و
+#      `dropOtherVersions` نسخه‌های قبلی را پاک می‌کند. ⛔ بالا بردنِ
+#      VERSION در sw.js از اینجا **نباید** انجام شود: آن کار کلِ کش را
+#      پاک می‌کند و همان «تورِ نجاتِ نسخه‌ی قبلیِ فایل» را می‌برد که
+#      برای صفحه‌ی بی‌جان نوشته شده بود.
+# ---------------------------------------------------------------------
+clear_php_cache() {
+    if ! command -v systemctl >/dev/null 2>&1; then
+        warn "⚠ systemctl نیست؛ کشِ PHP پاک نشد."
+        return 1
+    fi
+    local svc
+    for svc in php8.4-fpm php8.3-fpm php8.2-fpm php8.1-fpm php-fpm; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            if systemctl reload "$svc" >/dev/null 2>&1; then
+                green "✓ کشِ $svc پاک شد (reload، نه restart)"
+                return 0
+            fi
+            red "⛔ reload سرویس $svc شکست خورد."
+            return 1
+        fi
+    done
+    warn "⚠ هیچ سرویسِ php-fpm فعالی پیدا نشد؛ کشِ PHP پاک نشد."
+    return 1
+}
+
+# ⚠ `header.php` دو بار `assetUrls()` را با دو فهرستِ **جدا** صدا می‌زند
+#   (CSS جدا، JS جدا)، پس دو `?v=` متفاوت روی صفحه می‌نشیند. جمع کردنشان
+#   در یک عدد، گزارشی می‌ساخت که با آدرسِ واقعیِ هیچ‌کدام نمی‌خواند —
+#   همان دروغِ بی‌صدا. پس هر دو چاپ می‌شوند، با همان دو فهرست.
+asset_version() {
+    php -r 'require_once "includes/functions.php";
+            printf("css=%s js=%s",
+                assetVersion(["css/style.css"]),
+                assetVersion(["js/jalali-datepicker.js","js/app.js"]));' \
+        2>/dev/null || echo '?'
+}
+
+# ---------------------------------------------------------------------
+cmd_cache() {
+    local touch_assets=0 rc=0
+    for a in "$@"; do [[ "$a" == "--assets" ]] && touch_assets=1; done
+
+    step "پاک کردنِ کش"
+    # ⛔ برخلافِ deploy، اینجا شکست بلعیده **نمی‌شود**: کلِ کارِ این فرمان
+    #   همان یک reload است. کدِ خروجیِ صفر برای کاری که انجام نشده، همان
+    #   «سنجشی که روی خرابی سبز می‌شود» است — این بار در خودِ ابزار.
+    clear_php_cache || rc=1
+
+    if (( touch_assets )); then
+        # ⚠ هزینه‌اش واقعی است و نوشته می‌ماند: آدرسِ همه‌ی دارایی‌ها عوض
+        #   می‌شود، پس **هر** کاربری که اپ را باز کند دوباره حدود ۲۲۰
+        #   کیلوبایت می‌گیرد. فقط وقتی لازم است که فایلی عوض شده ولی
+        #   mtime اش نه (مثلاً کپیِ دستی روی سرور).
+        find assets -type f \( -name '*.css' -o -name '*.js' -o -name '*.woff2' -o -name '*.png' \) \
+             -exec touch {} + 2>/dev/null || true
+        green "✓ آدرسِ دارایی‌ها تازه شد — نسخه‌ی تازه: $(asset_version)"
+        warn "  ⚠ هر کاربر یک بار دوباره دارایی‌ها را دانلود می‌کند."
+    else
+        info "نسخه‌ی فعلیِ دارایی‌ها: $(asset_version)"
+        info "(کشِ مرورگر خودکار با همین عدد می‌شکند؛ برای عوض کردنِ اجباری: --assets)"
+    fi
+
+    return "$rc"
+}
+
+# ---------------------------------------------------------------------
+cmd_backup() {
+    local offsite=0
+    for a in "$@"; do [[ "$a" == "--offsite" ]] && offsite=1; done
+
+    step "بکاپِ دیتابیس"
+    if [[ ! -x deploy/backup.sh ]]; then
+        red "deploy/backup.sh پیدا نشد."
+        return 1
+    fi
+    bash deploy/backup.sh 2>&1 | sed 's/^/  /'
+
+    if (( offsite )); then
+        step "فرستادنِ بکاپ به بیرونِ سرور"
+        if [[ -x deploy/backup-offsite.sh ]]; then
+            bash deploy/backup-offsite.sh --send 2>&1 | sed 's/^/  /' || \
+                warn "⚠ ارسالِ بیرونی انجام نشد — deploy/backup-offsite.sh --check را ببینید."
+        else
+            warn "⚠ deploy/backup-offsite.sh نیست."
+        fi
+    fi
+}
+
+# ---------------------------------------------------------------------
+cmd_logs() {
+    step "آخرین خطاهای ثبت‌شده‌ی اپ"
+    # ⚠ `require_once` اجباری است، نه سلیقه: خودِ `db.php` فایلِ
+    #   `app_errors.php` را لود می‌کند، پس `require`ِ ساده کلاس را دوباره
+    #   تعریف می‌کند و خطای کشنده می‌دهد.
+    php -r '
+        require_once "includes/db.php";
+        require_once "includes/app_errors.php";
+        $rows = AppErrors::recent(15);
+        if (!$rows) { echo "  هیچ خطایی ثبت نشده.\n"; exit; }
+        foreach ($rows as $r) {
+            printf("  [%s] %s  (%d بار، آخرین: %s)\n",
+                $r["level"] ?? "?", mb_substr($r["message"] ?? "", 0, 110),
+                (int)($r["hits"] ?? 1), $r["last_seen"] ?? "?");
+        }
+    ' 2>/dev/null || warn "⚠ خواندنِ خطاها ممکن نشد (دیتابیس یا جدولِ app_errors)."
+}
+
+# ---------------------------------------------------------------------
+cmd_status() {
+    bold "══ وضعیتِ حساب لند ══"
+
+    step "نسخه"
+    info "  کامیت:  $(git rev-parse --short HEAD 2>/dev/null || echo '?')  ($(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '?'))"
+    info "  پیام:   $(git log -1 --pretty=%s 2>/dev/null || echo '?')"
+    info "  تاریخ:  $(git log -1 --pretty=%cd --date=short 2>/dev/null || echo '?')"
+    info "  var/version.txt: $(cat var/version.txt 2>/dev/null || echo '—')"
+    info "  دارایی‌ها: $(asset_version)"
+
+    step "سلامتِ سایت"
+    health_check || true
+
+    step "migration"
+    [[ -x deploy/migrate.sh ]] && bash deploy/migrate.sh 2>&1 | sed 's/^/  /' || true
+
+    step "کارهای زمان‌بندی‌شده (cron)"
+    # ⚠ status() یک **فهرست** برمی‌گرداند نه نگاشتِ کلیددار، پس نامِ کار
+    #   از خودِ ردیف (`key`) خوانده می‌شود. و `functions.php` لازم است
+    #   چون `ago()` از `toPersianDigits()` رد می‌شود — بدونش خطای کشنده
+    #   می‌داد و کلِ کارت **بی‌صدا** خالی می‌ماند.
+    php -r '
+        require_once "includes/db.php";
+        require_once "includes/functions.php";
+        require_once "includes/cron_health.php";
+        foreach (CronHealth::status() as $s) {
+            $mark = $s["state"] === "ok" ? "+" : ($s["state"] === "stale" ? "!" : "-");
+            printf("  %s %-11s %-28s %s\n", $mark, $s["key"], $s["label"] ?? "",
+                   $s["state"] === "never" ? "هرگز اجرا نشده" : CronHealth::ago($s["age"] ?? null));
+        }
+    ' 2>/dev/null || warn "  ⚠ خوانده نشد."
+
+    step "بکاپ‌ها"
+    ls -lh /opt/hesab/backups/*.sql.gz 2>/dev/null | tail -5 \
+        | awk '{print "  "$9"  "$5"  "$6" "$7" "$8}' || info "  هیچ بکاپی نیست."
+
+    step "خطاها"
+    php -r '
+        require_once "includes/db.php"; require_once "includes/app_errors.php";
+        printf("  %d خطا در ۷ روز گذشته\n", AppErrors::countSince(7));
+    ' 2>/dev/null || warn "  ⚠ خوانده نشد."
+
+    step "دیسک و سرویس"
+    df -h "$APP_DIR" 2>/dev/null | tail -1 | awk '{print "  دیسک: "$5" پر ("$3" از "$2")"}'
+    local svc
+    for svc in php8.4-fpm php8.3-fpm php8.2-fpm php8.1-fpm php-fpm; do
+        if systemctl is-active --quiet "$svc" 2>/dev/null; then
+            info "  $svc: فعال"
+            break
+        fi
+    done
+    systemctl is-active --quiet nginx 2>/dev/null && info "  nginx: فعال" || warn "  nginx: فعال نیست"
+    echo
+}
+
+# ---------------------------------------------------------------------
+cmd_rollback() {
+    local target=''
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --to) target="${2:-}"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+
+    if [[ -z "$target" ]]; then
+        target=$(git rev-parse --short HEAD~1 2>/dev/null || true)
+        [[ -z "$target" ]] && { red "کامیتِ قبلی پیدا نشد."; return 1; }
+    fi
+
+    warn "برگشت از $(git rev-parse --short HEAD) به $target"
+    warn "⛔ این فقط **کد** را برمی‌گرداند. اگر بعد از آن کامیت migration"
+    warn "   اعمال شده باشد، ساختارِ دیتابیس جلوتر می‌ماند و کدِ قدیمی"
+    warn "   ممکن است با آن کار نکند. بازیابیِ دیتابیس کارِ جداست:"
+    warn "   sudo bash deploy/restore.sh --admin"
+    read -r -p "ادامه؟ (y/N) " a
+    [[ "${a,,}" == "y" ]] || { info "لغو شد."; return 1; }
+
+    git reset --hard "$target" --quiet
+    apply_permissions
+    clear_php_cache || true
+    step "سنجشِ سلامت پس از برگشت"
+    health_check || red "⛔ بعد از برگشت هم سالم نشد."
+}
+
+# ---------------------------------------------------------------------
+apply_permissions() {
+    mkdir -p uploads/avatars var var/sessions var/cron
+
+    cat > uploads/.htaccess << 'HTACCESS'
+php_flag engine off
+Options -ExecCGI -Indexes
+<FilesMatch "\.(php|phtml|php3|php4|php5|phar|cgi|pl)$">
+    Require all denied
+</FilesMatch>
+HTACCESS
+
+    # نسخه‌ی مستقرشده، برای پروفایل و صفحه‌ی حریم خصوصی.
+    # ⚠ اینجا نوشته می‌شود نه هنگام نمایش: pool این اپ exec/shell_exec را
+    #   غیرفعال کرده (قانون جداسازی سرور)، پس PHP خودش git را نمی‌بیند.
+    printf '%s · %s\n' "$(git rev-parse --short HEAD 2>/dev/null || echo '?')" \
+                       "$(date '+%Y-%m-%d')" > var/version.txt 2>/dev/null || true
+
+    # کد مالِ root می‌ماند تا نه PHP بتواند عوضش کند نه git خطای
+    # «مالکیتِ مشکوک» بدهد. فقط uploads و var مالِ کاربرِ اپ‌اند.
+    chown -R root:root . 2>/dev/null || true
+    find . -type d -not -path './.git/*' -exec chmod 755 {} \;
+    find . -type f -not -path './.git/*' -exec chmod 644 {} \;
+    # گیت بیتِ اجرا را ردیابی می‌کند؛ بدونِ این خط git pull بعدی می‌شکند.
+    find . -name '*.sh' -not -path './.git/*' -exec chmod 755 {} \;
+    chmod 755 hesabland deploy.sh 2>/dev/null || true
+
+    if id -u "$APP_USER" >/dev/null 2>&1; then
+        chown -R "$APP_USER":"$APP_USER" uploads
+
+        # ⚠️ var هم مثل uploads باید به کاربرِ اپ برگردد.
+        #
+        # این خط یک بار جا افتاده بود و باگی ساخت که هیچ ردی در لاگ
+        # نداشت: session.save_path این pool داخلِ خودِ پوشه‌ی اپ است
+        # (var/sessions)، پس chown -R root:root بالاتر آن را هم مالِ root
+        # می‌کرد و PHP — که با کاربرِ اپ اجرا می‌شود — دیگر نمی‌توانست
+        # فایلِ نشست بنویسد. نتیجه: هر درخواست یک نشستِ خالیِ تازه، پس
+        # توکنِ CSRF هرگز نمی‌ماند و صفحه‌ی ورود در حلقه‌ی «نشست شما
+        # منقضی شده بود» گیر می‌کرد. هیچ‌کس نمی‌توانست وارد شود.
+        chown -R "$APP_USER":"$APP_USER" var
+        chmod 700 var/sessions
+
+        # و واقعاً آزموده می‌شود. سکوت اینجا بدترین حالت است، چون اپ
+        # بالا می‌آید و فقط هیچ‌کس نمی‌تواند وارد شود.
+        if ! sudo -u "$APP_USER" test -w var/sessions 2>/dev/null; then
+            red "⛔ کاربر $APP_USER نمی‌تواند در var/sessions بنویسد."
+            red "   با این وضع هیچ‌کس نمی‌تواند وارد شود («نشست شما منقضی شده بود»)."
+            red "   بررسی کنید:  ls -ld $APP_DIR/var $APP_DIR/var/sessions"
+        fi
+    else
+        red "کاربر $APP_USER وجود ندارد — اول deploy/vps-setup.sh را اجرا کنید."
+    fi
+
+    # ⚠️ ترتیب مهم است: اول گروه به کاربرِ اپ، بعد 640. اگر chown شکست
+    # بخورد و 640 اجرا شود، فایل مالِ root:root می‌ماند و PHP دیگر
+    # نمی‌تواند بخواند — کلِ سایت ۵۰۰ می‌دهد. یک بار deploy/mail-setup.sh
+    # همین کار را کرد و اپ خوابید. پس آخرش واقعاً می‌آزماییم.
+    if [[ -f config/config.php ]]; then
+        if chown root:"$APP_USER" config/config.php 2>/dev/null \
+           && chmod 640 config/config.php 2>/dev/null \
+           && sudo -u "$APP_USER" test -r config/config.php 2>/dev/null; then
+            :
+        else
+            chmod 644 config/config.php 2>/dev/null || true
+            red "config.php نتوانست 640 بماند — 644 شد تا اپ بالا بماند."
+        fi
+    fi
+}
+
+# ---------------------------------------------------------------------
+# ⛔ نحوِ کدِ ورودی **پیش از فرود** سنجیده می‌شود.
+#
+# اگر بعد از `git reset --hard` بسنجیم، دیر است: opcache همان لحظه کدِ
+# تازه را می‌بیند و سایت پیش از اولین سنجش خوابیده. اینجا فایل‌ها را از
+# خودِ گیت می‌خوانیم، پس هیچ چیزی روی دیسک نمی‌نشیند.
+# ---------------------------------------------------------------------
+preflight_syntax() {
+    local ref="$1" bad=0 f
+    local files
+    files=$(git diff --diff-filter=ACMR --name-only HEAD "$ref" -- '*.php' 2>/dev/null || true)
+    [[ -z "$files" ]] && { info "هیچ فایلِ PHP ای عوض نشده."; return 0; }
+
+    local n=0
+    while IFS= read -r f; do
+        [[ -z "$f" ]] && continue
+        n=$((n + 1))
+        if ! git show "${ref}:${f}" 2>/dev/null | php -l >/dev/null 2>&1; then
+            red "  ⛔ خطای نحو: $f"
+            git show "${ref}:${f}" 2>/dev/null | php -l 2>&1 | sed 's/^/     /' | head -3
+            bad=$((bad + 1))
+        fi
+    done <<< "$files"
+
+    if (( bad > 0 )); then
+        red "⛔ $bad فایل خطای نحو دارد — هیچ چیزی روی سرور ننشست."
+        return 1
+    fi
+    green "✓ نحوِ هر $n فایلِ PHP ورودی درست است"
+    return 0
+}
+
+# ---------------------------------------------------------------------
+cmd_deploy() {
+    local do_migrate=0 do_backup=1 do_health=1 force=0
+    for a in "$@"; do
+        case "$a" in
+            --migrate)    do_migrate=1 ;;
+            --no-backup)  do_backup=0 ;;
+            --no-health)  do_health=0 ;;
+            --force)      force=1 ;;
+            deploy)       ;;
+            *) red "گزینه‌ی ناشناخته: $a"; usage; exit 1 ;;
+        esac
+    done
+
+    bold "══ استقرارِ حساب لند ══"
+
+    # ---------- تغییراتِ محلیِ سرور ----------
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        red "روی سرور تغییراتِ ذخیره‌نشده وجود دارد:"
+        git status --short | sed 's/^/  /'
+        if (( force )); then
+            warn "--force داده شد؛ دور ریخته می‌شوند."
+        else
+            read -r -p "این تغییرات دور ریخته شوند؟ (y/N) " answer
+            [[ "${answer,,}" == "y" ]] || { red "لغو شد."; exit 1; }
+        fi
+        git reset --hard --quiet
+    fi
+
+    # ---------- دریافت ----------
+    step "دریافت از گیت"
+    local BEFORE BRANCH AFTER
+    BEFORE=$(git rev-parse --short HEAD)
+    git fetch --all --quiet
+    BRANCH=$(git rev-parse --abbrev-ref HEAD)
+
+    if git diff --quiet HEAD "origin/${BRANCH}" 2>/dev/null; then
+        info "تغییری نبود (نسخه $BEFORE)."
+    else
+        info "تغییراتِ ورودی:"
+        git log --oneline "HEAD..origin/${BRANCH}" | sed 's/^/  /'
+    fi
+
+    # ---------- نحو، پیش از فرود ----------
+    step "بررسیِ نحوِ کدِ ورودی (پیش از نشستن روی دیسک)"
+    preflight_syntax "origin/${BRANCH}" || exit 1
+
+    # ---------- بکاپ ----------
+    if (( do_backup )); then
+        step "بکاپِ دیتابیس پیش از استقرار"
+        if [[ -x deploy/backup.sh ]] && bash deploy/backup.sh >/dev/null 2>&1; then
+            green "✓ بکاپ گرفته شد"
+        else
+            # ⛔ بکاپِ نگرفته فقط وقتی مجازِ ادامه است که migration هم در
+            #    کار نباشد: برگرداندنِ کد آسان است، برگرداندنِ ساختارِ
+            #    دیتابیس نه.
+            if (( do_migrate )); then
+                red "⛔ بکاپ گرفته نشد و --migrate خواسته شده — جلو نمی‌رویم."
+                red "   اول این را ببینید:  sudo bash deploy/backup.sh"
+                exit 1
+            fi
+            warn "⚠ بکاپ گرفته نشد؛ چون migration هم اعمال نمی‌شود، ادامه می‌دهیم."
+        fi
+    fi
+
+    # ---------- فرود ----------
+    git reset --hard "origin/${BRANCH}" --quiet
+    AFTER=$(git rev-parse --short HEAD)
+    if [[ "$BEFORE" == "$AFTER" ]]; then
+        info "نسخه همان $AFTER ماند."
+    else
+        green "به‌روزرسانی شد: $BEFORE → $AFTER"
+    fi
+
+    # ---------- دسترسی‌ها ----------
+    step "دسترسی‌ها و پوشه‌ها"
+    apply_permissions
+    green "✓ انجام شد"
+
+    # ---------- migration ----------
+    local migrated=0
+    step "migration"
+    if [[ -x deploy/migrate.sh ]]; then
+        if (( do_migrate )); then
+            if bash deploy/migrate.sh --apply 2>&1 | sed 's/^/  /'; then
+                migrated=1
+            else
+                red "⛔ اعمالِ migration شکست خورد."
+                exit 1
+            fi
+        else
+            bash deploy/migrate.sh 2>&1 | sed 's/^/  /' || true
+            info "(اعمال نشد — با --migrate اعمال می‌شود. تغییرِ ساختارِ"
+            info " دیتابیس باید تصمیمِ آگاهانه باشد، نه اثرِ جانبیِ deploy.)"
+        fi
+    fi
+
+    # ---------- کش ----------
+    step "پاک کردنِ کش"
+    clear_php_cache || true
+    info "نسخه‌ی دارایی‌ها: $(asset_version)"
+
+    # ---------- سلامت ----------
+    if (( do_health )); then
+        step "سنجشِ سلامت"
+        if health_check; then
+            echo
+            green "✅ استقرار کامل شد و سایت سالم است — $AFTER"
+            return 0
+        fi
+
+        # ---------- برگشت ----------
+        echo
+        if (( migrated )); then
+            red "⛔ سایت سالم نیست، ولی migration اعمال شده — **برنمی‌گردانیم**."
+            red "   کدِ قدیمی روی ساختارِ تازه یک خرابیِ دیگر است، نه رفعِ خرابی."
+            red "   دو راه:"
+            red "     ۱. خطا را ببینید:   sudo ./hesabland logs"
+            red "     ۲. بازیابیِ کامل:    sudo bash deploy/restore.sh --admin"
+            exit 1
+        fi
+
+        if [[ "$BEFORE" == "$AFTER" ]]; then
+            red "⛔ سایت سالم نیست، ولی این استقرار هیچ چیزی را عوض نکرد."
+            red "   یعنی خرابی از قبل بوده. ببینید:  sudo ./hesabland logs"
+            exit 1
+        fi
+
+        warn "برگشت خودکار به $BEFORE ..."
+        git reset --hard "$BEFORE" --quiet
+        apply_permissions
+        clear_php_cache || true
+        if health_check quiet; then
+            green "✓ برگشت انجام شد و سایت دوباره سالم است (نسخه $BEFORE)."
+            red "⛔ ولی کامیت $AFTER سایت را می‌خواباند — پیش از استقرارِ دوباره درستش کنید."
+        else
+            red "⛔ بعد از برگشت هم سالم نشد. خرابی جای دیگری است."
+            red "   ببینید:  sudo ./hesabland logs   و   sudo ./hesabland status"
+        fi
+        exit 1
+    fi
+
+    echo
+    warn "⚠ سنجشِ سلامت رد شد (--no-health) — یعنی هیچ چیزی تأیید نشده."
+    green "استقرار انجام شد — $AFTER"
+}
+
+# ---------------------------------------------------------------------
+# ⚠ اگر این فایل `source` شود فقط توابعش تعریف می‌شوند و هیچ کاری انجام
+#   نمی‌دهد. دلیلش انعطاف نیست: بدونِ آن، تنها راهِ آزمودنِ
+#   `preflight_syntax` و `health_check` کپی کردنشان در یک هارنس بود —
+#   یعنی آزمودنِ یک نسخه‌ی دوم، همان دامی که بخشِ CSV در
+#   `test_tx_search` یک بار در آن افتاد.
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+    return 0
+fi
+
+cd "$APP_DIR" || { red "پوشه $APP_DIR پیدا نشد."; exit 1; }
+
+CMD="${1:-deploy}"
+[[ $# -gt 0 ]] && shift || true
+
+case "$CMD" in
+    deploy)   cmd_deploy "$@" ;;
+    health)   step "سنجشِ سلامت"; health_check ;;
+    cache)    cmd_cache "$@" ;;
+    status)   cmd_status ;;
+    backup)   cmd_backup "$@" ;;
+    rollback) cmd_rollback "$@" ;;
+    logs)     cmd_logs ;;
+    help|-h|--help) usage ;;
+    --*)      cmd_deploy "$CMD" "$@" ;;
+    *)        red "فرمانِ ناشناخته: $CMD"; echo; usage; exit 1 ;;
+esac
