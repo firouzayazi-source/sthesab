@@ -2990,12 +2990,18 @@ T::bulk(9, $badPriv, '⛔ شخصی‌سازی و حذفِ دسته‌بندی ی
 //
 // دو تصمیم که هر دو خرابیِ بی‌صدا دارند:
 //
-// ۱. **ادغام باید یک مرجع داشته باشد.** `admin/categories.php` و
-//    `api/manage_reference.php` هر دو همان کار را می‌کنند (یکی برای
-//    پیش‌فرض، یکی برای دسته‌ی شخصی). با دو نسخه، اولین اصلاحی که فقط
-//    به یکی برسد سدِ شمارشِ پیش از `commit` را از آن یکی می‌اندازد —
-//    و آن‌وقت `ON DELETE CASCADE` روی `budgets` بودجه‌ی کاربر را
-//    بی‌صدا می‌برد.
+// ۱. **ادغام یک عملیاتِ پشتیبانی است، نه یک گزینه در اپ.** گزینه‌اش
+//    ساخته شد و به خواستِ صریحِ مالکِ نصب پس گرفته شد («دیگه گزینه
+//    ادغام نمی‌خوام») — همان اتفاقی که دو بار سرِ `optionPicker()`
+//    افتاد. ولی خودِ `mergeCategories()` ماند، چون **تنها جایی است
+//    که برخوردِ کلیدِ یکتا (`budgets`, `category_pins`) و سدِ شمارشِ
+//    پیش از `commit` در آن نوشته شده**؛ یک `UPDATE … SET category_id`
+//    دستی روی نصبی که کسی هر دو دسته را پین کرده با «Duplicate entry»
+//    می‌میرد و `ON DELETE CASCADE` بعدش بودجه‌ی کاربر را می‌برد.
+//    پس این قاعده دو طرفه است: تابع و سه نگهبانش بمانند، و **در پشتی
+//    تنها مصرف‌کننده‌اش باشد** (`deploy/user-admin.php --merge-categories`،
+//    مثل `--unlock` و `--sms-check`). برگشتِ UI ممنوع است — وگرنه
+//    قاعده‌ای که موضوعش رفته همیشه‌سبز می‌ماند و بی‌صدا برمی‌گردد.
 //
 // ۲. **صفحه‌بندی نباید `LIMIT` بشود و نباید سقفِ بی‌صدا بگذارد.** با
 //    `LIMIT`، هر فهرست دو کوئریِ تازه به صفحه‌ای اضافه می‌کند که
@@ -3012,8 +3018,21 @@ $badMerge = [];
 $fnSrc  = $stripComments(__DIR__ . '/../includes/functions.php');
 $catAdm = $stripComments(__DIR__ . '/../admin/categories.php');
 $refApi = $stripComments(__DIR__ . '/../api/manage_reference.php');
+$refPg  = $stripComments(__DIR__ . '/../references.php');
+$cliSrc = $stripComments(__DIR__ . '/../deploy/user-admin.php');
 $pagSrc = $stripComments(__DIR__ . '/../includes/paged_list.php');
 $insSrc = $stripComments(__DIR__ . '/../admin/insights.php');
+
+// ⚠ `token_get_all()` روی فایلِ JS/CSS همه‌چیز را `T_INLINE_HTML` می‌بیند،
+//   پس کامنت‌هایشان دست‌نخورده می‌مانند و بررسیِ «این نام برنگشته» روی
+//   یک توضیح هم قرمز می‌شد — همان هشدارِ الکی که از نبودِ تست بدتر است.
+$stripCLike = static function (string $file): string {
+    $s = (string)file_get_contents($file);
+    $s = preg_replace('#/\*.*?\*/#s', '', $s);
+    return (string)preg_replace('#(^|\s)//[^\n]*#', '$1', (string)$s);
+};
+$jsSrcM  = $stripCLike(__DIR__ . '/../assets/js/app.js');
+$cssSrcM = $stripCLike(__DIR__ . '/../assets/css/style.css');
 
 if (!preg_match('/function\s+mergeCategories\s*\(.*?\n\}/s', $fnSrc, $mm)) {
     $badMerge[] = 'mergeCategories() پیدا نشد';
@@ -3039,26 +3058,44 @@ if (strpos($fnSrc, 'information_schema.STATISTICS') === false) {
     $badMerge[] = 'categoryUniqueKeys() — کلیدها از دیتابیس کشف نمی‌شوند';
 }
 
-// ⛔ هر دو مصرف‌کننده از همان تابع رد شوند، نه کوئریِ خودشان.
-foreach (['admin/categories.php' => $catAdm, 'api/manage_reference.php' => $refApi] as $f => $src) {
-    if (strpos($src, 'mergeCategories(') === false) {
-        $badMerge[] = $f . ' — ادغام از mergeCategories() رد نمی‌شود';
+// ⛔ گزینه‌ی ادغام به اپ برنگردد. چهار فایلِ UI و `style.css` سنجیده
+//    می‌شوند، چون خرابی‌اش همان «قابلیتی که بی‌صدا برمی‌گردد» است.
+$uiFiles = [
+    'admin/categories.php'     => $catAdm,
+    'references.php'           => $refPg,
+    'api/manage_reference.php' => $refApi,
+    'assets/js/app.js'         => $jsSrcM,
+    'assets/css/style.css'     => $cssSrcM,
+];
+foreach ($uiFiles as $f => $src) {
+    if (strpos($src, 'mergeCategories(') !== false) {
+        $badMerge[] = $f . ' — ادغام نباید از اپ در دسترس باشد (فقط user-admin.php)';
     }
+    foreach (['catMerge', 'MERGE_CATS', 'js-cat-merge', 'ref-chip-merge'] as $marker) {
+        if (strpos($src, $marker) !== false) {
+            $badMerge[] = $f . ' — نشانه‌ی UI ادغام برگشته: ' . $marker;
+        }
+    }
+    // ⛔ و همان قاعده‌ی قبلی سرِ جایش: جابه‌جاییِ `category_id` فقط در
+    //    `mergeCategories()` و `privatizeDefaultCategory()` است.
     if (preg_match('/UPDATE\s+`?\w+`?\s+SET\s+category_id/i', $src)) {
         $badMerge[] = $f . ' — جابه‌جاییِ category_id باید فقط در mergeCategories() باشد';
     }
 }
-// ⛔ دامنه‌ی اندپوینتِ کاربر از نشست می‌آید، نه از پیلود: با
-//    `postParam('user_id')` هر کسی می‌توانست دسته‌ی دیگری را ادغام کند.
-// ⚠ الگو باید پرانتزِ تودرتو را تحمل کند: آرگومان‌ها `(int)postParam('id')`
-//   دارند و یک `[^)]*` سرِ همان `)` می‌برید — روی فایلِ **سالم** دو
-//   هشدارِ الکی داد. هشدارِ الکی از نبودِ تست بدتر است.
-if (!preg_match('/mergeCategories\((?:[^()]|\([^()]*\))*\$userId\s*\)/', $refApi)) {
-    $badMerge[] = 'api/manage_reference.php — دامنه‌ی ادغام باید $userId نشست باشد';
+// ⛔ اندپوینتِ فهرست‌های کمکی هم نباید `action=merge` بشناسد: گیتِ
+//    صفحه بدونِ گیتِ اندپوینت فقط تزئین است (همان درسِ قاعده ۲۶).
+if (preg_match("/\\\$action\s*===\s*'merge'/", $refApi)) {
+    $badMerge[] = 'api/manage_reference.php — action=merge باید برداشته شده باشد';
 }
-// و در پنل مدیر دامنه `null` است (پیش‌فرض‌ها).
-if (!preg_match('/mergeCategories\((?:[^()]|\([^()]*\))*,\s*null\s*\)/', $catAdm)) {
-    $badMerge[] = 'admin/categories.php — دامنه‌ی ادغام باید null (پیش‌فرض) باشد';
+
+// ⛔ تنها مصرف‌کننده، در پشتیِ خط فرمان است — مثل `--unlock`.
+if (strpos($cliSrc, 'mergeCategories(') === false) {
+    $badMerge[] = 'deploy/user-admin.php — --merge-categories باید از mergeCategories() رد شود';
+}
+// ⛔ دامنه از **ردیفِ مبدأ** خوانده می‌شود، نه از آرگومان: با آرگومان،
+//    یک اشتباهِ تایپی ردیف‌های همه‌ی کاربران را جابه‌جا می‌کرد.
+if (!preg_match('/\$src\[.user_id.\]\s*===\s*null\s*\?\s*null\s*:/', $cliSrc)) {
+    $badMerge[] = 'deploy/user-admin.php — دامنه باید از ردیفِ مبدأ بیاید، نه از ورودی';
 }
 
 // --- صفحه‌بندی ---
@@ -3087,7 +3124,7 @@ foreach (['never', 'stale', 'users'] as $k) {
     }
 }
 
-T::bulk(16, $badMerge, '⛔ ادغامِ دسته‌بندی و صفحه‌بندی یک مرجع دارند');
+T::bulk(46, $badMerge, '⛔ ادغام فقط از خط فرمان، و صفحه‌بندی یک مرجع دارد');
 
 // ---------------------------------------------------------------
 // قاعده ۴۲ — بازگرداندن از فایلِ بکاپ

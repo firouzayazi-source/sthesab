@@ -336,23 +336,4 @@ if ($action === 'delete') {
     }
 }
 
-// ---------- ادغامِ دو دسته‌بندیِ هم‌معنا ----------
-//
-// ⛔ منطقش در `mergeCategories()` است، نه اینجا — همان قاعده‌ی «تنها
-//    یک مرجع». `admin/categories.php` هم دقیقاً همان تابع را با
-//    دامنه‌ی `null` صدا می‌زند؛ با دو نسخه، اولین اصلاحی که فقط به
-//    یکی برسد سدِ «شمارشِ ردیف‌ها» را از آن یکی می‌انداخت.
-//
-// ⛔ دامنه **کاربر جاری** است (`Auth::userId()`)، نه ورودیِ پیلود:
-//    یعنی مبدأ باید دسته‌ی شخصیِ خودش باشد و فقط ردیف‌های خودش
-//    جابه‌جا می‌شوند. کاربر عادی به هیچ روشی نمی‌تواند دسته‌ی پیش‌فرض
-//    را از فهرستِ بقیه بردارد.
-if ($action === 'merge' && $kind === 'category') {
-    if (!tableHasColumn('categories', 'user_id')) {
-        jsonResponse(['success' => false, 'message' => 'مورد یافت نشد.'], 404);
-    }
-    $res = mergeCategories((int)postParam('id'), (int)postParam('into_id'), $userId);
-    jsonResponse(['success' => $res['ok'], 'message' => $res['message']], $res['ok'] ? 200 : 422);
-}
-
 jsonResponse(['success' => false, 'message' => 'عملیات نامعتبر است.'], 422);

@@ -17,6 +17,8 @@
  *   php deploy/user-admin.php --activate ali
  *   php deploy/user-admin.php --set-email ali ali@gmail.com
  *   php deploy/user-admin.php --test-mail you@gmail.com
+ *   php deploy/user-admin.php --merge-categories
+ *   php deploy/user-admin.php --merge-categories 12 7
  */
 
 // ---------- نگهبان: فقط خط فرمان ----------
@@ -51,6 +53,8 @@ function usage(): void
     out("  $me --set-phone ali 09123456789        ثبت شماره برای ورود با پیامک");
     out("  $me --sms-check 09123456789            چرا کدِ ورود برای این شماره نمی‌رود؟");
     out("  $me --stats-check ali                  عددِ «آمار استفاده» این کاربر از کجا می‌آید؟");
+    out("  $me --merge-categories                 فهرستِ دسته‌بندی‌ها با شناسه (برای پیدا کردنِ عدد)");
+    out("  $me --merge-categories 12 7            ادغامِ دسته‌بندیِ ۱۲ در ۷ (۱۲ حذف می‌شود)");
     out("");
     out("نشانه‌های < > را در فرمان ننویسید — bash آن‌ها را تغییرمسیر فایل می‌فهمد");
     out("و با «syntax error near unexpected token» متوقف می‌شود.");
@@ -658,6 +662,114 @@ if ($cmd === '--test-mail') {
     out('    • خطای TLS                      → SMTP_SECURE را عوض کنید (tls / ssl / none)');
     out('    • پاسخ 550 به MAIL FROM         → آدرس فرستنده باید متعلق به همان دامنه باشد');
     exit(1);
+}
+
+// ---------------------------------------------------------------
+// ⛔ ادغامِ دو دسته‌بندیِ هم‌معنا — **فقط از خط فرمان**.
+//
+// یک بار به‌صورت دکمه در پنل مدیر و «فهرست‌های من» بود و مالکِ نصب
+// پسش گرفت: «دیگه گزینه ادغام نمی‌خوام». ادغام کارِ روزمره‌ی کاربر
+// نیست — یک تعمیرِ نادر است (دو املای یک نام، مثل «حمل و نقل» و
+// «حمل‌ونقل») و جایش همین‌جاست، کنارِ بقیه‌ی درهای پشتی.
+//
+// ⛔ ولی منطقش همچنان `mergeCategories()` است، نه یک کوئریِ دستی:
+//    سدِ برخوردِ کلیدِ یکتا (`budgets`، `category_pins`) و سدِ شمارشِ
+//    پیش از `commit` آنجاست. با `UPDATE … SET category_id` خام، اولین
+//    نصبی که کسی هر دو دسته را پین کرده باشد «Duplicate entry» می‌داد.
+//
+// ⚠ دامنه از خودِ ردیفِ مبدأ خوانده می‌شود، نه از آرگومان: دسته‌ی
+//   پیش‌فرض (`user_id IS NULL`) با دامنه‌ی مدیر می‌رود و دسته‌ی شخصی
+//   با دامنه‌ی همان کاربر.
+if ($cmd === '--merge-categories') {
+    $pdo = Database::getConnection();
+
+    if (!tableHasColumn('categories', 'user_id')) {
+        fail('ستون user_id روی جدول دسته‌بندی‌ها نیامده است — اول migration ها را اعمال کنید.');
+    }
+
+    // بدون آرگومان: فقط فهرست، تا شناسه‌ها را ببینید.
+    if (!isset($argvIn[1])) {
+        $rows = $pdo->query(
+            'SELECT c.id, c.name, c.type, c.user_id, u.username,
+                    (SELECT COUNT(*) FROM transactions t WHERE t.category_id = c.id) AS tx
+               FROM categories c
+               LEFT JOIN users u ON u.id = c.user_id
+              ORDER BY c.type, c.name, c.id'
+        )->fetchAll();
+
+        out('');
+        out(sprintf('  %-7s %-8s %-14s %-8s %s', 'شناسه', 'نوع', 'مالک', 'تراکنش', 'نام'));
+        out('  ' . str_repeat('-', 60));
+        foreach ($rows as $r) {
+            out(sprintf(
+                '  %-7s %-8s %-14s %-8s %s',
+                $r['id'],
+                $r['type'] === 'income' ? 'درآمد' : 'هزینه',
+                $r['user_id'] === null ? 'پیش‌فرض' : (string)$r['username'],
+                $r['tx'],
+                $r['name']
+            ));
+        }
+
+        // ⛔ هم‌نام‌های «دیده‌نشدنی» جدا گزارش می‌شوند: تفاوتِ «حمل و نقل»
+        //    و «حمل‌ونقل» فقط یک نیم‌فاصله است و در فهرستِ بالا دو خطِ
+        //    تقریباً یکسان به نظر می‌رسند. همین نامرئی بودن همان چیزی
+        //    است که باعث شد تکراری بودنشان دیده نشود.
+        $norm = static function (string $n): string {
+            $n = str_replace(["\u{200c}", "\u{200b}", "\u{00a0}", ' '], '', $n);
+            return mb_strtolower(trim($n));
+        };
+        $groups = [];
+        foreach ($rows as $r) {
+            $groups[$r['type'] . '|' . $norm((string)$r['name']) . '|' . (string)$r['user_id']][] = $r;
+        }
+        $dups = array_filter($groups, static fn($g) => count($g) > 1);
+
+        out('');
+        if (!$dups) {
+            ok('  هیچ دو دسته‌بندیِ هم‌نامی (با اختلافِ فاصله یا نیم‌فاصله) پیدا نشد.');
+        } else {
+            red('  دسته‌بندی‌های هم‌نام — احتمالاً همین‌ها را می‌خواهید ادغام کنید:');
+            foreach ($dups as $g) {
+                $ids = implode(' و ', array_column($g, 'id'));
+                out("    «{$g[0]['name']}» → شناسه‌ها: {$ids}");
+            }
+        }
+        out('');
+        info('  ادغام:  php deploy/user-admin.php --merge-categories 12 7');
+        out('  شناسه‌ی اول حذف می‌شود و همه‌ی ردیف‌هایش به دومی می‌روند.');
+        out('  هیچ تراکنشی بی‌دسته نمی‌شود و هیچ عددی عوض نمی‌شود.');
+        exit(0);
+    }
+
+    $fromId = (int)($argvIn[1] ?? 0);
+    $intoId = (int)($argvIn[2] ?? 0);
+    if ($fromId <= 0 || $intoId <= 0) {
+        fail('دو شناسه بدهید: --merge-categories 12 7  (۱۲ در ۷ ادغام و ۱۲ حذف می‌شود)');
+    }
+
+    $st = $pdo->prepare('SELECT id, name, type, user_id FROM categories WHERE id IN (:a, :b)');
+    $st->execute(['a' => $fromId, 'b' => $intoId]);
+    $found = [];
+    foreach ($st->fetchAll() as $r) { $found[(int)$r['id']] = $r; }
+
+    if (!isset($found[$fromId])) { fail("دسته‌بندیِ مبدأ با شناسه‌ی {$fromId} پیدا نشد."); }
+    if (!isset($found[$intoId])) { fail("دسته‌بندیِ مقصد با شناسه‌ی {$intoId} پیدا نشد."); }
+
+    $src   = $found[$fromId];
+    $scope = $src['user_id'] === null ? null : (int)$src['user_id'];
+
+    out('');
+    out("  مبدا  : «{$src['name']}» (شناسه {$fromId}) — حذف می‌شود");
+    out("  مقصد  : «{$found[$intoId]['name']}» (شناسه {$intoId})");
+    out('  دامنه : ' . ($scope === null ? 'پیش‌فرضِ برنامه — ردیف‌های همه‌ی کاربران' : "کاربر #{$scope}"));
+    out('');
+
+    $res = mergeCategories($fromId, $intoId, $scope);
+    if (!$res['ok']) { fail('  ' . $res['message']); }
+
+    ok('  ' . $res['message']);
+    exit(0);
 }
 
 fail("دستور ناشناخته: $cmd  (--help را ببینید)");

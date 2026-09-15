@@ -1557,12 +1557,6 @@ button.status-badge:active { transform: scale(.96); }
 .ref-chip-x:hover { color: var(--out); }
 /* ادغام — فقط کنارِ دسته‌ی شخصی رندر می‌شود (مبدأ حذف می‌شود، و حذفِ
    یک پیش‌فرض کارِ پنل مدیر است). */
-.ref-chip-merge {
-    background: none; border: none;
-    color: var(--muted); font-size: 13px; line-height: 1;
-    padding: 0 3px; border-radius: 50%;
-}
-.ref-chip-merge:hover { color: var(--brand); }
 /* پینِ دسته‌بندی روی فرمِ ثبت — کنارِ نامِ همان دسته، نه یک فهرستِ دوم */
 .ref-chip-pin {
     display: inline-flex; align-items: center;

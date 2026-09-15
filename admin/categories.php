@@ -115,15 +115,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         //    دور می‌افتاد.
         $res = privatizeDefaultCategory((int)postParam('category_id'));
         redirectWithMessage('categories.php', $res['ok'] ? 'success' : 'error', $res['message']);
-    } elseif ($action === 'merge') {
-        // ⛔ «ادغام» — دو دسته‌ی هم‌معنا («حمل و نقل» و «حمل‌ونقل») یکی
-        //    می‌شوند. منطقش در `mergeCategories()` است، نه اینجا: همان
-        //    قاعده‌ی «تنها یک مرجع»، چون «فهرست‌های من» هم همان کار را
-        //    برای دسته‌ی شخصی می‌کند و دو نسخه دیر یا زود از هم دور
-        //    می‌افتند.
-        // ⚠ دامنه `null` است یعنی مدیر: هر دو باید پیش‌فرض باشند.
-        $res = mergeCategories((int)postParam('category_id'), (int)postParam('into_id'), null);
-        redirectWithMessage('categories.php', $res['ok'] ? 'success' : 'error', $res['message']);
     } elseif ($action === 'delete') {
         $targetId = (int)postParam('category_id');
 
@@ -271,11 +262,6 @@ include __DIR__ . '/../includes/header.php';
                                         <input type="hidden" name="category_id" value="<?= (int)$cat['id'] ?>">
                                         <button type="submit" class="btn btn-secondary btn-sm">شخصی‌سازی</button>
                                     </form>
-                                    <button type="button" class="btn btn-secondary btn-sm js-merge-category"
-                                        data-id="<?= (int)$cat['id'] ?>"
-                                        data-name="<?= h($cat['name']) ?>"
-                                        data-type="<?= h($cat['type']) ?>"
-                                        data-rows="<?= (int)$use['rows'] ?>">ادغام</button>
                                     <form method="POST" style="display:inline;" onsubmit="return confirm('آیا از حذف این دسته‌بندی مطمئن هستید؟ فقط دسته‌بندی بدون هیچ ردیفی قابل حذف است.');">
                                         <?= Csrf::field() ?>
                                         <input type="hidden" name="action" value="delete">
@@ -384,82 +370,5 @@ include __DIR__ . '/../includes/header.php';
         </form>
     </div>
 </div>
-
-<!-- مودال ادغام دسته‌بندی -->
-<div class="modal-overlay" id="mergeCategoryModal">
-    <div class="modal-box">
-        <div class="modal-header">
-            <h3>ادغام دسته‌بندی</h3>
-            <button type="button" class="modal-close" data-modal-close>&times;</button>
-        </div>
-        <form method="POST" id="mergeCategoryForm" autocomplete="off">
-            <?= Csrf::field() ?>
-            <input type="hidden" name="action" value="merge">
-            <input type="hidden" name="category_id" id="mergeFromId" value="">
-            <p class="hint" style="margin-top:0;">
-                <strong id="mergeFromName"></strong> حذف می‌شود و همه‌ی ردیف‌هایش
-                (<span id="mergeFromRows"></span> ردیف) به دسته‌بندیِ زیر منتقل می‌شوند.
-                هیچ تراکنشی بی‌دسته نمی‌شود.
-            </p>
-            <div class="form-group">
-                <label>در کدام دسته‌بندی ادغام شود؟</label>
-                <select name="into_id" id="mergeIntoId" required></select>
-            </div>
-            <div class="modal-actions">
-                <button type="button" class="btn btn-secondary" data-modal-close>انصراف</button>
-                <button type="submit" class="btn btn-primary">ادغام کن</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<script>
-/* ⛔ نامِ دسته را خودِ مدیر می‌نویسد و اینجا داخلِ `<script>` می‌نشیند،
-      پس `JSON_HEX_TAG` اجباری است — بدونش دسته‌ای به نامِ «</script>…»
-      از تگ بیرون می‌زد. همان قاعده ۳۸. */
-window.MERGE_CATS = <?= json_encode(array_map(fn($c) => [
-    'id'   => (int)$c['id'],
-    'name' => $c['name'],
-    'type' => $c['type'],
-], $categories), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
-
-document.addEventListener('DOMContentLoaded', function () {
-    var sel = document.getElementById('mergeIntoId');
-    document.querySelectorAll('.js-merge-category').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            var id = btn.dataset.id, type = btn.dataset.type;
-            document.getElementById('mergeFromId').value = id;
-            document.getElementById('mergeFromName').textContent = btn.dataset.name;
-            document.getElementById('mergeFromRows').textContent = btn.dataset.rows;
-
-            /* فهرست هر بار از نو ساخته می‌شود و فقط هم‌نوع‌ها می‌آیند:
-               ادغامِ هزینه در درآمد هیچ خطایی نمی‌دهد و فقط گزارش را
-               باد می‌کند، پس اصلاً نباید انتخاب‌شدنی باشد. */
-            sel.innerHTML = '';
-            (window.MERGE_CATS || []).forEach(function (c) {
-                if (c.type !== type || String(c.id) === String(id)) { return; }
-                var o = document.createElement('option');
-                o.value = c.id;
-                o.textContent = c.name;   /* نام را کاربر نوشته */
-                sel.appendChild(o);
-            });
-            if (!sel.options.length) {
-                alert('دسته‌بندیِ هم‌نوعِ دیگری برای ادغام وجود ندارد.');
-                return;
-            }
-            if (window.openModal) { window.openModal('mergeCategoryModal'); }
-            else { document.getElementById('mergeCategoryModal').classList.add('show'); }
-        });
-    });
-
-    document.getElementById('mergeCategoryForm').addEventListener('submit', function (e) {
-        var name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : '';
-        if (!confirm('«' + document.getElementById('mergeFromName').textContent
-            + '» حذف و در «' + name + '» ادغام می‌شود. این کار برگشت‌پذیر نیست. ادامه؟')) {
-            e.preventDefault();
-        }
-    });
-});
-</script>
 
 <?php include __DIR__ . '/../includes/footer.php'; ?>

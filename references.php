@@ -347,16 +347,6 @@ include __DIR__ . '/includes/header.php';
             <?php endif; ?>
             <?= h($c['name']) ?>
             <?php if (!$locked): ?>
-                <?php /* ⛔ «ادغام» فقط کنارِ دسته‌ی **شخصی** است: مبدأ حذف
-                         می‌شود و حذفِ یک پیش‌فرض یعنی دست زدن به فهرستِ
-                         همه‌ی کاربران — کاری که فقط از پنل مدیر برمی‌آید.
-                         خودِ `mergeCategories()` هم همین را می‌سنجد؛ این
-                         فقط دکمه‌ای را نشان نمی‌دهد که زدنش رد می‌شود. */ ?>
-                <button type="button" class="ref-chip-merge js-cat-merge"
-                        data-id="<?= (int)$c['id'] ?>"
-                        data-name="<?= h($c['name']) ?>"
-                        data-type="<?= h($c['type']) ?>"
-                        title="ادغام در دسته‌بندی دیگر" aria-label="ادغام">⤵</button>
                 <button type="button" class="ref-chip-x js-ref-delete" data-kind="category" data-id="<?= (int)$c['id'] ?>" aria-label="حذف">&times;</button>
             <?php endif; ?>
         </span>
@@ -415,46 +405,6 @@ include __DIR__ . '/includes/header.php';
         </form>
     </div>
 </div>
-
-<!-- ---------- ادغامِ دو دسته‌بندیِ هم‌معنا ---------- -->
-<div class="modal-overlay" id="catMerge">
-    <div class="modal-box">
-        <div class="modal-header">
-            <h3>ادغام دسته‌بندی</h3>
-            <button type="button" class="modal-close" data-modal-close="catMerge">&times;</button>
-        </div>
-        <form id="catMergeForm" autocomplete="off">
-            <input type="hidden" id="catMergeFrom" value="">
-            <p class="hint" style="margin-top:0;">
-                <strong id="catMergeName"></strong> حذف می‌شود و تراکنش‌ها، بودجه‌ها و
-                تراکنش‌های دوره‌ایِ آن به دسته‌بندیِ زیر منتقل می‌شوند. هیچ تراکنشی
-                بی‌دسته نمی‌شود.
-            </p>
-            <div class="form-group">
-                <label for="catMergeInto">در کدام دسته‌بندی ادغام شود؟</label>
-                <select id="catMergeInto" required></select>
-            </div>
-            <div id="catMergeMessage" class="form-message" hidden></div>
-            <div class="modal-actions">
-                <button type="button" class="btn btn-secondary" data-modal-close="catMerge">انصراف</button>
-                <button type="submit" class="btn btn-primary" id="catMergeSubmit">ادغام کن</button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<script>
-/* ⛔ `JSON_HEX_TAG` — نامِ دسته را خودِ کاربر نوشته و اینجا داخلِ
-      `<script>` می‌نشیند (قاعده ۳۸). */
-window.MERGE_CATS = <?= json_encode(array_map(fn($c) => [
-    'id'   => (int)$c['id'],
-    'name' => $c['name'],
-    'type' => $c['type'],
-], array_merge(
-    $myCats['expense'] ?? [], $myCats['income'] ?? [],
-    $defaultCats['expense'] ?? [], $defaultCats['income'] ?? []
-)), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
-</script>
 
 <meta name="csrf-token" content="<?= Csrf::token() ?>">
 
