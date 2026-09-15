@@ -4070,3 +4070,53 @@ html[data-theme="dark"] .start-card {
 .due-btn-ok   { color: var(--in); }
 .due-btn-mute { color: var(--out); }
 .due-btn:hover { background: var(--paper); }
+
+/* ⛔ شبکه‌ی چیپ‌های دسته‌بندی در شیتِ ثبت تراکنش.
+   ⚠ جایگزینِ `<select>` نیست؛ بالای آن می‌نشیند و فقط مقدارش را
+   می‌نویسد. دلیلش در `includes/add_tx_sheet.php` نوشته شده.
+   ⚠ `:empty` به‌جای `[hidden]` عمدی است: ظرف خالی از سرور می‌آید و
+   `app.js` پرش می‌کند، پس هیچ‌جا ویژگیِ `hidden` روی این کلاس رندر
+   نمی‌شود و قاعده ۱۸ موضوعیت ندارد. بدونِ این خط، ظرفِ خالی همان
+   `margin-bottom` را می‌گرفت و زیرِ برچسب یک فاصله‌ی بی‌دلیل می‌ماند. */
+.cat-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+.cat-grid:empty { display: none; }
+
+.cat-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    color: var(--ink-soft);
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    /* ⛔ برچسبِ یک کنترل هرگز وسطِ خودش نمی‌شکند — همان درسِ نیم‌فاصله
+       در قاعده ۳۱: «خوراکی‌ها» با U+200C جای شکستن دارد و چیپ را به دو
+       خط می‌بُرد. */
+    white-space: nowrap;
+}
+.cat-chip:active { transform: scale(.96); }
+.cat-chip-icon {
+    display: inline-flex;
+    color: var(--cc, #64748b);
+}
+.cat-chip-icon svg { display: block; width: 16px; height: 16px; }
+
+/* ⚠ رنگِ خودِ دسته روی حالتِ فعال می‌نشیند، نه `--brand`: کاربر همان
+   رنگ را در فهرست تراکنش‌ها و نمودارها هم می‌بیند. */
+.cat-chip.active {
+    background: color-mix(in srgb, var(--cc, #64748b) 14%, var(--surface));
+    border-color: var(--cc, #64748b);
+    color: var(--ink);
+}
+.cat-chip.active .cat-chip-icon { color: var(--cc, #64748b); }

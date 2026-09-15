@@ -2575,6 +2575,151 @@ foreach ($shFiles as $sh) {
 
 T::bulk(count($shFiles), $badTick, '⛔ هیچ بک‌تیکِ فرارنداده‌ای داخلِ رشته‌ی دابل‌کوت نیست');
 
+// ---------------------------------------------------------------------
+// قاعده ۳۷ — تاگلِ نوع: دکمه‌ی فعال با مقدارِ ارسالی یکی باشد
+//
+// ⛔ چرا **اینجا** و نه در تستِ رفتاری: `setupTypeToggle()` هنگام
+//    بارگذاری `activate(initialBtn)` را صدا می‌زند و مقدارِ فیلدِ پنهان
+//    را از روی دکمه‌ی فعال **بازنویسی** می‌کند. پس در مرورگر این
+//    ناهماهنگی خودبه‌خود ترمیم می‌شود و هیچ تستِ رفتاری‌ای نمی‌بیندش —
+//    جهشش در `test_tap_budget` **زنده ماند** و همین نشان داد قاعده‌ی
+//    شکل لازم است.
+//    ولی بی‌ضرر نیست: اگر `app.js` نرسد (همان حالتی که `js-loading`
+//    برایش ساخته شد — یک درخواستِ گیرکرده روی دیتای موبایل)، فرم با
+//    مقدارِ خامِ HTML ارسال می‌شود در حالی که کاربر دکمه‌ی دیگری را
+//    فعال می‌بیند: تراکنش **برعکس** ثبت می‌شود، بی‌هیچ خطایی.
+//
+// ⛔ و پیش‌فرضِ خودِ شیتِ ثبت باید «هزینه» بماند: روی همین دیتابیس
+//    ۲۹٬۲۲۴ هزینه در برابر ۱۰٬۷۷۹ درآمد شمرده شد.
+// ---------------------------------------------------------------------
+T::group('قاعده ۳۷ — تاگلِ نوع و مقدارِ ارسالی');
+
+$badToggle = [];
+$toggleFiles = glob(__DIR__ . '/../includes/*.php') ?: [];
+$toggleSeen = 0;
+
+foreach ($toggleFiles as $f) {
+    $src = (string)@file_get_contents($f);
+    // ⚠ شرطِ ورود «`data-type="expense"` دارد» است، نه `class="type-toggle"`:
+    //   `wallet_card_modals.php` هم آن کلاس را برای چیزِ دیگری دارد و
+    //   نسخه‌ی اولِ این قاعده روی فایلِ **سالم** قرمز شد — همان
+    //   «هشدارِ الکی از نبودِ تست بدتر است».
+    if (strpos($src, 'data-type="expense"') === false) { continue; }
+    $toggleSeen++;
+    $base = basename($f);
+
+    if (!preg_match('/class="type-btn[^"]*\bactive\b[^"]*"\s+data-type="(income|expense)"/', $src, $m)
+        && !preg_match('/data-type="(income|expense)"[^>]*class="type-btn[^"]*\bactive\b/', $src, $m)) {
+        $badToggle[] = "{$base} — دکمه‌ی `active` پیدا نشد";
+        continue;
+    }
+    $activeType = $m[1];
+
+    if (!preg_match('/<input[^>]*name="type"[^>]*value="(income|expense)"/', $src, $v)) {
+        $badToggle[] = "{$base} — فیلدِ پنهانِ `name=\"type\"` با مقدار پیدا نشد";
+        continue;
+    }
+    if ($v[1] !== $activeType) {
+        $badToggle[] = "{$base} — دکمه‌ی فعال «{$activeType}» است ولی مقدارِ ارسالی «{$v[1]}»";
+    }
+    if ($base === 'add_tx_sheet.php' && $activeType !== 'expense') {
+        $badToggle[] = "{$base} — پیش‌فرضِ شیتِ ثبت باید «هزینه» باشد، نه «{$activeType}»";
+    }
+}
+
+if ($toggleSeen < 2) {
+    $badToggle[] = 'کمتر از دو تاگلِ نوع پیدا شد — الگوی جست‌وجو خراب است';
+}
+T::bulk($toggleSeen, $badToggle, '⛔ دکمه‌ی فعالِ تاگل با مقدارِ ارسالی یکی است');
+
+// ---------------------------------------------------------------------
+// قاعده ۳۸ — شبکه‌ی دسته‌بندی و عنوانِ اختیاری
+//
+// ⛔ چهار تصمیم که خرابیِ هر کدام **بی‌صداست**:
+//    ۱. نامِ دسته با `textContent` نوشته شود، نه `innerHTML` — نام را
+//       خودِ کاربر می‌نویسد.
+//    ۲. سقفِ چیپ‌ها از `CATEGORY_GRID_MAX`ِ سرور بیاید، نه یک عددِ
+//       سخت‌کد در جاوااسکریپت (وگرنه دو مرجع، و یکی عقب می‌ماند).
+//    ۳. چیپ مقدار را روی خودِ `<select>` بنویسد و `change` بدهد — تنها
+//       چیزی که `optionPicker()` و `smsAutoOk()` و اعتبارسنجیِ فرم را
+//       سرِ پا نگه می‌دارد.
+//    ۴. عنوانِ خالی فقط از `fallbackTxTitle()` پر شود، و آن تابع
+//       **بعد از** `txResolveCategory()` صدا زده شود — وگرنه نامِ
+//       دسته‌ی کاربرِ دیگری داخلِ عنوانِ این کاربر می‌نشیند.
+// ---------------------------------------------------------------------
+T::group('قاعده ۳۸ — شبکه‌ی دسته‌بندی و عنوانِ اختیاری');
+
+$badGrid = [];
+$appJs = (string)@file_get_contents(__DIR__ . '/../assets/js/app.js');
+// کامنت‌ها پیش از بررسی حذف می‌شوند — همان درسِ قاعده ۳۵: توضیحِ کنارِ
+// کد نباید بررسی را سبز نگه دارد.
+$appNoC = preg_replace('!/\*.*?\*/!s', '', $appJs);
+$appNoC = preg_replace('!^\s*//.*$!m', '', (string)$appNoC);
+
+if (!preg_match('/function\s+renderCategoryGrid\s*\(/', (string)$appNoC)) {
+    $badGrid[] = 'app.js — تابع renderCategoryGrid پیدا نشد';
+} else {
+    $start = strpos((string)$appNoC, 'function renderCategoryGrid');
+    $end   = strpos((string)$appNoC, 'function setupTypeToggle');
+    $body  = ($end !== false && $end > $start)
+        ? substr((string)$appNoC, $start, $end - $start)
+        : substr((string)$appNoC, $start, 3000);
+
+    if (strpos($body, '.textContent = cat.name') === false) {
+        $badGrid[] = 'app.js — نامِ دسته باید با textContent نوشته شود (نامش را کاربر می‌نویسد)';
+    }
+    if (preg_match('/innerHTML\s*=\s*cat\.name/', $body)) {
+        $badGrid[] = 'app.js — نامِ دسته با innerHTML نوشته شده است';
+    }
+    if (strpos($body, 'window.CATEGORY_GRID_MAX') === false) {
+        $badGrid[] = 'app.js — سقفِ چیپ‌ها باید از window.CATEGORY_GRID_MAX بیاید، نه عددِ سخت‌کد';
+    }
+    if (strpos($body, 'selectEl.value') === false) {
+        $badGrid[] = 'app.js — چیپ باید مقدار را روی خودِ <select> بنویسد';
+    }
+    if (strpos($body, "new Event('change'") === false) {
+        $badGrid[] = 'app.js — چیپ باید رویدادِ change بدهد، وگرنه هیچ مصرف‌کننده‌ای خبردار نمی‌شود';
+    }
+}
+
+// ⚠ کامنت‌ها **پیش از** بررسی حذف می‌شوند، وگرنه همین توضیحاتی که
+//   کنارِ هر تصمیم نوشته شده‌اند خودشان بررسی را سبز نگه می‌دارند.
+//   جهشِ «JSON_HEX_TAG را بردار» اول دقیقاً به همین دلیل **زنده ماند**:
+//   نامش در کامنتِ بالای همان خط بود. همان دامِ قاعده ۳۵ و ۱۹.
+$sheetSrc = $stripComments(__DIR__ . '/../includes/add_tx_sheet.php');
+if (strpos($sheetSrc, 'CATEGORY_GRID_MAX') === false) {
+    $badGrid[] = 'add_tx_sheet.php — سقف باید از ثابتِ سرور به مرورگر داده شود';
+}
+if (strpos($sheetSrc, 'JSON_HEX_TAG') === false) {
+    $badGrid[] = 'add_tx_sheet.php — JSON_HEX_TAG لازم است: نامِ دسته داخلِ <script> می‌نشیند';
+}
+if (preg_match('/id="title"[^>]*\srequired/', $sheetSrc)) {
+    $badGrid[] = 'add_tx_sheet.php — عنوان دوباره required شد؛ جایش fallbackTxTitle است';
+}
+
+// عنوانِ خالی: تنها مسیرِ پر شدنش، و ترتیبش نسبت به سنجشِ دسته
+$txSrc = (string)@file_get_contents(__DIR__ . '/../includes/transactions.php');
+foreach (['txCreate', 'txUpdate'] as $fn) {
+    $s = strpos($txSrc, "function {$fn}(");
+    if ($s === false) { $badGrid[] = "transactions.php — {$fn} پیدا نشد"; continue; }
+    // تا تعریفِ تابعِ بعدی بریده می‌شود — همان درسِ قاعده ۲۹.
+    $e = strpos($txSrc, "\nfunction ", $s + 10);
+    $chunk = $e === false ? substr($txSrc, $s) : substr($txSrc, $s, $e - $s);
+
+    $posCat   = strpos($chunk, 'txResolveCategory(');
+    $posTitle = strpos($chunk, 'fallbackTxTitle(');
+    if ($posTitle === false) {
+        $badGrid[] = "transactions.php — {$fn} عنوانِ خالی را پر نمی‌کند";
+    } elseif ($posCat === false || $posTitle < $posCat) {
+        $badGrid[] = "transactions.php — {$fn} باید fallbackTxTitle را **بعد از** txResolveCategory صدا بزند";
+    }
+}
+if (preg_match('/\$errors\[\]\s*=\s*.عنوان الزامی/u', $txSrc)) {
+    $badGrid[] = 'transactions.php — «عنوان الزامی است» برگشت؛ عنوان دیگر اجباری نیست';
+}
+
+T::bulk(9, $badGrid, '⛔ شبکه‌ی دسته‌بندی و عنوانِ اختیاری سرِ جایشان‌اند');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

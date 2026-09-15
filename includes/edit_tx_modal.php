@@ -41,8 +41,13 @@ if (!isset($incomeCategories)) {
             </div>
 
             <div class="form-group">
-                <label for="edit_title">عنوان</label>
-                <input type="text" id="edit_title" name="title" required maxlength="255">
+                <label for="edit_title">عنوان (اختیاری)</label>
+                <?php /* ⚠ `required` اینجا هم برداشته شد تا با فرمِ ثبت یکی
+                         بماند: وگرنه کاربری که عنوان را پاک می‌کند از
+                         مرورگر «الزامی است» می‌گرفت، در حالی که سرور
+                         قبولش می‌کند و نامِ دسته را می‌گذارد — دو رفتارِ
+                         متفاوت برای یک قاعده. */ ?>
+                <input type="text" id="edit_title" name="title" maxlength="255">
             </div>
 
             <div class="form-group">

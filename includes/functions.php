@@ -2484,9 +2484,18 @@ function cachedCategories(): array
     // functions.php عمداً auth.php را require نمی‌کند (تست‌ها بدون آن
     // لودش می‌کنند)، پس وجود کلاس سنجیده می‌شود.
     $userId = class_exists('Auth') ? (int)Auth::userId() : 0;
+
+    // ⚠ `icon` و `color` را `migration_category_icons` می‌سازد، پس روی
+    //   نصبِ migration‌نخورده وجود ندارند و «Unknown column» کلِ فرمِ ثبت
+    //   را می‌خواباند. `tableHasColumn()` از `schemaMap()` می‌خواند که در
+    //   همان درخواست کش است، پس این شرط کوئریِ تازه‌ای نمی‌زند.
+    $extra = '';
+    if (tableHasColumn('categories', 'icon'))  { $extra .= ', icon'; }
+    if (tableHasColumn('categories', 'color')) { $extra .= ', color'; }
+
     try {
         $st = Database::getConnection()->prepare(
-            'SELECT id, name, type, user_id FROM categories
+            'SELECT id, name, type, user_id' . $extra . ' FROM categories
              WHERE is_active = 1 AND ' . categoryScopeSql() . '
              ORDER BY type, name'
         );
@@ -2497,6 +2506,107 @@ function cachedCategories(): array
     }
 
     return $cats;
+}
+
+/**
+ * پنجره‌ی «اخیر» برای ترتیبِ شبکه‌ی دسته‌بندی — تنها مرجع.
+ *
+ * ⛔ عددِ ثابتِ داخلِ کوئری ننویسید، به همان دلیلِ `RECENT_TITLE_SCAN`:
+ *    این کوئری در فوترِ **هر صفحه** اجرا می‌شود (شیتِ ثبت آنجاست) و
+ *    اندازه‌ی این پنجره تنها چیزی است که هزینه‌اش را مهار می‌کند.
+ *
+ * ⚠ نصفِ `RECENT_TITLE_SCAN` است و عمداً: شبکه فقط
+ *   `CATEGORY_GRID_MAX` چیپ نشان می‌دهد، پس ۲۰۰ ردیفِ آخر برای
+ *   رتبه‌بندیِ هشت‌تای اول کاملاً کافی است و ۴۰۰ فقط هزینه را دو برابر
+ *   می‌کرد. اندازه‌گیری روی کاربرِ ۲۰٬۰۰۰ تراکنشی: ۲۰۰ ردیف →
+ *   ۶۲۸ ردیفِ خوانده‌شده و ۰٫۶۸ms، ۴۰۰ ردیف → ۱۲۲۸ و ۰٫۸۴ms.
+ */
+const CATEGORY_USE_SCAN = 200;
+
+/** بیشترین تعداد چیپِ شبکه‌ی دسته‌بندی — تنها مرجع (سرور و مرورگر). */
+const CATEGORY_GRID_MAX = 8;
+
+/**
+ * «چند بار از هر دسته استفاده کرده‌ای» — در پنجره‌ی اخیر.
+ *
+ * @return array<int,int> شناسه‌ی دسته → تعداد
+ */
+function categoryUseCounts(int $userId): array
+{
+    try {
+        $st = Database::getConnection()->prepare(
+            'SELECT r.category_id AS cid, COUNT(*) AS c
+             FROM (
+                 SELECT category_id
+                 FROM transactions
+                 WHERE user_id = :u AND category_id IS NOT NULL
+                 ORDER BY id DESC
+                 LIMIT ' . CATEGORY_USE_SCAN . '
+             ) r
+             GROUP BY r.category_id'
+        );
+        $st->execute(['u' => $userId]);
+    } catch (PDOException $e) {
+        return [];
+    }
+
+    $out = [];
+    foreach ($st->fetchAll() as $r) { $out[(int)$r['cid']] = (int)$r['c']; }
+    return $out;
+}
+
+/**
+ * ⛔ تنها جایی که ترتیبِ انتخابگرِ دسته‌بندی تعریف می‌شود.
+ *
+ * هم شبکه‌ی چیپ‌ها از این رد می‌شود هم خودِ `<select>` — و همین کلِ
+ * نکته است: با دو ترتیبِ متفاوت، چیپِ سومِ بالا با گزینه‌ی سومِ منو یکی
+ * نمی‌بود و کاربر هر بار باید کلِ فهرست را می‌خواند.
+ *
+ * ⚠ مرتب‌سازی **پایدار** لازم است (PHP ≥ ۸٫۰ تضمینش می‌کند): دسته‌های
+ *   بی‌استفاده باید ترتیبِ الفباییِ `cachedCategories()` را نگه دارند،
+ *   وگرنه فهرست بین دو بارگذاری بی‌دلیل جابه‌جا می‌شد.
+ */
+function categoriesByUse(array $cats, array $useCounts): array
+{
+    usort($cats, static function ($a, $b) use ($useCounts) {
+        return ($useCounts[(int)$b['id']] ?? 0) <=> ($useCounts[(int)$a['id']] ?? 0);
+    });
+    return $cats;
+}
+
+/**
+ * ⛔ تنها جای «عنوانِ خالی یعنی چه» — سرور، نه مرورگر.
+ *
+ * فیلدِ عنوان از `required` درآمد (پرسشی که کاربر در لحظه‌ی ثبت
+ * جوابش را ندارد و فقط جلوی ثبت را می‌گیرد)، ولی ستون در گزارش‌ها و
+ * فهرست‌ها نمایش داده می‌شود و ردیفِ بی‌عنوان یک خطِ خالی است. پس
+ * نامِ دسته جایش را می‌گیرد — همان چیزی که کاربر خودش می‌نوشت.
+ *
+ * ⚠ **بعد از** `txResolveCategory()` صدا زده می‌شود، وگرنه نامِ دسته‌ی
+ *   کاربرِ دیگری می‌توانست داخلِ عنوانِ این کاربر بنشیند.
+ */
+function fallbackTxTitle(int $userId, ?int $categoryId, string $type): string
+{
+    if ($categoryId !== null) {
+        try {
+            // ⚠ `categoryScopeSql()` اینجا **افزونه** است (فراخواننده از
+            //   `txResolveCategory()` رد شده)، ولی قاعده ۶ استثنا ندارد و
+            //   درست هم هست: اولین مسیری که فردا این تابع را بدونِ آن
+            //   سنجش صدا بزند، نامِ دسته‌ی کاربرِ دیگری را داخلِ عنوانِ
+            //   این کاربر می‌نشاند. **همین را خودِ قاعده ۶ گرفت**، نه
+            //   بازبینیِ چشمی.
+            $st = Database::getConnection()->prepare(
+                'SELECT name FROM categories WHERE id = :id AND ' . categoryScopeSql()
+            );
+            $st->execute(['id' => $categoryId] + categoryScopeParams($userId));
+            $name = (string)$st->fetchColumn();
+            if ($name !== '') { return $name; }
+        } catch (PDOException $e) {
+            // پایین می‌افتد به برچسبِ عمومی
+        }
+    }
+
+    return $type === 'income' ? 'درآمد' : 'هزینه';
 }
 
 /**

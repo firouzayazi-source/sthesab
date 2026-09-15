@@ -46,9 +46,14 @@ function txValidate(array $in): array
         $errors[] = 'مبلغ وارد شده بیش از حد بزرگ است.';
     }
 
+    // ⛔ عنوانِ خالی خطا نیست. پیش از این `required` بود و همان یک فیلد
+    //    بین کاربر و ثبتِ خرجش می‌ایستاد: مبلغ و دسته را می‌زد، و بعد
+    //    باید برای «۴۵ هزار نان» یک جمله هم می‌نوشت. جایش را
+    //    `fallbackTxTitle()` می‌گیرد که **بعد از** سنجشِ مالکیتِ دسته
+    //    صدا زده می‌شود. سقفِ طول سرِ جایش می‌ماند.
     $title = trim((string)($in['title'] ?? ''));
-    if ($title === '' || mb_strlen($title) > 255) {
-        $errors[] = 'عنوان الزامی است و باید کمتر از ۲۵۵ کاراکتر باشد.';
+    if (mb_strlen($title) > 255) {
+        $errors[] = 'عنوان نباید بیشتر از ۲۵۵ کاراکتر باشد.';
     }
 
     $date = (string)($in['transaction_date'] ?? '');
@@ -129,6 +134,9 @@ function txCreate(int $userId, array $in): array
 
     $val = $v['values'];
     $val['category_id'] = txResolveCategory($userId, $val['category_id'], $val['type']);
+    if ($val['title'] === '') {
+        $val['title'] = fallbackTxTitle($userId, $val['category_id'], $val['type']);
+    }
     $walletId = txResolveWallet($userId, $in['wallet_id'] ?? 0);
 
     $pdo = Database::getConnection();
@@ -175,6 +183,9 @@ function txUpdate(int $userId, int $id, array $in): array
 
     $val = $v['values'];
     $val['category_id'] = txResolveCategory($userId, $val['category_id'], $val['type']);
+    if ($val['title'] === '') {
+        $val['title'] = fallbackTxTitle($userId, $val['category_id'], $val['type']);
+    }
 
     try {
         Database::getConnection()->prepare('

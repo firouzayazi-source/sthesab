@@ -622,13 +622,80 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
-    function setupTypeToggle(toggleId, hiddenInputId, categorySelectId) {
+    // ---------- شبکه‌ی چیپ‌های دسته‌بندی ----------
+    //
+    // ⛔ جایگزینِ `<select>` نیست، رویش سوار است: مقدار همیشه در خودِ
+    //    `<select>` می‌نشیند و چیپ فقط `value` را می‌نویسد و `change`
+    //    می‌دهد. پس `optionPicker()`، `resetSelect()`، `smsAutoOk()` و
+    //    اعتبارسنجیِ فرم دست‌نخورده کار می‌کنند.
+    //
+    // ⛔ هر بار از نو ساخته می‌شود: عوض شدنِ نوع فهرست را عوض می‌کند و
+    //    یک نسخه‌ی کش‌شده بی‌صدا کهنه می‌ماند — همان درسِ `setType()`.
+    function syncCategoryGrid(gridEl, selectEl) {
+        if (!gridEl || !selectEl) return;
+        gridEl.querySelectorAll('.cat-chip').forEach(function (c) {
+            c.classList.toggle('active', c.getAttribute('data-id') === selectEl.value);
+        });
+    }
+
+    function renderCategoryGrid(gridEl, selectEl, type) {
+        if (!gridEl || !selectEl || !window.CATEGORY_DATA) return;
+
+        var list = window.CATEGORY_DATA[type] || [];
+        var max = window.CATEGORY_GRID_MAX || 8;
+        gridEl.textContent = '';
+
+        list.slice(0, max).forEach(function (cat) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'cat-chip';
+            btn.setAttribute('data-id', String(cat.id));
+            btn.style.setProperty('--cc', cat.color || '#64748b');
+
+            var ic = document.createElement('span');
+            ic.className = 'cat-chip-icon';
+            // ⚠ این markup از `categoryIconSvg()` می‌آید (نگاشتِ ثابتِ
+            //   خودمان)، نه از ورودیِ کاربر — برخلافِ نام، که پایین با
+            //   `textContent` نوشته می‌شود.
+            ic.innerHTML = cat.icon || '';
+
+            var nm = document.createElement('span');
+            nm.className = 'cat-chip-name';
+            nm.textContent = cat.name;
+
+            btn.appendChild(ic);
+            btn.appendChild(nm);
+
+            btn.addEventListener('click', function () {
+                // تپ روی چیپِ فعال، انتخاب را برمی‌دارد — وگرنه کاربری که
+                // اشتباه زده هیچ راهی جز باز کردنِ منو نداشت.
+                var id = String(cat.id);
+                selectEl.value = (selectEl.value === id) ? '' : id;
+                selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+
+            gridEl.appendChild(btn);
+        });
+
+        syncCategoryGrid(gridEl, selectEl);
+    }
+
+    function setupTypeToggle(toggleId, hiddenInputId, categorySelectId, gridId) {
         var toggle = document.getElementById(toggleId);
         if (!toggle) return null;
 
         var buttons = toggle.querySelectorAll('.type-btn');
         var hiddenInput = document.getElementById(hiddenInputId);
         var categorySelect = categorySelectId ? document.getElementById(categorySelectId) : null;
+        var grid = gridId ? document.getElementById(gridId) : null;
+
+        // هر تغییرِ مقدار — از چیپ، از `optionPicker()`، یا از مسیرِ
+        // «عنوانِ قبلی» — چیپِ فعال را هم‌گام می‌کند.
+        if (grid && categorySelect) {
+            categorySelect.addEventListener('change', function () {
+                syncCategoryGrid(grid, categorySelect);
+            });
+        }
 
         function activate(btn, resetCategory) {
             buttons.forEach(function (b) { b.classList.remove('active'); });
@@ -639,6 +706,7 @@ document.addEventListener('DOMContentLoaded', function () {
             if (categorySelect && (type === 'income' || type === 'expense')) {
                 populateCategorySelect(categorySelect, type);
                 if (resetCategory) categorySelect.value = '';
+                renderCategoryGrid(grid, categorySelect, type);
             }
         }
 
@@ -657,7 +725,7 @@ document.addEventListener('DOMContentLoaded', function () {
         };
     }
 
-    var quickAddToggle = setupTypeToggle('typeToggle', 'transactionType', 'category_id');
+    var quickAddToggle = setupTypeToggle('typeToggle', 'transactionType', 'category_id', 'catGrid');
     var editToggle = setupTypeToggle('editTypeToggle', 'edit_transaction_type', 'edit_category_id');
 
     // ---------- ارسال فرم ثبت سریع تراکنش (AJAX) ----------
@@ -1521,7 +1589,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 //   دسته‌ها را از نو می‌سازد و انتخابِ قبلی را می‌برد.
                 var cat = document.getElementById('category_id');
                 var cid = opt.getAttribute('data-category');
-                if (cat && cid && cid !== '0') { cat.value = cid; }
+                if (cat && cid && cid !== '0') {
+                    cat.value = cid;
+                    // ⚠ نوشتنِ مستقیمِ `value` رویدادِ `change` نمی‌دهد، پس
+                    //   چیپِ شبکه بی‌صدا از انتخاب عقب می‌ماند: منو یک
+                    //   دسته را نشان می‌داد و هیچ چیپی روشن نبود.
+                    cat.dispatchEvent(new Event('change', { bubbles: true }));
+                }
 
                 var wid = opt.getAttribute('data-wallet');
                 if (walletEl && wid && wid !== '0') { walletEl.value = wid; }
@@ -2008,8 +2082,24 @@ document.addEventListener('DOMContentLoaded', function () {
         document.querySelectorAll('.js-add-tx').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 addTxSheet.classList.add('show');
+
+                // ⛔ فوکوسِ **همزمان**، نه فقط داخلِ setTimeout.
+                //    روی iOS کیبوردِ مجازی تنها وقتی بالا می‌آید که
+                //    `focus()` در همان زنجیره‌ی رویدادِ لمسِ کاربر صدا
+                //    زده شود؛ داخلِ `setTimeout` آن زنجیره بریده است،
+                //    پس فیلد فوکوس می‌گرفت و کیبورد **نمی‌آمد** —
+                //    یعنی کاربر باید یک تپِ دیگر هم روی خودِ فیلد
+                //    می‌زد. عنصر همین حالا `display:flex` شده، پس
+                //    فوکوس‌پذیر است (انیمیشنِ `sheetUp` فقط تصویری است).
+                //    ⚠ این استدلال است نه اندازه‌گیری: اینجا iOS نداریم.
+                //    آنچه سنجیده شد، فوکوس گرفتنِ فیلد در کرومیوم است.
                 var amt = document.getElementById('amount');
-                if (amt) setTimeout(function () { amt.focus(); }, 120);
+                if (amt) {
+                    amt.focus();
+                    // و یک بار هم بعد از انیمیشن، برای موتوری که فوکوس
+                    // روی عنصرِ تازه‌نمایان را نادیده می‌گیرد.
+                    setTimeout(function () { amt.focus(); }, 120);
+                }
             });
         });
     }
