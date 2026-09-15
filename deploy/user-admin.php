@@ -512,12 +512,82 @@ if ($cmd === '--stats-check') {
         exit(1);
     }
     ok('گام ۲ و گام ۳ با هم می‌خوانند.');
+
+    // ⛔ و اگر تا اینجا همه چیز درست بود ولی عددِ «تراکنش» باز هم از
+    //    انتظارِ مالکِ نصب بیشتر است، سؤال عوض می‌شود: «آن ردیف‌ها از
+    //    کجا آمده‌اند؟». سه منبع دارد و از بیرون هر سه یک شکل‌اند —
+    //    پس همان‌جا شمرده می‌شود، نه اینکه حدس زده شود.
     out('');
-    out('اگر عددِ «تراکنش» هنوز از انتظارِ شما بیشتر است، ردیف‌های اضافه');
-    out('واقعاً در جدولِ transactions هستند. رایج‌ترین علتش این دو است:');
-    out('  • سود/زیانِ هر فروشِ معامله یک تراکنش می‌سازد (syncTradeProfitTransactions)');
-    out('  • تراکنشِ دوره‌ای در اولین بازدیدِ هر روز خودش ثبت می‌شود');
-    out('برای دیدنشان، در خودِ اپ صفحه‌ی «تراکنش‌ها» را باز کنید.');
+    info('— گام ۴: آن تراکنش‌ها از کجا آمده‌اند؟ —');
+
+    $tx = (int)$row['tx'];
+    if ($tx === 0) {
+        out('  هیچ تراکنشی ندارد.');
+        exit(0);
+    }
+
+    $fromRecurring = 0;
+    if (tableHasColumn('transactions', 'recurring_id')) {
+        $st = $pdo->prepare('SELECT COUNT(*) FROM transactions
+                             WHERE user_id = :u AND recurring_id IS NOT NULL');
+        $st->execute(['u' => $uid]);
+        $fromRecurring = (int)$st->fetchColumn();
+    }
+
+    $fromTrade = 0;
+    if (tableExists('trade_sales') && tableHasColumn('trade_sales', 'profit_tx_id')) {
+        // ⚠ از راهِ پیوندِ واقعی شمرده می‌شود (`profit_tx_id`)، نه از نامِ
+        //   دسته‌بندی: کاربر می‌تواند دسته‌ای به همان نام بسازد و آن‌وقت
+        //   عدد بی‌صدا باد می‌کرد.
+        $st = $pdo->prepare('SELECT COUNT(*) FROM transactions t
+                             JOIN trade_sales s ON s.profit_tx_id = t.id
+                             WHERE t.user_id = :u');
+        $st->execute(['u' => $uid]);
+        $fromTrade = (int)$st->fetchColumn();
+    }
+
+    $manual = $tx - $fromRecurring - $fromTrade;
+    out(sprintf('    %-34s %5d', 'ثبتِ دستی یا ورود از فایل', $manual));
+    out(sprintf('    %-34s %5d', 'ساخته‌ی تراکنشِ دوره‌ای', $fromRecurring));
+    out(sprintf('    %-34s %5d', 'سود/زیانِ فروشِ معامله', $fromTrade));
+
+    // ⛔ مهم‌ترین نشانه همین است: ورودِ دسته‌جمعی (فایل، یا داده‌ی
+    //    آزمایشی) ده‌ها ردیف را در **یک روز** می‌سازد، در حالی که ثبتِ
+    //    واقعیِ روزمره پخش است. بدونِ این، «۹۵ تراکنش» و «۹۵ تراکنش»
+    //    از بیرون یک شکل‌اند.
+    out('');
+    out('  پرکارترین روزهای ثبت (بر اساس زمانِ ساخت):');
+    $st = $pdo->prepare('SELECT DATE(created_at) AS d, COUNT(*) AS n
+                         FROM transactions WHERE user_id = :u
+                         GROUP BY DATE(created_at) ORDER BY n DESC, d DESC LIMIT 5');
+    $st->execute(['u' => $uid]);
+    $days = $st->fetchAll();
+    $topDay = 0;
+    foreach ($days as $d) {
+        $n = (int)$d['n'];
+        if ($topDay === 0) { $topDay = $n; }
+        out(sprintf('    %-12s %5d ردیف', $d['d'], $n));
+    }
+
+    $st = $pdo->prepare('SELECT MIN(created_at) AS a, MAX(created_at) AS b,
+                                COUNT(DISTINCT DATE(created_at)) AS days
+                         FROM transactions WHERE user_id = :u');
+    $st->execute(['u' => $uid]);
+    $span = $st->fetch();
+    out('');
+    out("  از {$span['a']}  تا  {$span['b']}   ({$span['days']} روزِ متمایز)");
+
+    out('');
+    if ($topDay >= 20 && $topDay > (int)($tx / 2)) {
+        red('⛔ بیشترِ تراکنش‌ها در یک روز ساخته شده‌اند.');
+        out('   این الگوی ورودِ دسته‌جمعی است (صفحه‌ی «ورود اطلاعات از فایل»)');
+        out('   یا داده‌ی آزمایشی — نه ثبتِ روزمره. اگر آن روز را به یاد');
+        out('   نمی‌آورید، همان تراکنش‌ها را در صفحه‌ی «تراکنش‌ها» ببینید');
+        out('   و اگر لازم بود پاکشان کنید.');
+    } elseif ($manual > 0 && (int)$span['days'] > 1) {
+        ok('ثبت‌ها روی چند روز پخش‌اند — یعنی ثبتِ واقعیِ روزمره.');
+        out('   پس عددِ صفحه درست است و چیزی را باد نکرده.');
+    }
     exit(0);
 }
 
