@@ -2730,6 +2730,242 @@ function privatizeDefaultCategory(int $catId): array
 }
 
 /**
+ * ⛔ کلیدهای **یکتای** هر جدولِ ارجاع‌دهنده که `category_id` در آن‌ها
+ *    هست — کشف از خودِ دیتابیس، نه فهرستِ دستی (همان قاعده‌ی
+ *    `categoryRefTables()`).
+ *
+ * **چرا لازم است، و بدونش خرابی چه شکلی بود:** `category_pins` کلیدِ
+ * اصلی‌اش `(user_id, category_id)` است و `budgets` کلیدِ یکتای
+ * `(user_id, category_id, period_type)` دارد. پس اگر کاربری **هر دو**
+ * دسته را پین کرده باشد (یا روی هر دو بودجه بسته باشد)، یک
+ * `UPDATE … SET category_id = :into` با **خطای کلیدِ تکراری** می‌میرد
+ * و کلِ ادغام برمی‌گردد — با یک پیامِ عمومیِ «خطایی رخ داد» که هیچ
+ * نمی‌گوید چرا. بدتر: روی نصبی که کسی این کار را نکرده **بی‌عیب**
+ * اجرا می‌شود، پس در آزمایش سالم به نظر می‌رسد و فقط روی دیتابیسِ
+ * واقعی می‌ترکد.
+ *
+ * @return array<string, list<list<string>>> جدول => فهرستِ کلیدها، هر کلید = ستون‌های **دیگرش**
+ */
+function categoryUniqueKeys(): array
+{
+    static $out = null;
+    if ($out !== null) { return $out; }
+    $out = [];
+
+    try {
+        $q = Database::getConnection()->query(
+            "SELECT TABLE_NAME AS t, INDEX_NAME AS k, COLUMN_NAME AS c
+             FROM information_schema.STATISTICS
+             WHERE TABLE_SCHEMA = DATABASE() AND NON_UNIQUE = 0
+             ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX"
+        );
+    } catch (PDOException $e) {
+        error_log('Category Unique Keys Error: ' . $e->getMessage());
+        return $out;
+    }
+
+    $idx = [];
+    foreach ($q as $r) { $idx[$r['t']][$r['k']][] = $r['c']; }
+
+    foreach ($idx as $table => $keys) {
+        foreach ($keys as $cols) {
+            if (!in_array('category_id', $cols, true)) { continue; }
+            // ⚠ **همه‌ی** کلیدهای یکتا نگه داشته می‌شوند، نه فقط یکی:
+            //   یک جدول می‌تواند دو کلید داشته باشد و رد شدن از یکی
+            //   چیزی درباره‌ی آن یکی نمی‌گوید.
+            $out[$table][] = array_values(array_diff($cols, ['category_id']));
+        }
+    }
+    return $out;
+}
+
+/**
+ * ⛔ ادغامِ دو دسته‌بندیِ هم‌معنا — تنها جای این تصمیم.
+ *
+ * **مسئله‌ی واقعی، و مالکِ نصب گزارشش کرد:** «حمل و نقل» و «حمل‌ونقل»
+ * هر دو در فهرست بودند. برای کاربر **یک چیزند** و فقط نیم‌فاصله
+ * فرقشان است، ولی برای دیتابیس دو ردیفِ جدا با دو تاریخچه — یعنی
+ * گزارشِ دسته‌بندی همان خرج را **دو تکه** نشان می‌داد و هیچ‌کدام
+ * عددِ درست نبودند. حذفِ یکی هم ممکن نبود، چون رویش تراکنش ثبت شده.
+ *
+ * **کاری که می‌کند:** هر ردیفی که به `from` اشاره می‌کند به `into`
+ * منتقل می‌شود و بعد `from` حذف می‌شود. هیچ تراکنشی بی‌دسته نمی‌شود و
+ * هیچ عددی عوض نمی‌شود — فقط دو ستون به یکی می‌رسند.
+ *
+ * **⛔ دو دامنه، و مرزشان همان `categoryScopeSql()` است:**
+ *  - `$scopeUserId === null` → دامنه‌ی **مدیر**: هر دو باید پیش‌فرضِ
+ *    برنامه باشند (`user_id IS NULL`) و ردیف‌های **همه‌ی** کاربران
+ *    جابه‌جا می‌شوند. نشتی ممکن نیست چون مقصد هم برای همه است.
+ *  - عدد → دامنه‌ی **کاربر**: مبدأ باید دسته‌ی **شخصیِ خودش** باشد
+ *    (حذفِ پیش‌فرض از اینجا یعنی دست زدن به فهرستِ بقیه) و مقصد باید
+ *    برایش دیدنی باشد. فقط ردیف‌های خودش جابه‌جا می‌شوند.
+ *
+ * **⛔ نوع باید یکی باشد.** ادغامِ یک دسته‌ی هزینه در یک دسته‌ی درآمد
+ * هیچ خطایی نمی‌دهد و فقط گزارشِ درآمد را با خرج باد می‌کند — همان
+ * خرابیِ بی‌صدا که این اپ همه‌جا برای نبودنش تست نوشته.
+ *
+ * **⛔ و یک سدِ پیش از `commit`، مثل `privatizeDefaultCategory()`:** هیچ
+ * ردیفی نباید روی شناسه‌ی قدیمی مانده باشد، وگرنه `DELETE` بعدی با
+ * `ON DELETE CASCADE` بودجه‌ی کسی را با خودش می‌برد. یک تستِ خوب جلوی
+ * `commit` را نمی‌گیرد؛ خودِ کد باید بگیرد.
+ *
+ * @return array{ok:bool, message:string, moved:int, dropped:int}
+ */
+function mergeCategories(int $fromId, int $intoId, ?int $scopeUserId): array
+{
+    $fail = fn(string $m) => ['ok' => false, 'message' => $m, 'moved' => 0, 'dropped' => 0];
+    $pdo  = Database::getConnection();
+
+    if (!tableHasColumn('categories', 'user_id')) {
+        return $fail('ستون user_id روی دسته‌بندی‌ها نیامده است.');
+    }
+    if ($fromId === $intoId || $fromId <= 0 || $intoId <= 0) {
+        return $fail('دو دسته‌بندیِ متفاوت انتخاب کنید.');
+    }
+
+    // مبدأ: در دامنه‌ی مدیر فقط پیش‌فرض، در دامنه‌ی کاربر فقط شخصیِ خودش.
+    $srcSql = $scopeUserId === null
+        ? 'SELECT * FROM categories WHERE id = :id AND user_id IS NULL'
+        : 'SELECT * FROM categories WHERE id = :id AND user_id = :u';
+    $st = $pdo->prepare($srcSql);
+    $st->execute($scopeUserId === null ? ['id' => $fromId] : ['id' => $fromId, 'u' => $scopeUserId]);
+    $from = $st->fetch();
+    if (!$from) {
+        return $fail($scopeUserId === null
+            ? 'دسته‌بندیِ مبدأ در فهرستِ پیش‌فرض پیدا نشد.'
+            : 'دسته‌بندیِ مبدأ باید یکی از دسته‌بندی‌های شخصیِ خودتان باشد.');
+    }
+
+    // مقصد: مدیر فقط پیش‌فرض؛ کاربر، شخصیِ خودش یا پیش‌فرضِ برنامه.
+    $dstSql = $scopeUserId === null
+        ? 'SELECT * FROM categories WHERE id = :id AND user_id IS NULL'
+        : 'SELECT * FROM categories WHERE id = :id AND (user_id = :u OR user_id IS NULL)';
+    $st = $pdo->prepare($dstSql);
+    $st->execute($scopeUserId === null ? ['id' => $intoId] : ['id' => $intoId, 'u' => $scopeUserId]);
+    $into = $st->fetch();
+    if (!$into) { return $fail('دسته‌بندیِ مقصد پیدا نشد.'); }
+
+    if ($from['type'] !== $into['type']) {
+        return $fail('نوعِ دو دسته‌بندی یکی نیست (یکی درآمد و دیگری هزینه). ادغام انجام نشد.');
+    }
+
+    $refs   = categoryRefTables();
+    $uniq   = categoryUniqueKeys();
+    $moved  = 0;
+    $dropped = 0;
+
+    // شرطِ دامنه — در دامنه‌ی کاربر روی خودِ `UPDATE` هم می‌آید. افزونه
+    // است (مالکیتِ مبدأ بالاتر سنجیده شد) ولی آخرین سد همین است.
+    $scopeWhere = $scopeUserId === null ? '' : ' AND user_id = :u';
+    $scopeArg   = $scopeUserId === null ? [] : ['u' => $scopeUserId];
+
+    try {
+        $pdo->beginTransaction();
+
+        // چند ردیف پیش از کار به مبدأ اشاره می‌کردند (زیرِ تراکنش، نه
+        // از روی صفحه‌ای که ممکن است کهنه باشد).
+        $before = 0;
+        foreach ($refs as $table => $hasUser) {
+            $sw = ($hasUser && $scopeUserId !== null) ? $scopeWhere : '';
+            $q  = $pdo->prepare("SELECT COUNT(*) FROM `{$table}` WHERE category_id = :c{$sw}");
+            $q->execute(['c' => $fromId] + ($sw !== '' ? $scopeArg : []));
+            $before += (int)$q->fetchColumn();
+        }
+
+        foreach ($refs as $table => $hasUser) {
+            $sw   = ($hasUser && $scopeUserId !== null) ? $scopeWhere : '';
+            $args = ['c' => $fromId] + ($sw !== '' ? $scopeArg : []);
+
+            foreach ($uniq[$table] ?? [] as $keyCols) {
+                // ستون‌های دیگرِ کلید با `<=>` مقایسه می‌شوند نه `=`:
+                // مقدارِ NULL با `=` هرگز برابر نمی‌شود و برخوردِ واقعی
+                // **دیده نمی‌شد**.
+                $on = $keyCols
+                    ? implode(' AND ', array_map(fn($c) => "a.`{$c}` <=> b.`{$c}`", $keyCols))
+                    : '1=1';
+                $cnt = $pdo->prepare(
+                    "SELECT COUNT(*) FROM `{$table}` a JOIN `{$table}` b ON {$on}
+                     WHERE a.category_id = :c AND b.category_id = :into"
+                    . ($sw !== '' ? ' AND a.user_id = :u' : '')
+                );
+                $cnt->execute($args + ['into' => $intoId]);
+                $clash = (int)$cnt->fetchColumn();
+                if ($clash === 0) { continue; }
+
+                /*
+                 * ⛔ `category_pins` تنها استثناست و فهرستش عمداً
+                 *    تک‌قلمی و بسته است: ردیفش **هیچ اطلاعاتی جز
+                 *    «این جفت وجود دارد»** ندارد، پس دو پینِ هم‌کاربر
+                 *    که به یک دسته می‌رسند فقط یک پین‌اند و انداختنِ
+                 *    تکراری تنها معنای ممکن است.
+                 *
+                 * ⛔ هر جدولِ دیگری صریح **امتناع** می‌کند، نه اینکه
+                 *    بی‌صدا یکی را بیندازد: ردیفِ `budgets` عددی است
+                 *    که کاربر خودش تایپ کرده و انداختنش یعنی از بین
+                 *    بردنِ کارِ او بی‌آنکه بفهمد.
+                 */
+                if ($table !== 'category_pins') {
+                    $pdo->rollBack();
+                    return $fail(
+                        'روی جدول «' . $table . '» ' . toPersianDigits($clash)
+                        . ' ردیف روی هر دو دسته‌بندی ثبت شده و با ادغام تکراری می‌شوند. '
+                        . 'اول یکی از آن دو را پاک کنید. هیچ تغییری ذخیره نشد.'
+                    );
+                }
+
+                $del = $pdo->prepare(
+                    "DELETE a FROM `{$table}` a JOIN `{$table}` b ON {$on}
+                     WHERE a.category_id = :c AND b.category_id = :into"
+                    . ($sw !== '' ? ' AND a.user_id = :u' : '')
+                );
+                $del->execute($args + ['into' => $intoId]);
+                $dropped += $del->rowCount();
+            }
+
+            $up = $pdo->prepare("UPDATE `{$table}` SET category_id = :into WHERE category_id = :c{$sw}");
+            $up->execute($args + ['into' => $intoId]);
+            $moved += $up->rowCount();
+        }
+
+        // ⛔ سدِ پیش از commit: هیچ ردیفی نباید روی شناسه‌ی قدیمی مانده
+        //    باشد. اگر مانده بود و باز هم حذف می‌کردیم، `ON DELETE
+        //    CASCADE` روی `budgets` بودجه‌ی کسی را با خودش می‌برد.
+        $left = 0;
+        foreach ($refs as $table => $hasUser) {
+            $q = $pdo->prepare("SELECT COUNT(*) FROM `{$table}` WHERE category_id = :c");
+            $q->execute(['c' => $fromId]);
+            $left += (int)$q->fetchColumn();
+        }
+        if ($left !== 0 || $moved + $dropped !== $before) {
+            $pdo->rollBack();
+            return $fail('شمارشِ ردیف‌ها نخواند (منتقل‌شده ' . toPersianDigits($moved)
+                . ' از ' . toPersianDigits($before) . '، باقی‌مانده ' . toPersianDigits($left)
+                . '). هیچ تغییری ذخیره نشد.');
+        }
+
+        $delSql = $scopeUserId === null
+            ? 'DELETE FROM categories WHERE id = :id AND user_id IS NULL'
+            : 'DELETE FROM categories WHERE id = :id AND user_id = :u';
+        $pdo->prepare($delSql)
+            ->execute($scopeUserId === null ? ['id' => $fromId] : ['id' => $fromId, 'u' => $scopeUserId]);
+
+        $pdo->commit();
+    } catch (PDOException $e) {
+        if ($pdo->inTransaction()) { $pdo->rollBack(); }
+        error_log('Merge Categories Error: ' . $e->getMessage());
+        return $fail('خطایی در ادغام رخ داد؛ هیچ تغییری ذخیره نشد.');
+    }
+
+    return [
+        'ok'      => true,
+        'moved'   => $moved,
+        'dropped' => $dropped,
+        'message' => 'دسته‌بندی «' . $from['name'] . '» در «' . $into['name'] . '» ادغام شد — '
+            . toPersianDigits($moved) . ' ردیف منتقل شد.',
+    ];
+}
+
+/**
  * دسته‌بندی‌های قابل استفاده‌ی کاربر جاری — پیش‌فرض‌ها به‌علاوه‌ی شخصی‌ها.
  * در همان درخواست کش می‌شود چون چند جا لازم است (فرم ثبت، شیت فوتر، …).
  */

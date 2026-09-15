@@ -2984,6 +2984,111 @@ if (preg_match('/function\s+privatizeDefaultCategory\s*\(.*?\n\}/s', $fnSrc, $m)
 
 T::bulk(9, $badPriv, '⛔ شخصی‌سازی و حذفِ دسته‌بندی یک مرجع دارند');
 
+// ---------------------------------------------------------------
+// قاعده ۴۱ — ادغامِ دسته‌بندی، و فهرستِ صفحه‌بندی‌شده
+// ---------------------------------------------------------------
+//
+// دو تصمیم که هر دو خرابیِ بی‌صدا دارند:
+//
+// ۱. **ادغام باید یک مرجع داشته باشد.** `admin/categories.php` و
+//    `api/manage_reference.php` هر دو همان کار را می‌کنند (یکی برای
+//    پیش‌فرض، یکی برای دسته‌ی شخصی). با دو نسخه، اولین اصلاحی که فقط
+//    به یکی برسد سدِ شمارشِ پیش از `commit` را از آن یکی می‌اندازد —
+//    و آن‌وقت `ON DELETE CASCADE` روی `budgets` بودجه‌ی کاربر را
+//    بی‌صدا می‌برد.
+//
+// ۲. **صفحه‌بندی نباید `LIMIT` بشود و نباید سقفِ بی‌صدا بگذارد.** با
+//    `LIMIT`، هر فهرست دو کوئریِ تازه به صفحه‌ای اضافه می‌کند که
+//    بودجه‌اش ثبت است؛ و `array_slice($x, 0, N)` در صفحه یعنی همان
+//    «بیست‌تای اول را نشان بده و نگو بقیه کجا رفتند».
+T::group('قاعده ۴۱ — ادغامِ دسته‌بندی و فهرستِ صفحه‌بندی‌شده');
+
+$badMerge = [];
+
+// ⚠ کامنت‌ها **پیش از** بررسی حذف می‌شوند — همان دامی که قاعده‌های
+//   ۱۹ و ۳۵ و ۳۸ هم در آن افتادند: توضیحِ همین بخش نامِ توابع و
+//   رشته‌ها را در خودش دارد و بررسیِ متنی روی فایلِ سالم هم سبز
+//   می‌ماند (یا بدتر، جهش را زنده نگه می‌دارد).
+$fnSrc  = $stripComments(__DIR__ . '/../includes/functions.php');
+$catAdm = $stripComments(__DIR__ . '/../admin/categories.php');
+$refApi = $stripComments(__DIR__ . '/../api/manage_reference.php');
+$pagSrc = $stripComments(__DIR__ . '/../includes/paged_list.php');
+$insSrc = $stripComments(__DIR__ . '/../admin/insights.php');
+
+if (!preg_match('/function\s+mergeCategories\s*\(.*?\n\}/s', $fnSrc, $mm)) {
+    $badMerge[] = 'mergeCategories() پیدا نشد';
+} else {
+    $body = $mm[0];
+    if (!preg_match('/\$from\[.type.\]\s*!==\s*\$into\[.type.\]/', $body)) {
+        $badMerge[] = 'mergeCategories() — نگهبانِ هم‌نوع بودن برداشته شده';
+    }
+    if (strpos($body, 'categoryUniqueKeys()') === false) {
+        $badMerge[] = 'mergeCategories() — برخوردِ کلیدِ یکتا سنجیده نمی‌شود';
+    }
+    // سدِ پیش از commit — خودِ شرط سنجیده می‌شود نه رشته‌ی rollBack()،
+    // چون بلوکِ catch خودش یکی دارد و بررسی پوچ می‌شد (درسِ قاعده ۴۰).
+    if (!preg_match('/if\s*\(\s*\$left\s*!==\s*0\s*\|\|\s*\$moved\s*\+\s*\$dropped\s*!==\s*\$before\s*\)/', $body)) {
+        $badMerge[] = 'mergeCategories() — سدِ شمارشِ پیش از commit برداشته شده';
+    }
+}
+
+// ⛔ کلیدهای یکتا از دیتابیس کشف می‌شوند، نه یک فهرستِ دستی — همان
+//    قاعده‌ی `categoryRefTables()`. فهرستِ دستی با جدولِ فردا عقب
+//    می‌افتد و برخورد دوباره بی‌صدا می‌شود.
+if (strpos($fnSrc, 'information_schema.STATISTICS') === false) {
+    $badMerge[] = 'categoryUniqueKeys() — کلیدها از دیتابیس کشف نمی‌شوند';
+}
+
+// ⛔ هر دو مصرف‌کننده از همان تابع رد شوند، نه کوئریِ خودشان.
+foreach (['admin/categories.php' => $catAdm, 'api/manage_reference.php' => $refApi] as $f => $src) {
+    if (strpos($src, 'mergeCategories(') === false) {
+        $badMerge[] = $f . ' — ادغام از mergeCategories() رد نمی‌شود';
+    }
+    if (preg_match('/UPDATE\s+`?\w+`?\s+SET\s+category_id/i', $src)) {
+        $badMerge[] = $f . ' — جابه‌جاییِ category_id باید فقط در mergeCategories() باشد';
+    }
+}
+// ⛔ دامنه‌ی اندپوینتِ کاربر از نشست می‌آید، نه از پیلود: با
+//    `postParam('user_id')` هر کسی می‌توانست دسته‌ی دیگری را ادغام کند.
+// ⚠ الگو باید پرانتزِ تودرتو را تحمل کند: آرگومان‌ها `(int)postParam('id')`
+//   دارند و یک `[^)]*` سرِ همان `)` می‌برید — روی فایلِ **سالم** دو
+//   هشدارِ الکی داد. هشدارِ الکی از نبودِ تست بدتر است.
+if (!preg_match('/mergeCategories\((?:[^()]|\([^()]*\))*\$userId\s*\)/', $refApi)) {
+    $badMerge[] = 'api/manage_reference.php — دامنه‌ی ادغام باید $userId نشست باشد';
+}
+// و در پنل مدیر دامنه `null` است (پیش‌فرض‌ها).
+if (!preg_match('/mergeCategories\((?:[^()]|\([^()]*\))*,\s*null\s*\)/', $catAdm)) {
+    $badMerge[] = 'admin/categories.php — دامنه‌ی ادغام باید null (پیش‌فرض) باشد';
+}
+
+// --- صفحه‌بندی ---
+if (strpos($pagSrc, 'const PAGED_LIST_SIZE') === false) {
+    $badMerge[] = 'paged_list.php — سقفِ صفحه باید یک ثابتِ واحد باشد';
+}
+// ⛔ آدرس باید از `$_GET` ساخته شود، وگرنه صفحه‌ی فهرستِ دیگر می‌پرد.
+if (strpos($pagSrc, '$q = $_GET;') === false) {
+    $badMerge[] = 'paged_list.php — pagedUrl() بقیه‌ی پارامترها را نگه نمی‌دارد';
+}
+// ⛔ «همه» با نامِ فهرست سنجیده شود، نه یک پرچمِ مشترک.
+if (strpos($pagSrc, "getParam('all') === \$key") === false) {
+    $badMerge[] = 'paged_list.php — «همه» باید فقط همان فهرست را باز کند';
+}
+// ⛔ برش در PHP است، نه LIMIT: صفحه بودجه‌ی کوئری دارد.
+if (preg_match('/\bLIMIT\b/i', $pagSrc)) {
+    $badMerge[] = 'paged_list.php — صفحه‌بندی نباید کوئریِ LIMIT بزند';
+}
+// ⛔ و سقفِ بی‌صدا در خودِ صفحه نماند.
+if (preg_match('/array_slice\(\s*\$(never|stale|activity)\b/', $insSrc)) {
+    $badMerge[] = 'admin/insights.php — سقفِ بی‌صدای array_slice برگشته';
+}
+foreach (['never', 'stale', 'users'] as $k) {
+    if (!preg_match('/pagedSlice\([^)]*,\s*\'' . $k . '\'\s*\)/', $insSrc)) {
+        $badMerge[] = 'admin/insights.php — فهرستِ ' . $k . ' صفحه‌بندی نشده';
+    }
+}
+
+T::bulk(16, $badMerge, '⛔ ادغامِ دسته‌بندی و صفحه‌بندی یک مرجع دارند');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

@@ -13,6 +13,7 @@ require_once __DIR__ . '/../includes/admin_insights.php';
 require_once __DIR__ . '/../includes/user_data.php';
 require_once __DIR__ . '/../includes/plan.php';
 require_once __DIR__ . '/../includes/cron_health.php';
+require_once __DIR__ . '/../includes/paged_list.php';
 
 Auth::initSession();
 Auth::requireAdmin();
@@ -39,6 +40,12 @@ $errWeek  = AppErrors::countSince(7);
 $never  = array_values(array_filter($activity, fn($r) => $r['state'] === 'never'));
 $stale  = array_values(array_filter($activity, fn($r) => $r['state'] === 'stale'));
 
+// ⛔ عرضِ خواندنِ ۷۲۰ پیکسل برای صفحه‌ی متنی درست است، ولی فهرستِ توری
+//    را روی دسکتاپ به **دو** ستون می‌بندد در حالی که ۴۰۰ پیکسل کنارش
+//    خالی است (اندازه‌گیری شد: ۲ ستون در برابر ۳). همان استدلالِ
+//    `admin/users.php` در قاعده ۳۱. پیش‌فرض همچنان باریک است و فقط
+//    صفحه‌های مدیر این را می‌گذارند.
+$pageWide  = true;
 $pageTitle = 'آمار استفاده';
 include __DIR__ . '/../includes/header.php';
 ?>
@@ -114,15 +121,23 @@ include __DIR__ . '/../includes/header.php';
             حساب ساخته‌اند ولی هیچ رکوردی ثبت نکرده‌اند — نه تراکنش، نه چک،
             نه طلب و بدهی، نه هیچ چیزِ دیگر.
         </p>
-        <?php foreach (array_slice($never, 0, 20) as $u): ?>
-            <div class="pay-row">
-                <div>
-                    <strong><?= h($u['full_name']) ?></strong>
-                    <span class="hint">(<?= h($u['username']) ?>)</span>
+        <?php /* ⛔ پیش از این `array_slice($never, 0, 20)` بود: بیست‌تای
+                 اول را نشان می‌داد و **هیچ‌جا نمی‌گفت بقیه کجا رفتند**.
+                 همان «سقفِ بی‌صدا» که راهنما ممنوعش کرده — و بدترین
+                 حالتش این است که مالکِ نصب فکر کند فهرست کامل است. */ ?>
+        <?php $pNever = pagedSlice($never, 'never'); ?>
+        <div class="grid-list">
+            <?php foreach ($pNever['rows'] as $u): ?>
+                <div class="grid-card">
+                    <div class="grid-card-head">
+                        <span class="grid-card-name"><?= h($u['full_name']) ?></span>
+                        <span class="hint">(<?= h($u['username']) ?>)</span>
+                    </div>
+                    <span class="hint grid-card-sub">از <?= toPersianDigits(toJalali(substr($u['created_at'], 0, 10))) ?></span>
                 </div>
-                <span class="hint">از <?= toPersianDigits(toJalali(substr($u['created_at'], 0, 10))) ?></span>
-            </div>
-        <?php endforeach; ?>
+            <?php endforeach; ?>
+        </div>
+        <?php pagedNav($pNever); ?>
     <?php endif; ?>
 
     <?php if ($stale): ?>
@@ -133,32 +148,46 @@ include __DIR__ . '/../includes/header.php';
             بیش از <?= toPersianDigits((string)ACTIVE_DAYS) ?> روز است چیزی ثبت نکرده‌اند
             (<?= toPersianDigits(count($stale)) ?>)
         </h3>
-        <?php foreach (array_slice($stale, 0, 20) as $u): ?>
-            <div class="pay-row">
-                <div>
-                    <strong><?= h($u['full_name']) ?></strong>
-                    <span class="hint">(<?= h($u['username']) ?>)</span>
+        <?php $pStale = pagedSlice($stale, 'stale'); ?>
+        <div class="grid-list">
+            <?php foreach ($pStale['rows'] as $u): ?>
+                <div class="grid-card">
+                    <div class="grid-card-head">
+                        <span class="grid-card-name"><?= h($u['full_name']) ?></span>
+                        <span class="hint">(<?= h($u['username']) ?>)</span>
+                    </div>
+                    <span class="hint grid-card-sub">
+                        <?= toPersianDigits((int)$u['records']) ?> رکورد ·
+                        <?= $u['days_since'] === null ? '—' : toPersianDigits($u['days_since']) . ' روز پیش' ?>
+                    </span>
                 </div>
-                <span class="hint">
-                    <?= toPersianDigits((int)$u['records']) ?> رکورد ·
-                    <?= $u['days_since'] === null ? '—' : toPersianDigits($u['days_since']) . ' روز پیش' ?>
-                </span>
-            </div>
-        <?php endforeach; ?>
+            <?php endforeach; ?>
+        </div>
+        <?php pagedNav($pStale); ?>
     <?php endif; ?>
 </div>
 <?php endif; ?>
 
 <div class="card">
+    <?php /* ⛔ توری و صفحه‌بندی‌شده — منطقش در `paged_list.php` است، نه
+             اینجا. با فهرستِ یک‌ستونه‌ی بی‌انتها، کارت‌های تحلیلیِ
+             **پایینِ** همین صفحه (رشد ماهانه، سلامتِ cron، خطاها) با
+             زیاد شدنِ کاربرها عملاً نامرئی می‌شدند. */ ?>
+    <?php $pAll = pagedSlice($activity, 'users'); ?>
     <h2 class="card-title">همه‌ی کاربران</h2>
-    <?php foreach ($activity as $u): ?>
-        <div class="pay-row">
-            <div>
-                <strong><?= h($u['full_name']) ?></strong>
-                <span class="hint">(<?= h($u['username']) ?>)</span>
-                <?php if ($u['role'] === 'admin'): ?><span class="asset-tag">مدیر</span><?php endif; ?>
-                <?php if (!$u['is_active']): ?><span class="status-badge status-badge-out">غیرفعال</span><?php endif; ?>
-                <br>
+    <div class="grid-list">
+    <?php foreach ($pAll['rows'] as $u): ?>
+        <div class="grid-card">
+                <div class="grid-card-head">
+                    <span class="grid-card-name"><?= h($u['full_name']) ?></span>
+                    <span class="hint">(<?= h($u['username']) ?>)</span>
+                    <?php if ($u['role'] === 'admin'): ?><span class="asset-tag">مدیر</span><?php endif; ?>
+                    <?php if (!$u['is_active']): ?><span class="status-badge status-badge-out">غیرفعال</span><?php endif; ?>
+                    <span class="status-badge <?= $u['state'] === 'active' ? 'status-badge-in'
+                        : ($u['state'] === 'never' ? 'status-badge-out' : 'status-badge-muted') ?>">
+                        <?= $u['state'] === 'active' ? 'فعال' : ($u['state'] === 'never' ? 'شروع نکرده' : 'کم‌فعال') ?>
+                    </span>
+                </div>
                 <?php /* ⛔ دو عددِ این خط دو سؤالِ متفاوت‌اند و هیچ‌کدام
                          نباید با دیگری اشتباه شود — مالکِ نصب **دو بار**
                          همین را گزارش کرد:
@@ -176,7 +205,7 @@ include __DIR__ . '/../includes/header.php';
                          رویش تصمیم می‌گیرد «چند تراکنش» است، نه «چند
                          ردیف در چند جدول». خودِ `records` سرِ جایش است
                          و `state` و قیفِ شروع از همان می‌آیند. */ ?>
-                <span class="hint">
+                <span class="hint grid-card-sub">
                     <?= toPersianDigits((int)$u['tx']) ?> کل تراکنش
                     · <?= toPersianDigits((int)$u['today_tx']) ?> امروز
                     ·
@@ -193,13 +222,10 @@ include __DIR__ . '/../includes/header.php';
                         آخرین ثبت <?= toPersianDigits($u['days_since']) ?> روز پیش
                     <?php endif; ?>
                 </span>
-            </div>
-            <span class="status-badge <?= $u['state'] === 'active' ? 'status-badge-in'
-                : ($u['state'] === 'never' ? 'status-badge-out' : 'status-badge-muted') ?>">
-                <?= $u['state'] === 'active' ? 'فعال' : ($u['state'] === 'never' ? 'شروع نکرده' : 'کم‌فعال') ?>
-            </span>
         </div>
     <?php endforeach; ?>
+    </div>
+    <?php pagedNav($pAll); ?>
 </div>
 
 <?php if (count($growth) > 1): ?>

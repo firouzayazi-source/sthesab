@@ -4388,6 +4388,67 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    /* ---------- ادغامِ دو دسته‌بندیِ هم‌معنا ----------
+       ⛔ تصمیم و سدهایش همه سمتِ سرورند (`mergeCategories()`)؛ اینجا
+          فقط فهرستِ هم‌نوع ساخته می‌شود و پیلود فرستاده می‌شود. */
+    var catMergeSel = document.getElementById('catMergeInto');
+    document.querySelectorAll('.js-cat-merge').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            if (!catMergeSel) return;
+            var id = btn.getAttribute('data-id'), type = btn.getAttribute('data-type');
+            document.getElementById('catMergeFrom').value = id;
+            document.getElementById('catMergeName').textContent = btn.getAttribute('data-name');
+            var msg = document.getElementById('catMergeMessage');
+            if (msg) { msg.hidden = true; msg.textContent = ''; }
+
+            /* فهرست هر بار از نو ساخته می‌شود — یک نسخه‌ی کش‌شده بعد از
+               افزودن یا حذفِ یک دسته بی‌صدا کهنه می‌ماند. */
+            catMergeSel.innerHTML = '';
+            (window.MERGE_CATS || []).forEach(function (c) {
+                if (c.type !== type || String(c.id) === String(id)) return;
+                var o = document.createElement('option');
+                o.value = c.id;
+                o.textContent = c.name;   /* نام را کاربر نوشته */
+                catMergeSel.appendChild(o);
+            });
+            if (!catMergeSel.options.length) {
+                alert('دسته‌بندیِ هم‌نوعِ دیگری برای ادغام وجود ندارد.');
+                return;
+            }
+            openModal('catMerge');
+        });
+    });
+
+    var catMergeForm = document.getElementById('catMergeForm');
+    if (catMergeForm) {
+        catMergeForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var into = catMergeSel.options[catMergeSel.selectedIndex];
+            if (!into) return;
+            if (!confirm('«' + document.getElementById('catMergeName').textContent
+                + '» حذف و در «' + into.text + '» ادغام می‌شود. این کار برگشت‌پذیر نیست. ادامه؟')) return;
+
+            var fd = new FormData();
+            fd.append('csrf_token', csrf());
+            fd.append('kind', 'category');
+            fd.append('action', 'merge');
+            fd.append('id', document.getElementById('catMergeFrom').value);
+            fd.append('into_id', catMergeSel.value);
+
+            fetch(apiUrl('manage_reference.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    /* تازه‌سازی اجباری است: فهرستِ چیپ‌ها، ردیفِ فرمِ ثبت
+                       و پین‌ها همه از همین داده رندر شده‌اند. */
+                    if (d.success) { window.location.reload(); return; }
+                    var m = document.getElementById('catMergeMessage');
+                    if (m) { m.textContent = d.message || 'ادغام انجام نشد.'; m.className = 'form-message error'; m.hidden = false; }
+                    else { alert(d.message || 'ادغام انجام نشد.'); }
+                })
+                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+        });
+    }
+
     // ---------- چک‌ها ----------
     setupAmountFormatter('add_cheque_amount');
     setupAmountFormatter('edit_cheque_amount');

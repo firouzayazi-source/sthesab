@@ -753,6 +753,59 @@ textarea { resize: vertical; }
 }
 .pay-row:last-child { border-bottom: none; }
 
+/* ---------- فهرستِ توری و صفحه‌بندی ---------- */
+
+/* ⛔ توری با `auto-fill` و `minmax`، نه تعدادِ ستونِ ثابت: با عددِ ثابت
+   اولین عرضی که پیش‌بینی نکرده‌ایم کارت‌ها را له می‌کند. روی موبایل
+   خودبه‌خود یک ستون می‌شود چون `230px` از عرضِ در دسترس بزرگ‌تر است.
+   ⚠ `minmax(0, 1fr)` نه `1fr`: آیتمِ گرید پیش‌فرض `min-width: auto`
+   دارد و حاضر نیست از محتوایش کوتاه‌تر شود — همان چیزی که یک بار
+   منوی کناری را از اسکرول شدن انداخت. بدونِ آن، یک نامِ بلند کلِ
+   ستون را پهن می‌کند و صفحه افقی اسکرول می‌شود. */
+.grid-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+/* زمینه عمداً ندارد: `html[data-theme="dark"] .card` با وزنِ بیشتر
+   `background` را بازنویسی می‌کند و همان درسِ `.start-card` است —
+   «داشتنِ مقدار در فایل کافی نیست، قاعده‌ای که برنده می‌شود باید
+   داشته باشدش». مرز از `--line` می‌آید که خودش تم‌آگاه است. */
+.grid-card {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 11px 13px;
+    min-width: 0;
+}
+.grid-card-head {
+    display: flex; align-items: center; gap: 6px;
+    flex-wrap: wrap; margin-bottom: 4px;
+}
+/* ⚠ `overflow-wrap: anywhere` لازم است: نامِ کاربر را خودش می‌نویسد و
+   یک رشته‌ی بی‌فاصله‌ی بلند از کارت بیرون می‌زد. */
+.grid-card-name { font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+.grid-card-sub  { display: block; line-height: 1.9; }
+
+.pager {
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px; flex-wrap: wrap; margin-top: 14px;
+}
+/* ⛔ `nowrap` اجباری است — همان درسِ قاعده ۳۱: «صفحه‌بندی» نیم‌فاصله
+   دارد و مرورگر آن را **جای شکستن** می‌شناسد، پس برچسبِ یک کنترل
+   وسطِ خودش دو خط می‌شد. */
+.pager-link {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-height: 32px; padding: 0 12px; border-radius: 9px;
+    border: 1px solid var(--line); background: transparent;
+    color: var(--brand); font-size: 12.5px; font-weight: 600;
+    text-decoration: none; white-space: nowrap; cursor: pointer;
+}
+.pager-link:hover { border-color: var(--brand); }
+.pager-link.is-off { color: var(--muted); opacity: .55; cursor: default; }
+.pager-link.is-off:hover { border-color: var(--line); }
+.pager-info { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
 /* ---------- کد تخفیف ---------- */
 
 /* ⚠ کد لاتین است و باید چپ‌به‌راست خوانده شود، ولی عمداً به فهرستِ
@@ -1454,6 +1507,14 @@ button.status-badge:active { transform: scale(.96); }
     padding: 0 4px; border-radius: 50%;
 }
 .ref-chip-x:hover { color: var(--out); }
+/* ادغام — فقط کنارِ دسته‌ی شخصی رندر می‌شود (مبدأ حذف می‌شود، و حذفِ
+   یک پیش‌فرض کارِ پنل مدیر است). */
+.ref-chip-merge {
+    background: none; border: none;
+    color: var(--muted); font-size: 13px; line-height: 1;
+    padding: 0 3px; border-radius: 50%;
+}
+.ref-chip-merge:hover { color: var(--brand); }
 /* پینِ دسته‌بندی روی فرمِ ثبت — کنارِ نامِ همان دسته، نه یک فهرستِ دوم */
 .ref-chip-pin {
     display: inline-flex; align-items: center;
