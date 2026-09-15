@@ -21,40 +21,189 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/functions.php';
 
 /**
- * برای هر قابلیت: چند کاربر دست‌کم یک بار استفاده‌اش کرده‌اند.
+ * ⛔ مرزِ «فعال» تنها یک جا تعریف می‌شود.
  *
- * کلیدِ هر قلم `[برچسب, جدول]` است. جدولی که هنوز با migration نیامده
- * باشد رد می‌شود، نه اینکه صفحه را بشکند.
+ * پیش از این عددِ ۱۴ در **سه** جا سخت‌کد بود: شرطِ `userActivity()`،
+ * برچسبِ پله‌ی چهارمِ قیف، و سرآیندِ «بیش از ۱۴ روز…» در صفحه. عوض
+ * کردنِ یکی و جا ماندنِ دو تای دیگر هیچ خطایی نمی‌داد و فقط صفحه را
+ * دروغ‌گو می‌کرد — همان قاعده‌ی `Auth::SESSION_WINDOWS` و
+ * `REMINDER_DAYS`.
+ */
+const ACTIVE_DAYS = 14;
+
+/**
+ * ⛔ «کاربر چیزی ثبت کرد» فقط از این جدول‌ها خوانده می‌شود.
+ *
+ * **خرابیِ واقعی، و همان چیزی که مالکِ نصب گزارش کرد:** تا امروز تنها
+ * منبعِ «آخرین استفاده» جدولِ `transactions` بود. روی همین دیتابیس
+ * سنجیده شد: کاربرِ `admin` سه چک، سه طلب و یک یادآور در ۱۴۰۵/۰۶/۱۳
+ * ثبت کرده بود و صفحه درباره‌اش می‌نوشت **«هرگز شروع نکرده»** و
+ * «هنوز شروع نکرده». نه خطایی، نه نشانه‌ای — فقط یک عددِ غلط که
+ * تصمیمِ محصولی رویش سوار می‌شد. و برای این اپ بدترین حالتِ ممکن
+ * است: چک و طلب و بدهی همان چیزی‌اند که اپ را از رقبا جدا می‌کنند،
+ * پس دقیقاً فعال‌ترین کاربر نامرئی می‌شد.
+ *
+ * ⛔ **فهرست بسته است و کشفِ خودکار اینجا غلط است** — برخلافِ
+ *    `userDataTables()`. آنجا فهرست باید **کامل** باشد (خروجی و حذف)،
+ *    پس کشف از دیتابیس درست است. اینجا فهرست باید **گزینشی** باشد و
+ *    دیتابیس نمی‌داند کدام ردیف «کارِ کاربر» است: `wallets` و `banks`
+ *    و `asset_types` هنگامِ ثبت‌نام خودکار ساخته می‌شوند، پس با کشفِ
+ *    خودکار هر کاربرِ تازه‌ای در همان ثانیه‌ی اول «فعال» می‌شد — یعنی
+ *    قیفِ شروع دقیقاً همان چیزی را پنهان می‌کرد که برای دیدنش ساخته
+ *    شده. روی همین دیتابیس دیده شد: هر ۱۷ کاربرِ ساخته‌شده از مسیرِ
+ *    اپ، ردیفِ `wallets` شان هم‌ثانیه با `users.created_at` است.
+ *
+ * `tests/test_admin_stats.php` فهرست را بسته نگه می‌دارد: هر جدولی که
+ * ستونِ `user_id` دارد باید در **یکی** از این دو فهرست باشد، وگرنه تست
+ * می‌شکند. بدونِ آن، جدولِ فردا بی‌صدا بیرونِ آمار می‌ماند.
+ */
+const ACTIVITY_TABLES = [
+    'transactions', 'cheques', 'debts', 'debt_payments', 'budgets',
+    'savings_goals', 'savings_entries', 'assets', 'trades', 'trade_sales',
+    'recurring_transactions', 'transfers', 'reminders', 'attachments',
+    'people', 'categories', 'wallet_kinds',
+];
+
+/** جدول‌هایی که عمداً «فعالیت» شمرده نمی‌شوند — هر کدام با دلیلش. */
+const NON_ACTIVITY_TABLES = [
+    'wallets'               => 'هنگامِ ثبت‌نام خودکار ساخته می‌شود (createUserAccount)',
+    'banks'                 => 'seedUserDefaults آن را می‌سازد',
+    'asset_types'           => 'seedUserDefaults آن را می‌سازد',
+    'notifications'         => 'برنامه تولیدش می‌کند، نه کاربر',
+    'net_worth_snapshots'   => 'اولین بازدیدِ روز خودکار می‌سازدش',
+    'reminder_occurrences'  => 'Schedule::materialize خودکار می‌سازدش',
+    'reminder_notifications'=> 'برنامه تولیدش می‌کند و created_at هم ندارد',
+    'notification_prefs'    => 'یک تنظیم است، نه یک رکورد',
+    'payments'              => 'هدیه‌ی مدیر هم ردیف می‌سازد؛ کارِ کاربر نیست',
+    'api_tokens'            => 'اعتبارنامه',
+    'password_resets'       => 'اعتبارنامه',
+    'trusted_devices'       => 'اعتبارنامه',
+    'sms_codes'             => 'اعتبارنامه',
+];
+
+/**
+ * زیرکوئریِ جمعِ فعالیت — یک کوئری برای همه‌ی جدول‌ها، نه یکی به‌ازای هر
+ * جدول (همان قاعده‌ی N+1 که در «سرعت» بارها گرفته شده).
+ *
+ * هر تکه روی `(user_id, created_at)` گروه می‌شود، پس ایندکس‌های موجود
+ * می‌پوشانندش؛ بعد بیرونی `MAX`/`SUM` می‌گیرد.
+ *
+ * ⚠ نامِ جدول‌ها از ثابتِ بالا می‌آید، نه از ورودی کاربر.
+ */
+function activityAggregateSql(): string
+{
+    $parts = [];
+    foreach (ACTIVITY_TABLES as $t) {
+        if (!tableExists($t)) { continue; }
+        $tx = $t === 'transactions' ? 'COUNT(*)' : '0';
+        $parts[] = "SELECT user_id, MAX(created_at) AS m, COUNT(*) AS n, {$tx} AS t
+                    FROM `{$t}` WHERE user_id IS NOT NULL GROUP BY user_id";
+    }
+    if (!$parts) { return ''; }
+
+    return 'SELECT z.user_id, MAX(z.m) AS last_at, SUM(z.n) AS records, SUM(z.t) AS tx
+            FROM (' . implode(' UNION ALL ', $parts) . ') z
+            GROUP BY z.user_id';
+}
+
+/**
+ * وضعیتِ هر کاربر: چقدر فعال است و آخرین بار کِی چیزی ثبت کرده.
+ *
+ * ⛔ «آخرین فعالیت» از تاریخِ ثبتِ رکوردها می‌آید، نه از یک لاگِ ورود.
+ *    کسی که اپ را باز می‌کند ولی چیزی ثبت نمی‌کند، از دیدِ محصول
+ *    فعال نیست — و ما هم نمی‌خواهیم ورودها را ثبت کنیم. این تصمیم
+ *    عوض نشد؛ چیزی که عوض شد **دامنه‌ی «رکورد»** است (بالاتر).
+ *
+ * ⛔ فاصله‌ی روز را **دیتابیس** حساب می‌کند (`DATEDIFF`)، نه PHP — همان
+ *    درسِ لینکِ بازیابیِ رمز و بخشِ «منطقه‌ی زمانی»: `new
+ *    DateTimeImmutable('today')` امروزِ PHP است و `created_at` را
+ *    دیتابیس نوشته؛ در پنجره‌ی بامدادی این دو **دو روزِ متفاوت**
+ *    می‌گفتند و عددِ «چند روز پیش» یکی می‌پرید.
+ *
+ * ⚠ و `diff()->days` قدرِ مطلق می‌دهد: یک `created_at`ِ جلوتر از امروز
+ *   (پرشِ ساعتِ سرور، یا ردیفی که پیش از هم‌تراز شدنِ منطقه‌ی زمانی
+ *   نوشته شده) به‌صورت «۳ روز پیش» خوانده می‌شد. حالا علامت‌دار است و
+ *   منفی به صفر («امروز») بریده می‌شود.
+ */
+function userActivity(): array
+{
+    $pdo = Database::getConnection();
+
+    $agg = activityAggregateSql();
+    $sql = 'SELECT u.id, u.full_name, u.username, u.role, u.is_active, u.created_at,
+                   COALESCE(a.tx, 0)      AS tx,
+                   COALESCE(a.records, 0) AS records,
+                   a.last_at,
+                   DATEDIFF(CURDATE(), DATE(a.last_at)) AS days_since
+            FROM users u ';
+    $sql .= $agg !== ''
+        ? 'LEFT JOIN (' . $agg . ') a ON a.user_id = u.id '
+        : 'LEFT JOIN (SELECT NULL AS user_id, NULL AS last_at, 0 AS records, 0 AS tx) a ON 0 ';
+    $sql .= 'ORDER BY u.created_at ASC';
+
+    $rows = $pdo->query($sql)->fetchAll();
+
+    foreach ($rows as $i => $r) {
+        $days = $r['days_since'] === null ? null : max(0, (int)$r['days_since']);
+        $rows[$i]['tx']         = (int)$r['tx'];
+        $rows[$i]['records']    = (int)$r['records'];
+        $rows[$i]['days_since'] = $days;
+        // سه حالتِ روشن، نه یک عددِ خام: مدیر باید بتواند در یک نگاه
+        // بفهمد چه کسی نیاز به کمک دارد.
+        $rows[$i]['state'] = (int)$r['records'] === 0 ? 'never'
+            : ($days !== null && $days <= ACTIVE_DAYS ? 'active' : 'stale');
+    }
+    return $rows;
+}
+
+/**
+ * برای هر قابلیت: چند کاربر دست‌کم `min` بار استفاده‌اش کرده‌اند.
+ *
+ * کلیدِ هر قلم `[برچسب, جدول, کمینه]` است. جدولی که هنوز با migration
+ * نیامده باشد رد می‌شود، نه اینکه صفحه را بشکند.
+ *
+ * ⛔ `wallets` کمینه‌ی **۲** دارد و این یک اصلاحِ واقعی است: حسابِ
+ *    پیش‌فرض را خودِ برنامه می‌سازد، پس ردیفِ «حساب و کیف پول» روی هر
+ *    نصبی نزدیکِ ۱۰۰٪ می‌ایستاد و بالای فهرستِ «کدام بخش‌ها استفاده
+ *    می‌شوند» می‌نشست — یعنی پراستفاده‌ترین قابلیتِ اپ را یک چیزِ
+ *    دست‌نخورده نشان می‌داد. چیزی که واقعاً گفتنی است «چند نفر حسابِ
+ *    دوم ساخته‌اند».
  *
  * @return array<int, array{label:string, users:int, rows:int, share:float}>
  */
 function featureAdoption(int $totalUsers): array
 {
     $features = [
-        ['تراکنش',            'transactions'],
-        ['حساب و کیف پول',    'wallets'],
-        ['طلب و بدهی',        'debts'],
-        ['چک',                'cheques'],
-        ['بودجه‌بندی',        'budgets'],
-        ['اهداف پس‌انداز',    'savings_goals'],
-        ['دارایی',            'assets'],
-        ['معاملات',           'trades'],
-        ['تراکنش دوره‌ای',    'recurring_transactions'],
-        ['اشخاص',             'people'],
-        ['انتقال بین حساب‌ها', 'transfers'],
-        ['پیوست',             'attachments'],
-        ['اپ موبایل (توکن)',  'api_tokens'],
+        ['تراکنش',                 'transactions',           1],
+        ['حساب دوم (به‌جز پیش‌فرض)', 'wallets',                2],
+        ['طلب و بدهی',             'debts',                  1],
+        ['چک',                     'cheques',                1],
+        ['بودجه‌بندی',             'budgets',                1],
+        ['اهداف پس‌انداز',         'savings_goals',          1],
+        ['دارایی',                 'assets',                 1],
+        ['معاملات',                'trades',                 1],
+        ['تراکنش دوره‌ای',         'recurring_transactions', 1],
+        ['یادآور',                 'reminders',              1],
+        ['اشخاص',                  'people',                 1],
+        ['انتقال بین حساب‌ها',      'transfers',              1],
+        ['پیوست',                  'attachments',            1],
+        ['اپ موبایل (توکن)',       'api_tokens',             1],
     ];
 
     $pdo = Database::getConnection();
     $out = [];
 
-    foreach ($features as [$label, $table]) {
+    foreach ($features as [$label, $table, $min]) {
         if (!tableExists($table)) { continue; }
         try {
-            // نامِ جدول از فهرستِ ثابتِ بالا می‌آید، نه از ورودی کاربر.
+            // نامِ جدول از فهرستِ ثابتِ بالا می‌آید، نه از ورودی کاربر؛
+            // `$min` هم عددِ صحیحِ همان فهرست است.
             $r = $pdo->query(
-                "SELECT COUNT(DISTINCT user_id) AS u, COUNT(*) AS c FROM `{$table}`"
+                "SELECT COUNT(*) AS u, COALESCE(SUM(c), 0) AS c FROM (
+                     SELECT user_id, COUNT(*) AS c FROM `{$table}`
+                     WHERE user_id IS NOT NULL
+                     GROUP BY user_id HAVING c >= " . (int)$min . '
+                 ) x'
             )->fetch();
         } catch (PDOException $e) {
             continue;
@@ -74,62 +223,38 @@ function featureAdoption(int $totalUsers): array
 }
 
 /**
- * وضعیتِ هر کاربر: چقدر فعال است و آخرین بار کِی چیزی ثبت کرده.
- *
- * ⛔ «آخرین فعالیت» از تاریخِ ثبتِ رکوردها می‌آید، نه از یک لاگِ ورود.
- *    کسی که اپ را باز می‌کند ولی چیزی ثبت نمی‌کند، از دیدِ محصول
- *    فعال نیست — و ما هم نمی‌خواهیم ورودها را ثبت کنیم.
- */
-function userActivity(): array
-{
-    $pdo = Database::getConnection();
-
-    $rows = $pdo->query(
-        'SELECT u.id, u.full_name, u.username, u.role, u.is_active, u.created_at,
-                (SELECT COUNT(*) FROM transactions t WHERE t.user_id = u.id) AS tx,
-                (SELECT MAX(t.created_at) FROM transactions t WHERE t.user_id = u.id) AS last_tx
-         FROM users u
-         ORDER BY u.created_at ASC'
-    )->fetchAll();
-
-    $today = new DateTimeImmutable('today');
-    foreach ($rows as $i => $r) {
-        $days = null;
-        if ($r['last_tx']) {
-            $d = new DateTimeImmutable(substr($r['last_tx'], 0, 10));
-            $days = (int)$today->diff($d)->days;
-        }
-        $rows[$i]['days_since'] = $days;
-        // سه حالتِ روشن، نه یک عددِ خام: مدیر باید بتواند در یک نگاه
-        // بفهمد چه کسی نیاز به کمک دارد.
-        $rows[$i]['state'] = $r['tx'] == 0 ? 'never'
-            : ($days !== null && $days <= 14 ? 'active' : 'stale');
-    }
-    return $rows;
-}
-
-/**
  * قیفِ شروعِ کار — مهم‌ترین عددِ یک محصول.
  *
  * ⛔ «چند نفر ثبت‌نام کردند» بی‌معناست اگر ندانیم چند نفرشان **شروع
- *    کردند**. کاربری که حساب ساخته و هیچ تراکنشی ثبت نکرده، یعنی جایی
+ *    کردند**. کاربری که حساب ساخته و هیچ چیزی ثبت نکرده، یعنی جایی
  *    در همان دقیقه‌ی اول گیر کرده — و آن دقیقه تنها جایی است که با
  *    اصلاحش همه چیز عوض می‌شود.
+ *
+ * ⛔ پله‌ها روی **رکورد** شمرده می‌شوند، نه فقط تراکنش. با شمارشِ
+ *    تراکنش، کاربری که چک و طلبش را ثبت کرده «شروع نکرده» خوانده
+ *    می‌شد و مالکِ نصب دنبالِ افتی می‌گشت که وجود نداشت — همان
+ *    استدلالِ `funnelVerdict()` که مخرجِ غلط را ممنوع می‌کند، این بار
+ *    درباره‌ی **صورت**.
+ *
+ * ⚠ پله‌ی چهارم زیرمجموعه‌ی پله‌ی دوم می‌ماند: `active` بودن
+ *   `days_since` می‌خواهد و آن فقط با `records ≥ 1` وجود دارد. پس
+ *   `pcKeep` در `funnelVerdict()` هرگز از ۱۰۰ رد نمی‌شود.
  */
 function onboardingFunnel(array $activity): array
 {
     $total = count($activity);
-    $one   = count(array_filter($activity, fn($r) => (int)$r['tx'] >= 1));
-    $five  = count(array_filter($activity, fn($r) => (int)$r['tx'] >= 5));
+    $one   = count(array_filter($activity, fn($r) => (int)$r['records'] >= 1));
+    $five  = count(array_filter($activity, fn($r) => (int)$r['records'] >= 5));
     $keep  = count(array_filter($activity, fn($r) => $r['state'] === 'active'));
 
     $pc = fn($n) => $total > 0 ? round($n * 100 / $total) : 0;
 
     return [
-        ['label' => 'حساب ساخته',            'n' => $total, 'pc' => 100],
-        ['label' => 'اولین تراکنش را ثبت کرده', 'n' => $one,  'pc' => $pc($one)],
-        ['label' => 'دست‌کم ۵ تراکنش',        'n' => $five, 'pc' => $pc($five)],
-        ['label' => 'در ۱۴ روز اخیر فعال',    'n' => $keep, 'pc' => $pc($keep)],
+        ['label' => 'حساب ساخته',              'n' => $total, 'pc' => 100],
+        ['label' => 'اولین رکورد را ثبت کرده',  'n' => $one,  'pc' => $pc($one)],
+        ['label' => 'دست‌کم ۵ رکورد',           'n' => $five, 'pc' => $pc($five)],
+        ['label' => 'در ' . toPersianDigits((string)ACTIVE_DAYS) . ' روز اخیر فعال',
+                                                'n' => $keep, 'pc' => $pc($keep)],
     ];
 }
 
@@ -182,7 +307,7 @@ function funnelVerdict(array $funnel): array
             'tone'     => 'bad',
             'headline' => 'مشکل در همان دقیقه‌ی اول است.',
             'advice'   => 'فقط ' . toPersianDigits((string)$pcOne) . '٪ از کسانی که حساب ساخته‌اند '
-                        . 'حتی یک تراکنش ثبت کرده‌اند. اضافه کردن قابلیتِ تازه اینجا هیچ کمکی نمی‌کند — '
+                        . 'حتی یک رکورد ثبت کرده‌اند. اضافه کردن قابلیتِ تازه اینجا هیچ کمکی نمی‌کند — '
                         . 'اولین کاری که باید کرد ساده کردنِ همان فرمِ ثبت و مسیرِ رسیدن به آن است.',
         ];
     }
@@ -191,8 +316,8 @@ function funnelVerdict(array $funnel): array
         return [
             'tone'     => 'warn',
             'headline' => 'کاربر شروع می‌کند ولی ادامه نمی‌دهد.',
-            'advice'   => 'از هر کسی که یک تراکنش ثبت کرده، فقط ' . toPersianDigits((string)$pcFive)
-                        . '٪ به ۵ تراکنش رسیده. یعنی ثبت کردن به‌قدر کافی سریع نیست، '
+            'advice'   => 'از هر کسی که یک رکورد ثبت کرده، فقط ' . toPersianDigits((string)$pcFive)
+                        . '٪ به ۵ رکورد رسیده. یعنی ثبت کردن به‌قدر کافی سریع نیست، '
                         . 'یا اپ در ازای زحمتِ ثبت چیزی به کاربر برنمی‌گرداند.',
         ];
     }
@@ -204,7 +329,8 @@ function funnelVerdict(array $funnel): array
             'advice'   => 'فقط ' . toPersianDigits((string)$pcKeep) . '٪ از کسانی که شروع کرده‌اند '
             // ⚠ بدونِ ستاره‌ی تأکید: این متن با `h()` در HTML چاپ می‌شود،
             //   نه مارک‌داون — ستاره‌ها عیناً روی صفحه دیده می‌شدند.
-                        . 'در دو هفته‌ی اخیر فعال بوده‌اند. چیزی لازم است که کاربر را برگرداند: '
+                        . 'در ' . toPersianDigits((string)ACTIVE_DAYS) . ' روز اخیر فعال بوده‌اند. '
+                        . 'چیزی لازم است که کاربر را برگرداند: '
                         . 'یادآوریِ سررسید و اعلانِ داخلِ اپ دقیقاً برای همین‌اند — ببینید روشن‌اند یا نه.',
         ];
     }

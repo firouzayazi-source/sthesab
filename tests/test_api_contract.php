@@ -2720,6 +2720,99 @@ if (preg_match('/\$errors\[\]\s*=\s*.عنوان الزامی/u', $txSrc)) {
 
 T::bulk(9, $badGrid, '⛔ شبکه‌ی دسته‌بندی و عنوانِ اختیاری سرِ جایشان‌اند');
 
+// ---------------------------------------------------------------------
+// قاعده ۳۹ — «آخرین استفاده» و آستانه‌ی «فعال»
+//
+// ⛔ **خرابیِ واقعی که این قاعده برایش نوشته شد:** `userActivity()` فقط
+//    جدولِ `transactions` را می‌خواند، پس کاربری که چک و طلب ثبت کرده
+//    بود روی صفحه‌ی مدیر «هرگز شروع نکرده» خوانده می‌شد. رفتارش را
+//    `tests/test_admin_stats.php` می‌سنجد؛ اینجا **شکل** پین می‌شود تا
+//    برنگردد:
+//
+//    ۱. فهرستِ جدول‌ها فقط یک جا تعریف شود (`ACTIVITY_TABLES`)، وگرنه
+//       نسخه‌ی دومی می‌شود که دیر یا زود از این عقب می‌افتد.
+//    ۲. فاصله‌ی روز را **دیتابیس** حساب کند (`DATEDIFF`)، نه PHP: با
+//       `new DateTimeImmutable('today')` امروزِ PHP و `created_at`ِ
+//       دیتابیس در پنجره‌ی بامدادی دو روزِ متفاوت می‌گفتند — همان درسِ
+//       بخشِ «منطقه‌ی زمانی» و لینکِ بازیابیِ رمز.
+//    ۳. آستانه‌ی «فعال» فقط `ACTIVE_DAYS` باشد؛ پیش از این عددِ ۱۴ در
+//       سه جا سخت‌کد بود و عوض کردنِ یکی، دو تای دیگر را بی‌صدا
+//       دروغ‌گو می‌کرد.
+// ---------------------------------------------------------------------
+T::group('قاعده ۳۹ — «آخرین استفاده» و آستانه‌ی «فعال»');
+
+$badStat = [];
+$aiPath  = __DIR__ . '/../includes/admin_insights.php';
+// کامنت‌ها **پیش از** بررسی حذف می‌شوند: همین توضیحاتِ بالا نامِ
+// `transactions` و عددِ ۱۴ را دارند و با سورسِ خام، بررسی روی فایلِ
+// سالم هم قرمز (یا بدتر، بی‌جهت سبز) می‌شد — همان دامِ قاعده ۳۵ و ۳۸.
+$aiSrc = $stripComments($aiPath);
+
+// ⚠ هر دو شکلِ تعریف پذیرفته می‌شود. نسخه‌ی اول فقط `const` را قبول
+//   می‌کرد و آن یک **هشدارِ الکی** بود: `define()` دقیقاً همان کار را
+//   می‌کند و فایل خراب نیست. قاعده باید چیزی را ببندد که خراب است، نه
+//   چیزی را که فقط شکلش فرق دارد.
+if (strpos($aiSrc, 'const ACTIVE_DAYS') === false
+    && strpos($aiSrc, "define('ACTIVE_DAYS'") === false) {
+    $badStat[] = 'admin_insights.php — ثابتِ ACTIVE_DAYS تعریف نشده';
+}
+if (strpos($aiSrc, 'const ACTIVITY_TABLES') === false) {
+    $badStat[] = 'admin_insights.php — فهرستِ ACTIVITY_TABLES تعریف نشده';
+}
+if (strpos($aiSrc, 'const NON_ACTIVITY_TABLES') === false) {
+    $badStat[] = 'admin_insights.php — فهرستِ NON_ACTIVITY_TABLES تعریف نشده';
+}
+
+// بدنه‌ی `userActivity()` — تا **تعریفِ تابعِ بعدی** بریده می‌شود، نه تا
+// اولین `}` (همان درسِ قاعده ۲۹).
+$sU = strpos($aiSrc, 'function userActivity(');
+if ($sU === false) {
+    $badStat[] = 'admin_insights.php — userActivity پیدا نشد';
+} else {
+    $eU  = strpos($aiSrc, "\nfunction ", $sU + 10);
+    $bod = $eU === false ? substr($aiSrc, $sU) : substr($aiSrc, $sU, $eU - $sU);
+
+    if (strpos($bod, 'DATEDIFF(') === false) {
+        $badStat[] = 'userActivity() — فاصله‌ی روز باید با DATEDIFF در دیتابیس حساب شود';
+    }
+    if (strpos($bod, 'DateTimeImmutable') !== false || strpos($bod, '->diff(') !== false) {
+        $badStat[] = 'userActivity() — حسابِ تاریخ به PHP برگشت؛ روزِ PHP و روزِ دیتابیس یکی نیستند';
+    }
+    if (strpos($bod, 'ACTIVE_DAYS') === false) {
+        $badStat[] = 'userActivity() — آستانه باید از ACTIVE_DAYS بیاید';
+    }
+    if (preg_match('/<=\s*14\b/', $bod)) {
+        $badStat[] = 'userActivity() — عددِ ۱۴ دوباره سخت‌کد شد';
+    }
+    // ⛔ نامِ هیچ جدولی مستقیم داخلِ این تابع نباشد: فهرست فقط از
+    //    `activityAggregateSql()` می‌آید که خودش `ACTIVITY_TABLES` را
+    //    می‌خواند.
+    foreach (['transactions', 'cheques', 'debts'] as $t) {
+        if (strpos($bod, "`{$t}`") !== false || strpos($bod, "FROM {$t}") !== false) {
+            $badStat[] = "userActivity() — نامِ جدولِ {$t} مستقیم نوشته شده؛ فهرست فقط ACTIVITY_TABLES است";
+        }
+    }
+}
+
+// فهرست فقط یک جا تعریف شود
+foreach (glob(__DIR__ . '/../includes/*.php') as $p) {
+    if (realpath($p) === realpath($aiPath)) { continue; }
+    if (strpos((string)@file_get_contents($p), 'ACTIVITY_TABLES = [') !== false) {
+        $badStat[] = basename($p) . ' — نسخه‌ی دومِ ACTIVITY_TABLES';
+    }
+}
+
+// صفحه آستانه را از ثابت بخواند، نه عددِ خودش
+$pgSrc = $stripComments(__DIR__ . '/../admin/insights.php');
+if (strpos($pgSrc, 'ACTIVE_DAYS') === false) {
+    $badStat[] = 'admin/insights.php — آستانه باید از ACTIVE_DAYS بیاید';
+}
+if (strpos($pgSrc, '۱۴ روز') !== false || preg_match('/بیش از\s*14\s*روز/u', $pgSrc)) {
+    $badStat[] = 'admin/insights.php — عددِ آستانه سخت‌کد شد';
+}
+
+T::bulk(12, $badStat, '⛔ «آخرین استفاده» و آستانه‌ی «فعال» یک مرجع دارند');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

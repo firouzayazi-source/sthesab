@@ -104,7 +104,8 @@ include __DIR__ . '/../includes/header.php';
             هرگز شروع نکرده‌اند (<?= toPersianDigits(count($never)) ?>)
         </h3>
         <p class="hint" style="margin-bottom:10px;">
-            حساب ساخته‌اند ولی حتی یک تراکنش ثبت نکرده‌اند.
+            حساب ساخته‌اند ولی هیچ رکوردی ثبت نکرده‌اند — نه تراکنش، نه چک،
+            نه طلب و بدهی، نه هیچ چیزِ دیگر.
         </p>
         <?php foreach (array_slice($never, 0, 20) as $u): ?>
             <div class="pay-row">
@@ -118,8 +119,12 @@ include __DIR__ . '/../includes/header.php';
     <?php endif; ?>
 
     <?php if ($stale): ?>
+        <?php /* ⚠ عدد از `ACTIVE_DAYS` می‌آید، نه سخت‌کد: پیش از این در سه
+                 جا نوشته شده بود و عوض کردنِ آستانه دو تای دیگر را
+                 بی‌صدا دروغ‌گو می‌کرد. */ ?>
         <h3 class="danger-title" style="color:var(--warn-ink); margin-top:18px;">
-            بیش از ۱۴ روز است چیزی ثبت نکرده‌اند (<?= toPersianDigits(count($stale)) ?>)
+            بیش از <?= toPersianDigits((string)ACTIVE_DAYS) ?> روز است چیزی ثبت نکرده‌اند
+            (<?= toPersianDigits(count($stale)) ?>)
         </h3>
         <?php foreach (array_slice($stale, 0, 20) as $u): ?>
             <div class="pay-row">
@@ -128,7 +133,7 @@ include __DIR__ . '/../includes/header.php';
                     <span class="hint">(<?= h($u['username']) ?>)</span>
                 </div>
                 <span class="hint">
-                    <?= toPersianDigits((int)$u['tx']) ?> تراکنش ·
+                    <?= toPersianDigits((int)$u['records']) ?> رکورد ·
                     <?= $u['days_since'] === null ? '—' : toPersianDigits($u['days_since']) . ' روز پیش' ?>
                 </span>
             </div>
@@ -147,8 +152,16 @@ include __DIR__ . '/../includes/header.php';
                 <?php if ($u['role'] === 'admin'): ?><span class="asset-tag">مدیر</span><?php endif; ?>
                 <?php if (!$u['is_active']): ?><span class="status-badge status-badge-out">غیرفعال</span><?php endif; ?>
                 <br>
+                <?php /* ⚠ «رکورد» جدا از «تراکنش» نوشته می‌شود و فقط وقتی
+                         که فرق داشته باشند. بدونِ آن، کاربری که فقط چک و
+                         طلب ثبت کرده «۰ تراکنش · آخرین ثبت ۳ روز پیش»
+                         می‌شد — دو عددِ درست که کنارِ هم بی‌معنا بودند. */ ?>
                 <span class="hint">
-                    <?= toPersianDigits((int)$u['tx']) ?> تراکنش ·
+                    <?= toPersianDigits((int)$u['tx']) ?> تراکنش
+                    <?php if ((int)$u['records'] !== (int)$u['tx']): ?>
+                        · <?= toPersianDigits((int)$u['records']) ?> رکورد
+                    <?php endif; ?>
+                    ·
                     <?php if ($u['days_since'] === null): ?>
                         هنوز شروع نکرده
                     <?php elseif ($u['days_since'] === 0): ?>
