@@ -50,6 +50,7 @@ function usage(): void
     out("  $me --test-mail you@gmail.com          آزمایش تنظیمات ایمیل");
     out("  $me --set-phone ali 09123456789        ثبت شماره برای ورود با پیامک");
     out("  $me --sms-check 09123456789            چرا کدِ ورود برای این شماره نمی‌رود؟");
+    out("  $me --stats-check ali                  عددِ «آمار استفاده» این کاربر از کجا می‌آید؟");
     out("");
     out("نشانه‌های < > را در فرمان ننویسید — bash آن‌ها را تغییرمسیر فایل می‌فهمد");
     out("و با «syntax error near unexpected token» متوقف می‌شود.");
@@ -409,6 +410,114 @@ if ($cmd === '--sms-check') {
     ok('هیچ دروازه‌ای بسته نیست — کدِ ورود برای این شماره باید برود.');
     out('اگر باز هم نرسید، مشکل از خودِ پنل است: در صفحه‌ی مدیر');
     out('«ارسال آزمایشی» بزنید و خطای خامِ پنل را ببینید.');
+    exit(0);
+}
+
+// ---------------------------------------------------------------
+// ⛔ «عددِ آمار غلط است» از بیرون یک شکل دارد و سه علتِ کاملاً جدا:
+//    ۱. کد هنوز روی سرور نرفته (فقط در گیت است)،
+//    ۲. رفته ولی جدولی که عدد را باد می‌کند در فهرستِ درست نیست،
+//    ۳. خودِ `transactions` واقعاً همان‌قدر ردیف دارد (مثلاً ردیفِ سودِ
+//       معامله یا تراکنشِ دوره‌ایِ خودکار).
+//
+//    هر سه یک نشانه می‌دهند: «۷ نوشته در حالی که ۱ تا بوده». حدس زدن
+//    بینشان یعنی سه دورِ کامل deploy و آزمایش — همان دلیلی که
+//    `--sms-check` ساخته شد.
+//
+// ⚠ این ابزار **فقط می‌خواند** و خودِ `userActivity()` را صدا می‌زند،
+//   نه یک کوئریِ بازنویسی‌شده: وگرنه چیزی را می‌سنجید که صفحه
+//   نمی‌سنجد و جوابش بی‌ارزش بود (همان درسِ Reflection در `--sms-check`).
+if ($cmd === '--stats-check') {
+    require_once __DIR__ . '/../includes/admin_insights.php';
+    require_once __DIR__ . '/../includes/user_data.php';   // userDataTables()
+
+    $username = $argvIn[1] ?? fail('نام کاربری را بدهید. نمونه:  --stats-check ali');
+    $user     = $findUser($username);
+    $uid      = (int)$user['id'];
+
+    out('');
+    info('— گام ۱: این نسخه‌ی کد چه چیزی را «رکورد» می‌شمارد؟ —');
+    out('  ACTIVITY_TABLES (' . count(ACTIVITY_TABLES) . ' جدول):');
+    out('    ' . implode('، ', ACTIVITY_TABLES));
+    out('');
+    out('  بیرونِ شمارش (' . count(NON_ACTIVITY_TABLES) . ' جدول):');
+    foreach (NON_ACTIVITY_TABLES as $t => $why) {
+        out(sprintf('    %-22s %s', $t, $why));
+    }
+    out('');
+    // نشانه‌ی نسخه: اگر فهرست‌های بالا هنوز دسته‌بندی و اشخاص را جزوِ
+    // «رکورد» می‌شمارند، یعنی کدِ روی این ماشین قدیمی است.
+    $refs = ['categories', 'people', 'wallet_kinds', 'banks', 'asset_types'];
+    $leak = array_values(array_intersect($refs, ACTIVITY_TABLES));
+    if ($leak) {
+        red('⛔ این نسخه هنوز فهرست‌های کمکی را «رکورد» می‌شمارد: ' . implode('، ', $leak));
+        out('   یعنی کدِ روی این ماشین به‌روز نیست. اول:');
+        out('     cd /opt/hesab/app && sudo ./deploy.sh');
+        out('');
+    } else {
+        ok('فهرست‌های کمکی («فهرست‌های من») بیرونِ شمارش‌اند — این نسخه به‌روز است.');
+        out('');
+    }
+
+    info('— گام ۲: این کاربر در هر جدول چند ردیف دارد؟ —');
+    // ⚠ هر جدولِ `user_id`دار، نه فقط آن‌هایی که می‌شماریم — وگرنه
+    //   جدولی که در هیچ‌کدام از دو فهرست نیست نامرئی می‌ماند.
+    $all   = userDataTables();
+    $total = 0;
+    $counted = 0;
+    foreach ($all as $t) {
+        $st = $pdo->prepare("SELECT COUNT(*) FROM `{$t}` WHERE user_id = :u");
+        $st->execute(['u' => $uid]);
+        $n = (int)$st->fetchColumn();
+        if ($n === 0) { continue; }
+        $total += $n;
+
+        if (in_array($t, ACTIVITY_TABLES, true)) {
+            $tag = 'شمرده می‌شود';
+            $counted += $n;
+        } elseif (isset(NON_ACTIVITY_TABLES[$t])) {
+            $tag = 'شمرده نمی‌شود';
+        } else {
+            $tag = '⛔ در هیچ فهرستی نیست';
+        }
+        out(sprintf('    %-22s %5d   %s', $t, $n, $tag));
+    }
+    out('');
+    out("  جمعِ همه‌ی ردیف‌ها: {$total}   ·   جمعِ شمرده‌شده: {$counted}");
+
+    out('');
+    info('— گام ۳: صفحه‌ی «آمار استفاده» چه می‌گوید؟ —');
+    $row = null;
+    foreach (userActivity() as $r) {
+        if ((int)$r['id'] === $uid) { $row = $r; break; }
+    }
+    if ($row === null) {
+        red('این کاربر در خروجیِ userActivity() نیست — یعنی ردیفِ users پیدا نشد.');
+        exit(1);
+    }
+
+    $other = (int)$row['records'] - (int)$row['tx'];
+    out("    tx         = {$row['tx']}");
+    out("    records    = {$row['records']}");
+    out("    days_since = " . ($row['days_since'] === null ? '(هرگز)' : $row['days_since']));
+    out("    state      = {$row['state']}");
+    out('');
+    out('  و روی صفحه دقیقاً این‌طور دیده می‌شود:');
+    out("    «{$row['tx']} تراکنش" . ($other > 0 ? " · {$other} رکوردِ دیگر" : '') . '»');
+
+    out('');
+    if ((int)$row['records'] !== $counted) {
+        red('⛔ ناهم‌خوانی: جمعِ شمرده‌شده‌ی گام ۲ با records گام ۳ یکی نیست.');
+        out('   یعنی کوئریِ تجمیع جدولی را می‌بیند که اینجا نشمردیم (یا برعکس).');
+        exit(1);
+    }
+    ok('گام ۲ و گام ۳ با هم می‌خوانند.');
+    out('');
+    out('اگر عددِ «تراکنش» هنوز از انتظارِ شما بیشتر است، ردیف‌های اضافه');
+    out('واقعاً در جدولِ transactions هستند. رایج‌ترین علتش این دو است:');
+    out('  • سود/زیانِ هر فروشِ معامله یک تراکنش می‌سازد (syncTradeProfitTransactions)');
+    out('  • تراکنشِ دوره‌ای در اولین بازدیدِ هر روز خودش ثبت می‌شود');
+    out('برای دیدنشان، در خودِ اپ صفحه‌ی «تراکنش‌ها» را باز کنید.');
     exit(0);
 }
 
