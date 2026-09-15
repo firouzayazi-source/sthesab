@@ -496,14 +496,17 @@ if ($cmd === '--stats-check') {
         exit(1);
     }
 
-    $other = (int)$row['records'] - (int)$row['tx'];
     out("    tx         = {$row['tx']}");
+    out("    today_tx   = {$row['today_tx']}");
     out("    records    = {$row['records']}");
     out("    days_since = " . ($row['days_since'] === null ? '(هرگز)' : $row['days_since']));
     out("    state      = {$row['state']}");
     out('');
+    // ⚠ این خط باید **عیناً** همان چیزی باشد که صفحه رندر می‌کند. اگر
+    //   عقب بماند، ابزارِ تشخیص خودش دروغ می‌گوید — دقیقاً همان چیزی که
+    //   `--stats-check` برای نبودنش ساخته شد.
     out('  و روی صفحه دقیقاً این‌طور دیده می‌شود:');
-    out("    «{$row['tx']} تراکنش" . ($other > 0 ? " · {$other} رکوردِ دیگر" : '') . '»');
+    out("    «{$row['tx']} کل تراکنش · {$row['today_tx']} امروز»");
 
     out('');
     if ((int)$row['records'] !== $counted) {

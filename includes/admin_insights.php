@@ -110,12 +110,24 @@ function activityAggregateSql(): string
     foreach (ACTIVITY_TABLES as $t) {
         if (!tableExists($t)) { continue; }
         $tx = $t === 'transactions' ? 'COUNT(*)' : '0';
-        $parts[] = "SELECT user_id, MAX(created_at) AS m, COUNT(*) AS n, {$tx} AS t
+        // ⛔ «تراکنشِ امروز» در **همین** زیرکوئری شمرده می‌شود، نه با یک
+        //    کوئریِ دوم: این تابع در `admin/insights.php` اجرا می‌شود و
+        //    یک کوئریِ تازه یعنی همان «خزشِ بی‌صدا» که کلِ
+        //    `test_query_budget` برای گرفتنش نوشته شد.
+        // ⛔ و مرزِ روز را **دیتابیس** می‌گذارد (`CURDATE()`)، نه PHP —
+        //    همان دلیلِ `DATEDIFF` پایین‌تر: در پنجره‌ی بامدادی روزِ PHP و
+        //    روزِ دیتابیس دو چیزِ متفاوت‌اند.
+        // ⚠ `>= CURDATE()` یعنی امروز **و جلوتر**، دقیقاً هم‌معنای همان
+        //   بریدنِ `days_since`ِ منفی به صفر: ردیفی که ساعتش جلو افتاده
+        //   در هر دو جا «امروز» خوانده می‌شود، نه دو چیزِ متفاوت.
+        $today = $t === 'transactions' ? 'SUM(created_at >= CURDATE())' : '0';
+        $parts[] = "SELECT user_id, MAX(created_at) AS m, COUNT(*) AS n, {$tx} AS t, {$today} AS d
                     FROM `{$t}` WHERE user_id IS NOT NULL GROUP BY user_id";
     }
     if (!$parts) { return ''; }
 
-    return 'SELECT z.user_id, MAX(z.m) AS last_at, SUM(z.n) AS records, SUM(z.t) AS tx
+    return 'SELECT z.user_id, MAX(z.m) AS last_at, SUM(z.n) AS records,
+                   SUM(z.t) AS tx, SUM(z.d) AS today_tx
             FROM (' . implode(' UNION ALL ', $parts) . ') z
             GROUP BY z.user_id';
 }
@@ -127,6 +139,17 @@ function activityAggregateSql(): string
  *    کسی که اپ را باز می‌کند ولی چیزی ثبت نمی‌کند، از دیدِ محصول
  *    فعال نیست — و ما هم نمی‌خواهیم ورودها را ثبت کنیم. این تصمیم
  *    عوض نشد؛ چیزی که عوض شد **دامنه‌ی «رکورد»** است (بالاتر).
+ *
+ * ⛔ سه عدد برمی‌گرداند و هر سه لازم‌اند:
+ *    - `tx` جمعِ کلِ تراکنش‌های کاربر (روی صفحه: «کل تراکنش»)
+ *    - `today_tx` تراکنش‌های **امروز** — خواسته‌ی صریحِ مالکِ نصب، چون
+ *      عددِ کل را دو بار «امروز» خواند.
+ *    - `records` جمعِ همه‌ی جدول‌های `ACTIVITY_TABLES`. روی این صفحه
+ *      دیگر کنارِ `tx` نوشته نمی‌شود (هم‌پوشانی داشتند و گیج می‌کرد)
+ *      ولی **حذف نشد**: `state` و قیفِ شروع در `funnelVerdict()` روی
+ *      همان حساب می‌کنند — کاربری که فقط چک و طلب دارد باید «فعال»
+ *      دیده شود، و آن دقیقاً همان باگی است که این تابع برایش بازنویسی
+ *      شد.
  *
  * ⛔ فاصله‌ی روز را **دیتابیس** حساب می‌کند (`DATEDIFF`)، نه PHP — همان
  *    درسِ لینکِ بازیابیِ رمز و بخشِ «منطقه‌ی زمانی»: `new
@@ -145,14 +168,15 @@ function userActivity(): array
 
     $agg = activityAggregateSql();
     $sql = 'SELECT u.id, u.full_name, u.username, u.role, u.is_active, u.created_at,
-                   COALESCE(a.tx, 0)      AS tx,
-                   COALESCE(a.records, 0) AS records,
+                   COALESCE(a.tx, 0)       AS tx,
+                   COALESCE(a.today_tx, 0) AS today_tx,
+                   COALESCE(a.records, 0)  AS records,
                    a.last_at,
                    DATEDIFF(CURDATE(), DATE(a.last_at)) AS days_since
             FROM users u ';
     $sql .= $agg !== ''
         ? 'LEFT JOIN (' . $agg . ') a ON a.user_id = u.id '
-        : 'LEFT JOIN (SELECT NULL AS user_id, NULL AS last_at, 0 AS records, 0 AS tx) a ON 0 ';
+        : 'LEFT JOIN (SELECT NULL AS user_id, NULL AS last_at, 0 AS records, 0 AS tx, 0 AS today_tx) a ON 0 ';
     $sql .= 'ORDER BY u.created_at ASC';
 
     $rows = $pdo->query($sql)->fetchAll();
@@ -160,6 +184,7 @@ function userActivity(): array
     foreach ($rows as $i => $r) {
         $days = $r['days_since'] === null ? null : max(0, (int)$r['days_since']);
         $rows[$i]['tx']         = (int)$r['tx'];
+        $rows[$i]['today_tx']   = (int)$r['today_tx'];
         $rows[$i]['records']    = (int)$r['records'];
         $rows[$i]['days_since'] = $days;
         // سه حالتِ روشن، نه یک عددِ خام: مدیر باید بتواند در یک نگاه

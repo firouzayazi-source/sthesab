@@ -2848,7 +2848,39 @@ if (strpos($pgSrc, '۱۴ روز') !== false || preg_match('/بیش از\s*14\s*�
     $badStat[] = 'admin/insights.php — عددِ آستانه سخت‌کد شد';
 }
 
-T::bulk(12, $badStat, '⛔ «آخرین استفاده» و آستانه‌ی «فعال» یک مرجع دارند');
+// ⛔ «تراکنشِ امروز» — خرابیِ گزارش‌شده برای بارِ دوم: عددِ کل روی صفحه
+//    بود و مالکِ نصب آن را «امروز» خواند. سه چیز پین می‌شود:
+//
+//    ۱. مرزِ روز را **دیتابیس** بگذارد (`CURDATE()` داخلِ
+//       `activityAggregateSql()`)، نه PHP — همان درسِ `DATEDIFF`.
+//    ۲. صفحه هر دو عدد را **صریح** برچسب بزند («کل تراکنش» و «امروز»)؛
+//       یک عددِ بی‌برچسب دقیقاً همان چیزی است که دو بار غلط خوانده شد.
+//    ۳. «رکوردِ دیگر» برنگردد: آن عدد با `tx` هم‌پوشانی داشت و همان
+//       سوءتفاهمِ اول بود.
+$sAgg = strpos($aiSrc, 'function activityAggregateSql(');
+if ($sAgg === false) {
+    $badStat[] = 'admin_insights.php — activityAggregateSql پیدا نشد';
+} else {
+    $eAgg = strpos($aiSrc, "\nfunction ", $sAgg + 10);
+    $bAgg = $eAgg === false ? substr($aiSrc, $sAgg) : substr($aiSrc, $sAgg, $eAgg - $sAgg);
+    if (strpos($bAgg, 'today_tx') === false) {
+        $badStat[] = 'activityAggregateSql() — تراکنشِ امروز باید در همین زیرکوئری شمرده شود، نه با کوئریِ دوم';
+    }
+    if (strpos($bAgg, 'CURDATE()') === false) {
+        $badStat[] = 'activityAggregateSql() — مرزِ «امروز» باید با CURDATE() در دیتابیس باشد، نه در PHP';
+    }
+}
+if (strpos($pgSrc, 'today_tx') === false) {
+    $badStat[] = 'admin/insights.php — «تراکنشِ امروز» روی صفحه نیست';
+}
+if (strpos($pgSrc, 'کل تراکنش') === false) {
+    $badStat[] = 'admin/insights.php — عددِ کل باید صریح «کل تراکنش» برچسب بخورد';
+}
+if (strpos($pgSrc, 'رکوردِ دیگر') !== false) {
+    $badStat[] = 'admin/insights.php — «رکوردِ دیگر» برگشت؛ آن عدد با tx هم‌پوشانی داشت';
+}
+
+T::bulk(18, $badStat, '⛔ «آخرین استفاده»، آستانه‌ی «فعال»، و «تراکنشِ امروز»');
 
 // ---------------------------------------------------------------------
 // قاعده ۴۰ — «شخصی‌سازیِ» دسته‌بندی، و نگهبانِ حذف
