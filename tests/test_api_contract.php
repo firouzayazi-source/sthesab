@@ -3240,6 +3240,91 @@ foreach (glob(__DIR__ . '/../{api,includes,admin,.}/*.php', GLOB_BRACE) as $p) {
 
 T::bulk(16, $badImp, '⛔ بازگرداندن از فایل یک مرجع دارد و مالکیت از نشست می‌آید');
 
+// ---------------------------------------------------------------
+// قاعده ۴۳ — عدد چپ‌چین می‌ماند
+// ---------------------------------------------------------------
+//
+// **گزارشِ مالکِ نصب:** «در کارت‌ها مانده‌ها اعداد … الان راست‌چین
+// هستند. کلاً اعداد باید چپ‌چین باشن.» و او درست می‌گفت: عددِ درشتِ
+// نوارِ مانده روی `gapL = ۱۶۶` و `gapR = ۰` می‌نشست.
+//
+// ⛔ **علتش در خودِ `.bv-num` نبود** — آن از قبل `direction: ltr` و
+//    `text-align: left` داشت. پدرش `flex-direction: row-reverse` بود و
+//    در محورِ راست‌به‌چپ، `justify-content: flex-start` یعنی لبه‌ی
+//    **راست**. همان درسِ همیشگی: داشتنِ مقدار در فایل کافی نیست.
+//
+// ⛔ `tests/test_number_align.php` همین را در کرومیوم **اندازه
+//    می‌گیرد**، ولی کرومیوم ابزارِ اختیاری است و نبودنش `T::skip` —
+//    پس روی ماشینی که مرورگر ندارد، این قاعده تنها نگهبانِ باقی‌مانده
+//    است. «دو تست و هر دو لازم».
+//
+// ⚠ کامنت‌های CSS پیش از بررسی حذف می‌شوند: توضیحِ بالای همان قاعده‌ها
+//   واژه‌ی `row-reverse` و `direction: ltr` را دارد و بررسیِ متنی روی
+//   فایلِ **سالم** قرمز می‌شد — همان دامِ قاعده‌های ۱۹ و ۲۰ و ۳۵ و ۳۸.
+T::group('قاعده ۴۳ — عدد چپ‌چین می‌ماند');
+
+$badAlign = [];
+$cssPath  = __DIR__ . '/../assets/css/style.css';
+$cssRaw   = is_file($cssPath) ? (string)file_get_contents($cssPath) : '';
+if ($cssRaw === '') { $badAlign[] = 'assets/css/style.css پیدا نشد'; }
+$cssSrcA = (string)preg_replace('#/\*.*?\*/#s', '', $cssRaw);
+
+/** بدنه‌ی یک قاعده را با انتخابگرِ **دقیق** برمی‌دارد. */
+$cssBlock = static function (string $src, string $selector): string {
+    $re = '/(?:^|\})\s*' . preg_quote($selector, '/') . '\s*\{([^{}]*)\}/s';
+    return preg_match($re, $src, $m) ? $m[1] : '';
+};
+
+// ۱) فهرستِ `.ltr-num` تنها مرجعِ «این یک عدد است» بماند، و `.bv-num`
+//    داخلش باشد — وگرنه پوششِ تستِ رفتاری بی‌صدا از دستش می‌رود.
+$groupSel = '';
+if (preg_match('/(?:^|\})\s*(\.ltr-num\s*,[^{}]*?)\{([^{}]*)\}/s', $cssSrcA, $gm)) {
+    if (strpos($gm[2], 'direction: ltr') !== false && strpos($gm[2], 'text-align: left') !== false) {
+        $groupSel = $gm[1];
+    }
+}
+if ($groupSel === '') {
+    $badAlign[] = 'فهرستِ .ltr-num با direction/text-align پیدا نشد';
+} else {
+    foreach (['.bv-num', '.balance-value', '.wallet-bal', '.bank-card-balance'] as $need) {
+        if (!preg_match('/' . preg_quote($need, '/') . '\s*[,{]/', $groupSel . '{')) {
+            $badAlign[] = "«{$need}» باید در فهرستِ .ltr-num باشد";
+        }
+    }
+}
+
+// ۲) نوارِ مانده: `row-reverse` همان باگ بود.
+$bvWrap = $cssBlock($cssSrcA, '.balance-value');
+if ($bvWrap === '') {
+    $badAlign[] = '.balance-value پیدا نشد';
+} elseif (strpos($bvWrap, 'row-reverse') !== false) {
+    $badAlign[] = '.balance-value — row-reverse عدد را به لبه‌ی راست می‌برد';
+}
+
+// ۳) `.bv-num` نباید `direction` خودش را داشته باشد: تنها مرجع همان
+//    فهرست است، وگرنه نسخه‌ی دومی می‌شود که از آن عقب می‌افتد.
+$bvNum = $cssBlock($cssSrcA, '.bv-num');
+if ($bvNum !== '' && strpos($bvNum, 'direction') !== false) {
+    $badAlign[] = '.bv-num — direction باید فقط از فهرستِ .ltr-num بیاید';
+}
+
+// ۴) مبلغِ ردیفِ سررسید: `.due-meta` سطرشکن است، پس مبلغ باید با یک
+//    حاشیه‌ی **فیزیکی** به لبه‌ی چپ برود. `margin-inline-*` در آن ردیفِ
+//    راست‌به‌چپ دوباره حل می‌شود و دقیقاً برعکس می‌نشیند.
+$dueAmt = $cssBlock($cssSrcA, '.due-amount');
+if ($dueAmt === '') {
+    $badAlign[] = '.due-amount پیدا نشد';
+} else {
+    if (!preg_match('/margin-right\s*:\s*auto/', $dueAmt)) {
+        $badAlign[] = '.due-amount — بدونِ margin-right:auto مبلغ به راست می‌چسبد';
+    }
+    if (strpos($dueAmt, 'margin-inline') !== false) {
+        $badAlign[] = '.due-amount — margin-inline جهت‌وابسته است و برعکس می‌نشیند';
+    }
+}
+
+T::bulk(9, $badAlign, '⛔ عددها چپ‌چین می‌مانند');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

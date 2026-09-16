@@ -360,23 +360,30 @@ html[data-theme="dark"] .card { border: 1px solid var(--line); }
     letter-spacing: .4px;
     margin-bottom: 7px;
 }
-/* عدد و واحد جدا نگه داشته می‌شوند تا در چیدمان راست‌به‌چپ به‌هم نریزند */
+/* عدد و واحد جدا نگه داشته می‌شوند تا در چیدمان راست‌به‌چپ به‌هم نریزند.
+   ⛔ `row` است نه `row-reverse`، و این تنها چیزی است که عددِ درشتِ نوار
+   را چپ‌چین نگه می‌دارد. `.balance-value` در فهرستِ `.ltr-num` است، پس
+   `direction: ltr` دارد؛ با `row-reverse` محورِ اصلی راست‌به‌چپ می‌شد و
+   `flex-start` یعنی لبه‌ی **راست** — اندازه‌گیری شد: عدد روی
+   `gapL = ۱۶۶` و `gapR = ۰` می‌نشست، یعنی چسبیده به راست. حالا عدد چپ
+   است و واحد بلافاصله راستِ آن، هم‌تراز با «دریافتی/پرداختی» زیرش. */
 .balance-value {
     display: flex;
     align-items: baseline;
     gap: 7px;
-    flex-direction: row-reverse;   /* عدد سمت راست، واحد بلافاصله چپِ آن */
-    justify-content: flex-start;   /* در RTL یعنی چسبیده به راست */
+    flex-direction: row;
+    justify-content: flex-start;
     margin-top: 2px;
 }
+/* ⚠ `direction: ltr` اینجا **دوباره نوشته نمی‌شود**: `.bv-num` به فهرستِ
+   `.ltr-num` پیوست. قاعده‌ی پروژه همین است — کلاسِ عددیِ تازه یک نامِ
+   تازه در آن فهرست می‌گیرد، نه یک `direction: ltr` تازه جای دیگر. */
 .bv-num {
     font-size: 30px;
     font-weight: 700;
     color: var(--gold-lift);
     letter-spacing: -.5px;
     line-height: 1.2;
-    direction: ltr;
-    font-variant-numeric: tabular-nums;
 }
 .bv-unit { font-size: 13px; color: #8d939e; }
 .balance-split {
@@ -3308,7 +3315,7 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
      چپ‌چین کردنشان چیدمانِ برچسب را خراب می‌کند.
    ============================================================ */
 .ltr-num,
-.stats-value, .balance-value,
+.stats-value, .balance-value, .bv-num,
 .wallet-bal, .wallet-line-bal, .wallet-line-total,
 .tx-row-amount, .tx-day-total,
 .debt-amount, .event-amount, .recur-amount, .transfer-amount,
@@ -4112,7 +4119,13 @@ html[data-theme="dark"] .start-card {
     background: var(--paper); border: 1px solid var(--line);
     border-radius: 999px; padding: 1px 7px; font-size: 11px;
 }
-.due-amount { font-weight: 600; }
+/* ⛔ `margin-right: auto` مبلغ را به لبه‌ی **چپِ** ردیف می‌برد، و عمداً
+   فیزیکی است نه `margin-inline-*`: مقدارِ منطقی در این ردیفِ راست‌به‌چپ
+   دوباره حل می‌شود و دقیقاً برعکس می‌نشیند. اندازه‌گیری شد: پیش از این
+   `.due-meta` با `flex-wrap: wrap` مبلغ را به خطِ دوم می‌برد و آنجا
+   `gapL = ۱۵۱` و `gapR = ۰` می‌شد — یعنی چسبیده به راست. حالا چه خط
+   بشکند چه نشکند، مبلغ همان‌جای چپ می‌ماند. */
+.due-amount { font-weight: 600; margin-right: auto; }
 
 .due-actions { display: flex; gap: 4px; flex: 0 0 auto; }
 .due-btn {
