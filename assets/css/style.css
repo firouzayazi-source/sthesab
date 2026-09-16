@@ -1796,6 +1796,16 @@ button.status-badge:active { transform: scale(.96); }
 .auth-logo h1 { font-size: 21px; font-weight: 700; }
 .auth-subtitle { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
 .auth-form { margin-top: 6px; }
+
+/* شناسه‌ی ورود در مرحله‌ی سوم ثبت‌نام با شماره — یک مقدارِ خواندنی، نه
+   یک فیلد: فیلدِ غیرفعال شبیهِ چیزی است که کاربر باید پرش کند.
+   ⚠ جهتش از `.ltr-num` می‌آید (در همان فهرست، روی خودِ عنصر)، نه یک
+     `direction: ltr` تازه — وگرنه نسخه‌ی دومِ آن قاعده می‌شد. */
+.idcard {
+    font-size: 17px; font-weight: 700;
+    padding: 11px 13px; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--gold-wash);
+}
 .link-back {
     background: none; border: none;
     color: var(--gold); font-size: 12.5px;

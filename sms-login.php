@@ -42,6 +42,9 @@ $error   = '';
 $notice  = '';
 $needPro = false;
 $phone   = trim(postParam('phone'));
+// ⚠ نگه داشته می‌شود تا یک اشتباهِ تایپی در رمز، ایمیلِ تایپ‌شده را هم
+//   پاک نکند — وگرنه کاربر بارِ دوم بی‌خیالش می‌شود و همان «هرگز» است.
+$emailIn = trim(postParam('email'));
 $step    = 'phone';
 $ip      = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 
@@ -57,7 +60,7 @@ $canSignup = phoneSignupEnabled();
  *   یکی می‌افتاد و خرابی‌اش بی‌صداست: کاربر دفعه‌ی بعد باز پیامک
  *   می‌خواست، بی‌آنکه بفهمد چرا.
  */
-function finishPhoneLogin(array $user, bool $created): void
+function finishPhoneLogin(array $user, bool $created, string $warning = ''): void
 {
     Auth::establishSession($user);
 
@@ -70,14 +73,24 @@ function finishPhoneLogin(array $user, bool $created): void
     Auth::rememberUsername((string)$user['username']);
 
     // ⚠ کاربرِ تازه به پروفایل می‌رود نه به خانه: رمز را همین حالا
-    //   گذاشته ولی نام و ایمیلش هنوز خالی است، و اگر همان اول نبیندشان
-    //   هرگز سراغشان نمی‌رود.
+    //   گذاشته ولی نامش هنوز «کاربر ۱۲۳۴» است، و اگر همان اول نبیندش
+    //   هرگز سراغش نمی‌رود.
+    //
+    // ⛔ و پیام **نام کاربری را می‌گوید**. تا امروز نمی‌گفت: کاربر رمز
+    //    می‌گذاشت و شش ماه بعد پشتِ صفحه‌ی ورود نمی‌دانست چه چیزی تایپ
+    //    کند. شناسه از روزِ اول وجود داشت و فقط **دیده نمی‌شد** — و
+    //    شناسه‌ای که کاربر نداند، با نداشتنش فرقی ندارد.
+    if ($created) {
+        $note = 'حساب شما ساخته شد. نام کاربری شما برای ورودهای بعدی: '
+              . toPersianDigits((string)$user['username'])
+              . ' — با همین و رمزی که گذاشتید هم می‌توانید وارد شوید.';
+        if ($warning !== '') { $note .= ' ⚠ ایمیل ثبت نشد: ' . $warning; }
+    }
+
     redirectWithMessage(
         $created ? 'profile.php' : 'index.php',
-        'success',
-        $created
-            ? 'حساب شما ساخته شد. نام و ایمیلتان را می‌توانید همین‌جا کامل کنید.'
-            : 'خوش آمدید.'
+        ($created && $warning !== '') ? 'error' : 'success',
+        $created ? $note : 'خوش آمدید.'
     );
 }
 
@@ -109,9 +122,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $step    = 'code';
         }
     } elseif (postParam('step') === 'password') {
-        $res = phoneSignupComplete($phone, postParam('password'), postParam('password_confirm'));
+        $res = phoneSignupComplete($phone, postParam('password'), postParam('password_confirm'),
+                                   postParam('email'));
         if ($res['ok']) {
-            finishPhoneLogin($res['user'], true);
+            finishPhoneLogin($res['user'], true, (string)($res['warning'] ?? ''));
         }
         $error = $res['message'];
         $step  = ($res['restart'] ?? false) ? 'phone' : 'password';
@@ -195,6 +209,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <input type="hidden" name="step" value="password">
                 <input type="hidden" name="phone" value="<?= h($phone) ?>">
 
+                <?php /* ⛔ شناسه‌ی ورود بلوکِ خودش را دارد، نه یک `hint`
+                         زیرِ فیلدِ تکرارِ رمز. آنجا دقیقاً جایی است که
+                         چشم رد می‌شود — و کاربری که شناسه‌اش را نداند
+                         دفعه‌ی بعد ناچار است باز پیامک بگیرد، یعنی همان
+                         هزینه‌ای که این کار برای حذفش است. */ ?>
+                <div class="form-group">
+                    <label>نام کاربری شما</label>
+                    <p class="idcard ltr-num"><?= toPersianDigits(h($phone)) ?></p>
+                    <p class="hint">
+                        همین شماره است. دفعه‌ی بعد با همین و رمزی که
+                        می‌گذارید وارد شوید — بدون پیامک.
+                    </p>
+                </div>
+
                 <div class="form-group">
                     <label for="password">رمز عبور</label>
                     <input type="password" id="password" name="password" required autofocus
@@ -206,9 +234,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="password" id="password_confirm" name="password_confirm" required
                            autocomplete="new-password" minlength="8"
                            placeholder="همان رمز را دوباره بنویسید">
+                </div>
+
+                <?php /* ⛔ اختیاری و در همین مرحله، نه یک مرحله‌ی چهارم.
+                         دلیلش بالای `phoneSignupComplete()` نوشته شده:
+                         نپرسیدن در همین لحظه عملاً یعنی هرگز. */ ?>
+                <div class="form-group">
+                    <label for="email">ایمیل (اختیاری)</label>
+                    <input type="email" id="email" name="email" maxlength="190"
+                           autocapitalize="none" autocorrect="off" spellcheck="false"
+                           autocomplete="email" placeholder="مثلاً: you@gmail.com"
+                           value="<?= h($emailIn) ?>">
                     <p class="hint">
-                        نام کاربری شما همین شماره است:
-                        <?= toPersianDigits(h($phone)) ?>
+                        لازم نیست، ولی اگر روزی شماره‌تان عوض شود یا رمزتان
+                        را فراموش کنید، تنها راه بازگشت همین است.
                     </p>
                 </div>
 

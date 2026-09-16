@@ -414,9 +414,22 @@ function phoneAuthComplete(string $rawPhone, string $rawCode, ?string $ip = null
  * پیش‌شرطش نشانه‌ی نشست است، نه هیچ چیزی که از فرم بیاید — بالای
  * `phoneVerifyRemember()` توضیح داده شده.
  *
- * @return array{ok:bool, message:string, user?:array, created?:bool, restart?:bool}
+ * ⛔ **ایمیل اختیاری است و همین‌جا پرسیده می‌شود، نه در یک مرحله‌ی
+ *    چهارم.** شماره‌ی تأییدشده خودش یک راهِ بازگشت است، پس اجبارِ ایمیل
+ *    فقط اصطکاک اضافه می‌کرد؛ ولی نپرسیدنش هم یعنی کاربری که **شماره‌اش
+ *    را عوض می‌کند یا پنلِ پیامک بخوابد** هیچ راهِ دومی ندارد. نپرسیدن
+ *    در همین لحظه عملاً یعنی هرگز: بعدش باید خودش برود پروفایل و آن را
+ *    پر کند، و کسی این کار را نمی‌کند.
+ *
+ * ⚠ خالی بودنش خطا نیست و نشانه‌ی تأیید را هم نمی‌سوزاند — مثل رمزِ
+ *   کوتاه. سوزاندنِ نشانه برای یک ایمیلِ بدتایپ‌شده یعنی یک پیامکِ
+ *   دیگر، هم برای کاربر هم برای اعتبارِ پنل.
+ *
+ * @return array{ok:bool, message:string, user?:array, created?:bool,
+ *               restart?:bool, warning?:string}
  */
-function phoneSignupComplete(string $rawPhone, string $password, string $confirm): array
+function phoneSignupComplete(string $rawPhone, string $password, string $confirm,
+                             string $email = ''): array
 {
     require_once __DIR__ . '/sms_login.php';
 
@@ -445,16 +458,23 @@ function phoneSignupComplete(string $rawPhone, string $password, string $confirm
     // ⚠ از همان `validateNewUser()` رد می‌شود، نه از سنجشِ محلی: قاعده‌ی
     //   «دست‌کم یک راهِ بازگشت»، قاعده‌ی نام کاربری، و قاعده‌ی رمز هر سه
     //   آنجا هستند.
-    $err = validateNewUser($pdo, $fullName, $username, '', $password, $confirm, $phone);
+    $email = trim($email);
+    $err = validateNewUser($pdo, $fullName, $username, $email, $password, $confirm, $phone);
     if ($err !== '') { return ['ok' => false, 'message' => $err]; }
 
-    $res = createUserAccount($pdo, $fullName, $username, '', $password, 'user', $phone);
+    $res = createUserAccount($pdo, $fullName, $username, $email, $password, 'user', $phone);
     if (!$res['ok']) {
         return ['ok' => false, 'message' => $res['error'] ?? 'ساخت حساب انجام نشد.'];
     }
-    if (($res['error'] ?? '') !== '') {
-        return ['ok' => false, 'message' => $res['error']];
-    }
+    // ⛔ ننشستنِ ایمیل **شکست نیست** و این مرزِ دقیق اهمیت دارد.
+    //    `createUserAccount()` در آن حالت `ok = true` با یک `error`
+    //    برمی‌گرداند — یعنی حساب **ساخته شده**. اگر اینجا `ok = false`
+    //    بدهیم، نشانه هم نمی‌سوزد و تلاشِ دوباره‌ی کاربر یک حسابِ
+    //    **دوم** با نامِ `…‎.2` می‌سازد و اولی یتیم می‌ماند — همان نشتی
+    //    که تستِ «نشانه سوزانده شد» برای نبودنش نوشته شده. تنها حالتِ
+    //    واقعی‌اش هم ایمیلِ تکراری است (نامعتبرش بالاتر گرفته شده).
+    //    پس وارد می‌شود و فقط **می‌داند** که ایمیلش ثبت نشد.
+    $warning = (string)($res['error'] ?? '');
 
     // ⛔ نشانه فقط حالا سوخته می‌شود — نه در شکستِ اعتبارسنجیِ بالا.
     phoneVerifyBurn();
@@ -465,7 +485,10 @@ function phoneSignupComplete(string $rawPhone, string $password, string $confirm
     if (!$user) { return ['ok' => false, 'message' => 'ساخت حساب انجام نشد.']; }
 
     return ['ok' => true, 'created' => true, 'user' => $user,
-            'message' => 'حساب شما ساخته شد.'];
+            'warning' => $warning,
+            'message' => $warning === ''
+                ? 'حساب شما ساخته شد.'
+                : 'حساب شما ساخته شد، ولی ایمیل ثبت نشد: ' . $warning];
 }
 
 /** ثبتِ یک ثبت‌نامِ انجام‌شده برای شمارشِ سد. */

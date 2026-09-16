@@ -466,6 +466,81 @@ $pdo->prepare('DELETE FROM sms_codes WHERE phone = :p')->execute(['p' => $thirdP
 setSetting(PLAN_ENFORCE_SETTING, '0');
 
 // ===============================================================
+T::group('⛔ ایمیلِ اختیاری در همان مرحله‌ی سوم');
+
+/** یک شماره‌ی تازه را تا لبه‌ی مرحله‌ی سوم می‌برد. */
+$toStep3 = function (string $phone, string $ip) use ($pdo, $lastCode): bool {
+    $pdo->prepare('DELETE FROM sms_codes WHERE phone = :p')->execute(['p' => $phone]);
+    Sms::$sent = [];
+    $r = SmsLogin::requestCode($phone, $ip);
+    if (!($r['sent'] ?? false)) { return false; }
+    $s = phoneAuthComplete($phone, (string)$lastCode(), $ip);
+    return (bool)($s['need_password'] ?? false);
+};
+
+$mailPhone = '0917' . random_int(1000000, 9999999);
+$mailAddr  = 'ml' . bin2hex(random_bytes(4)) . '@example.com';
+T::ok($toStep3($mailPhone, '10.9.0.8'), 'شماره‌ی تازه به مرحله‌ی رمز رسید');
+
+// ⛔ ایمیلِ نامعتبر رد می‌شود و **نشانه را نمی‌سوزاند** — همان قاعده‌ی
+//    رمزِ کوتاه. اگر می‌سوزاند، یک تایپِ اشتباه در یک فیلدِ *اختیاری*
+//    کاربر را مجبور به گرفتنِ پیامکِ تازه می‌کرد.
+$badMail = phoneSignupComplete($mailPhone, 'StrongPass1', 'StrongPass1', 'not-an-email');
+T::same(false, $badMail['ok'] ?? true, '⛔ ایمیلِ نامعتبر رد می‌شود');
+T::same(false, $badMail['restart'] ?? false, '⚠ ولی نشانه هنوز زنده است');
+$cntMail = $pdo->prepare('SELECT COUNT(*) FROM users WHERE phone = :p');
+$cntMail->execute(['p' => $mailPhone]);
+T::same(0, (int)$cntMail->fetchColumn(), 'و هیچ حسابی ساخته نشد');
+
+$okMail = phoneSignupComplete($mailPhone, 'StrongPass1', 'StrongPass1', '  ' . $mailAddr . ' ');
+T::same(true, $okMail['ok'] ?? false, 'با ایمیلِ درست حساب ساخته می‌شود',
+    json_encode($okMail, JSON_UNESCAPED_UNICODE));
+$mailId = (int)($okMail['user']['id'] ?? 0);
+if ($mailId > 0) { $madeIds[] = $mailId; }
+
+$gotMail = $pdo->prepare('SELECT email FROM users WHERE id = :u');
+$gotMail->execute(['u' => $mailId]);
+T::same($mailAddr, (string)($gotMail->fetchColumn() ?: ''),
+    '⛔ ایمیل واقعاً نشست (و فاصله‌ی دو طرفش هم گرفته شد)');
+T::same('', (string)($okMail['warning'] ?? 'x'), 'و هشداری در کار نیست');
+
+// ⛔ ایمیلِ خالی همچنان کار می‌کند: شماره‌ی تأییدشده خودش راهِ بازگشت
+//    است. بدونِ این بررسی، اجباری شدنِ ایمیل هیچ تستی را نمی‌شکست.
+$emptyPhone = '0918' . random_int(1000000, 9999999);
+T::ok($toStep3($emptyPhone, '10.9.0.9'), 'شماره‌ی دومِ تازه به مرحله‌ی رمز رسید');
+$noMail = phoneSignupComplete($emptyPhone, 'StrongPass1', 'StrongPass1', '');
+T::same(true, $noMail['ok'] ?? false, '⛔ بدونِ ایمیل هم حساب ساخته می‌شود',
+    json_encode($noMail, JSON_UNESCAPED_UNICODE));
+if (($noMail['user']['id'] ?? 0) > 0) { $madeIds[] = (int)$noMail['user']['id']; }
+
+// ⛔ ایمیلِ تکراری: حساب **ساخته می‌شود** و کاربر وارد می‌شود، فقط
+//    ایمیلش ننشسته. اگر این حالت `ok = false` می‌داد، نشانه نمی‌سوخت و
+//    تلاشِ دوباره یک حسابِ دومِ یتیم می‌ساخت.
+$dupPhone = '0919' . random_int(1000000, 9999999);
+T::ok($toStep3($dupPhone, '10.9.1.1'), 'شماره‌ی سومِ تازه به مرحله‌ی رمز رسید');
+$dupMail = phoneSignupComplete($dupPhone, 'StrongPass1', 'StrongPass1', $mailAddr);
+T::same(true, $dupMail['ok'] ?? false, '⛔ ایمیلِ تکراری حساب را از بین نمی‌برد',
+    json_encode($dupMail, JSON_UNESCAPED_UNICODE));
+if (($dupMail['user']['id'] ?? 0) > 0) { $madeIds[] = (int)$dupMail['user']['id']; }
+T::ok(($dupMail['warning'] ?? '') !== '', 'ولی صریح می‌گوید ایمیل ثبت نشد',
+    json_encode($dupMail, JSON_UNESCAPED_UNICODE));
+T::ok(str_contains((string)($dupMail['message'] ?? ''), 'ایمیل ثبت نشد'),
+    '⚠ و همان جمله به کاربر هم می‌رسد');
+
+// ⛔ و هیچ ردیفِ دومی جا نمانده — نشانه سوخته است.
+$cntDup = $pdo->prepare('SELECT COUNT(*) FROM users WHERE phone = :p');
+$cntDup->execute(['p' => $dupPhone]);
+T::same(1, (int)$cntDup->fetchColumn(), 'دقیقاً یک حساب برای آن شماره');
+$strayDup = $pdo->prepare('SELECT id FROM users WHERE username = :u');
+$strayDup->execute(['u' => $dupPhone . '.2']);
+$strayDupId = (int)($strayDup->fetchColumn() ?: 0);
+if ($strayDupId > 0) { $madeIds[] = $strayDupId; }
+T::same(0, $strayDupId, '⛔ و هیچ کاربرِ یتیمی هم ساخته نشد');
+
+$pdo->prepare('DELETE FROM sms_codes WHERE phone IN (:a, :b, :c)')
+    ->execute(['a' => $mailPhone, 'b' => $emptyPhone, 'c' => $dupPhone]);
+
+// ===============================================================
 T::group('⛔ هسته‌ی اپ پولی نشد، فقط ورودِ پیامکی');
 
 setSetting(PLAN_ENFORCE_SETTING, '1');
@@ -650,6 +725,20 @@ T::same(200, $vc, '⛔ کدِ درست هنوز وارد نمی‌کند — ف�
 T::ok(str_contains($vBody, 'name="password_confirm"'),
     'و آن فرم واقعاً فرمِ رمز است', substr($vBody, 0, 300));
 
+// ⛔ شناسه‌ی ورود روی همان صفحه **دیده** می‌شود، نه فقط وجود دارد.
+//    شناسه‌ای که کاربر نداند با نداشتنش فرقی ندارد: دفعه‌ی بعد ناچار
+//    است باز پیامک بگیرد — همان هزینه‌ای که قرار بود حذف شود.
+T::ok(str_contains($vBody, 'idcard'),
+    '⛔ بلوکِ شناسه‌ی ورود رندر می‌شود');
+T::ok(str_contains($vBody, toPersianDigits($httpPhone)),
+    '⛔ و خودِ شماره به‌عنوان نامِ کاربری روی آن نوشته شده');
+
+// ⛔ ایمیل در همین مرحله پرسیده می‌شود، نه در یک مرحله‌ی چهارم.
+T::ok(str_contains($vBody, 'name="email"'),
+    '⛔ فیلدِ ایمیل در همین فرم هست');
+T::ok(str_contains($vBody, 'ایمیل (اختیاری)'),
+    '⚠ و صریح «اختیاری» است — وگرنه کاربر فکر می‌کند باید پرش کند');
+
 $hp = $pdo->prepare('SELECT id FROM users WHERE phone = :p');
 $hp->execute(['p' => $httpPhone]);
 T::same(0, (int)($hp->fetchColumn() ?: 0),
@@ -669,6 +758,20 @@ $httpId = (int)($hp->fetchColumn() ?: 0);
 T::ok($httpId > 0, 'حساب در دیتابیس ساخته شد');
 if ($httpId > 0) { $madeIds[] = $httpId; }
 T::same(true, userHasPassword($httpId), '⛔ و رمز دارد');
+
+// ⛔ و پیامِ بعد از ساخت **نامِ کاربری را می‌گوید**. تا دیروز فقط
+//    می‌گفت «نام و ایمیلتان را کامل کنید» — یعنی کاربر رمز می‌گذاشت و
+//    هرگز نمی‌فهمید پشتِ صفحه‌ی ورود چه چیزی باید تایپ کند.
+//    ⚠ همین یک بار خوانده می‌شود: flash با اولین رندر مصرف می‌شود.
+//    ⚠ و **جمله و عدد با هم** سنجیده می‌شوند، نه جدا: نسخه‌ی اول فقط
+//      دنبالِ خودِ شماره در صفحه می‌گشت و آن **پوچ** بود — فیلدِ
+//      «شماره موبایل»ِ همان پروفایل همان رقم‌ها را دارد، پس با
+//      برگرداندنِ پیامِ قدیمی هم سبز می‌ماند. جهش نشانش داد.
+[, $flashHtml] = $req('profile.php');
+T::ok(str_contains($flashHtml,
+        'نام کاربری شما برای ورودهای بعدی: ' . toPersianDigits($httpPhone)),
+    '⛔ پیامِ «حساب ساخته شد» خودِ نامِ کاربری را هم می‌گوید',
+    substr($flashHtml, 0, 400));
 
 // ⛔ و نشانه‌ی نشست سوخته است: همان درخواست، دوباره.
 [, $twiceBody] = $req('sms-login.php', [
