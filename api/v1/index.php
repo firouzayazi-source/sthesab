@@ -110,6 +110,10 @@ foreach ($routes as [$verb, $pattern, $handler]) {
 
     $allowed[] = $verb;
     if ($verb === $method) {
+        // برچسبِ مسیر برای لاگ: الگو، نه آدرسِ واقعی — `transactions/{id}`
+        // یک مسیر است، نه هزار مسیرِ متفاوت برای هزار شناسه.
+        Log::setRoute('v1:' . $verb . ' ' . $pattern, 'api/v1');
+        Log::stage('business');
         $handler($params);
         exit;
     }

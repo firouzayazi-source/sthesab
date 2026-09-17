@@ -34,6 +34,6 @@ try {
     $del->execute(['id' => $id, 'u' => $userId]);
     jsonResponse(['success' => true, 'message' => 'انتقال حذف شد.', 'undo_token' => $undo]);
 } catch (PDOException $e) {
-    error_log('Delete Transfer Error: ' . $e->getMessage());
+    Log::error('api.delete_transfer', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی در حذف رخ داد.'], 500);
 }

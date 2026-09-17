@@ -93,6 +93,6 @@ try {
     jsonResponse(['success' => true, 'message' => 'فروش ثبت شد.']);
 } catch (PDOException $e) {
     if ($pdo->inTransaction()) { $pdo->rollBack(); }
-    error_log('Sell Trade Error: ' . $e->getMessage());
+    Log::error('api.sell_trade', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

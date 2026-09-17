@@ -35,6 +35,6 @@ try {
     invalidateRecurringCache($userId);
     jsonResponse(['success' => true, 'message' => 'این دوره رد شد.']);
 } catch (PDOException $e) {
-    error_log('Skip Recurring Error: ' . $e->getMessage());
+    Log::error('api.skip_recurring', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

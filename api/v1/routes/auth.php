@@ -60,6 +60,7 @@ function v1AuthLogin(array $params): void
         Api::input('device_name'),
         Api::input('platform')
     );
+    Audit::log('auth.login', 'user', (int)$user['id'], ['via' => 'api'], (int)$user['id']);
 
     Api::ok([
         'token'           => $token,
@@ -76,8 +77,9 @@ function v1AuthLogin(array $params): void
 /** POST auth/logout — فقط توکنِ همین دستگاه را باطل می‌کند. */
 function v1AuthLogout(array $params): void
 {
-    Api::requireUser();
+    $uid = Api::requireUser();
     ApiAuth::revokeCurrent();
+    Audit::log('auth.logout', 'user', $uid, ['via' => 'api'], $uid);
     Api::ok(['revoked' => true]);
 }
 

@@ -52,6 +52,6 @@ try {
 
     jsonResponse(['success' => true, 'message' => 'با موفقیت حذف شد.', 'undo_token' => $undo]);
 } catch (PDOException $e) {
-    error_log('Delete Debt Error: ' . $e->getMessage());
+    Log::error('api.delete_debt', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی در حذف رخ داد.'], 500);
 }

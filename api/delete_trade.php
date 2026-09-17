@@ -29,6 +29,6 @@ try {
     if ($st->rowCount() === 0) { jsonResponse(['success' => false, 'message' => 'معامله یافت نشد.'], 404); }
     jsonResponse(['success' => true, 'message' => 'معامله حذف شد.']);
 } catch (PDOException $e) {
-    error_log('Delete Trade Error: ' . $e->getMessage());
+    Log::error('api.delete_trade', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

@@ -141,6 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         // حساب مشکلی دارد. رمزِ تازه به‌تنهایی توکنِ
                         // اپِ آن کاربر را باطل نمی‌کند.
                         revokeAllAccessFor($targetId);
+                        Audit::log('auth.password_changed', 'user', $targetId, ['self' => false], null, $targetId);
                     } else {
                         $stmt = $pdo->prepare('UPDATE users SET full_name = :full_name, username = :username, role = :role WHERE id = :id');
                         $stmt->execute([
@@ -150,6 +151,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'id'        => $targetId,
                         ]);
                     }
+                    // ⛔ فقط **کدام** فیلدها عوض شدند، نه مقدارشان (نام و ایمیل
+                    //    محتوای شخصی‌اند)؛ نقش استثناست چون تصمیمِ امنیتی است.
+                    $changed = [];
+                    if ($fullName !== (string)$targetUser['full_name']) { $changed[] = 'full_name'; }
+                    if ($username !== (string)$targetUser['username']) { $changed[] = 'username'; }
+                    if ($role !== (string)$targetUser['role']) { $changed[] = 'role'; }
+                    Audit::log('user.updated', 'user', $targetId, [
+                        'fields' => $changed,
+                        'role'   => $role !== (string)$targetUser['role'] ? [$targetUser['role'], $role] : null,
+                    ], null, $targetId);
                     if ($emailErr === '') { $emailErr = $saveEmail($targetId); }
                     if ($emailErr !== '') {
                         redirectWithMessage('users.php', 'error',
@@ -168,7 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                     redirectWithMessage('users.php', 'success', 'اطلاعات کاربر بروزرسانی شد.');
                 } catch (PDOException $e) {
-                    error_log('Update User Error: ' . $e->getMessage());
+                    Log::error('admin.update_user_failed', $e);
                     $error = 'خطایی در بروزرسانی کاربر رخ داد.';
                 }
             }
@@ -209,6 +220,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($newStatus === 0) {
             revokeAllAccessFor($targetId);
         }
+        Audit::log($newStatus === 1 ? 'user.activated' : 'user.deactivated', 'user', $targetId, [], null, $targetId);
 
         redirectWithMessage('users.php', 'success', $newStatus === 1
             ? 'کاربر فعال شد.'
@@ -242,6 +254,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirectWithMessage('users.php', 'error', 'کاربر مشخص نشد.');
         }
         LoginThrottle::clear($targetName);
+        // ⚠ شناسه از نام پیدا می‌شود فقط برای ستونِ هدف؛ خودِ نام نوشته نمی‌شود.
+        $tgt = $pdo->prepare('SELECT id FROM users WHERE username = :u');
+        $tgt->execute(['u' => $targetName]);
+        $tgtId = (int)$tgt->fetchColumn() ?: null;
+        Audit::log('user.login_unlocked', 'user', $tgtId, [], null, $tgtId);
         redirectWithMessage('users.php', 'success',
             'قفلِ ورودِ «' . $targetName . '» باز شد. حالا می‌تواند دوباره رمزش را وارد کند.');
     } elseif ($action === 'delete') {

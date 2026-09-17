@@ -155,7 +155,7 @@ function exportUserData(int $userId): array
             $out['category_names'][(string)$c['id']] = ['name' => $c['name'], 'type' => $c['type']];
         }
     } catch (PDOException $e) {
-        error_log('Export Category Names Error: ' . $e->getMessage());
+        Log::error('export.category_names_failed', $e);
     }
 
     return $out;
@@ -255,6 +255,10 @@ function deleteUserAccount(int $userId): array
         }
 
         $pdo->commit();
+        // ⛔ بعد از commit و در جدولی که ستونِ `user_id` ندارد، پس ردیفِ
+        //    خودش با حذفِ حساب نمی‌رود. actor خالی می‌ماند اگر حذف از
+        //    خط فرمان باشد؛ مدیر یا خودِ کاربر از نشست می‌آید.
+        Audit::log('account.deleted', 'user', $userId, ['rows' => array_sum($deleted)], null, $userId);
     } catch (Throwable $e) {
         $pdo->rollBack();
         return ['ok' => false, 'deleted' => [], 'reason' => $e->getMessage()];

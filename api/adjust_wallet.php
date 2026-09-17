@@ -82,7 +82,7 @@ try {
     $pdo->prepare('UPDATE wallets SET initial_balance = :b WHERE id = :id AND user_id = :u')
         ->execute(['b' => $newInitial, 'id' => $walletId, 'u' => $userId]);
 } catch (PDOException $e) {
-    error_log('Adjust Wallet Error: ' . $e->getMessage());
+    Log::error('api.adjust_wallet', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }
 

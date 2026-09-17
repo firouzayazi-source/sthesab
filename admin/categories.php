@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute(['name' => $name, 'type' => $type, 'icon' => $icon, 'color' => $color]);
                 redirectWithMessage('categories.php', 'success', 'دسته‌بندی جدید اضافه شد.');
             } catch (PDOException $e) {
-                error_log('Create Category Error: ' . $e->getMessage());
+                Log::error('admin.create_category', $e);
                 $error = 'خطایی در ثبت دسته‌بندی رخ داد.';
             }
         }
@@ -83,7 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute(['name' => $name, 'type' => $type, 'icon' => $icon, 'color' => $color, 'id' => $targetId]);
                 redirectWithMessage('categories.php', 'success', 'دسته‌بندی بروزرسانی شد.');
             } catch (PDOException $e) {
-                error_log('Update Category Error: ' . $e->getMessage());
+                Log::error('admin.update_category', $e);
                 $error = 'خطایی در بروزرسانی دسته‌بندی رخ داد.';
             }
         }
@@ -141,7 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute(['id' => $targetId]);
             redirectWithMessage('categories.php', 'success', 'دسته‌بندی حذف شد.');
         } catch (PDOException $e) {
-            error_log('Delete Category Error: ' . $e->getMessage());
+            Log::error('admin.delete_category', $e);
             redirectWithMessage('categories.php', 'error', 'خطایی در حذف دسته‌بندی رخ داد.');
         }
     }

@@ -154,6 +154,6 @@ try {
     // حتی وقتی ستون وجود داشت و مشکل چیز دیگری بود. حالا نبودِ ستون
     // بالاتر و صریح بررسی می‌شود، پس اینجا واقعاً خطای غیرمنتظره است.
     @unlink($target);
-    error_log('Upload Avatar Error: ' . $e->getMessage());
+    Log::error('api.upload_avatar', $e);
     jsonResponse(['success' => false, 'message' => 'ذخیره در دیتابیس ناموفق بود.'], 500);
 }

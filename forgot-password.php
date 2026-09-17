@@ -39,7 +39,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $mailReady) {
 
         // نتیجه‌ی واقعی فقط در لاگ می‌رود؛ کاربر همیشه یک پیام می‌بیند
         if (!$result['sent'] && $result['error'] !== '' && $result['error'] !== 'no-target') {
-            error_log('forgot-password: ' . $result['error'] . ' — ' . $identifier);
+            // ⛔ خودِ شناسه (ایمیل/نام کاربری) در لاگ نمی‌رود — پیش از این
+            //    می‌رفت، و لاگِ FPM لازم نیست بداند چه کسی رمزش را فراموش کرده.
+            Log::warn('password_reset.request_failed', ['reason' => $result['error']]);
         }
         $done = true;
     }

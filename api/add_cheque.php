@@ -104,6 +104,6 @@ try {
 
     jsonResponse(['success' => true, 'message' => 'چک با موفقیت ثبت شد.']);
 } catch (PDOException $e) {
-    error_log('Add Cheque Error: ' . $e->getMessage());
+    Log::error('api.add_cheque', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی در ثبت چک رخ داد.'], 500);
 }

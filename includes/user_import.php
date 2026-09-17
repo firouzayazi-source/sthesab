@@ -131,7 +131,7 @@ function importForeignKeys(): array
              ORDER BY TABLE_NAME, COLUMN_NAME"
         )->fetchAll();
     } catch (PDOException $e) {
-        error_log('Import FK Error: ' . $e->getMessage());
+        Log::error('import.fk_failed', $e);
         return $out;
     }
 
@@ -176,7 +176,7 @@ function importRequiredLinks(): array
                AND col.IS_NULLABLE = 'NO'"
         )->fetchAll();
     } catch (PDOException $e) {
-        error_log('Import Required Links Error: ' . $e->getMessage());
+        Log::error('import.required_links_failed', $e);
         return $out;
     }
 
@@ -294,7 +294,7 @@ function importCounts(int $userId): array
         $st->execute($args);
         $rows = $st->fetchAll();
     } catch (PDOException $e) {
-        error_log('Import Counts Error: ' . $e->getMessage());
+        Log::error('import.counts_failed', $e);
         return [];
     }
 
@@ -617,7 +617,7 @@ function importUserData(int $userId, array $data): array
         $pdo->commit();
     } catch (Throwable $e) {
         $pdo->rollBack();
-        error_log('Import Data Error: ' . $e->getMessage());
+        Log::error('import.data_failed', $e);
         return $fail('بازگرداندن انجام نشد و داده‌ی فعلی دست‌نخورده ماند. ' . $e->getMessage());
     }
 

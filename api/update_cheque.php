@@ -115,6 +115,6 @@ try {
 
     jsonResponse(['success' => true, 'message' => 'چک با موفقیت ویرایش شد.']);
 } catch (PDOException $e) {
-    error_log('Update Cheque Error: ' . $e->getMessage());
+    Log::error('api.update_cheque', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی در ویرایش رخ داد.'], 500);
 }

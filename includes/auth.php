@@ -6,6 +6,7 @@ class Auth
 {
     public static function initSession(): void
     {
+        Log::stage('auth');
         if (session_status() === PHP_SESSION_NONE) {
             $secure = defined('APP_FORCE_HTTPS') && APP_FORCE_HTTPS;
 
@@ -181,6 +182,7 @@ class Auth
         //      به مهاجم می‌گفت کدام حساب‌ها را با پیامک می‌شود گرفت.
         if ($user && ($user['password_hash'] === null || $user['password_hash'] === '')) {
             LoginThrottle::recordFailure($identifier, $ip);
+            Audit::log('auth.login_failed', 'user', (int)$user['id'], ['why' => 'no_password'], null, (int)$user['id']);
             return ['success' => false, 'message' => 'نام کاربری یا رمز عبور اشتباه است.'];
         }
 
@@ -189,10 +191,17 @@ class Auth
             // تصادفی هیچ هزینه‌ای ندارد. پیام هم عمداً همان پیام قبلی
             // می‌ماند تا وجود یا نبودِ حساب لو نرود.
             LoginThrottle::recordFailure($identifier, $ip);
+            // ⛔ خودِ شناسه‌ی تایپ‌شده ثبت نمی‌شود (می‌تواند ایمیل باشد،
+            //    یا حدسِ مهاجم)؛ فقط اینکه شکست خورد، از کدام آی‌پی، و
+            //    اگر حسابی خورد، شناسه‌ی همان حساب. برای «رمزم را
+            //    چند بار غلط زدند؟» همین کافی است.
+            Audit::log('auth.login_failed', 'user', $user ? (int)$user['id'] : null,
+                ['why' => $user ? 'bad_password' : 'unknown_user'], null, $user ? (int)$user['id'] : null);
             return ['success' => false, 'message' => 'نام کاربری یا رمز عبور اشتباه است.'];
         }
 
         if ((int)$user['is_active'] !== 1) {
+            Audit::log('auth.login_failed', 'user', (int)$user['id'], ['why' => 'inactive'], null, (int)$user['id']);
             return ['success' => false, 'message' => 'حساب کاربری شما غیرفعال شده است.'];
         }
 
@@ -234,7 +243,7 @@ class Auth
      *    در یکی از دو نسخه (مثلاً `session_minutes`) یعنی مهلتِ نشست برای
      *    آن مسیر بی‌صدا به پیش‌فرض برمی‌گردد.
      */
-    public static function establishSession(array $user): void
+    public static function establishSession(array $user, string $via = 'password'): void
     {
         session_regenerate_id(true);
 
@@ -245,6 +254,12 @@ class Auth
         $_SESSION['session_minutes'] = self::sessionMinutesFor((int)$user['id']);
         $_SESSION['login_time']      = time();
         $_SESSION['last_seen']       = time();
+
+        // ⛔ ورودِ موفق در دفترِ ممیزی — با روشش (رمز / پیامک). ورودِ
+        //    خودکار از کوکیِ دستگاهِ مورد اعتماد **عمداً** اینجا نیست:
+        //    آن یک اعتبارنامه‌ی تازه نیست، ادامه‌ی همان ورودِ اول است، و
+        //    با مهلتِ کوتاهِ نشست هر چند دقیقه یک ردیف می‌ساخت.
+        Audit::log('auth.login', 'user', (int)$user['id'], ['via' => $via]);
     }
 
     /**
@@ -819,6 +834,10 @@ class Auth
 
     public static function logout(): void
     {
+        // پیش از خالی شدنِ نشست، تا شناسه‌ی کاربر هنوز معلوم باشد.
+        if (!empty($_SESSION['user_id'])) {
+            Audit::log('auth.logout', 'user', (int)$_SESSION['user_id']);
+        }
         // اگر این دستگاه مورد اعتماد بود، اعتمادش هم باطل شود.
         // این فقط برای خروجِ خواسته‌ی کاربر درست است — انقضای مهلت از
         // expireSession() رد می‌شود که به اعتماد دست نمی‌زند.

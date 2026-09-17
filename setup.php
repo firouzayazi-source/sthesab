@@ -84,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirectWithMessage('login.php', 'success', 'حساب مدیر با موفقیت ساخته شد. اکنون وارد شوید.');
         } catch (PDOException $e) {
             $pdo->rollBack();
-            error_log('Setup Error: ' . $e->getMessage());
+            Log::error('setup.failed', $e);
             $error = 'خطایی در ساخت حساب رخ داد. لطفاً دوباره تلاش کنید.';
         }
     }

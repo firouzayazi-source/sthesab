@@ -153,7 +153,7 @@ function txCreate(int $userId, array $in): array
         return ['ok' => true, 'status' => 201, 'id' => $id, 'message' => 'تراکنش با موفقیت ثبت شد.'];
     } catch (PDOException $e) {
         if ($pdo->inTransaction()) { $pdo->rollBack(); }
-        error_log('txCreate: ' . $e->getMessage());
+        Log::error('tx.create_failed', $e);
         return ['ok' => false, 'status' => 500, 'code' => 'server_error',
                 'message' => 'خطایی در ثبت تراکنش رخ داد. دوباره تلاش کنید.'];
     }
@@ -197,7 +197,7 @@ function txUpdate(int $userId, int $id, array $in): array
 
         return ['ok' => true, 'status' => 200, 'id' => $id, 'message' => 'تراکنش با موفقیت ویرایش شد.'];
     } catch (PDOException $e) {
-        error_log('txUpdate: ' . $e->getMessage());
+        Log::error('tx.update_failed', $e);
         return ['ok' => false, 'status' => 500, 'code' => 'server_error',
                 'message' => 'خطایی در ویرایش تراکنش رخ داد.'];
     }
@@ -221,7 +221,7 @@ function txDelete(int $userId, int $id): array
 
         return ['ok' => true, 'status' => 200, 'id' => $id, 'message' => 'تراکنش با موفقیت حذف شد.'];
     } catch (PDOException $e) {
-        error_log('txDelete: ' . $e->getMessage());
+        Log::error('tx.delete_failed', $e);
         return ['ok' => false, 'status' => 500, 'code' => 'server_error',
                 'message' => 'خطایی در حذف تراکنش رخ داد.'];
     }

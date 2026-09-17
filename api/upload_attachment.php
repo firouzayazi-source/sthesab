@@ -96,6 +96,6 @@ try {
     jsonResponse(['success' => true, 'message' => 'پیوست ذخیره شد.']);
 } catch (PDOException $e) {
     @unlink($target); // اگر ثبت در دیتابیس نشد، فایل یتیم نماند
-    error_log('Upload Attachment Error: ' . $e->getMessage());
+    Log::error('api.upload_attachment', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی در ثبت رخ داد.'], 500);
 }

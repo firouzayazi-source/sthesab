@@ -1,4 +1,6 @@
 <?php
+require_once __DIR__ . '/log.php';
+
 class Csrf
 {
     private const SESSION_KEY = 'csrf_token';
@@ -27,7 +29,8 @@ class Csrf
 
     public static function verifyOrFail(?string $token): void
     {
-        if (self::validate($token)) { return; }
+        Log::stage('csrf');
+        if (self::validate($token)) { Log::stage('validation'); return; }
 
         http_response_code(403);
 

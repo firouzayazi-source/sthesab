@@ -108,4 +108,7 @@ printf("ساعت %s — کاربرانِ این ساعت: %d — اعلانِ %s
 if (!$send) { echo "حالت نمایشی — چیزی ساخته نشد. برای اجرا: --send\n"; }
 
 // همان قاعده‌ی `reminders.php`: اجرای نمایشی نشانه نمی‌گذارد.
-if ($send) { CronHealth::beat('due-notify'); }
+if ($send) {
+    CronHealth::beat('due-notify');
+    Log::info('job.done', ['job' => 'due-notify', 'users' => $users, 'made' => $made, 'ms' => Log::elapsedMs()]);
+}

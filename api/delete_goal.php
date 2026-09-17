@@ -26,6 +26,6 @@ try {
     $del->execute(['id' => $id, 'u' => $userId]);
     jsonResponse(['success' => true, 'message' => 'هدف حذف شد.', 'undo_token' => $undo]);
 } catch (PDOException $e) {
-    error_log('Delete Goal Error: ' . $e->getMessage());
+    Log::error('api.delete_goal', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

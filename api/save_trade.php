@@ -100,6 +100,6 @@ try {
     ] + ($hasCp ? ['cp' => $counterparty !== '' ? $counterparty : null] : []));
     jsonResponse(['success' => true, 'message' => 'خرید ثبت شد.']);
 } catch (PDOException $e) {
-    error_log('Save Trade Error: ' . $e->getMessage());
+    Log::error('api.save_trade', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

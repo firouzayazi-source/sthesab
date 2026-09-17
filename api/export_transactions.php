@@ -73,9 +73,10 @@ try {
         ORDER BY t.transaction_date ASC, t.created_at ASC
     ";
     $stmt = $pdo->prepare($sql);
+    Audit::log('data.exported', 'transactions_csv', null, ['kind' => 'csv']);
     $stmt->execute($filter['params']);
 } catch (Throwable $e) {
-    error_log('Export CSV Error: ' . $e->getMessage());
+    Log::error('api.export_csv', $e);
     csvFail('خروجی گرفته نشد. اگر تکرار شد به پشتیبانی خبر بدهید.', 500);
 }
 

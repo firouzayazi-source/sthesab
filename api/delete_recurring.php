@@ -30,6 +30,6 @@ try {
     invalidateRecurringCache($userId);
     jsonResponse(['success' => true, 'message' => 'حذف شد.']);
 } catch (PDOException $e) {
-    error_log('Delete Recurring Error: ' . $e->getMessage());
+    Log::error('api.delete_recurring', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

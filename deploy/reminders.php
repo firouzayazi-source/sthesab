@@ -223,6 +223,10 @@ if (!$send) {
 
 // ⛔ نشانه فقط در حالتِ واقعی ثبت می‌شود: اجرای نمایشی هیچ ایمیلی
 //    نمی‌فرستد، پس ثبتش یعنی «سالم» گفتن به کاری که انجام نشده.
-if ($send) { CronHealth::beat('reminders'); }
+if ($send) {
+    CronHealth::beat('reminders');
+    Log::info('job.done', ['job' => 'reminders', 'sent' => $sent, 'skipped' => $skipped,
+        'failed' => $failed, 'ms' => Log::elapsedMs()]);
+}
 
 exit($failed > 0 ? 1 : 0);

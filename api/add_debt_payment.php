@@ -84,6 +84,6 @@ try {
     ]);
 } catch (PDOException $e) {
     $pdo->rollBack();
-    error_log('Add Debt Payment Error: ' . $e->getMessage());
+    Log::error('api.add_debt_payment', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

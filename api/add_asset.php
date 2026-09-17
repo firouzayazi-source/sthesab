@@ -73,6 +73,6 @@ try {
 
     jsonResponse(['success' => true, 'message' => 'دارایی ثبت شد.']);
 } catch (PDOException $e) {
-    error_log('Add Asset Error: ' . $e->getMessage());
+    Log::error('api.add_asset', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی در ثبت رخ داد.'], 500);
 }

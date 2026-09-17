@@ -265,6 +265,13 @@ function unassignedVars(string $file): array
                 // دیگر نمی‌گیردش — همین باعث هشدار الکی روی
                 // `foreach ([…] as &$bucketSet)` شد.
                 $isAssign = true;
+            } elseif (is_array($prev) && $prev[0] === T_ELLIPSIS) {
+                // `...$args` — پارامترِ variadic. توکنِ قبلی «...» است نه
+                // `(`/`,`، پس شاخه‌ی پایین نمی‌گرفتش و روی `DbConnection::query`
+                // (که ناچار است امضای `PDO::query` را با variadic تکرار کند)
+                // هشدارِ الکی می‌داد. همان اصل: تعریف است اگر داخلِ پرانتزِ
+                // یک `function` باشد.
+                $isAssign = isParamList($tokens, $i);
             } elseif ($prev === '(' || $prev === ',') {
                 // ⚠ اینجا نقطه‌ی حساس است.
                 //

@@ -80,7 +80,7 @@ if (!$parsed['ok']) {
 try {
     $res = importUserData($userId, $parsed['data']);
 } catch (Throwable $e) {
-    error_log('Import Data Fatal: ' . $e->getMessage());
+    Log::error('import.fatal', $e);
     importFail('بازگرداندن انجام نشد و داده‌ی فعلی دست‌نخورده ماند.', 500);
 }
 
@@ -92,6 +92,7 @@ if (!$res['ok']) {
 //    باید همان لحظه ببیند چند ردیف نشست؛ وگرنه باید خودش برود بشمارد و
 //    تا آن موقع نمی‌داند کار کرده یا نه.
 $total = array_sum($res['inserted'] ?? []);
+Audit::log('data.imported', 'backup', null, ['rows' => $total, 'partial' => !empty($res['dropped'])]);
 $note  = 'داده‌ی شما برگشت: ' . toPersianDigits((string)$total) . ' ردیف.';
 
 if (!empty($res['skipped'])) {

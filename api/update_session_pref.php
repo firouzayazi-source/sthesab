@@ -31,6 +31,6 @@ try {
 
     jsonResponse(['success' => true, 'message' => 'ذخیره شد.']);
 } catch (PDOException $e) {
-    error_log('Session Pref Error: ' . $e->getMessage());
+    Log::error('api.session_pref', $e);
     jsonResponse(['success' => false, 'message' => 'ابتدا migration_session_window.sql را اجرا کنید.'], 500);
 }

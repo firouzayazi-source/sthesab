@@ -90,6 +90,6 @@ try {
 
     jsonResponse(['success' => true, 'message' => 'انتقال ثبت شد.']);
 } catch (PDOException $e) {
-    error_log('Save Transfer Error: ' . $e->getMessage());
+    Log::error('api.save_transfer', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی در ثبت انتقال رخ داد.'], 500);
 }

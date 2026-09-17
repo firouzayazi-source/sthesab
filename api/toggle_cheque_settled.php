@@ -193,6 +193,6 @@ try {
     ]);
 } catch (PDOException $e) {
     if ($pdo->inTransaction()) { $pdo->rollBack(); }
-    error_log('Toggle Cheque Error: ' . $e->getMessage());
+    Log::error('api.toggle_cheque', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

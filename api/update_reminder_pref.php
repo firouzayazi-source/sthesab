@@ -32,7 +32,7 @@ try {
          ON DUPLICATE KEY UPDATE email_on = VALUES(email_on), days_before = VALUES(days_before)'
     )->execute(['u' => $userId, 'e' => $on ? 1 : 0, 'd' => $days]);
 } catch (PDOException $e) {
-    error_log('Reminder pref error: ' . $e->getMessage());
+    Log::error('api.reminder_pref', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی در ذخیره رخ داد.'], 500);
 }
 

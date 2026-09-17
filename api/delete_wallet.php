@@ -43,6 +43,6 @@ try {
     $del->execute(['id' => $id, 'u' => $userId]);
     jsonResponse(['success' => true, 'message' => 'حساب حذف شد.']);
 } catch (PDOException $e) {
-    error_log('Delete Wallet Error: ' . $e->getMessage());
+    Log::error('api.delete_wallet', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی در حذف رخ داد.'], 500);
 }

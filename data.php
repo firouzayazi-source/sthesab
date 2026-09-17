@@ -158,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && postParam('action') === 'commit') {
             $stats['valid'] = $inserted;
         } catch (PDOException $e) {
             $pdo->rollBack();
-            error_log('Import commit error: ' . $e->getMessage());
+            Log::error('import.commit_failed', $e);
             $errors[] = 'خطا در ثبت. هیچ ردیفی وارد نشد.';
         }
     }

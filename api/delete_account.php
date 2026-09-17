@@ -69,7 +69,7 @@ if (Auth::isAdmin() && countOtherActiveAdmins($pdo, $userId) < 1) {
 
 $res = deleteUserAccount($userId);
 if (!$res['ok']) {
-    error_log('Delete Account Error: ' . ($res['reason'] ?? ''));
+    Log::error('account.delete_failed', (string)($res['reason'] ?? ''));
     jsonResponse(['success' => false, 'message' => 'حذف انجام نشد. چیزی تغییر نکرد.'], 500);
 }
 

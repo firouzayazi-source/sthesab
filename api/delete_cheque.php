@@ -51,6 +51,6 @@ try {
 
     jsonResponse(['success' => true, 'message' => 'چک حذف شد.', 'undo_token' => $undo]);
 } catch (PDOException $e) {
-    error_log('Delete Cheque Error: ' . $e->getMessage());
+    Log::error('api.delete_cheque', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی در حذف رخ داد.'], 500);
 }

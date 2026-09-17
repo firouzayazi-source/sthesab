@@ -156,6 +156,7 @@ if ($cmd === '--reset') {
         }
 
         $pdo->commit();
+        Audit::log('auth.password_changed', 'user', (int)$user['id'], ['self' => false, 'via' => 'cli'], null, (int)$user['id']);
     } catch (Throwable $e) {
         $pdo->rollBack();
         fail('تغییر رمز انجام نشد: ' . $e->getMessage());

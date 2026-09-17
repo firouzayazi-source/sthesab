@@ -297,6 +297,14 @@ cmd_backup() {
 
 # ---------------------------------------------------------------------
 cmd_logs() {
+    step "خلاصه‌ی ۲۴ ساعتِ گذشته (var/log)"
+    # ⚠ کدِ خروجِ ناصفر یعنی آستانه‌ای رد شده — اینجا فقط نشان داده
+    #   می‌شود؛ `logs` نباید به‌خاطرِ یک هشدار بمیرد.
+    php deploy/log-report.php --hours 24 2>/dev/null | sed 's/^/  /' || true
+    step "آخرین خطوطِ warn/error"
+    php deploy/log-report.php --hours 24 --tail 15 2>/dev/null | sed 's/^/  /' || true
+    info "  یک درخواستِ خاص:  php deploy/log-report.php --req کدِپیگیری"
+
     step "آخرین خطاهای ثبت‌شده‌ی اپ"
     # ⚠ `require_once` اجباری است، نه سلیقه: خودِ `db.php` فایلِ
     #   `app_errors.php` را لود می‌کند، پس `require`ِ ساده کلاس را دوباره
@@ -402,7 +410,7 @@ cmd_rollback() {
 
 # ---------------------------------------------------------------------
 apply_permissions() {
-    mkdir -p uploads/avatars var var/sessions var/cron
+    mkdir -p uploads/avatars var var/sessions var/cron var/log
 
     cat > uploads/.htaccess << 'HTACCESS'
 php_flag engine off

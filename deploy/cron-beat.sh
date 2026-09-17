@@ -35,5 +35,14 @@ cron_beat() {
     # فایل باید برای کاربرِ اپ (`hesab`) خواندنی بماند — پنل مدیر از همان
     # می‌خواند. اینجا root می‌نویسد، پس دسترسیِ پیش‌فرضِ umask کافی نیست.
     chmod 644 "$beat_dir/$job.beat" 2>/dev/null || true
+
+    # همان خطِ JSON که `Log::info('job.done')` در اسکریپت‌های PHP می‌نویسد،
+    # تا `deploy/log-report.php` بکاپ و پاک‌سازیِ نشست را هم ببیند.
+    # ⚠ کانالِ `cli` است (root می‌نویسد)، نه `web` — دلیلش بالای log.php.
+    local log_dir="$app_dir/var/log"
+    mkdir -p "$log_dir" 2>/dev/null || return 0
+    printf '{"ts":"%s","level":"info","env":"prod","svc":"cli","req":"cron-%s-%s","event":"job.done","job":"%s"}\n' \
+        "$(date +%Y-%m-%dT%H:%M:%S%z | sed 's/\([0-9][0-9]\)$/:\1/')" "$job" "$$" "$job" \
+        >> "$log_dir/cli-$(date +%Y-%m-%d).log" 2>/dev/null || true
     return 0
 }

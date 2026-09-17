@@ -50,11 +50,15 @@ class Api
      */
     public static function fail(string $code, string $message, int $status = 400, array $extra = []): void
     {
-        self::send(['ok' => false, 'error' => ['code' => $code, 'message' => $message] + $extra], $status);
+        // ⚠ `request_id` کلیدِ **افزوده** است (مجازِ v1): اپ می‌تواند آن
+        //   را در پیامِ خطا نشان بدهد و کاربر گزارشش کند.
+        self::send(['ok' => false, 'error' => ['code' => $code, 'message' => $message,
+            'request_id' => Log::requestId()] + $extra], $status);
     }
 
     private static function send(array $payload, int $status): void
     {
+        Log::stage('response');
         if (!headers_sent()) {
             http_response_code($status);
             header('Content-Type: application/json; charset=utf-8');

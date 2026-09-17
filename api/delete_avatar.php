@@ -29,6 +29,6 @@ try {
     unset($_SESSION['avatar']);
     jsonResponse(['success' => true, 'message' => 'تصویر حذف شد.']);
 } catch (PDOException $e) {
-    error_log('Delete Avatar Error: ' . $e->getMessage());
+    Log::error('api.delete_avatar', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

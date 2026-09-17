@@ -188,6 +188,6 @@ try {
 
     jsonResponse(['success' => true, 'message' => 'حساب ساخته شد.']);
 } catch (PDOException $e) {
-    error_log('Save Wallet Error: ' . $e->getMessage());
+    Log::error('api.save_wallet', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی در ذخیره حساب رخ داد.'], 500);
 }

@@ -109,6 +109,7 @@ class ApiAuth
             WHERE id = :id AND (last_used_at IS NULL OR last_used_at < DATE_SUB(NOW(), INTERVAL 1 HOUR))
         ')->execute(['id' => $row['id']]);
 
+        Log::setUser((int)$row['user_id']);
         self::$current = [
             'token_id'  => (int)$row['id'],
             'id'        => (int)$row['user_id'],

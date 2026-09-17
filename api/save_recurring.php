@@ -107,6 +107,6 @@ try {
     invalidateRecurringCache($userId);
     jsonResponse(['success' => true, 'message' => 'ثبت شد.']);
 } catch (PDOException $e) {
-    error_log('Save Recurring Error: ' . $e->getMessage());
+    Log::error('api.save_recurring', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

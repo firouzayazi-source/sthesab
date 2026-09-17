@@ -66,7 +66,7 @@ try {
         }
     }
 } catch (PDOException $e) {
-    error_log('Asset price error: ' . $e->getMessage());
+    Log::error('api.asset_price', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی در ذخیره رخ داد.'], 500);
 }
 

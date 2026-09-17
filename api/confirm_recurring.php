@@ -57,6 +57,6 @@ try {
     jsonResponse(['success' => true, 'message' => 'ثبت شد.']);
 } catch (PDOException $e) {
     $pdo->rollBack();
-    error_log('Confirm Recurring Error: ' . $e->getMessage());
+    Log::error('api.confirm_recurring', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

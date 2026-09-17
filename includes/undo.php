@@ -57,7 +57,7 @@ final class Undo
             self::collect($table, [$id], $userId, $groups, $count, 0);
             if (!$groups || $count === 0) { return null; }
         } catch (Throwable $e) {
-            error_log('Undo::capture: ' . $e->getMessage());
+            Log::error('undo.capture_failed', $e);
             return null;   // ⚠ هرگز جلوی خودِ حذف را نمی‌گیرد
         }
 
@@ -106,7 +106,7 @@ final class Undo
             $pdo->commit();
         } catch (PDOException $e) {
             if ($pdo->inTransaction()) { $pdo->rollBack(); }
-            error_log('Undo::restore: ' . $e->getMessage());
+            Log::error('undo.restore_failed', $e);
             // پرتکرارترین حالت: کاربر دو بار «لغو» زده و ردیف از قبل هست.
             return ['ok' => false, 'message' => 'برگرداندن انجام نشد — شاید از قبل برگردانده شده باشد.'];
         }

@@ -114,7 +114,7 @@ try {
     $pdo->commit();
 } catch (PDOException $e) {
     if ($pdo->inTransaction()) { $pdo->rollBack(); }
-    error_log('Toggle Debt Error: ' . $e->getMessage());
+    Log::error('api.toggle_debt', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }
 

@@ -1,4 +1,75 @@
 /* ============================================================
+   خطای جاوااسکریپت و «کد پیگیری»
+   ------------------------------------------------------------
+   بی‌صداترین خرابیِ این اپ صفحه‌ای است که کامل بالا می‌آید و هیچ
+   دکمه‌ای کار نمی‌کند. هر `error`/`unhandledrejection` یک بار
+   (حداکثر دو تا در هر صفحه) به `api/log_client_error.php` می‌رود:
+   پیام، فایل، خط، و مسیرِ صفحه — نه محتوایش.
+
+   و `netErr()`: وقتی سرور ۵۰۰ داد، پاسخ یک `X-Request-Id` دارد؛
+   همان را کنارِ «خطا در ارتباط با سرور» نشان می‌دهیم تا کاربر بتواند
+   گزارشش کند و مالکِ نصب با `deploy/log-report.php --req` همان یک
+   درخواست را پیدا کند. بیرون از DOMContentLoaded است چون خطا می‌تواند
+   پیش از آن بیفتد.
+   ============================================================ */
+(function () {
+    var sent = 0;
+    var base = (typeof window.APP_BASE === 'string') ? window.APP_BASE : '';
+
+    function csrf() {
+        var m = document.querySelector('meta[name="csrf-token"]');
+        if (m && m.content) { return m.content; }
+        var i = document.querySelector('[name="csrf_token"]');
+        return i ? i.value : '';
+    }
+
+    function report(message, file, line, stack) {
+        if (sent >= 2 || !message) { return; }
+        sent++;
+        try {
+            var fd = new FormData();
+            fd.set('csrf_token', csrf());
+            fd.set('message', String(message).slice(0, 300));
+            fd.set('file', String(file || '').slice(0, 200));
+            fd.set('line', String(line || 0));
+            fd.set('page', String(location.pathname).slice(0, 120));
+            fd.set('stack', String(stack || '').slice(0, 800));
+            fetch(base + '/api/log_client_error.php', {
+                method: 'POST', body: fd, keepalive: true,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            }).catch(function () {});
+        } catch (e) { /* لاگر نباید خودش خطا بسازد */ }
+    }
+
+    window.addEventListener('error', function (e) {
+        report(e.message, e.filename, e.lineno, e.error && e.error.stack);
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+        var r = e.reason;
+        report(r && r.message ? r.message : String(r), '', 0, r && r.stack);
+    });
+
+    // شناسه‌ی آخرین پاسخِ ناموفق — از سرآیندی که Log::boot() می‌گذارد.
+    window.LAST_REQUEST_ID = null;
+    if (window.fetch) {
+        var realFetch = window.fetch;
+        window.fetch = function () {
+            window.LAST_REQUEST_ID = null;
+            return realFetch.apply(this, arguments).then(function (r) {
+                try {
+                    if (r && !r.ok) { window.LAST_REQUEST_ID = r.headers.get('X-Request-Id') || null; }
+                } catch (e) { /* headers ممکن است opaque باشد */ }
+                return r;
+            });
+        };
+    }
+    window.netErr = function () {
+        var id = window.LAST_REQUEST_ID;
+        return 'خطا در ارتباط با سرور.' + (id ? ' کد پیگیری: ' + id : '');
+    };
+})();
+
+/* ============================================================
    انتخابگر شخص (چک، طلب و بدهی، معامله)
    ------------------------------------------------------------
    هر `<select class="js-person-select">` یک ورودیِ متنی را کنترل
@@ -810,7 +881,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .catch(function () {
                 formMessage.hidden = false;
                 formMessage.classList.add('show', 'error');
-                formMessage.textContent = 'خطا در ارتباط با سرور. اتصال اینترنت را بررسی کنید.';
+                formMessage.textContent = netErr() + ' اتصال اینترنت را بررسی کنید.';
             })
             .finally(function () {
                 submitBtn.disabled = false;
@@ -843,7 +914,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         if (d.success) { window.location.reload(); }
                         else { alert(d.message || 'ذخیره نشد.'); }
                     })
-                    .catch(function () { alert('خطا در ارتباط با سرور.'); });
+                    .catch(function () { alert(netErr()); });
             });
 
             // ویرایش: همان فرم پر می‌شود، نه یک مودالِ دوم — با فرمِ دوم
@@ -1064,7 +1135,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         if (d.success) { window.location.reload(); }
                         else { alert(d.message || 'انجام نشد.'); }
                     })
-                    .catch(function () { alert('خطا در ارتباط با سرور.'); });
+                    .catch(function () { alert(netErr()); });
             });
         });
 
@@ -1087,7 +1158,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             }
                             window.location.reload();
                         })
-                        .catch(function () { alert('خطا در ارتباط با سرور.'); });
+                        .catch(function () { alert(netErr()); });
                 });
             });
     })();
@@ -1119,7 +1190,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .catch(function () {
                 msg.hidden = false;
                 msg.classList.add('show', 'error');
-                msg.textContent = 'خطا در ارتباط با سرور.';
+                msg.textContent = netErr();
             })
             .finally(function () { sub.disabled = false; });
         });
@@ -1163,7 +1234,7 @@ document.addEventListener('DOMContentLoaded', function () {
             .catch(function () {
                 msg.hidden = false;
                 msg.classList.add('show', 'error');
-                msg.textContent = 'خطا در ارتباط با سرور.';
+                msg.textContent = netErr();
             })
             .finally(function () { sub.disabled = false; });
         });
@@ -1656,7 +1727,7 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             window.location.reload();
         })
-        .catch(function () { alert('خطا در ارتباط با سرور.'); });
+        .catch(function () { alert(netErr()); });
     }
 
     // ---------- حذف تراکنش (AJAX) — در صفحه اصلی و صفحه تراکنش‌ها ----------
@@ -2016,7 +2087,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 }
             })
             .catch(function () {
-                alert('خطا در ارتباط با سرور.');
+                alert(netErr());
                 checkboxEl.checked = !checkboxEl.checked;
                 checkboxEl.disabled = false;
             });
@@ -2301,7 +2372,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     btn.title = j.pinned ? 'برداشتن از صفحه‌ی خانه' : 'نمایش روی صفحه‌ی خانه';
                     btn.classList.toggle('is-on', !!j.pinned);
                 })
-                .catch(function () { alert('خطا در ارتباط با سرور.'); })
+                .catch(function () { alert(netErr()); })
                 .finally(function () { btn.disabled = false; });
         });
     });
@@ -2578,7 +2649,7 @@ document.addEventListener('DOMContentLoaded', function () {
             fetch(apiUrl('toggle_wallet.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
                 .then(function(r){return r.json();})
                 .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
-                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+                .catch(function(){ alert(netErr()); });
         });
     }
 
@@ -2600,7 +2671,7 @@ document.addEventListener('DOMContentLoaded', function () {
                         m.textContent = d.message || 'قابل حذف نیست.';
                     }
                 })
-                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+                .catch(function(){ alert(netErr()); });
         });
     }
 
@@ -2740,7 +2811,7 @@ document.addEventListener('DOMContentLoaded', function () {
             fetch(apiUrl('toggle_budget.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
                 .then(function(r){return r.json();})
                 .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
-                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+                .catch(function(){ alert(netErr()); });
         });
     }
 
@@ -2855,7 +2926,7 @@ document.addEventListener('DOMContentLoaded', function () {
             fetch(apiUrl('archive_goal.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
                 .then(function(r){return r.json();})
                 .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
-                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+                .catch(function(){ alert(netErr()); });
         });
     }
 
@@ -3122,7 +3193,7 @@ document.addEventListener('DOMContentLoaded', function () {
             fetch(apiUrl('toggle_recurring.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
                 .then(function(r){return r.json();})
                 .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
-                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+                .catch(function(){ alert(netErr()); });
         });
     }
 
@@ -3136,7 +3207,7 @@ document.addEventListener('DOMContentLoaded', function () {
             fetch(apiUrl('delete_recurring.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
                 .then(function(r){return r.json();})
                 .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
-                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+                .catch(function(){ alert(netErr()); });
         });
     }
 
@@ -3174,7 +3245,7 @@ document.addEventListener('DOMContentLoaded', function () {
             fetch(apiUrl('skip_recurring.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
                 .then(function(r){return r.json();})
                 .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
-                .catch(function(){ alert('خطا در ارتباط با سرور.'); });
+                .catch(function(){ alert(netErr()); });
         });
     });
 
@@ -3454,7 +3525,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     loadAttachments(txId);
                 }
             })
-            .catch(function () { alert('خطا در ارتباط با سرور.'); });
+            .catch(function () { alert(netErr()); });
     });
 
     document.addEventListener('click', function (e) {
@@ -3475,7 +3546,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 if (d.success && txId) { loadAttachments(txId); }
                 else if (!d.success) { alert(d.message || 'خطا'); }
             })
-            .catch(function () { alert('خطا در ارتباط با سرور.'); });
+            .catch(function () { alert(netErr()); });
     });
 
     // ---------- حساب کاربری من ----------
@@ -3668,7 +3739,7 @@ document.addEventListener('DOMContentLoaded', function () {
             fetch(apiUrl('revoke_device.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (r) { return r.json(); })
                 .then(function (d) { if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
-                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+                .catch(function () { alert(netErr()); });
         });
     });
 
@@ -3682,7 +3753,7 @@ document.addEventListener('DOMContentLoaded', function () {
             fetch(apiUrl('revoke_device.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (r) { return r.json(); })
                 .then(function (d) { if (d.success) { window.location.href = (window.APP_BASE || '') + '/logout.php'; } else { alert(d.message || 'خطا'); } })
-                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+                .catch(function () { alert(netErr()); });
         });
     }
 
@@ -4182,7 +4253,7 @@ document.addEventListener('DOMContentLoaded', function () {
             fetch(apiUrl('delete_avatar.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (r) { return r.json(); })
                 .then(function (d) { if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
-                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+                .catch(function () { alert(netErr()); });
         });
     }
 
@@ -4279,7 +4350,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     location.reload();
                 })
                 .catch(function () {
-                    alert('خطا در ارتباط با سرور.');
+                    alert(netErr());
                     suggestBtn.disabled = false;
                     suggestBtn.textContent = 'افزودن یک‌جا';
                 });
@@ -4329,7 +4400,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (d.success) { window.location.reload(); }
                     else { alert(d.message || 'خطایی رخ داد.'); }
                 })
-                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+                .catch(function () { alert(netErr()); });
         });
     });
 
@@ -4360,7 +4431,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     self.classList.toggle('is-on', want);
                     self.title = want ? 'برداشتن از فرم ثبت' : 'نشان دادن روی فرم ثبت';
                 })
-                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+                .catch(function () { alert(netErr()); });
         });
     });
 
@@ -4384,7 +4455,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (d.success) { if (chip) chip.remove(); window.location.reload(); }
                     else { alert(d.message || 'قابل حذف نیست.'); }
                 })
-                .catch(function () { alert('خطا در ارتباط با سرور.'); });
+                .catch(function () { alert(netErr()); });
         });
     });
 
@@ -4642,7 +4713,7 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (d.success) { window.location.reload(); }
                     else { alert(d.message || 'خطایی رخ داد.'); el.checked = !el.checked; el.disabled = false; }
                 })
-                .catch(function () { alert('خطا در ارتباط با سرور.'); el.checked = !el.checked; el.disabled = false; });
+                .catch(function () { alert(netErr()); el.checked = !el.checked; el.disabled = false; });
         });
     });
 
@@ -4898,7 +4969,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 })
                 .catch(function () {
                     tradesToggle.checked = !tradesToggle.checked;
-                    if (msg) { msg.hidden = false; msg.classList.add('show', 'error'); msg.textContent = 'خطا در ارتباط با سرور.'; }
+                    if (msg) { msg.hidden = false; msg.classList.add('show', 'error'); msg.textContent = netErr(); }
                 });
         });
     }
@@ -5286,7 +5357,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 fetch(apiUrl('delete_trade.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                     .then(function (r) { return r.json(); })
                     .then(function (d) { if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
-                    .catch(function () { alert('خطا در ارتباط با سرور.'); });
+                    .catch(function () { alert(netErr()); });
             });
         });
         document.querySelectorAll('.js-del-sale').forEach(function (btn) {
@@ -5298,7 +5369,7 @@ document.addEventListener('DOMContentLoaded', function () {
                 fetch(apiUrl('delete_trade_sale.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                     .then(function (r) { return r.json(); })
                     .then(function (d) { if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
-                    .catch(function () { alert('خطا در ارتباط با سرور.'); });
+                    .catch(function () { alert(netErr()); });
             });
         });
     })();

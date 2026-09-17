@@ -54,7 +54,7 @@ try {
     $pdo->prepare('UPDATE wallets SET pinned = :p WHERE id = :id AND user_id = :u')
         ->execute(['p' => $pin ? 1 : 0, 'id' => $walletId, 'u' => $userId]);
 } catch (PDOException $e) {
-    error_log('Toggle Wallet Pin Error: ' . $e->getMessage());
+    Log::error('api.toggle_wallet_pin', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }
 

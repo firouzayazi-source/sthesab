@@ -26,6 +26,6 @@ try {
     $del->execute(['id' => $id, 'u' => $userId]);
     jsonResponse(['success' => true, 'message' => 'بودجه حذف شد.', 'undo_token' => $undo]);
 } catch (PDOException $e) {
-    error_log('Delete Budget Error: ' . $e->getMessage());
+    Log::error('api.delete_budget', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

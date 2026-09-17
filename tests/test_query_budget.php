@@ -82,7 +82,7 @@ const BUDGET = [
     'data.php'              => 17,
     'privacy.php'           => 14,
     'pro.php'               => 17,
-    'admin/insights.php'    => 30,
+    'admin/insights.php'    => 32,
     'admin/users.php'       => 17,
     'admin/access.php'      => 15,
     'admin/billing.php'     => 17,
@@ -101,6 +101,8 @@ const NO_BUDGET = [
     'forgot-password.php', 'reset-password.php',
     // خروجی می‌دهند نه صفحه
     'export_transactions.php', 'logout.php',
+    // سنجشِ سلامت: JSON، بی‌کاربر، یک SELECT 1
+    'health.php',
     // استابِ ۳۰۱ به `due.php`
     'upcoming.php', 'calendar.php', 'reminders.php',
     // partial، از بیرون ۴۰۴ می‌دهد

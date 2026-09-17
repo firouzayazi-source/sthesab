@@ -118,7 +118,7 @@ try {
     $pdo->commit();
 } catch (PDOException $e) {
     if ($pdo->inTransaction()) { $pdo->rollBack(); }
-    error_log('Sell Asset Error: ' . $e->getMessage());
+    Log::error('api.sell_asset', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }
 

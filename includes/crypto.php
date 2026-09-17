@@ -35,6 +35,8 @@
  *   می‌سنجد.
  */
 
+require_once __DIR__ . '/log.php';
+
 class Crypto
 {
     /** پیشوندِ نسخه‌دار. اگر روزی الگوریتم عوض شود، `enc:v2:` می‌آید و
@@ -62,7 +64,7 @@ class Crypto
             // ⚠ کلیدِ خراب باید **صدا کند**، نه اینکه بی‌سروصدا خاموش
             //   بماند: در آن حالت داده‌ی تازه خام ذخیره می‌شد و کسی
             //   نمی‌فهمید رمزنگاری اصلاً کار نمی‌کند.
-            error_log('Crypto: APP_ENCRYPTION_KEY نامعتبر است — باید base64 از ۳۲ بایت باشد.');
+            Log::error('crypto.invalid_key', 'APP_ENCRYPTION_KEY نامعتبر است — باید base64 از ۳۲ بایت باشد.');
             return self::$ready = false;
         }
 
@@ -113,7 +115,7 @@ class Crypto
 
         $raw = base64_decode(substr($stored, strlen(self::PREFIX)), true);
         if ($raw === false || strlen($raw) <= SODIUM_CRYPTO_SECRETBOX_NONCEBYTES) {
-            error_log('Crypto: مقدارِ رمزشده‌ی خراب.');
+            Log::error('crypto.corrupt_value', 'مقدارِ رمزشده‌ی خراب.');
             return null;
         }
 
@@ -122,7 +124,7 @@ class Crypto
 
         $plain = sodium_crypto_secretbox_open($box, $nonce, self::$key);
         if ($plain === false) {
-            error_log('Crypto: رمزگشایی شکست خورد — کلید عوض شده یا ردیف دست‌کاری شده.');
+            Log::error('crypto.decrypt_failed', 'رمزگشایی شکست خورد — کلید عوض شده یا ردیف دست‌کاری شده.');
             return null;
         }
         return $plain;

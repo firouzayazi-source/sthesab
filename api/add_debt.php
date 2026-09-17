@@ -111,6 +111,6 @@ try {
 
     jsonResponse(['success' => true, 'message' => 'با موفقیت ثبت شد.']);
 } catch (PDOException $e) {
-    error_log('Add Debt Error: ' . $e->getMessage());
+    Log::error('api.add_debt', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی در ثبت رخ داد. دوباره تلاش کنید.'], 500);
 }

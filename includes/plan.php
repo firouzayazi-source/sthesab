@@ -286,7 +286,7 @@ function submitPayment(int $userId, int $months, string $reference, string $note
         return ['ok' => false, 'error' => $e->getMessage()];
     } catch (Throwable $e) {
         $pdo->rollBack();
-        error_log('submitPayment: ' . $e->getMessage());
+        Log::error('plan.submit_payment_failed', $e);
         return ['ok' => false, 'error' => 'ثبت نشد. دوباره تلاش کنید.'];
     }
 }
@@ -411,10 +411,11 @@ function grantPro(int $userId, int $months, int $adminId, string $note = ''): ar
             'grant:' . $userId . ':' . $until
         );
 
+        Audit::log('plan.granted', 'user', $userId, ['months' => $months, 'until' => $until], $adminId, $userId);
         return ['ok' => true, 'until' => $until];
     } catch (Throwable $e) {
         $pdo->rollBack();
-        error_log('grantPro: ' . $e->getMessage());
+        Log::error('plan.grant_failed', $e);
         return ['ok' => false, 'error' => 'ثبت دسترسی انجام نشد.'];
     }
 }
@@ -441,9 +442,10 @@ function revokePro(int $userId, int $adminId): array
             "INSERT INTO payments (user_id, amount, months, method, note, status, reviewed_by, reviewed_at)
              VALUES (:u, 0, 0, 'admin_revoke', 'دسترسی توسط مدیر پس گرفته شد', 'approved', :a, NOW())"
         )->execute(['u' => $userId, 'a' => $adminId]);
+        Audit::log('plan.revoked', 'user', $userId, [], $adminId, $userId);
         return ['ok' => true];
     } catch (Throwable $e) {
-        error_log('revokePro: ' . $e->getMessage());
+        Log::error('plan.revoke_failed', $e);
         return ['ok' => false, 'error' => 'پس گرفتن انجام نشد.'];
     }
 }
@@ -494,10 +496,11 @@ function approvePayment(int $paymentId, int $adminId): array
             'payment:' . $paymentId . ':approved'
         );
 
+        Audit::log('payment.approved', 'payment', $paymentId, ['until' => $until], $adminId, (int)$p['user_id']);
         return ['ok' => true, 'until' => $until];
     } catch (Throwable $e) {
         $pdo->rollBack();
-        error_log('approvePayment: ' . $e->getMessage());
+        Log::error('plan.approve_failed', $e);
         return ['ok' => false, 'error' => 'تأیید انجام نشد.'];
     }
 }
@@ -549,12 +552,13 @@ function rejectPayment(int $paymentId, int $adminId, string $reason = ''): bool
             $reason !== '' ? mb_substr($reason, 0, 300) : 'برای پیگیری با پشتیبانی تماس بگیرید.',
             'pro.php', 'payment:' . $paymentId . ':rejected');
 
+        Audit::log('payment.rejected', 'payment', $paymentId, [], $adminId, $uid);
         return true;
     } catch (Throwable $e) {
         // ⚠ بدونِ این rollback، یک خطای وسطِ کار تراکنش را باز می‌گذاشت و
         //   ردیفِ قفل‌شده تا پایانِ درخواست دستِ کسی نمی‌آمد.
         if ($pdo->inTransaction()) { $pdo->rollBack(); }
-        error_log('rejectPayment: ' . $e->getMessage());
+        Log::error('plan.reject_failed', $e);
         return false;
     }
 }
@@ -876,13 +880,14 @@ function redeemDiscountCode(int $userId, string $raw): array
             'discount:' . $code . ':' . $userId
         );
 
+        Audit::log('plan.discount_redeemed', 'discount_code', null, ['months' => $months], $userId, $userId);
         return ['ok' => true, 'until' => $until, 'months' => $months];
     } catch (RuntimeException $e) {
         $pdo->rollBack();
         return ['ok' => false, 'error' => $e->getMessage()];
     } catch (Throwable $e) {
         $pdo->rollBack();
-        error_log('redeemDiscountCode: ' . $e->getMessage());
+        Log::error('plan.redeem_failed', $e);
         return ['ok' => false, 'error' => 'اعمالِ کد انجام نشد.'];
     }
 }
@@ -956,7 +961,7 @@ function saveDiscountCode(array $in, int $adminId): array
             'a' => $adminId,
         ]);
     } catch (PDOException $e) {
-        error_log('saveDiscountCode: ' . $e->getMessage());
+        Log::error('plan.save_code_failed', $e);
         return ['ok' => false, 'error' => 'ذخیره‌ی کد انجام نشد.'];
     }
 

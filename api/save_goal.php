@@ -97,6 +97,6 @@ try {
     }
     jsonResponse(['success' => true, 'message' => 'هدف ساخته شد.']);
 } catch (PDOException $e) {
-    error_log('Save Goal Error: ' . $e->getMessage());
+    Log::error('api.save_goal', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

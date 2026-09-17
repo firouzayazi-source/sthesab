@@ -52,6 +52,7 @@ try {
     // اپ موبایل. توکنِ API به رمز وابسته نیست و ۹۰ روز زنده می‌ماند،
     // پس بدون این، رمزِ تازه مهاجمی را که توکن دارد بیرون نمی‌کرد.
     revokeAllAccessFor($userId);
+    Audit::log('auth.password_changed', 'user', $userId, ['self' => true]);
     // ⛔ مهرِ ابطال همین حالا نوشته شد و نشستِ **خودِ** این کاربر قدیمی‌تر
     //    از آن است؛ بدونِ این خط تا یک دقیقه‌ی بعد بیرون می‌افتاد.
     Auth::renewCurrentSession();
@@ -60,6 +61,6 @@ try {
         ? 'رمز عبور تغییر کرد. دستگاه‌های مورد اعتماد، اپ‌های متصل و نشست‌های دیگر هم باطل شدند.'
         : 'رمز عبور برای حساب شما تنظیم شد. از این پس می‌توانید با رمز هم وارد شوید.']);
 } catch (PDOException $e) {
-    error_log('Change Password Error: ' . $e->getMessage());
+    Log::error('api.change_password', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

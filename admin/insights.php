@@ -35,6 +35,7 @@ $growth   = userGrowthByJalaliMonth();
 $health   = healthChecks();
 $cron     = CronHealth::status();
 $errors   = AppErrors::recent(8);
+$audit    = Audit::recent(12);
 $errWeek  = AppErrors::countSince(7);
 
 $never  = array_values(array_filter($activity, fn($r) => $r['state'] === 'never'));
@@ -327,8 +328,48 @@ include __DIR__ . '/../includes/header.php';
     <p class="hint">
         ⛔ اینجا نه شناسه‌ی کاربر ثبت می‌شود نه آدرسِ صفحه — این فهرست
         درباره‌ی <strong>کد</strong> است، نه رفتارِ کاربر. عدد و ایمیلِ
-        داخلِ متنِ خطا هم پیش از ذخیره پوشانده می‌شوند.
+        داخلِ متنِ خطا هم پیش از ذخیره پوشانده می‌شوند. جزئیاتِ هر خطا
+        (شناسه‌ی درخواست، ردِ پشته) در <code>var/log/</code> روی سرور
+        است: <code>php deploy/log-report.php --tail 30</code>
     </p>
+</div>
+
+<div class="card">
+    <h2 class="card-title">رویدادهای امنیتی</h2>
+    <?php /* ⛔ فقط رویدادهای امنیتی/مدیریتی (`Audit::ACTIONS`)، نه کارِ روزمره‌ی
+             کاربر با دفترش. و کارت‌های «آمار استفاده»ی بالا از این جدول
+             نمی‌خوانند — «آخرین فعالیت» همچنان از رکوردهای خودِ کاربر
+             می‌آید، نه از ورودها. توضیحش بالای `includes/audit.php`. */ ?>
+    <?php if (!Audit::available()): ?>
+        <p class="hint">migration_audit_log اجرا نشده.</p>
+    <?php elseif (!$audit): ?>
+        <p class="hint">هنوز رویدادی ثبت نشده است.</p>
+    <?php else: ?>
+        <?php foreach ($audit as $a): ?>
+            <div class="pay-row">
+                <div>
+                    <strong><?= h($a['action']) ?></strong>
+                    <?php if ($a['actor_name'] !== null): ?>
+                        <span class="hint">— <?= h($a['actor_name']) ?></span>
+                    <?php endif; ?>
+                    <?php if ($a['target_name'] !== null && $a['target_user_id'] !== $a['actor_id']): ?>
+                        <span class="hint">← <?= h($a['target_name']) ?></span>
+                    <?php endif; ?>
+                    <br>
+                    <span class="hint ltr-num"><?= h(toJalali(substr((string)$a['created_at'], 0, 10))) ?>
+                        <?= h(toPersianDigits(substr((string)$a['created_at'], 11, 5))) ?>
+                        <?= $a['ip'] !== null ? '· ' . h($a['ip']) : '' ?></span>
+                </div>
+                <?php if ($a['detail'] !== null): ?>
+                    <span class="hint ltr-num" style="max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= h($a['detail']) ?></span>
+                <?php endif; ?>
+            </div>
+        <?php endforeach; ?>
+        <p class="hint">
+            <?= h(toPersianDigits((string)Audit::KEEP_DAYS)) ?> روز نگه داشته می‌شود؛ ورودِ ناموفقِ
+            ۲۴ ساعت گذشته: <?= h(toPersianDigits((string)Audit::countSince('auth.login_failed', 24))) ?>
+        </p>
+    <?php endif; ?>
 </div>
 
 <div class="card">

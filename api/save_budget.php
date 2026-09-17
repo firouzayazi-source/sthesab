@@ -88,6 +88,6 @@ try {
     $stmt->execute(['u' => $userId, 'c' => $categoryId, 'p' => $periodType, 'a' => $amount, 's' => $startDate, 'e' => $endDate]);
     jsonResponse(['success' => true, 'message' => 'بودجه ثبت شد.']);
 } catch (PDOException $e) {
-    error_log('Save Budget Error: ' . $e->getMessage());
+    Log::error('api.save_budget', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

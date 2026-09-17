@@ -46,6 +46,6 @@ try {
     $stmt->execute(['g' => $goalId, 'u' => $userId, 'a' => $signedAmount, 'n' => $note !== '' ? $note : null, 'd' => $date]);
     jsonResponse(['success' => true, 'message' => $direction === 'deposit' ? 'واریز ثبت شد.' : 'برداشت ثبت شد.']);
 } catch (PDOException $e) {
-    error_log('Add Savings Entry Error: ' . $e->getMessage());
+    Log::error('api.add_savings_entry', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

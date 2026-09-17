@@ -102,6 +102,6 @@ try {
 
     jsonResponse(['success' => true, 'message' => 'اطلاعات بروزرسانی شد.']);
 } catch (PDOException $e) {
-    error_log('Update Profile Error: ' . $e->getMessage());
+    Log::error('api.update_profile', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

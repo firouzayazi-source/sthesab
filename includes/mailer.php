@@ -17,6 +17,7 @@
  */
 
 require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/log.php';
 
 class Mailer
 {
@@ -58,7 +59,7 @@ class Mailer
                 : self::sendMailFunc($to, $subject, $htmlBody, $textBody);
         } catch (Throwable $e) {
             self::$lastError = $e->getMessage();
-            error_log('Mailer: ' . $e->getMessage());
+            Log::error('mailer.send_failed', $e);
             return false;
         }
     }

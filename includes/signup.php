@@ -278,9 +278,13 @@ function createUserAccount(PDO $pdo, string $fullName, string $username,
         ]);
         $id = (int)$pdo->lastInsertId();
     } catch (PDOException $e) {
-        error_log('createUserAccount: ' . $e->getMessage());
+        Log::error('signup.create_failed', $e);
         return ['ok' => false, 'error' => 'خطایی در ساخت حساب رخ داد.'];
     }
+    // ⛔ تنها مسیرِ ساختِ کاربر همین‌جاست (ثبت‌نام، پنل مدیر، setup، شماره)،
+    //    پس دفترِ ممیزی هم همین یک جا را دارد. actor خالی یعنی خودِ کاربر
+    //    (ثبت‌نامِ خودسرویس) یا خط فرمان؛ actor پر یعنی مدیر ساخته.
+    Audit::log('user.created', 'user', $id, ['role' => $role], null, $id);
 
     // ⚠ شماره هم مثل ایمیل از تابعِ مشترکِ خودش رد می‌شود
     //   (`saveUserPhone()`)، نه از کوئریِ بالا: نرمال‌سازی و بررسیِ

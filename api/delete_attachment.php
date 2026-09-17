@@ -28,6 +28,6 @@ try {
 
     jsonResponse(['success' => true, 'message' => 'پیوست حذف شد.']);
 } catch (PDOException $e) {
-    error_log('Delete Attachment Error: ' . $e->getMessage());
+    Log::error('api.delete_attachment', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

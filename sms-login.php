@@ -62,7 +62,7 @@ $canSignup = phoneSignupEnabled();
  */
 function finishPhoneLogin(array $user, bool $created, string $warning = ''): void
 {
-    Auth::establishSession($user);
+    Auth::establishSession($user, 'sms');
 
     // ⛔ «این دستگاه را به خاطر بسپار» تیک‌خورده می‌آید و همان چیزی است
     //    که «دفعه‌ی بعد بدون رمز و بدون پیامک» را می‌سازد. بدونش کاربر

@@ -107,6 +107,9 @@ const EXPECT = [
     // ---- نشست را می‌بندد ----
     'logout.php'            => 'skip',
 
+    // ---- JSON سلامت: ۲۰۰ و JSON معتبر، نه HTML ----
+    'health.php'            => 'json',
+
     // ---- پنل مدیر ----
     'admin/users.php'       => 'page',
     'admin/access.php'      => 'page',
@@ -400,6 +403,11 @@ try {
             }
         } elseif ($kind === 'file') {
             if ($code !== 200) { T::ok(false, "{$page} فایل می‌دهد", "کد {$code}"); $bad++; }
+        } elseif ($kind === 'json') {
+            $j = json_decode($body, true);
+            if ($code !== 200 || !is_array($j) || empty($j['ok'])) {
+                T::ok(false, "{$page} JSON سالم می‌دهد", "کد {$code}: " . substr($body, 0, 80)); $bad++;
+            }
         } elseif ($kind === 'away') {
             if ($code < 300 || $code >= 400) {
                 T::ok(false, "{$page} کاربرِ واردشده را جای دیگری می‌فرستد", "کد {$code} به‌جای ۳xx");

@@ -3325,6 +3325,144 @@ if ($dueAmt === '') {
 
 T::bulk(9, $badAlign, '⛔ عددها چپ‌چین می‌مانند');
 
+// ---------------------------------------------------------------
+// قاعده ۴۴ — یک لاگر، یک دفترِ ممیزی، و مرزِ حریمِ خصوصی
+// ---------------------------------------------------------------
+//
+// `Log` (includes/log.php) تنها راهِ نوشتنِ لاگ است و `Audit`
+// (includes/audit.php) تنها دفترِ رویدادهای امنیتی. سه خرابیِ بی‌صدا که
+// این قاعده می‌بندد:
+//   ۱. یک `error_log()` تازه جای دیگری — خطایی که نه شناسه‌ی درخواست
+//      دارد، نه در `app_errors` می‌نشیند، نه در `log-report` دیده می‌شود.
+//   ۲. مسیرِ ورود/خروج/تغییر رمز/ساخت و حذفِ حسابی که از `Audit::log()`
+//      رد نشود — «کی این کار را کرد؟» بی‌جواب می‌ماند، بی‌هیچ خطایی.
+//   ۳. `admin/insights.php` که از `audit_log` آمار بسازد — همان «ردِ
+//      رفتاری» که `privacy.php` قول داده وجود ندارد.
+//
+// ⛔ و یک مورد که **امروز واقعاً شکست**: `Audit::available()` فقط
+//    `function_exists('tableExists')` را می‌پرسید و `logout.php` آن تابع
+//    را لود نمی‌کند — پس خروج **هرگز** به جدول نمی‌رسید (خطِ فایل نوشته
+//    می‌شد و `db.n = 0`). `AppErrors::available()` هم همان را داشت.
+//    حالا هر دو بدونِ `functions.php` هم جدول را می‌پرسند.
+//
+// ⚠ کامنت‌ها با توکنایزر حذف می‌شوند: `admin/insights.php` در توضیحش
+//   نامِ `error_log()` را دارد و همین قاعده روی فایلِ **سالم** قرمز می‌شد.
+T::group('قاعده ۴۴ — یک لاگر، یک دفترِ ممیزی');
+
+$badLog = [];
+
+/** بدنه‌ی یک تابع/متد تا تعریفِ تابعِ بعدی — همان درسِ قاعده ۲۹. */
+$fnChunk = static function (string $src, string $sig): string {
+    $s = strpos($src, $sig);
+    if ($s === false) { return ''; }
+    $e = strpos($src, "function ", $s + strlen($sig));
+    return $e === false ? substr($src, $s) : substr($src, $s, $e - $s);
+};
+
+// ۱) error_log فقط در دو فایلِ خودِ لایه‌ی لاگ.
+$logAllowed = [realpath($root . '/includes/log.php'), realpath($root . '/includes/app_errors.php')];
+$scanDirs   = ['.', 'api', 'api/v1', 'api/v1/routes', 'includes', 'admin', 'deploy', 'assets'];
+$scanned    = 0;
+foreach ($scanDirs as $d) {
+    foreach (glob($root . '/' . $d . '/*.php') as $p) {
+        $rp = realpath($p);
+        if (in_array($rp, $logAllowed, true)) { continue; }
+        $scanned++;
+        if (preg_match('/\berror_log\s*\(/', $stripComments($p))) {
+            $badLog[] = str_replace($root . '/', '', $rp) . ' — error_log() مستقیم؛ باید Log::error/warn باشد';
+        }
+    }
+}
+if ($scanned < 80) { $badLog[] = "فقط {$scanned} فایل پویش شد — glob شکسته است"; }
+
+// ۲) db.php: لاگر بوت می‌شود و هر کوئری از DbStatement رد می‌شود (زمان و شمارش).
+$dbSrc = $stripComments($root . '/includes/db.php');
+foreach (['Log::boot()', 'PDO::ATTR_STATEMENT_CLASS', 'new DbConnection('] as $need) {
+    if (strpos($dbSrc, $need) === false) { $badLog[] = "db.php — «{$need}» نیست"; }
+}
+
+// ۳) هر دو available() بدونِ functions.php هم جدول را می‌پرسند (باگِ امروز).
+$auSrc = $stripComments($root . '/includes/audit.php');
+$aeSrc = $stripComments($root . '/includes/app_errors.php');
+if (strpos($fnChunk($auSrc, 'function available('), 'SELECT 1 FROM audit_log') === false) {
+    $badLog[] = 'audit.php — available() بدونِ functions.php جدول را نمی‌پرسد (خروج به جدول نمی‌رسد)';
+}
+if (strpos($fnChunk($aeSrc, 'function available('), 'SELECT 1 FROM app_errors') === false) {
+    $badLog[] = 'app_errors.php — available() بدونِ functions.php جدول را نمی‌پرسد';
+}
+
+// ۴) مسیرهای امنیتی از Audit::log رد می‌شوند.
+$fnSrcC   = $stripComments($root . '/includes/functions.php');
+$authSrcC = $stripComments($root . '/includes/auth.php');
+$suSrcC   = $stripComments($root . '/includes/signup.php');
+$udSrcC   = $stripComments($root . '/includes/user_data.php');
+$hooks = [
+    ['auth.php',      $authSrcC, 'function establishSession(', 'Audit::log(', "'auth.login'"],
+    ['auth.php',      $authSrcC, 'function logout(',           'Audit::log(', "'auth.logout'"],
+    ['auth.php',      $authSrcC, 'function verifyCredentials(', 'Audit::log(', "'auth.login_failed'"],
+    ['functions.php', $fnSrcC,   'function revokeAllAccessFor(', 'Audit::log(', "'auth.access_revoked'"],
+    ['functions.php', $fnSrcC,   'function setSetting(',        'Audit::setting(', ''],
+    ['signup.php',    $suSrcC,   'function createUserAccount(', 'Audit::log(', "'user.created'"],
+    ['user_data.php', $udSrcC,   'function deleteUserAccount(', 'Audit::log(', "'account.deleted'"],
+];
+foreach ($hooks as [$file, $src, $sig, $call, $action]) {
+    $chunk = $fnChunk($src, $sig);
+    if ($chunk === '') { $badLog[] = "{$file} — {$sig} پیدا نشد"; continue; }
+    if (strpos($chunk, $call) === false || ($action !== '' && strpos($chunk, $action) === false)) {
+        $badLog[] = "{$file} — {$sig} باید {$call}{$action} داشته باشد";
+    }
+}
+// ⛔ ورودِ خودکار از کوکیِ دستگاهِ مورد اعتماد عمداً ممیزی نمی‌شود
+//    (ادامه‌ی همان ورود است، نه اعتبارنامه‌ی تازه).
+if (strpos($fnChunk($authSrcC, 'function loginFromTrustedDevice('), 'Audit::log(') !== false) {
+    $badLog[] = 'auth.php — loginFromTrustedDevice نباید ممیزی شود (هر چند دقیقه یک ردیف)';
+}
+
+// ۵) پاکتِ خطا شناسه‌ی درخواست را می‌برد — در هر دو لایه.
+//    ⚠ خودِ **انتساب** سنجیده می‌شود، نه وجودِ واژه: نگهبانِ
+//      `array_key_exists('request_id', …)` همان واژه را دارد و جهشِ
+//      «انتساب را بردار» با بررسیِ واژه‌ای **زنده ماند**.
+if (!preg_match('/\$data\[\'request_id\'\]\s*=\s*Log::requestId\(\)/', $fnChunk($fnSrcC, 'function jsonResponse('))) {
+    $badLog[] = 'functions.php — jsonResponse() در خطا request_id نمی‌فرستد';
+}
+$apiSrcC = $stripComments($root . '/includes/api.php');
+if (!preg_match('/\'request_id\'\s*=>\s*Log::requestId\(\)/', $fnChunk($apiSrcC, 'function fail('))) {
+    $badLog[] = 'api.php — Api::fail() request_id نمی‌فرستد';
+}
+
+// ۶) مرزِ حریمِ خصوصی: آمار از audit_log ساخته نمی‌شود؛ خودِ صفحه فقط
+//    Audit::recent/countSince را برای کارتِ رویدادها صدا می‌زند.
+foreach (['includes/admin_insights.php', 'admin/insights.php'] as $f) {
+    if (preg_match('/\baudit_log\b/i', $stripComments($root . '/' . $f))) {
+        $badLog[] = "{$f} — به جدولِ audit_log دست می‌زند (ردِ رفتاری)";
+    }
+}
+if (strpos($stripComments($root . '/admin/insights.php'), 'Audit::recent(') === false) {
+    $badLog[] = 'admin/insights.php — کارتِ رویدادهای امنیتی رفته است';
+}
+
+// ۷) privacy.php مهلت‌ها را از خودِ کد می‌خواند، نه عددِ سخت‌کد.
+$prSrcC = $stripComments($root . '/privacy.php');
+foreach (['Log::KEEP_DAYS', 'Audit::KEEP_DAYS'] as $need) {
+    if (strpos($prSrcC, $need) === false) { $badLog[] = "privacy.php — «{$need}» نیست؛ عددِ نوشته‌شده دیر یا زود دروغ می‌شود"; }
+}
+
+// ۸) مرورگر: گزارشِ خطا و پیامِ خطای شناسه‌دار — و alertِ خامِ قدیمی برنگردد.
+$jsSrcL = (string)preg_replace('#/\*.*?\*/|(?<![:\'"])//[^\n]*#s', '', (string)file_get_contents($root . '/assets/js/app.js'));
+foreach (['log_client_error.php', 'window.netErr', 'X-Request-Id'] as $need) {
+    if (strpos($jsSrcL, $need) === false) { $badLog[] = "app.js — «{$need}» نیست"; }
+}
+if (preg_match("/alert\\(\\s*['\"]خطا در ارتباط با سرور/u", $jsSrcL)) {
+    $badLog[] = 'app.js — alert خامِ «خطا در ارتباط با سرور» برگشته؛ باید netErr() باشد تا کدِ پیگیری برود';
+}
+
+// ۹) migration در هر دو فهرستِ migrate.sh.
+$migSrc = (string)file_get_contents($root . '/deploy/migrate.sh');
+if (!preg_match('/^\s*migration_audit_log\.sql\s*$/m', $migSrc)) { $badLog[] = 'migrate.sh — migration_audit_log.sql در MIGRATIONS نیست'; }
+if (!preg_match('/\[migration_audit_log\.sql\]="audit_log"/', $migSrc)) { $badLog[] = 'migrate.sh — شاهدِ migration_audit_log در SENTINEL نیست'; }
+
+T::bulk(9, $badLog, '⛔ یک لاگر، یک دفترِ ممیزی، مرزِ حریمِ خصوصی');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

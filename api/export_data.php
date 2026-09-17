@@ -56,8 +56,9 @@ $userId = Auth::userId();
 
 try {
     $data = exportUserData($userId);
+    Audit::log('data.exported', 'backup', null, ['kind' => 'full']);
 } catch (Throwable $e) {
-    error_log('Export Data Error: ' . $e->getMessage());
+    Log::error('api.export_data', $e);
     exportFail('خروجی گرفته نشد. اگر تکرار شد به پشتیبانی خبر بدهید.', 500);
 }
 

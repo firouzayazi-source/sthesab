@@ -57,7 +57,7 @@ if ($action === 'add_suggested' && $kind === 'category') {
             $added++;
         }
     } catch (PDOException $e) {
-        error_log('Suggested categories error: ' . $e->getMessage());
+        Log::error('api.suggested_categories', $e);
         jsonResponse(['success' => false, 'message' => 'خطایی در ثبت رخ داد.'], 500);
     }
 
@@ -195,7 +195,7 @@ if ($action === 'add') {
 
         jsonResponse(['success' => false, 'message' => 'نوع نامعتبر است.'], 422);
     } catch (PDOException $e) {
-        error_log('Reference add error: ' . $e->getMessage());
+        Log::error('api.reference_add', $e);
         jsonResponse(['success' => false, 'message' => 'خطایی در ثبت رخ داد.'], 500);
     }
 }
@@ -331,7 +331,7 @@ if ($action === 'delete') {
 
         jsonResponse(['success' => false, 'message' => 'نوع نامعتبر است.'], 422);
     } catch (PDOException $e) {
-        error_log('Reference delete error: ' . $e->getMessage());
+        Log::error('api.reference_delete', $e);
         jsonResponse(['success' => false, 'message' => 'خطایی در حذف رخ داد.'], 500);
     }
 }

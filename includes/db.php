@@ -69,8 +69,77 @@ applyAppTimezone();
  *   الان: اینجا هنوز `functions.php` لود نشده و `tableExists()` وجود
  *   ندارد. پس نصبِ گیرنده روی نصبی که migration نخورده هم بی‌خطر است.
  */
+require_once __DIR__ . '/log.php';
 require_once __DIR__ . '/app_errors.php';
+require_once __DIR__ . '/audit.php';
+Log::boot();
 AppErrors::install();
+
+/**
+ * ⛔ زمانِ هر کوئری همین‌جا اندازه گرفته می‌شود، نه با لاگِ کوئریِ
+ *    MariaDB روی سرور. `PDO::ATTR_STATEMENT_CLASS` هر `prepare()` را با
+ *    این کلاس برمی‌گرداند؛ `DbConnection` هم `query()`/`exec()` را
+ *    می‌پوشاند. هزینه‌اش یک `hrtime()` در هر کوئری است (زیرِ یک
+ *    میکروثانیه) و نتیجه‌اش این است که خطِ `request` هر درخواست می‌گوید
+ *    چند کوئری و چند میلی‌ثانیه، و کوئریِ کند همان لحظه یک خطِ `warn`
+ *    می‌گیرد — بدونِ SSH و بدونِ روشن کردنِ چیزی روی سرور.
+ *
+ * ⚠ خودِ خطای کوئری اینجا لاگ **نمی‌شود**، فقط شمرده می‌شود: استثنا
+ *   به فراخواننده می‌رسد و او با `Log::error()` ثبتش می‌کند. وگرنه یک
+ *   خطا دو بار نوشته می‌شد — همان «تکرارِ یک خطا در چند لایه».
+ */
+final class DbStatement extends PDOStatement
+{
+    protected function __construct() {}
+
+    public function execute(?array $params = null): bool
+    {
+        // مرحله‌ی «db» فقط در طولِ همین اجرا؛ بعدش به مرحله‌ی قبلی
+        // برمی‌گردد تا خطای منطقی بعد از کوئری «db» خوانده نشود. در
+        // شکست همان «db» می‌ماند — استثنا از همین‌جا بیرون رفته.
+        $prev = Log::currentStage();
+        Log::stage('db');
+        $t = hrtime(true);
+        try {
+            $ok = parent::execute($params);
+        } catch (Throwable $e) {
+            Log::dbQuery($this->queryString, (hrtime(true) - $t) / 1e6, false);
+            throw $e;
+        }
+        Log::dbQuery($this->queryString, (hrtime(true) - $t) / 1e6, (bool)$ok);
+        Log::stage($prev);
+        return $ok;
+    }
+}
+
+final class DbConnection extends PDO
+{
+    public function query(string $query, ?int $fetchMode = null, mixed ...$fetchModeArgs): PDOStatement|false
+    {
+        $t = hrtime(true);
+        try {
+            $r = parent::query($query, $fetchMode, ...$fetchModeArgs);
+        } catch (Throwable $e) {
+            Log::dbQuery($query, (hrtime(true) - $t) / 1e6, false);
+            throw $e;
+        }
+        Log::dbQuery($query, (hrtime(true) - $t) / 1e6, $r !== false);
+        return $r;
+    }
+
+    public function exec(string $statement): int|false
+    {
+        $t = hrtime(true);
+        try {
+            $r = parent::exec($statement);
+        } catch (Throwable $e) {
+            Log::dbQuery($statement, (hrtime(true) - $t) / 1e6, false);
+            throw $e;
+        }
+        Log::dbQuery($statement, (hrtime(true) - $t) / 1e6, $r !== false);
+        return $r;
+    }
+}
 
 class Database
 {
@@ -90,13 +159,18 @@ class Database
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES   => false,
                 PDO::ATTR_PERSISTENT         => false,
+                PDO::ATTR_STATEMENT_CLASS    => [DbStatement::class, []],
             ];
 
             try {
-                self::$instance = new PDO($dsn, DB_USER, DB_PASSWORD, $options);
+                self::$instance = new DbConnection($dsn, DB_USER, DB_PASSWORD, $options);
                 self::syncTimezone(self::$instance);
             } catch (PDOException $e) {
-                error_log('Database Connection Error: ' . $e->getMessage());
+                // ⚠ فقط فایل، نه `Log::error()`: آن یکی به `app_errors` هم
+                //   می‌نویسد و برای آن دوباره به همین اتصالِ شکست‌خورده
+                //   نیاز داشت — حلقه. پیامِ PDO رمزِ دیتابیس را ندارد ولی
+                //   نامِ کاربر و میزبان را دارد؛ `scrub` روی متن اجرا می‌شود.
+                Log::write('fatal', 'db.connect_failed', ['msg' => AppErrors::scrub($e->getMessage())]);
 
                 /**
                  * ⛔ روی خط فرمان **پرتاب** می‌شود، نه `die()` — و این یک

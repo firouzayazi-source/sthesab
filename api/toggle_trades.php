@@ -33,6 +33,6 @@ try {
         'message' => $enable === 1 ? 'بخش معاملات روشن شد.' : 'بخش معاملات خاموش شد.',
     ]);
 } catch (PDOException $e) {
-    error_log('Toggle Trades Error: ' . $e->getMessage());
+    Log::error('api.toggle_trades', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

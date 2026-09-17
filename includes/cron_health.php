@@ -23,6 +23,8 @@
  * `test_cron_health.php` فهرست را با خودِ اسکریپت‌ها می‌سنجد.
  */
 
+require_once __DIR__ . '/log.php';
+
 final class CronHealth
 {
     /**
@@ -75,7 +77,7 @@ final class CronHealth
             if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) { return false; }
             return @file_put_contents(self::file($job), (string)time()) !== false;
         } catch (Throwable $e) {
-            error_log('CronHealth::beat: ' . $e->getMessage());
+            Log::error('cron.beat_failed', $e);
             return false;
         }
     }

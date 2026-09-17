@@ -175,9 +175,10 @@ class PasswordReset
             }
 
             $pdo->commit();
+            Audit::log('auth.password_reset', 'user', (int)$check['user']['id'], [], null, (int)$check['user']['id']);
         } catch (Throwable $e) {
             $pdo->rollBack();
-            error_log('PasswordReset::complete — ' . $e->getMessage());
+            Log::error('password_reset.complete_failed', $e);
             return ['ok' => false, 'reason' => 'db-error'];
         }
 
@@ -193,7 +194,7 @@ class PasswordReset
         try {
             self::sendChangedNotice($check['user']);
         } catch (Throwable $e) {
-            error_log('PasswordReset: خبر تغییر رمز فرستاده نشد — ' . $e->getMessage());
+            Log::error('password_reset.notice_failed', $e);
         }
 
         return ['ok' => true, 'reason' => '', 'username' => $check['user']['username']];

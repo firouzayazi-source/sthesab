@@ -80,6 +80,14 @@ function jalaliStringToGregorian(string $input): ?string
 
 function jsonResponse(array $data, int $statusCode = 200): void
 {
+    // ⚠ `request_id` فقط روی خطا و فقط اگر نبوده باشد — کلیدِ افزوده، نه
+    //   تغییر: کاربر همان کد را گزارش می‌کند و مالکِ نصب با grep پیدایش
+    //   می‌کند. سرآیندِ `X-Request-Id` را `Log::boot()` روی همه‌ی پاسخ‌ها
+    //   گذاشته است.
+    if ($statusCode >= 400 && !array_key_exists('request_id', $data)) {
+        $data['request_id'] = Log::requestId();
+    }
+    Log::stage('response');
     http_response_code($statusCode);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode($data, JSON_UNESCAPED_UNICODE);
@@ -305,12 +313,23 @@ function getSetting(string $key, string $default = ''): string
 
 function setSetting(string $key, string $value): void
 {
+    // ⛔ مقدارِ قبلی پیش از نوشتن، برای دفترِ ممیزی. فقط تغییری ثبت
+    //    می‌شود که (الف) واقعاً مقدار را عوض کند و (ب) کاربری پشتش باشد
+    //    — نشانه‌های داخلیِ خودِ برنامه (`more_categories_seeded`، …) که
+    //    از cron یا migration می‌آیند ردیفِ ممیزی نمی‌گیرند.
+    $old = getSetting($key, "\0");
+    $old = $old === "\0" ? null : $old;
+
     $pdo = Database::getConnection();
     $stmt = $pdo->prepare('
         INSERT INTO app_settings (setting_key, setting_value) VALUES (:key, :value)
         ON DUPLICATE KEY UPDATE setting_value = :value2
     ');
     $stmt->execute(['key' => $key, 'value' => $value, 'value2' => $value]);
+
+    if ($old !== $value && Log::userId() !== null) {
+        Audit::setting($key, $old, $value);
+    }
 
     // ⛔ کش همین‌جا تازه می‌شود، وگرنه صفحه‌ای که تنظیم را ذخیره می‌کند و
     //    بعد خودش می‌خواندش، مقدارِ **قبلی** را می‌دید — و آن پیامِ
@@ -1752,7 +1771,7 @@ function processRecurringTransactions(int $userId, bool $force = false): array
                 $pdo->commit();
             } catch (PDOException $e) {
                 $pdo->rollBack();
-                error_log('Recurring auto-generate failed for #' . $r['id'] . ': ' . $e->getMessage());
+                Log::error('recurring.generate_failed', $e, ['recurring_id' => (int)$r['id']]);
                 break;
             }
 
@@ -2584,7 +2603,7 @@ function categoryUsageMap(): array
         $q = $pdo->query(implode("\nUNION ALL\n", $parts));
     } catch (PDOException $e) {
         // فقط نمایش است؛ ستونِ «استفاده» خالی می‌ماند و صفحه می‌آید.
-        error_log('Category Usage Map Error: ' . $e->getMessage());
+        Log::error('category.usage_map_failed', $e);
         return [];
     }
     foreach ($q as $r) {
@@ -2714,9 +2733,11 @@ function privatizeDefaultCategory(int $catId): array
             ->execute(['id' => $catId]);
 
         $pdo->commit();
+        Audit::log('category.privatized', 'category', $catId,
+            ['users' => (int)$usage['users'], 'rows' => (int)$usage['rows']]);
     } catch (PDOException $e) {
         if ($pdo->inTransaction()) { $pdo->rollBack(); }
-        error_log('Privatize Category Error: ' . $e->getMessage());
+        Log::error('category.privatize_failed', $e);
         return ['ok' => false, 'message' => 'خطایی در شخصی‌سازی رخ داد؛ هیچ تغییری ذخیره نشد.', 'users' => 0, 'rows' => 0];
     }
 
@@ -2760,7 +2781,7 @@ function categoryUniqueKeys(): array
              ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX"
         );
     } catch (PDOException $e) {
-        error_log('Category Unique Keys Error: ' . $e->getMessage());
+        Log::error('category.unique_keys_failed', $e);
         return $out;
     }
 
@@ -2950,9 +2971,11 @@ function mergeCategories(int $fromId, int $intoId, ?int $scopeUserId): array
             ->execute($scopeUserId === null ? ['id' => $fromId] : ['id' => $fromId, 'u' => $scopeUserId]);
 
         $pdo->commit();
+        Audit::log('category.merged', 'category', $intoId,
+            ['from' => $fromId, 'scope' => $scopeUserId === null ? 'admin' : 'user', 'rows' => $moved]);
     } catch (PDOException $e) {
         if ($pdo->inTransaction()) { $pdo->rollBack(); }
-        error_log('Merge Categories Error: ' . $e->getMessage());
+        Log::error('category.merge_failed', $e);
         return $fail('خطایی در ادغام رخ داد؛ هیچ تغییری ذخیره نشد.');
     }
 
@@ -3412,7 +3435,7 @@ function seedUserDefaults(int $userId): void
             setSetting($flagKey, '1');
         }
     } catch (PDOException $e) {
-        error_log('Seeding defaults failed for user ' . $userId . ': ' . $e->getMessage());
+        Log::error('signup.seed_failed', $e, ['uid' => $userId]);
     }
 }
 
@@ -3651,6 +3674,7 @@ function revokeAllAccessFor(int $userId): void
 
     Auth::revokeAllDevices($userId);
     ApiAuth::revokeAllFor($userId);
+    Audit::log('auth.access_revoked', 'user', $userId, [], null, $userId);
 
     // ستون با migration_access_revoke می‌آید؛ نصبِ عقب‌مانده نباید بشکند.
     if (tableHasColumn('users', 'access_revoked_at')) {
