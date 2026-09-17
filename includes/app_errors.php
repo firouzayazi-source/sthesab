@@ -28,9 +28,29 @@ final class AppErrors
     /** سقفِ ثبت در هر درخواست — یک حلقه‌ی خراب نباید دیتابیس را بکوبد. */
     private const PER_REQUEST_MAX = 5;
 
+    /**
+     * ⛔ چند روز **خطای رسیدگی‌شده** نگه داشته می‌شود.
+     *
+     * ⚠ و فقط رسیدگی‌شده. خطای بازِ کهنه پاک **نمی‌شود**، هرچند وسوسه‌اش
+     *   هست: «شش ماه است دیده نشده» یعنی احتمالاً رفع شده، ولی احتمال
+     *   مدرک نیست و پاک کردنش یعنی همان خرابیِ بی‌صدا که این جدول برای
+     *   دیدنش ساخته شده. تصمیمش دستِ مالکِ نصب است — یک تپ روی
+     *   «برطرف شد».
+     */
+    public const KEEP_DAYS = 90;
+
+    /** فهرستِ بسته‌ی صافی‌های فهرست — تنها مرجع، مثل `DUE_TABS`. */
+    public const FILTERS = [
+        'open'     => 'باز',
+        'resolved' => 'رسیدگی‌شده',
+        'all'      => 'همه',
+    ];
+
     private static bool $installed = false;
     private static int  $recorded  = 0;
     private static ?bool $tableOk  = null;
+    private static ?bool $triageOk = null;
+    private static bool  $pruned   = false;
 
     /**
      * نصبِ گیرنده‌ها.
@@ -138,11 +158,20 @@ final class AppErrors
 
             $fp   = sha1($level . '|' . $rel . '|' . $line . '|' . $msg);
 
+            // ⛔ رخدادِ دوباره «برطرف شد» را پس می‌گیرد، و این کلِ معنای
+            //    آن دکمه است: اگر خطا برگردد یعنی رفع نشده. بدونِ این
+            //    یک خط، «برطرف شد» به «برای همیشه ساکت» بدل می‌شد —
+            //    همان خرابیِ بی‌صدایی که این جدول برای دیدنش ساخته شد.
+            // ⚠ و روی نصبی که migration نخورده، این ستون وجود ندارد و
+            //   کلِ `INSERT` با «Unknown column» رد می‌شد — یعنی ثبتِ
+            //   خطا بی‌صدا از کار می‌افتاد. پس شرطی است.
+            $reopen = self::triageAvailable() ? ', resolved_at = NULL' : '';
+
             $pdo = Database::getConnection();
             $pdo->prepare(
                 'INSERT INTO app_errors (fingerprint, level, message, file, line)
                  VALUES (:f, :lv, :m, :fl, :ln)
-                 ON DUPLICATE KEY UPDATE hits = hits + 1, last_seen = NOW()'
+                 ON DUPLICATE KEY UPDATE hits = hits + 1, last_seen = NOW()' . $reopen
             )->execute(['f' => $fp, 'lv' => mb_substr($level, 0, 20), 'm' => $msg,
                         'fl' => mb_substr($rel, 0, 255), 'ln' => max(0, $line)]);
 
@@ -153,14 +182,19 @@ final class AppErrors
         }
     }
 
-    /** آخرین خطاها برای پنل مدیر. */
+    /**
+     * آخرین خطاها، بی‌توجه به وضعیت.
+     *
+     * ⚠ `SELECT *` عمدی است: ستونِ `resolved_at` روی نصبِ migration‌نخورده
+     *   وجود ندارد و فهرستِ صریحِ ستون‌ها آنجا کلِ کوئری را می‌کشت. جدول
+     *   نُه ستون دارد و مسیرِ داغی هم نیست.
+     */
     public static function recent(int $limit = 8): array
     {
         try {
             if (!self::available()) { return []; }
             $st = Database::getConnection()->prepare(
-                'SELECT level, message, file, line, hits, first_seen, last_seen
-                 FROM app_errors ORDER BY last_seen DESC LIMIT ' . max(1, min(50, $limit))
+                'SELECT * FROM app_errors ORDER BY last_seen DESC LIMIT ' . max(1, min(50, $limit))
             );
             $st->execute();
             return $st->fetchAll();
@@ -169,7 +203,40 @@ final class AppErrors
         }
     }
 
-    /** شمارشِ خطاهای متمایزِ N روزِ گذشته. */
+    /**
+     * فهرستِ یک صافی برای صفحه‌ی «خطاهای برنامه».
+     *
+     * ⛔ ترتیب روی `last_seen` است نه `first_seen`: چیزی که **همین حالا**
+     *    می‌افتد مهم‌تر از چیزی است که ماه پیش یک بار افتاد.
+     *
+     * @param string $filter یکی از کلیدهای `FILTERS`
+     */
+    public static function browse(string $filter = 'open', int $limit = 200): array
+    {
+        if (!isset(self::FILTERS[$filter])) { $filter = 'open'; }
+        try {
+            if (!self::available()) { return []; }
+            $where = '';
+            if (self::triageAvailable()) {
+                if ($filter === 'open')     { $where = 'WHERE resolved_at IS NULL'; }
+                if ($filter === 'resolved') { $where = 'WHERE resolved_at IS NOT NULL'; }
+            } elseif ($filter === 'resolved') {
+                // بدونِ ستون، هیچ خطایی «رسیدگی‌شده» نیست — و فهرستِ
+                // خالی از یک فهرستِ **کاملِ** برچسب‌خورده‌ی غلط بهتر است.
+                return [];
+            }
+            $st = Database::getConnection()->prepare(
+                'SELECT * FROM app_errors ' . $where
+                . ' ORDER BY last_seen DESC LIMIT ' . max(1, min(500, $limit))
+            );
+            $st->execute();
+            return $st->fetchAll();
+        } catch (Throwable $e) {
+            return [];
+        }
+    }
+
+    /** شمارشِ خطاهای متمایزِ N روزِ گذشته (هر وضعیتی). */
     public static function countSince(int $days = 7): int
     {
         try {
@@ -184,7 +251,112 @@ final class AppErrors
         }
     }
 
-    /** پاک کردنِ فهرست — بعد از رسیدگی، مالکِ نصب صفرش می‌کند. */
+    /**
+     * ⛔ تعدادِ خطای **باز** — نشانِ نوارِ پنل مدیر از همین می‌آید.
+     *
+     * روی نصبِ migration‌نخورده هر خطا «باز» است، پس `COUNT(*)` جوابِ
+     * درست است: صفر گفتن در آن حالت یعنی نشان **بی‌صدا** خاموش می‌ماند.
+     */
+    public static function openCount(): int
+    {
+        // ⛔ عمداً کش نمی‌شود — همان درسِ `walletBalances()` (قاعده ۲۹):
+        //    عددی که در همان درخواست عوض می‌شود نباید از حافظه بیاید.
+        //    یک `COUNT` روی ایندکسِ `idx_open` است و خریدنِ یک عددِ
+        //    احتمالاً کهنه به قیمتِ صرفه‌جوییِ آن، معامله‌ی بدی است.
+        //    (به همین دلیل `admin/insights.php` هم اصلاً صدایش نمی‌زند:
+        //     عددِ باز روی نشانِ نوارِ همان صفحه هست.)
+        try {
+            if (!self::available()) { return 0; }
+            $sql = 'SELECT COUNT(*) FROM app_errors' . (self::triageAvailable() ? ' WHERE resolved_at IS NULL' : '');
+            $n = (int)Database::getConnection()->query($sql)->fetchColumn();
+            self::pruneOncePerDay();
+            return $n;
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+
+    /**
+     * خطاهای بازی که در N ساعتِ گذشته **واقعاً رخ داده‌اند**.
+     *
+     * ⛔ اعلانِ مدیر از همین می‌آید، نه از `openCount()`. تفاوتش همان
+     *    چیزی است که «هشدارِ همیشگی» را می‌سازد یا نمی‌سازد: خطایی که
+     *    مالکِ نصب عمداً باز گذاشته و ماه‌ها است رخ نداده، نباید هر روز
+     *    یک اعلان بدهد — وگرنه آدم را عادت می‌دهد اعلان‌ها را نادیده
+     *    بگیرد و آن‌وقت اعلانِ خطای **واقعی** هم دیده نمی‌شود.
+     */
+    public static function openSince(int $hours = 24): int
+    {
+        try {
+            if (!self::available()) { return 0; }
+            $st = Database::getConnection()->prepare(
+                'SELECT COUNT(*) FROM app_errors WHERE last_seen >= DATE_SUB(NOW(), INTERVAL :h HOUR)'
+                . (self::triageAvailable() ? ' AND resolved_at IS NULL' : '')
+            );
+            $st->execute(['h' => max(1, $hours)]);
+            return (int)$st->fetchColumn();
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+
+    /**
+     * «برطرف شد».
+     *
+     * ⛔ حذف نمی‌کند، مهر می‌زند — و `record()` با رخدادِ دوباره همان مهر
+     *    را پس می‌گیرد. پس این دکمه یک **ادعا** است که خودِ برنامه
+     *    می‌سنجدش، نه یک دکمه‌ی خاموش‌کردن.
+     */
+    public static function resolve(int $id): bool
+    {
+        if ($id <= 0 || !self::triageAvailable()) { return false; }
+        try {
+            $st = Database::getConnection()->prepare(
+                'UPDATE app_errors SET resolved_at = NOW() WHERE id = :i AND resolved_at IS NULL'
+            );
+            $st->execute(['i' => $id]);
+            return $st->rowCount() > 0;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /** برگرداندن به «باز» — برای وقتی که اشتباهی رسیدگی‌شده علامت خورده. */
+    public static function reopen(int $id): bool
+    {
+        if ($id <= 0 || !self::triageAvailable()) { return false; }
+        try {
+            $st = Database::getConnection()->prepare(
+                'UPDATE app_errors SET resolved_at = NULL WHERE id = :i AND resolved_at IS NOT NULL'
+            );
+            $st->execute(['i' => $id]);
+            return $st->rowCount() > 0;
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * پاک کردنِ **رسیدگی‌شده‌ها**.
+     *
+     * ⛔ جایگزینِ «پاک کردن فهرست» است و دلیلش این است که آن یکی **همه
+     *    یا هیچ** بود: کسی که یک خطا را رفع کرده ناچار بود تاریخچه‌ی
+     *    خطاهایی را هم که هنوز ندیده پاک کند. این فقط چیزی را می‌برد که
+     *    خودِ مالکِ نصب یک بار دیده و بسته است.
+     */
+    public static function purgeResolved(): int
+    {
+        if (!self::triageAvailable()) { return 0; }
+        try {
+            $st = Database::getConnection()->prepare('DELETE FROM app_errors WHERE resolved_at IS NOT NULL');
+            $st->execute();
+            return $st->rowCount();
+        } catch (Throwable $e) {
+            return 0;
+        }
+    }
+
+    /** پاک کردنِ کلِ فهرست — همچنان هست، ولی دیگر تنها اقدامِ ممکن نیست. */
     public static function clear(): bool
     {
         try {
@@ -193,6 +365,22 @@ final class AppErrors
             return true;
         } catch (Throwable $e) {
             return false;
+        }
+    }
+
+    /** حذفِ رسیدگی‌شده‌های کهنه‌تر از `KEEP_DAYS`. مرزِ زمان را دیتابیس می‌گذارد. */
+    public static function prune(): int
+    {
+        if (!self::triageAvailable()) { return 0; }
+        try {
+            $st = Database::getConnection()->prepare(
+                'DELETE FROM app_errors WHERE resolved_at IS NOT NULL
+                   AND resolved_at < DATE_SUB(NOW(), INTERVAL :d DAY)'
+            );
+            $st->execute(['d' => self::KEEP_DAYS]);
+            return $st->rowCount();
+        } catch (Throwable $e) {
+            return 0;
         }
     }
 
@@ -224,6 +412,62 @@ final class AppErrors
             }
         }
         return self::$tableOk;
+    }
+
+    /**
+     * ستونِ `resolved_at` آمده است؟ (`migration_error_triage`)
+     *
+     * ⛔ همان الگوی `available()` و به همان دلیل: بدونِ این سنجش، کلِ
+     *    `INSERT`ِ ثبتِ خطا روی نصبِ migration‌نخورده با «Unknown column»
+     *    رد می‌شد و **ثبتِ خطا بی‌صدا از کار می‌افتاد** — یعنی ابزارِ
+     *    دیدنِ خرابی، خودش اولین چیزی می‌شد که خراب می‌ماند.
+     *
+     * ⚠ فقط در همان درخواست کش می‌شود، نه بین درخواست‌ها: یک ایستای
+     *   «ستون نیست» در FPM تا بازیافتِ کارگر می‌ماند و بعد از migration
+     *   قابلیت را خاموش نگه می‌داشت (همان درسِ `access_revoked_at`).
+     */
+    public static function triageAvailable(): bool
+    {
+        if (self::$triageOk === null) {
+            if (!self::available()) { return false; }
+            // ⚠ اگر `functions.php` هست از نقشه‌ی کش‌شده‌ی ساختار می‌خوانیم،
+            //   وگرنه یک کوئریِ تازه لازم بود روی **هر** صفحه‌ی مدیر —
+            //   همان «خزشِ بی‌صدا»ی بودجه‌ی کوئری.
+            if (function_exists('tableHasColumn')) {
+                self::$triageOk = tableHasColumn('app_errors', 'resolved_at');
+            } else {
+                try {
+                    Database::getConnection()->query('SELECT resolved_at FROM app_errors LIMIT 0');
+                    self::$triageOk = true;
+                } catch (Throwable $e) {
+                    self::$triageOk = false;
+                }
+            }
+        }
+        return self::$triageOk;
+    }
+
+    /**
+     * یک بار در روز، از اولین نگاهِ مدیر به پنل.
+     *
+     * نشانه‌اش یک فایل است نه ردیفِ `app_settings` — همان استدلالِ
+     * `Audit::pruneOncePerDay()`: نوشتن در آن جدول خودش یک رویدادِ
+     * ممیزی می‌سازد.
+     */
+    private static function pruneOncePerDay(): void
+    {
+        if (self::$pruned) { return; }
+        self::$pruned = true;
+
+        if (!class_exists('Log')) { return; }
+        $dir = Log::dir();
+        if (!is_dir($dir)) { return; }
+
+        $marker = $dir . '/.errors-pruned';
+        $today  = date('Y-m-d');
+        if (is_readable($marker) && trim((string)@file_get_contents($marker)) === $today) { return; }
+        if (@file_put_contents($marker, $today) === false) { return; }
+        self::prune();
     }
 
     /**

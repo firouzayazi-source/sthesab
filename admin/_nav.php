@@ -30,15 +30,39 @@ $__adminTabs = [
     'billing.php'    => 'اشتراک و پرداخت',
     'categories.php' => 'دسته‌بندی‌ها',
     'insights.php'   => 'آمار استفاده',
+    'errors.php'     => 'خطاها',
 ];
 $__here = basename($_SERVER['SCRIPT_NAME'] ?? '');
+
+/**
+ * ⛔ اطلاع‌رسانی، نه یک فهرستِ منتظرِ نگاه.
+ *
+ * **خواسته‌ی مالکِ نصب:** «توی بخش مدیریت اطلاع‌رسانی بشه». تا امروز
+ * خطاها یک کارت در **تهِ** `admin/insights.php` بودند: تا کسی آن صفحه
+ * را باز نمی‌کرد و تا پایین نمی‌رفت، هیچ‌جا نمی‌گفت چیزی خراب است.
+ * حالا عددِ خطای **باز** روی خودِ نوارِ مدیر است، پس در هر شش صفحه
+ * دیده می‌شود.
+ *
+ * ⚠ **هزینه‌اش یک کوئری روی هر صفحه‌ی `admin/` است و نوشته می‌ماند**
+ *   (یک `COUNT` روی ایندکسِ `idx_open`؛ بودجه‌ی پنج صفحه در
+ *   `test_query_budget` یکی بالا رفت). سنجشِ وجودِ ستون از نقشه‌ی
+ *   کش‌شده‌ی ساختار می‌آید، پس کوئریِ دوم اضافه نمی‌کند.
+ *
+ * ⚠ و **با صفر اصلاً رندر نمی‌شود** — همان قاعده‌ی نقطه‌های اسلایدرِ
+ *   خانه و نوارِ صفحه‌بندی: نشانِ «۰ خطا» چیزی نمی‌گوید و فقط آدم را
+ *   عادت می‌دهد نگاهش نکند، و آن‌وقت «۳ خطا» هم دیده نمی‌شود.
+ */
+$__errOpen = Auth::isAdmin() ? AppErrors::openCount() : 0;
 ?>
 <nav class="admin-tabs" aria-label="بخش‌های مدیریت">
     <?php foreach ($__adminTabs as $__file => $__label): ?>
         <?php if (!is_file(__DIR__ . '/' . $__file)) { continue; } ?>
         <a href="<?= APP_BASE_PATH ?>/admin/<?= h($__file) ?>"
            class="admin-tab <?= $__here === $__file ? 'is-active' : '' ?>"
-           <?= $__here === $__file ? 'aria-current="page"' : '' ?>><?= h($__label) ?></a>
+           <?= $__here === $__file ? 'aria-current="page"' : '' ?>><?= h($__label) ?><?php
+            if ($__file === 'errors.php' && $__errOpen > 0): ?><span
+                class="admin-tab-badge ltr-num"><?= h(toPersianDigits((string)$__errOpen)) ?></span><?php
+            endif; ?></a>
     <?php endforeach; ?>
 </nav>
 <?php

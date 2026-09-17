@@ -83,6 +83,7 @@ const BUDGET = [
     'privacy.php'           => 14,
     'pro.php'               => 17,
     'admin/insights.php'    => 32,
+    'admin/errors.php'      => 15,
     'admin/users.php'       => 17,
     'admin/access.php'      => 15,
     'admin/billing.php'     => 17,

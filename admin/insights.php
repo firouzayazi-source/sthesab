@@ -18,15 +18,6 @@ require_once __DIR__ . '/../includes/paged_list.php';
 Auth::initSession();
 Auth::requireAdmin();
 
-// پاک کردنِ فهرستِ خطا — تنها نوشتنِ این صفحه، پس تنها جایی که
-// `Csrf::verifyOrFail()` لازم دارد (قاعده ۳ در راهنما).
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['clear_errors'])) {
-    Csrf::verifyOrFail($_POST['csrf_token'] ?? '');
-    AppErrors::clear();
-    header('Location: ' . APP_BASE_PATH . '/admin/insights.php');
-    exit;
-}
-
 $activity = userActivity();
 $total    = count($activity);
 $funnel   = onboardingFunnel($activity);
@@ -34,7 +25,6 @@ $features = featureAdoption($total);
 $growth   = userGrowthByJalaliMonth();
 $health   = healthChecks();
 $cron     = CronHealth::status();
-$errors   = AppErrors::recent(8);
 $audit    = Audit::recent(12);
 $errWeek  = AppErrors::countSince(7);
 
@@ -301,37 +291,25 @@ include __DIR__ . '/../includes/header.php';
              آن‌ها را نشان نمی‌داد: هر ۵۰۰ بی‌صدا در لاگِ FPM می‌ماند و
              مالکِ نصب فقط با شکایتِ کاربر می‌فهمید — و بیشترِ کاربرها
              شکایت نمی‌کنند، فقط اپ را می‌بندند. */ ?>
+    <?php /* ⛔ فهرست و دکمه‌هایش به `admin/errors.php` رفتند و اینجا فقط
+             یک خلاصه ماند. دلیلش خواسته‌ی صریحِ مالکِ نصب بود («شلوغ
+             نباشه»): این صفحه نُه کارت دارد و یک فهرستِ هشت‌ردیفیِ خطا
+             در تهِ آن، هم خودش گم می‌شد هم کارت‌های تحلیلیِ اطرافش را
+             گم می‌کرد. اطلاع‌رسانیِ واقعی حالا نشانِ نوارِ مدیر است. */ ?>
     <?php if (!tableExists('app_errors')): ?>
         <p class="hint">migration_app_errors اجرا نشده.</p>
-    <?php elseif (!$errors): ?>
-        <p class="hint">هیچ خطایی ثبت نشده است.</p>
     <?php else: ?>
         <p class="hint" style="margin-top:0;">
             <?= h(toPersianDigits((string)$errWeek)) ?> خطای متمایز در هفته‌ی گذشته.
+            <?php /* ⚠ عددِ «رسیدگی‌نشده» اینجا **تکرار نمی‌شود**: همان عدد
+                     چند سانتی‌متر بالاتر روی نشانِ نوارِ مدیر هست، و دو بار
+                     نوشتنش دقیقاً همان شلوغی‌ای است که این جابه‌جایی برای
+                     رفعش انجام شد. (ضمناً یک کوئری هم کمتر.) */ ?>
         </p>
-        <?php foreach ($errors as $e): ?>
-            <div class="pay-row">
-                <div>
-                    <strong><?= h($e['file']) ?>:<?= h(toPersianDigits((string)$e['line'])) ?></strong><br>
-                    <span class="hint"><?= h($e['message']) ?></span>
-                </div>
-                <span class="status-badge status-badge-out">
-                    ×<?= h(toPersianDigits((string)$e['hits'])) ?>
-                </span>
-            </div>
-        <?php endforeach; ?>
-        <form method="post" style="margin-top:10px;">
-            <?= Csrf::field() ?>
-            <button type="submit" name="clear_errors" value="1" class="btn btn-sm">پاک کردن فهرست</button>
-        </form>
+        <a href="<?= APP_BASE_PATH ?>/admin/errors.php" class="btn btn-sm">
+            رفتن به خطاها
+        </a>
     <?php endif; ?>
-    <p class="hint">
-        ⛔ اینجا نه شناسه‌ی کاربر ثبت می‌شود نه آدرسِ صفحه — این فهرست
-        درباره‌ی <strong>کد</strong> است، نه رفتارِ کاربر. عدد و ایمیلِ
-        داخلِ متنِ خطا هم پیش از ذخیره پوشانده می‌شوند. جزئیاتِ هر خطا
-        (شناسه‌ی درخواست، ردِ پشته) در <code>var/log/</code> روی سرور
-        است: <code>php deploy/log-report.php --tail 30</code>
-    </p>
 </div>
 
 <div class="card">

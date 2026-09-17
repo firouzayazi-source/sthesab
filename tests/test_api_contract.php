@@ -3463,6 +3463,131 @@ if (!preg_match('/\[migration_audit_log\.sql\]="audit_log"/', $migSrc)) { $badLo
 
 T::bulk(9, $badLog, '⛔ یک لاگر، یک دفترِ ممیزی، مرزِ حریمِ خصوصی');
 
+// ---------------------------------------------------------------
+// قاعده ۴۵ — «برطرف شد» نباید به «برای همیشه ساکت» بدل شود
+// ---------------------------------------------------------------
+//
+// **خواسته‌ی مالکِ نصب:** «یک سیستم لاگ می‌خوام که توی بخش مدیریت
+// اطلاع‌رسانی بشه و بتونم راحت برطرفش کنم، شلوغ نباشه و قابل مدیریت.»
+//
+// چهار خرابیِ بی‌صدا که این قاعده می‌بندد:
+//   ۱. برداشتنِ `resolved_at = NULL` از `ON DUPLICATE KEY` در
+//      `AppErrors::record()` — آن‌وقت یک خطای **زنده** که یک بار
+//      «برطرف شد» خورده، برای همیشه از پنل ناپدید می‌شود. نه خطایی،
+//      نه نشانی؛ فقط اپی که خراب است و پنل می‌گوید سالم.
+//   ۲. هرسِ خودکاری که خطای **باز** را هم ببرد.
+//   ۳. اعلانی که به کاربر عادی هم برود، یا از `openCount()` بیاید
+//      به‌جای `openSince()` — یعنی هشدارِ همیشگی.
+//   ۴. برگشتِ فهرستِ خطا به تهِ `admin/insights.php` — همان شلوغی‌ای
+//      که این جابه‌جایی برای رفعش انجام شد.
+T::group('قاعده ۴۵ — رسیدگی به خطا');
+
+$badTri = [];
+$aeSrcT = $stripComments($root . '/includes/app_errors.php');
+
+// ۱) رخدادِ دوباره مهرِ «برطرف شد» را برمی‌دارد.
+$recChunk = $fnChunk($aeSrcT, 'function record(');
+if (strpos($recChunk, 'ON DUPLICATE KEY UPDATE') === false) {
+    $badTri[] = 'app_errors.php — record() دیگر ON DUPLICATE KEY ندارد';
+} elseif (!preg_match('/resolved_at\s*=\s*NULL/', $recChunk)) {
+    $badTri[] = '⛔ app_errors.php — record() مهرِ «برطرف شد» را با رخدادِ دوباره برنمی‌دارد؛'
+        . ' یک خطای زنده برای همیشه ساکت می‌شود';
+}
+
+// ۲) هرس فقط رسیدگی‌شده‌ها را می‌برد.
+$prChunk = $fnChunk($aeSrcT, 'function prune(');
+if (strpos($prChunk, 'resolved_at IS NOT NULL') === false) {
+    $badTri[] = '⛔ app_errors.php — prune() شرطِ «فقط رسیدگی‌شده» را ندارد؛ خطای باز هم پاک می‌شود';
+}
+if (strpos($fnChunk($aeSrcT, 'function purgeResolved('), 'resolved_at IS NOT NULL') === false) {
+    $badTri[] = '⛔ app_errors.php — purgeResolved() بی‌قید است؛ خطای دیده‌نشده را هم می‌برد';
+}
+// ⚠ عددِ نگه‌داری یک مرجع دارد و صفحه از همان می‌خواند.
+if (strpos($aeSrcT, 'const KEEP_DAYS') === false) {
+    $badTri[] = 'app_errors.php — KEEP_DAYS تنها مرجعِ مهلت است و نیست';
+}
+
+// ۳) اعلان: فقط مدیر، فقط خطای بازِ تازه، فقط یکی در روز.
+$ntSrcT = $stripComments($root . '/includes/notify.php');
+$adChunk = $fnChunk($ntSrcT, 'function generateAdminErrors(');
+if ($adChunk === '') {
+    $badTri[] = 'notify.php — generateAdminErrors() نیست؛ اطلاع‌رسانیِ خطا رفته';
+} else {
+    if (strpos($adChunk, "'admin'") === false) {
+        $badTri[] = '⛔ notify.php — اعلانِ خطا به نقشِ مدیر بند نیست؛ کاربر عادی هم می‌گیرد';
+    }
+    if (strpos($adChunk, 'AppErrors::openSince(') === false) {
+        $badTri[] = '⛔ notify.php — اعلان باید از openSince() بیاید نه openCount()؛'
+            . ' وگرنه خطای ماه‌ها پیش هر روز اعلان می‌دهد (هشدارِ همیشگی)';
+    }
+    if (!preg_match("/'apperr:'\s*\.\s*\\\$today/", $adChunk)) {
+        $badTri[] = '⛔ notify.php — dedup_key اعلانِ خطا روزانه نیست؛ یک روزِ بد ده‌ها اعلان می‌سازد';
+    }
+    if (strpos($adChunk, "'admin/errors.php'") === false) {
+        $badTri[] = 'notify.php — اعلان به صفحه‌ی خطاها لینک نمی‌دهد';
+    }
+}
+if (strpos($fnChunk($ntSrcT, 'function generateFor('), 'generateAdminErrors(') === false) {
+    $badTri[] = 'notify.php — generateAdminErrors از generateFor صدا زده نمی‌شود';
+}
+
+// ۴) صفحه‌ی مدیر: نگهبان، CSRF، ریدایرکت پس از نوشتن، و یک مرجعِ صافی.
+$erPath = $root . '/admin/errors.php';
+if (!is_file($erPath)) {
+    $badTri[] = 'admin/errors.php نیست — اطلاع‌رسانی و رسیدگی رفته';
+} else {
+    $erSrc = $stripComments($erPath);
+    foreach (['Auth::requireAdmin()', 'Csrf::verifyOrFail(', 'AppErrors::FILTERS',
+              'AppErrors::resolve(', 'AppErrors::reopen(', 'pagedSlice('] as $need) {
+        if (strpos($erSrc, $need) === false) { $badTri[] = "admin/errors.php — «{$need}» نیست"; }
+    }
+    // ⛔ پس از POST ریدایرکت، نه رندرِ مستقیم: با رندر، تازه‌سازیِ صفحه
+    //    همان «برطرف شد» را دوباره می‌فرستاد.
+    if (strpos($erSrc, "header('Location: ") === false) {
+        $badTri[] = '⛔ admin/errors.php — پس از نوشتن ریدایرکت نمی‌کند (تازه‌سازی عملیات را تکرار می‌کند)';
+    }
+    // ⛔ دکمه فقط وقتی رندر شود که ستونِ migration آمده باشد —
+    //    «دکمه‌ی بی‌کار از نبودنش بدتر است».
+    if (strpos($erSrc, 'triageAvailable()') === false) {
+        $badTri[] = '⛔ admin/errors.php — دکمه‌ی رسیدگی به وجودِ ستون بند نیست';
+    }
+}
+
+// ۵) نوارِ مدیر: زبانه‌ی خطاها + نشانی که با صفر رندر نمی‌شود.
+$navSrc = $stripComments($root . '/admin/_nav.php');
+// ⚠ خودِ **ردیفِ آرایه** سنجیده می‌شود، نه وجودِ رشته: شرطِ نشان هم
+//   `$__file === 'errors.php'` را دارد، پس بررسیِ رشته‌ای با برداشتنِ
+//   کاملِ زبانه هم سبز می‌ماند — یعنی پوچ بود. جهش نشانش داد.
+if (!preg_match("/'errors\.php'\s*=>/", $navSrc)) {
+    $badTri[] = 'admin/_nav.php — زبانه‌ی «خطاها» نیست؛ اطلاع‌رسانی فقط داخلِ همان صفحه می‌ماند';
+}
+if (strpos($navSrc, 'AppErrors::openCount()') === false) {
+    $badTri[] = '⛔ admin/_nav.php — نشانِ تعدادِ خطای باز رفته است';
+}
+if (!preg_match('/\$__errOpen\s*>\s*0/', $navSrc)) {
+    $badTri[] = '⛔ admin/_nav.php — نشان با صفر هم رندر می‌شود؛ نشانِ «۰» آدم را عادت می‌دهد نگاهش نکند';
+}
+
+// ۶) `insights` فهرستِ خطا را برنگرداند — فقط خلاصه و لینک.
+$inSrcT = $stripComments($root . '/admin/insights.php');
+if (strpos($inSrcT, 'AppErrors::recent(') !== false) {
+    $badTri[] = '⛔ admin/insights.php — فهرستِ خطا برگشته؛ همان شلوغی‌ای که به admin/errors.php منتقل شد';
+}
+if (strpos($inSrcT, 'admin/errors.php') === false) {
+    $badTri[] = 'admin/insights.php — لینکِ صفحه‌ی خطاها نیست';
+}
+
+// ۷) migration در هر دو فهرستِ migrate.sh.
+$migSrc2 = (string)file_get_contents($root . '/deploy/migrate.sh');
+if (!preg_match('/^\s*migration_error_triage\.sql\s*$/m', $migSrc2)) {
+    $badTri[] = 'migrate.sh — migration_error_triage.sql در MIGRATIONS نیست';
+}
+if (!preg_match('/\[migration_error_triage\.sql\]="app_errors\.resolved_at"/', $migSrc2)) {
+    $badTri[] = 'migrate.sh — شاهدِ migration_error_triage در SENTINEL نیست';
+}
+
+T::bulk(7, $badTri, '⛔ «برطرف شد» برگشت‌پذیر است و اطلاع‌رسانی سرِ جایش');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

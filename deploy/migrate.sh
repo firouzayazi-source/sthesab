@@ -114,6 +114,7 @@ MIGRATIONS=(
     migration_app_errors.sql
     migration_category_pin.sql
     migration_audit_log.sql
+    migration_error_triage.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -262,6 +263,7 @@ declare -A SENTINEL=(
     [migration_seed_flag.sql]="users.defaults_seeded_at"
     [migration_category_pin.sql]="category_pins"
     [migration_audit_log.sql]="audit_log"
+    [migration_error_triage.sql]="app_errors.resolved_at"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟
