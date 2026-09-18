@@ -69,6 +69,7 @@ const BUDGET = [
     'debts.php'             => 20,
     'cheques.php'           => 20,
     'my-assets.php'         => 25,
+    'store-assets.php'      => 12,
     'trades.php'            => 18,
     'recurring.php'         => 18,
     'due.php'               => 36,

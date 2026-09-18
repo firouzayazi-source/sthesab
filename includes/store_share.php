@@ -494,6 +494,146 @@ final class StoreShare
         return self::valueFor($userId) !== null;
     }
 
+    /* ═══════════════════ نمای کالاها ═══════════════════ */
+
+    /**
+     * فهرستِ «کالاهای فروشگاه»، به تفکیکِ مالک.
+     *
+     * **خواسته‌ی مالکِ نصب:** «واردش بشیم، کل محصولات فروشگاه با
+     * سهامدارانش رو من ببینم، کلاً. و برای اونهای دیگه، برای سایر بچه‌ها
+     * هم این دکمه باشه ولی فقط دارایی خودشون رو ببینن.»
+     *
+     * ⛔ **تنها جای این تصمیم همین تابع است** (مثل `categoryScopeSql()`).
+     *    هم صفحه‌ی `store-assets.php` از آن می‌خواند، هم دکمه‌ی ورودش در
+     *    `my-assets.php`. با دو نسخه، دیر یا زود دکمه برای کسی رندر
+     *    می‌شد که صفحه‌اش خالی است، یا برعکس — و بدترین حالتش این است که
+     *    یک کاربر دفترِ سهامدارِ دیگری را ببیند.
+     *
+     * ⛔ **هیچ عددی اینجا حساب نمی‌شود.** جمع‌ها همان‌هایی‌اند که
+     *    حسابداریِ فروشگاه فرستاده (`ownerTotals()` آن سیستم، روی
+     *    **همه‌ی** کالاها نه فهرستِ بریده). اینجا فقط شکل عوض می‌شود:
+     *    دستگاه و کالای بدونِ سریال در یک فهرستِ واحد می‌نشینند تا صفحه
+     *    بتواند یک‌جور صافی و دسته‌بندی بزند.
+     *
+     * @return list<array<string,mixed>> خالی یعنی چیزی برای نشان دادن نیست
+     */
+    public static function assetOwners(int $userId, bool $isAdmin): array
+    {
+        $data = self::payload();
+        if (!is_array($data)) { return []; }
+
+        $out = [];
+
+        if ($isAdmin) {
+            // مدیر: همه‌ی سهامدارها، به‌علاوه‌ی کالای خودِ فروشگاه.
+            //
+            // ⚠ `house` کلیدِ افزوده‌ی اندپوینت است؛ نصبِ عقب‌مانده‌ی
+            //   فروشگاه آن را نمی‌دهد و آن‌وقت فقط سهامدارها می‌آیند —
+            //   ناقص، ولی نه غلط. صفحه خودش این را می‌گوید.
+            $list = isset($data['shareholders']) && is_array($data['shareholders'])
+                ? $data['shareholders'] : [];
+            foreach ($list as $sh) {
+                if (is_array($sh)) { $out[] = self::ownerBlock($sh, false); }
+            }
+            if (isset($data['house']) && is_array($data['house'])) {
+                $out[] = self::ownerBlock($data['house'], true);
+            }
+        } else {
+            // کاربر عادی: فقط سهمِ خودش، و فقط اگر پیوندِ **فعال** داشته
+            // باشد — `forUser()` هر دو شرط را با هم می‌سنجد.
+            $mine = self::forUser($userId);
+            if ($mine !== null) { $out[] = self::ownerBlock($mine, false); }
+        }
+
+        return $out;
+    }
+
+    /** آیا برای این کاربر چیزی برای دیدن هست؟ دکمه‌ی ورود به همین بند است. */
+    public static function canViewAssets(int $userId, bool $isAdmin): bool
+    {
+        if (!self::available()) { return false; }
+        return self::assetOwners($userId, $isAdmin) !== [];
+    }
+
+    /**
+     * یک مالک را به شکلی درمی‌آورد که صفحه می‌خواهد.
+     *
+     * ⛔ دستگاه (`devices`) و کالای بدونِ سریال (`items`) در **یک**
+     *    فهرست ادغام می‌شوند. در مدلِ فروشگاه «گوشی» یعنی کالای
+     *    سریال‌دار و «لوازم جانبی» یعنی کالایی که اصلاً دستگاه نیست —
+     *    دو آرایه‌ی جدا در پاسخ. ولی کاربر یک فهرست می‌خواهد که بشود
+     *    رویش صافی زد؛ با دو فهرستِ جدا، صافیِ «فروش‌رفته» روی یکی کار
+     *    می‌کرد و روی آن یکی نه.
+     *
+     * ⚠ کالای بدونِ سریال ستونِ سود **ندارد** و این تصمیمِ آن سیستم
+     *   است، نه جا افتادن: بهای تمام‌شده‌اش میانگین است پس نمی‌شود گفت
+     *   سودِ فروش از کدام خرید آمده. `profit`/`own` شان `null` می‌ماند،
+     *   نه صفر — «نمی‌دانیم» با «صفر بود» یکی نیست.
+     */
+    private static function ownerBlock(array $sh, bool $isHouse): array
+    {
+        $num = static fn($v): int => (int)round((float)($v ?? 0));
+
+        $rows = [];
+        foreach ((isset($sh['devices']) && is_array($sh['devices'])) ? $sh['devices'] : [] as $d) {
+            if (!is_array($d)) { continue; }
+            $sold = ($d['status'] ?? '') === 'SOLD';
+            $rows[] = [
+                'kind'      => 'device',
+                'category'  => (string)($d['category'] ?? ''),
+                'cat_label' => (string)($d['category_label'] ?? ''),
+                'product'   => (string)($d['product'] ?? '—'),
+                'label'     => (string)($d['imei'] ?? ''),
+                'sold'      => $sold,
+                'qty'       => 1.0,
+                'cost'      => $num($d['cost'] ?? 0),
+                'price'     => $sold ? $num($d['sale_price'] ?? 0) : 0,
+                'profit'    => $sold ? $num($d['profit'] ?? 0) : null,
+                'own'       => $sold ? $num($d['own'] ?? 0) : null,
+                'date'      => (string)($sold ? ($d['sold_at'] ?? '') : ($d['purchased_at'] ?? '')),
+            ];
+        }
+        foreach ((isset($sh['items']) && is_array($sh['items'])) ? $sh['items'] : [] as $i) {
+            if (!is_array($i)) { continue; }
+            $rows[] = [
+                'kind'      => 'item',
+                'category'  => (string)($i['category'] ?? ''),
+                'cat_label' => (string)($i['category_label'] ?? ''),
+                'product'   => (string)($i['product'] ?? '—'),
+                'label'     => (string)($i['label'] ?? ''),
+                'sold'      => false,
+                'qty'       => (float)($i['quantity'] ?? 0),
+                'cost'      => $num($i['cost'] ?? 0),
+                'price'     => 0,
+                'profit'    => null,
+                'own'       => null,
+                'date'      => (string)($i['purchased_at'] ?? ''),
+            ];
+        }
+
+        return [
+            'id'        => $isHouse ? null : (int)($sh['id'] ?? 0),
+            'name'      => (string)($sh['name'] ?? '—'),
+            'is_house'  => $isHouse,
+            // مانده‌ی دفتر فقط برای سهامدار معنا دارد؛ خودِ فروشگاه
+            // طلبی از خودش ندارد و `null` یعنی «این ستون اینجا نیست».
+            'balance'   => $isHouse ? null : $num($sh['balance'] ?? 0),
+            'capital'   => $isHouse ? null : $num($sh['capital'] ?? 0),
+            'earned'    => $isHouse ? null : $num($sh['earned'] ?? 0),
+            'paid'      => $isHouse ? null : $num($sh['paid'] ?? 0),
+            'active_count' => (int)($sh['active_count'] ?? 0),
+            'active_cost'  => $num($sh['active_cost'] ?? 0),
+            'sold_count'   => (int)($sh['sold_count'] ?? 0),
+            'sold_total'   => $num($sh['sold_total'] ?? 0),
+            'own_profit'   => $num($sh['own_profit'] ?? 0),
+            'items_cost'   => $num($sh['items_cost'] ?? 0),
+            // ⚠ سقف **گفته** می‌شود، نه بی‌صدا: فهرستِ زیر ممکن است
+            //   بریده باشد در حالی که جمع‌های بالا روی همه‌اند.
+            'capped'    => !empty($sh['devices_capped']) || !empty($sh['items_capped']),
+            'rows'      => $rows,
+        ];
+    }
+
     /* ═══════════════════ ثبتِ سود در دفترِ کاربر ═══════════════════ */
 
     /**

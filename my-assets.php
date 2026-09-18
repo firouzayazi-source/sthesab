@@ -201,6 +201,12 @@ if (StoreShare::available()) {
     $storeSyncStatus = StoreShare::status();
     $storeShare      = StoreShare::forUser($userId);
 }
+// ⛔ دکمه‌ی ورود به صفحه‌ی کالاها به **همان تابعی** بند است که خودِ آن
+//    صفحه دامنه‌اش را از آن می‌گیرد (`StoreShare::assetOwners()`). با یک
+//    شرطِ محلیِ دوم، دیر یا زود دکمه برای کسی رندر می‌شد که صفحه‌اش
+//    خالی است — همان «دکمه‌ی بی‌کار از نبودنش بدتر است».
+$storeCanView = StoreShare::available() && StoreShare::canViewAssets($userId, Auth::isAdmin());
+
 if ($storeShare !== null) {
     $storeDevices = isset($storeShare['devices']) && is_array($storeShare['devices'])
         ? $storeShare['devices'] : [];
@@ -451,79 +457,76 @@ include __DIR__ . '/includes/header.php';
     <?php endif; ?>
 </div>
 
-<?php if ($storeShare !== null): ?>
+<?php if ($storeCanView): ?>
 <?php
 /*
- * ⛔ این کارت **هیچ دکمه‌ی اقدامی ندارد و نباید داشته باشد.** خواسته‌ی
- *    صریحِ مالکِ نصب «فقط رویت» بود، و مرزش هم فنی است: منطقِ خرید و
- *    فروش و درصدِ سهم در حسابداریِ فروشگاه است. یک دکمه‌ی «فروش» اینجا
- *    یعنی نسخه‌ی دومِ آن منطق — همان مرزی که بین `my-assets.php` و
+ * ⛔ کارتِ کوچک، و فهرستِ کالاها در صفحه‌ی خودش.
+ *
+ * **خواسته‌ی مالکِ نصب:** «دارایی من در فروشگاه خودش یک کارت کوچیک بشه
+ * که از طریق اون بتونم توش تمام محصولاتشون رو مدیریت بکنم.»
+ *
+ * نسخه‌ی قبلی فهرستِ کاملِ دستگاه‌ها را **درجا** رندر می‌کرد. با یک
+ * سهامدارِ ده‌تایی قابل تحمل بود؛ ولی این صفحه وظیفه‌اش نشان دادنِ
+ * **ترکیبِ** دارایی است و یک فهرستِ صدتایی وسطش، نمودار و توگل‌ها را
+ * زیرِ خود دفن می‌کرد.
+ *
+ * ⛔ و هیچ دکمه‌ی خرید و فروشی ندارد و نباید داشته باشد — منطقِ درصدِ
+ *    سهم و سود در حسابداریِ فروشگاه است. یک دکمه‌ی «فروش» اینجا یعنی
+ *    نسخه‌ی دومِ آن منطق، همان مرزی که بین `my-assets.php` و
  *    `trades.php` هم عمداً کشیده شده.
  */
-$shDevices = isset($storeShare['devices']) && is_array($storeShare['devices'])
+$shDevices = ($storeShare !== null && isset($storeShare['devices']) && is_array($storeShare['devices']))
     ? $storeShare['devices'] : [];
-$shSold    = array_values(array_filter($shDevices, fn($d) => ($d['status'] ?? '') === 'SOLD'));
-$shOpen    = array_values(array_filter($shDevices, fn($d) => ($d['status'] ?? '') !== 'SOLD'));
+$shSold = 0;
+foreach ($shDevices as $d) { if (is_array($d) && ($d['status'] ?? '') === 'SOLD') { $shSold++; } }
 ?>
-<div class="card">
+<div class="card store-mini">
     <div class="card-header-row">
         <h2 class="card-title">دارایی من در فروشگاه</h2>
         <span class="asset-tag">فقط نمایش</span>
     </div>
 
-    <div class="asset-total-row">
-        <span class="asset-total-label">مانده</span>
-        <b class="asset-total-value<?= StoreShare::valueFor($userId) < 0 ? ' asset-amount-neg' : '' ?>">
-            <span class="ltr-num"><?= formatMoney((int)StoreShare::valueFor($userId)) ?></span>
-        </b>
-    </div>
-    <div class="asset-total-row">
-        <span class="asset-total-label">اصل سرمایه</span>
-        <b class="asset-total-value"><span class="ltr-num"><?= formatMoney((int)round((float)($storeShare['capital'] ?? 0))) ?></span></b>
-    </div>
-    <div class="asset-total-row">
-        <span class="asset-total-label">سهم سود</span>
-        <b class="asset-total-value"><span class="ltr-num"><?= formatMoney((int)round((float)($storeShare['earned'] ?? 0))) ?></span></b>
-    </div>
-    <div class="asset-total-row">
-        <span class="asset-total-label">پرداخت‌شده</span>
-        <b class="asset-total-value"><span class="ltr-num"><?= formatMoney((int)round((float)($storeShare['paid'] ?? 0))) ?></span></b>
-    </div>
-
-    <p class="hint asset-total-note">
-        <?= toPersianDigits((string)count($shOpen)) ?> دستگاه فروش‌نرفته و
-        <?= toPersianDigits((string)count($shSold)) ?> دستگاه فروخته‌شده.
-        سهمِ سود خودکار در دفتر شما ثبت می‌شود.
-        <?php if ($storeSyncStatus['fetched_at']): ?>
-            آخرین به‌روزرسانی: <?= h(jalaliWithWeekday(substr((string)$storeSyncStatus['fetched_at'], 0, 10))) ?>.
-        <?php endif; ?>
-        <?php if ($storeSyncStatus['last_error']): ?>
-            <br><span style="color:var(--warn-ink);">آخرین تلاش ناموفق بود؛ عددهای بالا از آخرین نسخه‌ی موفق است.</span>
-        <?php endif; ?>
-    </p>
-
-    <?php if ($shDevices !== []): ?>
-        <?php foreach ($shDevices as $d): ?>
-            <div class="tx-row">
-                <div class="tx-row-summary">
-                    <div class="tx-row-texts">
-                        <span class="tx-row-title"><?= h((string)($d['product'] ?? '—')) ?></span>
-                        <span class="tx-row-cat">
-                            <?= ($d['status'] ?? '') === 'SOLD' ? 'فروخته شد' : 'در انبار' ?>
-                            <?php if (!empty($d['imei'])): ?>
-                                · <span class="ltr-num"><?= h((string)$d['imei']) ?></span>
-                            <?php endif; ?>
-                        </span>
-                    </div>
-                    <span class="tx-row-amount">
-                        <span class="ltr-num"><?= formatMoney((int)round((float)(
-                            ($d['status'] ?? '') === 'SOLD' ? ($d['sale_price'] ?? 0) : ($d['cost'] ?? 0)
-                        ))) ?></span>
-                    </span>
-                </div>
+    <?php if ($storeShare !== null): ?>
+        <div class="store-own-stats">
+            <div class="store-own-stat">
+                <span class="store-own-label">مانده</span>
+                <b class="ltr-num<?= (int)StoreShare::valueFor($userId) < 0 ? ' asset-amount-neg' : '' ?>"><?= formatMoney((int)StoreShare::valueFor($userId)) ?></b>
             </div>
-        <?php endforeach; ?>
+            <div class="store-own-stat">
+                <span class="store-own-label">اصل سرمایه</span>
+                <b class="ltr-num"><?= formatMoney((int)round((float)($storeShare['capital'] ?? 0))) ?></b>
+            </div>
+            <div class="store-own-stat">
+                <span class="store-own-label">سهم سود</span>
+                <b class="ltr-num"><?= formatMoney((int)round((float)($storeShare['earned'] ?? 0))) ?></b>
+            </div>
+            <div class="store-own-stat">
+                <span class="store-own-label">پرداخت‌شده</span>
+                <b class="ltr-num"><?= formatMoney((int)round((float)($storeShare['paid'] ?? 0))) ?></b>
+            </div>
+        </div>
+        <p class="hint asset-total-note">
+            <?= toPersianDigits((string)(count($shDevices) - $shSold)) ?> دستگاه فروش‌نرفته و
+            <?= toPersianDigits((string)$shSold) ?> دستگاه فروخته‌شده.
+            سهمِ سود خودکار در دفتر شما ثبت می‌شود.
+            <?php if ($storeSyncStatus['fetched_at']): ?>
+                آخرین به‌روزرسانی: <?= h(jalaliWithWeekday(substr((string)$storeSyncStatus['fetched_at'], 0, 10))) ?>.
+            <?php endif; ?>
+            <?php if ($storeSyncStatus['last_error']): ?>
+                <br><span style="color:var(--warn-ink);">آخرین تلاش ناموفق بود؛ عددهای بالا از آخرین نسخه‌ی موفق است.</span>
+            <?php endif; ?>
+        </p>
+    <?php else: ?>
+        <?php /* مدیری که خودش سهامدار نیست: عددی ندارد ولی باید همه را ببیند. */ ?>
+        <p class="hint asset-total-note">
+            شما به سهامداری وصل نیستید، ولی به‌عنوان مدیر می‌توانید کالای همه‌ی
+            سهامدارها و خودِ فروشگاه را ببینید.
+        </p>
     <?php endif; ?>
+
+    <a href="<?= APP_BASE_PATH ?>/store-assets.php" class="btn btn-primary store-enter">
+        <?= Auth::isAdmin() ? 'دیدن کالاهای فروشگاه' : 'دیدن کالاهای من' ?> ←
+    </a>
 </div>
 <?php endif; ?>
 

@@ -469,6 +469,102 @@ T::ok(StoreShare::storeOwed() === null,
 T::ok(StoreShare::storeOwed($A) === null, 'با کاربر هم null می‌ماند، نه عددِ منفی');
 T::ok(StoreShare::storeNetWorth() === 4500000000, 'بقیه‌ی کلیدها دست‌نخورده کار می‌کنند');
 
+T::group('۱۱ — دامنه‌ی صفحه‌ی کالاها');
+
+/*
+ * ⛔ `assetOwners()` تنها جای این تصمیم است و **سه** خرابیِ بی‌صدا
+ *    دارد که هیچ‌کدام خطا نمی‌دهند:
+ *
+ *   ۱. کاربرِ عادی دفترِ سهامدارِ دیگری را ببیند.
+ *   ۲. مدیر فقط سهمِ خودش را ببیند («کلاً» ندهد).
+ *   ۳. کاربری که پیوندش **غیرفعال** شده باز هم ببیند.
+ */
+$payloadFull = $payload4;
+$payloadFull['shareholders'][0]['items'] = [
+    ['id' => 71, 'product' => 'گارد آیفون', 'label' => 'ACC-1',
+     'category' => 'ACCESSORY', 'category_label' => 'لوازم جانبی',
+     'quantity' => 10, 'cost' => 3000000, 'purchased_at' => '2026-08-05',
+     'supplier' => 'اکبر'],
+];
+$payloadFull['shareholders'][0]['items_cost'] = 3000000;
+foreach ($payloadFull['shareholders'][0]['devices'] as $i => $d) {
+    $payloadFull['shareholders'][0]['devices'][$i]['category']       = 'PHONE';
+    $payloadFull['shareholders'][0]['devices'][$i]['category_label'] = 'گوشی';
+}
+$payloadFull['house'] = [
+    'id' => null, 'name' => 'فروشگاه (بدون سهامدار)',
+    'active_count' => 1, 'active_cost' => 90000000,
+    'sold_count' => 0, 'sold_total' => 0, 'own_profit' => 0, 'items_cost' => 0,
+    'device_total' => 1, 'devices_capped' => false, 'items_capped' => false,
+    'devices' => [
+        ['id' => 21, 'imei' => '350000000000021', 'product' => 'سامسونگ S24',
+         'category' => 'PHONE', 'category_label' => 'گوشی',
+         'status' => 'IN_STOCK', 'cost' => 90000000, 'sale_price' => 0,
+         'purchased_at' => '2026-08-10', 'sold_at' => null, 'profit' => 0, 'own' => 0],
+    ],
+    'items' => [],
+];
+$setState($payloadFull);
+T::ok(!empty(StoreShare::sync()['ok']), 'پیلودِ کامل همگام شد');
+
+$mine = StoreShare::assetOwners($A, false);
+T::ok(count($mine) === 1, 'کاربرِ عادی فقط یک بلوک می‌گیرد', 'count=' . count($mine));
+T::ok(($mine[0]['id'] ?? null) === 900001, 'و آن بلوک مالِ خودش است');
+T::ok(count($mine[0]['rows']) === 3,
+    '⛔ دستگاه و لوازم جانبی در یک فهرست ادغام می‌شوند',
+    'rows=' . count($mine[0]['rows']));
+// ⚠ مقایسه‌ی مجموعه‌ای است نه ترتیبی: ترتیبِ `sort()` روی فارسی به
+//   collation بند است و تست را به چیزی وصل می‌کرد که موضوعش نیست.
+$cats = array_unique(array_column($mine[0]['rows'], 'cat_label'));
+T::ok(count($cats) === 2 && in_array('گوشی', $cats, true) && in_array('لوازم جانبی', $cats, true),
+    '⛔ برچسبِ دسته از خودِ فروشگاه می‌آید، نه نگاشتِ محلی',
+    implode('|', $cats));
+
+// ⛔ کالای بدونِ سریال سود **ندارد** — `null` است نه صفر. «نمی‌دانیم»
+//    با «صفر بود» یکی نیست، و صفر نوشتن یعنی عددی که پشتش محاسبه‌ای
+//    نیست (تصمیمِ ثبت‌شده‌ی `ownedItems()` در آن سیستم).
+$itemRow = null;
+foreach ($mine[0]['rows'] as $r) { if ($r['kind'] === 'item') { $itemRow = $r; } }
+T::ok($itemRow !== null && $itemRow['own'] === null,
+    '⛔ سودِ کالای بدونِ سریال null است، نه صفرِ ساختگی');
+
+// و همین درباره‌ی دستگاهِ **فروش‌نرفته** هم صادق است: هنوز سودی نخورده،
+// پس «۰» یک ادعای ساختگی است نه واقعیت.
+$openRow = null;
+foreach ($mine[0]['rows'] as $r) { if ($r['kind'] === 'device' && !$r['sold']) { $openRow = $r; } }
+T::ok($openRow !== null && $openRow['own'] === null && $openRow['profit'] === null,
+    '⛔ دستگاهِ فروش‌نرفته سود ندارد — null، نه صفر');
+
+$asAdmin = StoreShare::assetOwners($A, true);
+T::ok(count($asAdmin) === 2, '⛔ مدیر سهامدارها + خودِ فروشگاه را می‌بیند', 'count=' . count($asAdmin));
+$house = null;
+foreach ($asAdmin as $o) { if ($o['is_house']) { $house = $o; } }
+T::ok($house !== null && $house['id'] === null && $house['balance'] === null,
+    '⛔ بلوکِ فروشگاه مانده‌ی دفتر ندارد (طلبی از خودش ندارد)');
+
+// ⛔ کاربرِ **بی‌پیوند** هیچ چیزی نمی‌گیرد — نه بلوکی، نه دکمه‌ای.
+T::ok(StoreShare::assetOwners($B, false) === [],
+    '⛔ کاربرِ بی‌پیوند هیچ بلوکی نمی‌گیرد');
+T::ok(!StoreShare::canViewAssets($B, false), 'و دکمه‌ی ورودش هم رندر نمی‌شود');
+T::ok(StoreShare::canViewAssets($B, true), 'ولی همان کاربر به‌عنوان مدیر می‌بیند');
+T::ok(StoreShare::canViewAssets($A, false), 'و سهامدارِ وصل‌شده می‌بیند');
+
+// ⛔ پیوندِ غیرفعال یعنی دیگر نمی‌بیند — همان شرطی که `forUser()` دارد.
+$pdo->prepare('UPDATE store_shareholders SET is_active = 0 WHERE user_id = :u')->execute(['u' => $A]);
+T::ok(StoreShare::assetOwners($A, false) === [],
+    '⛔ با غیرفعال شدنِ پیوند، کاربر دیگر چیزی نمی‌بیند');
+$pdo->prepare('UPDATE store_shareholders SET is_active = 1 WHERE user_id = :u')->execute(['u' => $A]);
+
+// ⚠ نصبِ عقب‌مانده‌ی فروشگاه: نه `items` دارد نه `house`. باید ناقص
+//   کار کند، نه اینکه بشکند.
+$payloadNoItems = $payload4;
+$setState($payloadNoItems);
+T::ok(!empty(StoreShare::sync()['ok']), 'پیلودِ قدیمی همچنان معتبر است');
+$oldAdmin = StoreShare::assetOwners($A, true);
+T::ok(count($oldAdmin) === 1, 'بدونِ `house` فقط سهامدارها می‌آیند، نه خطا', 'count=' . count($oldAdmin));
+T::ok($oldAdmin[0]['rows'] !== [] && $oldAdmin[0]['rows'][0]['cat_label'] === '',
+    '⛔ برچسبِ نبوده خالی می‌ماند، نه حدسِ محلی');
+
 /* ─────────────── پاک‌سازی ─────────────── */
 
 foreach ($names as $n) { $purge($n); }

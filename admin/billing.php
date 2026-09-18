@@ -79,6 +79,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $planOn    = planEnforced();
 $planPrice = planMonthlyPrice();
+
+// ⛔ اشتراکِ **خودِ** مدیر، برای کارتِ خرید. از `userPlan()` می‌آید (تنها
+//    مرجع)، نه یک کوئریِ محلی: با نسخه‌ی دوم، «مادام‌العمر» و
+//    «روزهای باقی‌مانده» دیر یا زود اینجا و در `pro.php` دو جور خوانده
+//    می‌شدند.
+$myPlan = userPlan($currentUserId);
 $planCard  = getSetting(PLAN_CARD_SETTING, '');
 $planOwner = getSetting(PLAN_OWNER_SETTING, '');
 $pending   = pendingPayments();
@@ -105,6 +111,47 @@ include __DIR__ . '/../includes/header.php';
 ?>
 
 <?php include __DIR__ . '/_nav.php'; ?>
+
+<?php
+/*
+ * ⛔ درِ **پرداخت**، در همان بخشی که مالکِ نصب دنبالش می‌گردد.
+ *
+ * **خواسته‌ی مالکِ نصب:** «اشتراک و پرداخت در بخش مدیریت هم بیار، یه
+ * کارت یا دکمه‌ی جدید اضافه که اینجا بهش پرداخته بشه.»
+ *
+ * این صفحه از اول «اشتراک و پرداخت» نام داشت ولی کارش **رسیدگی به
+ * پرداختِ دیگران** بود: تأیید، رد، هدیه، کد تخفیف. صفحه‌ی خودِ خرید
+ * (`pro.php`) فقط از پروفایل و از نوارِ «فقط خواندنی» پیدا می‌شد — یعنی
+ * از بخشِ مدیریت **هیچ راهی** به آن نبود و مالکِ نصب یک عنوانِ درست را
+ * می‌دید که کارِ موردِ نظرش را نمی‌کرد.
+ *
+ * ⚠ لینک است نه فرم: پرداخت و کدِ تخفیف منطقِ خودشان را در `pro.php`
+ *   دارند و نسخه‌ی دومشان اینجا یعنی دو جا که دیر یا زود دو مبلغ
+ *   می‌گویند (همان دلیلِ `discountFinalPrice()`).
+ */
+?>
+<div class="card">
+    <div class="card-header-row">
+        <h2 class="card-title">خرید اشتراک</h2>
+        <?php if ($myPlan['is_pro']): ?>
+            <span class="asset-tag asset-tag-wallet">فعال</span>
+        <?php endif; ?>
+    </div>
+    <p class="hint">
+        <?php if ($myPlan['is_forever']): ?>
+            اشتراکِ حسابِ شما مادام‌العمر است.
+        <?php elseif ($myPlan['is_pro']): ?>
+            اشتراکِ حسابِ شما تا <?= h(toJalali((string)$myPlan['pro_until'])) ?> فعال است
+            (<?= toPersianDigits((string)(int)$myPlan['days_left']) ?> روز باقی مانده).
+        <?php else: ?>
+            حسابِ شما اشتراکِ فعالی ندارد.
+        <?php endif; ?>
+        این کارت برای پرداختِ <b>خودِ شما</b> است؛ رسیدگی به پرداختِ بقیه پایین‌تر است.
+    </p>
+    <a href="<?= APP_BASE_PATH ?>/pro.php" class="btn btn-primary store-enter">
+        <?= $myPlan['is_pro'] ? 'تمدید اشتراک' : 'پرداخت و تهیه اشتراک' ?> ←
+    </a>
+</div>
 
 <?php if (!plansAvailable()): ?>
     <div class="card">

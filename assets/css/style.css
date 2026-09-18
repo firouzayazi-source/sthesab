@@ -3356,6 +3356,7 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
 .asset-total-value, .asset-item-qty, .trade-sum-value,
 .bank-card-balance, .bank-card-row-value, .bank-card-number,
 .pay-number, .amount-cell,
+.store-own-stat b, .store-row-own,
 .amount-income, .amount-expense, .asset-amount-neg,
 .amount-input, .amount-input-sm {
     direction: ltr;
@@ -4296,3 +4297,87 @@ html[data-theme="dark"] .start-card {
 
 .err-howto { margin: 6px 0 0; padding-inline-start: 18px; }
 .err-howto li { margin-bottom: 4px; }
+
+
+/* ============================================================
+   کالاهای فروشگاه — کارتِ کوچکِ صفحه‌ی دارایی و صفحه‌ی خودش
+
+   ⛔ اعدادِ `.store-own-stat b` و `.store-row-own` به فهرستِ `.ltr-num`
+      بالا **پیوسته‌اند**، نه اینکه `direction: ltr` تازه‌ای اینجا
+      بگیرند — قاعده‌ی پروژه: کلاسِ عددیِ تازه = یک نامِ تازه در همان
+      یک فهرست، وگرنه نسخه‌ی دومی می‌شود که دیر یا زود عقب می‌افتد.
+   ============================================================ */
+
+/* ⚠ `auto-fit` با `minmax` تا روی ۳۹۰ پیکسل دو ستون بماند و روی
+     دسکتاپ کش بیاید. `min(…,100%)` لازم است چون آیتمِ گرید پیش‌فرض
+     `min-width: auto` دارد و حاضر نیست از محتوایش کوتاه‌تر شود —
+     همان چیزی که یک بار منوی کناری را از اسکرول انداخت. */
+.store-own-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(130px, 100%), 1fr));
+    gap: 10px;
+    margin: 12px 0 4px;
+}
+.store-own-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+}
+/* ⚠ عمداً `background` ندارد: `html[data-theme="dark"] .card` با وزنِ
+     بیشتر بازنویسی‌اش می‌کند — همان درسِ `.start-card` و `.grid-card`.
+     مرز از `--line` می‌آید که خودش تم‌آگاه است. */
+.store-own-label {
+    font-size: .78rem;
+    color: var(--color-gray-500);
+}
+.store-own-stat b { font-size: .98rem; }
+.store-own-stat small {
+    font-size: .72rem;
+    color: var(--color-gray-500);
+}
+
+/* دکمه‌ی ورود: تمام‌عرض تا روی گوشی هدفِ لمسِ درستی باشد. */
+.store-enter {
+    display: block;
+    width: 100%;
+    margin-top: 14px;
+    text-align: center;
+    text-decoration: none;
+}
+
+.store-cat-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+    margin: 16px 0 6px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--line);
+}
+.store-cat-name { font-weight: 700; font-size: .95rem; }
+.store-cat-meta {
+    font-size: .78rem;
+    color: var(--color-gray-500);
+    margin-right: auto;
+}
+/* ⚠ فیزیکی است نه `margin-inline-*`: مقدارِ منطقی نسبت به جهتِ همان
+     ردیفِ راست‌به‌چپ دوباره حل می‌شود و **دقیقاً برعکس** می‌نشیند —
+     همان دلیلِ `text-align: right`ِ فیزیکی روی `<select>`. */
+
+.store-row-own {
+    display: block;
+    font-size: .74rem;
+    font-weight: 400;
+    color: var(--color-gray-500);
+}
+
+.store-asset-search {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 10px;
+}
+.store-asset-search .input { flex: 1; min-width: 0; }

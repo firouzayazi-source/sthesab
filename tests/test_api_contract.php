@@ -3765,7 +3765,91 @@ foreach (['store_share.linked', 'store_share.unlinked'] as $act) {
     }
 }
 
-T::bulk(10, $badSS, '⛔ سهم سهامدار: خواندنی، بی‌حساب، ایدمپوتنت، و پشتِ تأییدِ مدیر');
+// ۱۱) صفحه‌ی کالاهای فروشگاه — دامنه در یک جا، و بی‌محاسبه.
+//
+//     ⛔ سه خرابیِ بی‌صدا اینجا ممکن است:
+//       الف) دامنه در خودِ صفحه تصمیم گرفته شود → دکمه‌ی ورود و صفحه دو
+//            جواب می‌دهند، و بدترین حالتش این است که کاربری دفترِ
+//            سهامدارِ دیگری را ببیند.
+//       ب) دکمه‌ی ورود شرطِ محلیِ خودش را داشته باشد → دکمه‌ای که زده
+//            می‌شود و صفحه‌ی خالی می‌دهد («دکمه‌ی بی‌کار»).
+//       ج) دکمه‌ی خرید/فروش به این صفحه اضافه شود → نسخه‌ی دومِ منطقِ
+//            پول، همان مرزی که بینِ `my-assets.php` و `trades.php` هم
+//            عمداً کشیده شده.
+$saPath = $root . '/store-assets.php';
+if (!is_file($saPath)) {
+    $badSS[] = 'store-assets.php پیدا نشد';
+} else {
+    $saSrc = $stripComments($saPath);
+    if (!preg_match('/StoreShare::assetOwners\(\s*\$userId\s*,\s*\$isAdmin\s*\)/', $saSrc)) {
+        $badSS[] = '⛔ store-assets.php — دامنه از StoreShare::assetOwners() نمی‌آید';
+    }
+    // هیچ نوشتنی: نه فرمِ POST، نه اندپوینتِ اقدام.
+    if (preg_match('/method=("|\x27)POST/i', $saSrc)) {
+        $badSS[] = '⛔ store-assets.php — فرمِ نویسنده دارد؛ این صفحه فقط نمایش است';
+    }
+    foreach (['sell_trade', 'save_trade', 'sell_asset'] as $ep) {
+        if (strpos($saSrc, $ep) !== false) {
+            $badSS[] = '⛔ store-assets.php — دکمه‌ی «' . $ep . '» اضافه شده؛ منطقِ پول آنجا نیست';
+        }
+    }
+    // صافی‌ها یک مرجع دارند (درسِ DUE_TABS).
+    if (!preg_match('/isset\(STORE_ASSET_FILTERS\[\$filter\]\)/', $saSrc)) {
+        $badSS[] = '⛔ store-assets.php — «?f=» با STORE_ASSET_FILTERS سنجیده نمی‌شود';
+    }
+}
+// دکمه‌ی ورود به **همان** تابع بند است، نه یک شرطِ محلیِ دوم.
+if (!preg_match('/StoreShare::canViewAssets\(\s*\$userId\s*,\s*Auth::isAdmin\(\)\s*\)/', $maSrc)) {
+    $badSS[] = '⛔ my-assets.php — دکمه‌ی ورود از canViewAssets() نمی‌آید';
+}
+if (strpos($maSrc, 'store-assets.php') === false) {
+    $badSS[] = '⛔ my-assets.php — لینکِ صفحه‌ی کالاهای فروشگاه نیست';
+}
+// ⛔ و کارتِ صفحه‌ی دارایی باید **کوچک** بماند: فهرستِ دستگاه‌ها جایش
+//    صفحه‌ی خودش است، وگرنه نمودار و توگل‌ها زیرِ یک فهرستِ صدتایی دفن
+//    می‌شوند — همان «خزشِ بی‌صدا»یی که کلِ این کار برای رفعش انجام شد.
+// ⚠ الگو روی **رندرِ** نامِ کالاست، نه روی هر حلقه‌ای: شمردنِ
+//   فروش‌رفته‌ها هم یک `foreach` روی همان آرایه است و بررسیِ حلقه‌ای
+//   روی فایلِ سالم هشدارِ الکی می‌داد — که از نبودِ تست بدتر است.
+if (preg_match('/\$d\[[\x27"]product[\x27"]\]/', $maSrc)) {
+    $badSS[] = '⛔ my-assets.php — نامِ دستگاه‌ها دوباره درجا رندر می‌شود؛ جایش صفحه‌ی خودش است';
+}
+// ⛔ و دامنه فقط در همان یک تابع: هیچ‌کس دیگری نباید مستقیم
+//    `shareholders` را از payload بخواند.
+if (!preg_match('/function\s+assetOwners\s*\(/', $ssSrc)) {
+    $badSS[] = '⛔ store_share — assetOwners() نیست';
+} else {
+    foreach ([$saSrc ?? '', $maSrc] as $consumer) {
+        if (preg_match("/payload\(\)\s*\[\s*'shareholders'/", $consumer)) {
+            $badSS[] = '⛔ مصرف‌کننده مستقیم payload()[shareholders] را می‌خواند، نه assetOwners()';
+        }
+    }
+}
+
+// ۱۲) خرید اشتراک از بخشِ مدیریت — و ترتیبِ نوار با شیتِ فوتر یکی باشد.
+//
+//     ⚠ خرابی‌اش بی‌صدا نیست ولی دیده هم نمی‌شود: مالکِ نصب عنوانِ
+//       «اشتراک و پرداخت» را می‌بیند، وارد می‌شود، و فقط رسیدگی به
+//       پرداختِ **دیگران** را پیدا می‌کند — درِ پرداختِ خودش هیچ‌جای
+//       بخشِ مدیریت نبود.
+$blSrc = $stripComments($root . '/admin/billing.php');
+if (strpos($blSrc, '/pro.php') === false) {
+    $badSS[] = '⛔ admin/billing.php — راهی به صفحه‌ی پرداخت (pro.php) ندارد';
+}
+$navSrc = $stripComments($root . '/admin/_nav.php');
+$posCat  = strpos($navSrc, "'categories.php'");
+$posBill = strpos($navSrc, "'billing.php'");
+if ($posCat === false || $posBill === false || $posBill < $posCat) {
+    $badSS[] = '⛔ admin/_nav.php — «اشتراک و پرداخت» باید زیرِ «دسته‌بندی‌ها» باشد';
+}
+$ftSrc = $stripComments($root . '/includes/footer.php');
+$fCat  = strpos($ftSrc, 'admin/categories.php');
+$fBill = strpos($ftSrc, 'admin/billing.php');
+if ($fCat === false || $fBill === false || $fBill < $fCat) {
+    $badSS[] = '⛔ includes/footer.php — ترتیبِ شیتِ مدیریت با نوارِ مدیر نمی‌خواند';
+}
+
+T::bulk(12, $badSS, '⛔ سهم سهامدار: خواندنی، بی‌حساب، ایدمپوتنت، و پشتِ تأییدِ مدیر');
 
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {

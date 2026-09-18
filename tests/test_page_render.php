@@ -72,6 +72,7 @@ const EXPECT = [
     'debts.php'             => 'page',
     'cheques.php'           => 'page',
     'my-assets.php'         => 'page',
+    'store-assets.php'      => 'page',
     'trades.php'            => 'page',
     'recurring.php'         => 'page',
     'due.php'               => 'page',

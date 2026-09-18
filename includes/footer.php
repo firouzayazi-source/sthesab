@@ -148,13 +148,16 @@ $moreActive = in_array($bottomPage, $morePages, true);
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
                 <span>ورود و پیامک</span>
             </a>
-            <a href="<?= APP_BASE_PATH ?>/admin/billing.php" class="tool-card" style="--tc1:#0ea5e9; --tc2:#0284c7;">
-                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
-                <span>اشتراک و پرداخت</span>
-            </a>
             <a href="<?= APP_BASE_PATH ?>/admin/categories.php" class="tool-card" style="--tc1:#78716c; --tc2:#57534e;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                 <span>دسته‌بندی‌ها</span>
+            </a>
+            <?php /* ⚠ زیرِ «دسته‌بندی‌ها»، هم‌ترتیب با `admin/_nav.php` —
+                     وگرنه کاربر روی گوشی و روی دسکتاپ دو ترتیبِ متفاوت
+                     می‌بیند و دنبالِ قلمی می‌گردد که جایش عوض شده. */ ?>
+            <a href="<?= APP_BASE_PATH ?>/admin/billing.php" class="tool-card" style="--tc1:#0ea5e9; --tc2:#0284c7;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>
+                <span>اشتراک و پرداخت</span>
             </a>
             <a href="<?= APP_BASE_PATH ?>/admin/insights.php" class="tool-card" style="--tc1:#525252; --tc2:#404040;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
