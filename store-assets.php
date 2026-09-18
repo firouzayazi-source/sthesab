@@ -174,18 +174,44 @@ include __DIR__ . '/includes/header.php';
         <?php endif; ?>
     </div>
 
-    <?php /* جمع‌ها از حسابداریِ فروشگاه می‌آیند، روی **همه‌ی** کالاها. */ ?>
+    <?php
+    /*
+     * جمع‌ها از حسابداریِ فروشگاه می‌آیند، روی **همه‌ی** کالاها.
+     *
+     * ⛔ «مانده» و «در انبار» دو کمیتِ متفاوت‌اند و کنارِ هم گذاشتنشان
+     * بدونِ برچسب، مالکِ نصب را به این نتیجه رساند که «نمی‌خوانند».
+     * مانده = اصلِ سرمایه + سهمِ سودِ پرداخت‌نشده − پرداختی (دفترِ کل)؛
+     * «در انبار» = بهای خریدِ دستگاه‌های فروش‌نرفته (انبار). پس
+     * «اصل سرمایه» هم صریح نشان داده می‌شود: اختلافِ آن با «در انبار»
+     * یعنی خریدِ یک دستگاه به نامِ او سند نخورده — و آن اختلاف باید
+     * **دیده** شود، نه اینکه از تفاوتِ دو عددِ بی‌برچسب حدس زده شود.
+     */
+    ?>
     <div class="store-own-stats">
         <?php if ($own['balance'] !== null): ?>
             <div class="store-own-stat">
-                <span class="store-own-label">مانده</span>
+                <span class="store-own-label">مانده‌ی حساب</span>
                 <b class="ltr-num<?= $own['balance'] < 0 ? ' asset-amount-neg' : '' ?>"><?= formatMoney($own['balance']) ?></b>
+                <small>سرمایه + سهم سود − پرداختی</small>
+            </div>
+        <?php endif; ?>
+        <?php if ($own['capital'] !== null): ?>
+            <div class="store-own-stat">
+                <span class="store-own-label">اصل سرمایه</span>
+                <b class="ltr-num<?= $own['capital'] < 0 ? ' asset-amount-neg' : '' ?>"><?= formatMoney($own['capital']) ?></b>
+                <small>ثبت‌شده در دفتر کل</small>
+            </div>
+        <?php endif; ?>
+        <?php if ($own['paid'] !== null && $own['paid'] !== 0): ?>
+            <div class="store-own-stat">
+                <span class="store-own-label">پرداخت‌شده</span>
+                <b class="ltr-num"><?= formatMoney($own['paid']) ?></b>
             </div>
         <?php endif; ?>
         <div class="store-own-stat">
             <span class="store-own-label">در انبار</span>
             <b class="ltr-num"><?= formatMoney($own['active_cost']) ?></b>
-            <small><?= toPersianDigits((string)$own['active_count']) ?> دستگاه</small>
+            <small><?= toPersianDigits((string)$own['active_count']) ?> دستگاه · بهای خرید</small>
         </div>
         <div class="store-own-stat">
             <span class="store-own-label">فروخته‌شده</span>
@@ -206,6 +232,29 @@ include __DIR__ . '/includes/header.php';
         </div>
         <?php endif; ?>
     </div>
+
+    <?php
+    /*
+     * ⛔ این هشدار فقط در حالتی داده می‌شود که رابطه‌اش **اثبات‌پذیر**
+     * است: وقتی هیچ دستگاهی فروخته نشده، اصلِ سرمایه باید دقیقاً برابرِ
+     * بهای خریدِ کالاهای در انبار باشد. با فروشِ انجام‌شده این رابطه
+     * برقرار نیست (سرمایه‌ی دستگاهِ فروخته‌شده سرِ جایش می‌ماند ولی از
+     * انبار رفته) و بهای خریدِ آن‌ها هم در پاسخ نیست — پس هشدار دادن
+     * آنجا یک «هشدارِ الکی» می‌شد که از نبودِ سنجش بدتر است.
+     */
+    $expectCapital = $own['capital'] !== null && $own['sold_count'] === 0
+        ? $own['active_cost'] + $own['items_cost']
+        : null;
+    ?>
+    <?php if ($expectCapital !== null && $expectCapital !== $own['capital']): ?>
+        <p class="hint" style="color:var(--warn-ink);">
+            اصل سرمایه با بهای خریدِ کالاهای در انبار
+            <?= formatMoney(abs($expectCapital - $own['capital'])) ?>
+            تومان اختلاف دارد. یعنی خریدِ دست‌کم یک کالا به نامِ این شخص
+            در دفتر کلِ فروشگاه سند نخورده — در پنل فروشگاه، سندِ خریدِ
+            همان کالا را بررسی کنید.
+        </p>
+    <?php endif; ?>
 
     <?php if ($own['capped']): ?>
         <p class="hint" style="color:var(--warn-ink);">
