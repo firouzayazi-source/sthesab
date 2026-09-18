@@ -60,12 +60,26 @@ CRON
 fi
 
 # ---------- اطلاعات اتصال ----------
-[[ -r "$CONFIG" ]] || { red "خوانده نشد: $CONFIG"; exit 1; }
-read_const() { php -r 'require $argv[1]; echo constant($argv[2]);' "$CONFIG" "$1" 2>/dev/null || true; }
+# shellcheck source=config-lib.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/config-lib.sh"
+
 DB_NAME="$(read_const DB_NAME)"
 DB_USER="$(read_const DB_USER)"
 DB_PASS="$(read_const DB_PASSWORD)"
-[[ -n "$DB_NAME" && -n "$DB_USER" ]] || { red "اطلاعات دیتابیس از $CONFIG خوانده نشد."; exit 1; }
+
+# ⛔ «خوانده نشد» یک نشانه است نه یک علت — و این پیام تنها چیزی است که
+#    مالکِ نصب می‌بیند، چون hesabland خروجیِ این اسکریپت را به /dev/null
+#    می‌فرستد و فقط «⚠ بکاپ گرفته نشد» را چاپ می‌کند. پس علت باید همین‌جا
+#    گفته شود، وگرنه بکاپ روزها بی‌صدا شکست می‌خورد. (یک بار همین شد.)
+if [[ -z "$DB_NAME" || -z "$DB_USER" || -z "$DB_PASS" ]]; then
+    missing="DB_NAME"
+    [[ -z "$DB_USER" ]] && missing="DB_USER"
+    [[ -z "$DB_PASS" ]] && missing="DB_PASSWORD"
+    [[ -z "$DB_NAME" ]] && missing="DB_NAME"
+    red "اطلاعات دیتابیس از $CONFIG خوانده نشد."
+    red "علت: $(config_problem "$missing")"
+    exit 1
+fi
 
 # ---------- بکاپ ----------
 mkdir -p "$BACKUP_DIR" && chmod 700 "$BACKUP_DIR"

@@ -81,15 +81,16 @@ if [[ "${LIST:-0}" == "1" ]]; then
 fi
 
 # ---------- اطلاعات اتصال ----------
-[[ -r "$CONFIG" ]] || { red "خوانده نشد: $CONFIG"; exit 1; }
-read_const() { php -r 'require $argv[1]; echo constant($argv[2]);' "$CONFIG" "$1" 2>/dev/null || true; }
+# shellcheck source=config-lib.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/config-lib.sh"
+
 DB_NAME="$(read_const DB_NAME)"
 DB_USER="$(read_const DB_USER)"
 DB_PASS="$(read_const DB_PASSWORD)"
 DB_HOST="$(read_const DB_HOST)"
 # نام دیتابیس همیشه لازم است (هدفِ مقایسه)، ولی نام کاربر فقط وقتی که
 # قرار است با کاربر اپ وصل شویم. با --admin از سوکت می‌رویم.
-[[ -n "$DB_NAME" ]] || { red "نام دیتابیس از $CONFIG خوانده نشد."; exit 1; }
+[[ -n "$DB_NAME" ]] || { red "نام دیتابیس از $CONFIG خوانده نشد."; red "علت: $(config_problem DB_NAME)"; exit 1; }
 if [[ $ADMIN -eq 0 && -z "$DB_USER" ]]; then
     red "کاربر دیتابیس از $CONFIG خوانده نشد."
     exit 1

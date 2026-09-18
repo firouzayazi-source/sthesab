@@ -162,7 +162,9 @@ for f in "${MIGRATIONS[@]}"; do
 done
 
 # ---------- اتصال ----------
-read_const() { php -r 'require $argv[1]; echo constant($argv[2]);' "$CONFIG" "$1" 2>/dev/null || true; }
+# shellcheck source=config-lib.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/config-lib.sh"
+
 if [[ -r "$CONFIG" ]] && command -v php >/dev/null 2>&1; then
     DB_NAME="${DB_NAME:-$(read_const DB_NAME)}"
     DB_USER="${DB_USER:-$(read_const DB_USER)}"
@@ -171,7 +173,12 @@ fi
 DB_NAME="${DB_NAME:-hesab_db}"
 DB_USER="${DB_USER:-hesab_user}"
 if [[ -z "${DB_PASS:-}" ]]; then
-    info "رمز از $CONFIG خوانده نشد — دستی بدهید."
+    # ⛔ علت پیش از درخواستِ دستی. نسخه‌ی قبلی فقط می‌گفت «خوانده نشد» و
+    #    یک prompt می‌گذاشت — یعنی مالکِ نصب دنبالِ رمزی می‌گشت که لازم
+    #    نبود، در حالی که فایل یک خطای نحوی داشت و سایت هم خوابیده بود.
+    info "رمز از $CONFIG خوانده نشد."
+    info "علت: $(config_problem DB_PASSWORD)"
+    info "اگر می‌خواهید بدون کانفیگ ادامه دهید، رمز را دستی بدهید (یا Enter برای انصراف):"
     read -r -s -p "رمز کاربر $DB_USER: " DB_PASS; echo
 fi
 

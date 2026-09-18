@@ -40,6 +40,21 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/hesab/app}"
 APP_USER="${APP_USER:-hesab}"
+CONFIG="${CONFIG:-$APP_DIR/config/config.php}"
+
+# ⛔ نشانه‌ی «آخرین استقرارِ **موفق**» — نه آخرین اجرا.
+#    امروز معلوم شد دیپلویِ پروژه‌ی دیگر از ۱۶ سپتامبر مرده بود و هیچ‌کس
+#    خبر نداشت، چون هیچ‌جا نمی‌گفت «آخرین بارِ موفق کِی بود». همان الگوی
+#    `var/cron/<job>.beat`، و به همان دلیل فقط بعد از سبز شدنِ سنجشِ
+#    سلامت نوشته می‌شود: نشانه‌ای که روی خرابی هم بخورد، دروغ می‌گوید.
+DEPLOY_BEAT="$APP_DIR/var/deploy-ok.beat"
+
+# config-lib.sh با گارد source می‌شود: در همان **یک** استقرارِ گذار که
+# خودش را می‌آورد، هنوز روی دیسک نیست. (درسِ همان استقرارِ گذارِ deploy.sh.)
+# shellcheck source=deploy/config-lib.sh
+if [[ -r "$APP_DIR/deploy/config-lib.sh" ]]; then
+    . "$APP_DIR/deploy/config-lib.sh"
+fi
 
 green() { printf '\033[0;32m%s\033[0m\n' "$1"; }
 red()   { printf '\033[0;31m%s\033[0m\n' "$1"; }
@@ -333,6 +348,22 @@ cmd_status() {
     info "  var/version.txt: $(cat var/version.txt 2>/dev/null || echo '—')"
     info "  دارایی‌ها: $(asset_version)"
 
+    # ⛔ «آخرین استقرارِ موفق» — نه آخرین اجرا، نه آخرین کامیت. تفاوتشان
+    #    همان چیزی است که امروز نیم ساعت طول کشید تا دیده شود.
+    if [[ -r "$DEPLOY_BEAT" ]]; then
+        local beat_at beat_ref beat_age
+        read -r beat_at beat_ref < "$DEPLOY_BEAT" || true
+        beat_age=$(( ($(date +%s) - ${beat_at:-0}) / 86400 ))
+        if (( beat_age >= 14 )); then
+            warn "  آخرین استقرارِ موفق: $beat_ref — $beat_age روز پیش (کهنه)"
+        else
+            info "  آخرین استقرارِ موفق: $beat_ref — $beat_age روز پیش"
+        fi
+    else
+        warn "  آخرین استقرارِ موفق: هرگز ثبت نشده"
+        info "    (یا این نشانه تازه اضافه شده، یا هیچ استقراری تا آخر سبز نشده)"
+    fi
+
     step "سلامتِ سایت"
     health_check || true
 
@@ -366,7 +397,20 @@ cmd_status() {
     ' 2>/dev/null || warn "  ⚠ خوانده نشد."
 
     step "دیسک و سرویس"
-    df -h "$APP_DIR" 2>/dev/null | tail -1 | awk '{print "  دیسک: "$5" پر ("$3" از "$2")"}'
+    # ⛔ عددِ خام تصمیمی نمی‌سازد. دیسکِ پر، هم بکاپ را می‌کشد (فایلِ
+    #    نصفه) هم دیتابیس را — و هر دو بی‌صدا. پس آستانه همین‌جا سنجیده
+    #    می‌شود، نه اینکه به چشمِ آدم سپرده شود.
+    local disk_pct disk_line
+    disk_line="$(df -h "$APP_DIR" 2>/dev/null | tail -1 || true)"
+    disk_pct="$(printf '%s' "$disk_line" | awk '{gsub("%","",$5); print $5+0}')"
+    info "  دیسک: $(printf '%s' "$disk_line" | awk '{print $5" پر ("$3" از "$2")"}')"
+    if (( ${disk_pct:-0} >= 90 )); then
+        red "  ⛔ دیسک بالای ۹۰٪ — بکاپِ امشب ممکن است نصفه بماند."
+        red "     ببینید:  sudo du -xh /opt/hesab /var/log --max-depth=2 | sort -h | tail -20"
+    elif (( ${disk_pct:-0} >= 80 )); then
+        warn "  ⚠ دیسک بالای ۸۰٪ — پیش از رسیدن به ۹۰٪ فکری بکنید."
+        info "     بکاپ‌های قدیمی:  ls -lh /opt/hesab/backups | tail"
+    fi
     local svc
     for svc in php8.4-fpm php8.3-fpm php8.2-fpm php8.1-fpm php-fpm; do
         if systemctl is-active --quiet "$svc" 2>/dev/null; then
@@ -510,6 +554,37 @@ preflight_syntax() {
 }
 
 # ---------------------------------------------------------------------
+# ⛔ preflight_syntax فایل‌های **گیت** را می‌سنجد — ولی تنها فایلی که با
+#    دست ویرایش می‌شود و عمداً در گیت **نیست** همان `config/config.php`
+#    است. یعنی دقیقاً همان فایلی که هیچ بررسی‌ای نداشت، و یک حرفِ اضافه
+#    در آن کلِ سایت را خواباند.
+#
+#    نبودِ این بررسی فقط «یک خطای دیرتر» نبود: استقرار تا آخر رفت، سنجشِ
+#    سلامت نتوانست اجرا شود (چون APP_URL خوانده نمی‌شد)، و ابزار **کد را
+#    بی‌دلیل برگرداند** — یعنی خرابی‌ای که ربطی به کدِ تازه نداشت، به
+#    حسابِ آن گذاشته شد.
+preflight_config() {
+    step "بررسیِ config.php (تنها فایلی که در گیت نیست)"
+
+    if ! declare -F config_problem >/dev/null 2>&1; then
+        info "  (config-lib.sh هنوز روی دیسک نیست — این بررسی از استقرارِ بعد فعال می‌شود)"
+        return 0
+    fi
+
+    local why
+    why="$(config_problem APP_URL)"
+    if [[ -n "$why" ]]; then
+        red "⛔ config/config.php سالم نیست:"
+        printf '%s\n' "$why" | sed 's/^/     /'
+        red "   استقرار متوقف شد — تا این درست نشود سایت بالا نمی‌آید و"
+        red "   برگرداندنِ کد هم دردی دوا نمی‌کند (خرابی از کدِ تازه نیست)."
+        return 1
+    fi
+    green "✓ config.php خوانده می‌شود"
+    return 0
+}
+
+# ---------------------------------------------------------------------
 cmd_deploy() {
     local do_migrate=0 do_backup=1 do_health=1 force=0
     for a in "$@"; do
@@ -555,6 +630,8 @@ cmd_deploy() {
     # ---------- نحو، پیش از فرود ----------
     step "بررسیِ نحوِ کدِ ورودی (پیش از نشستن روی دیسک)"
     preflight_syntax "origin/${BRANCH}" || exit 1
+
+    preflight_config || exit 1
 
     # ---------- بکاپ ----------
     if (( do_backup )); then
@@ -615,6 +692,12 @@ cmd_deploy() {
     if (( do_health )); then
         step "سنجشِ سلامت"
         if health_check; then
+            # ⛔ نشانه فقط اینجا زده می‌شود — بعد از سبز شدنِ سلامت، نه
+            #    بعد از فرود آمدنِ کد. وگرنه استقراری که سایت را خوابانده
+            #    هم «موفق» ثبت می‌شد، و این دقیقاً همان سنجشی است که روی
+            #    خرابی سبز می‌شود.
+            mkdir -p "$(dirname "$DEPLOY_BEAT")" 2>/dev/null || true
+            printf '%s %s\n' "$(date +%s)" "$AFTER" > "$DEPLOY_BEAT" 2>/dev/null || true
             echo
             green "✅ استقرار کامل شد و سایت سالم است — $AFTER"
             return 0

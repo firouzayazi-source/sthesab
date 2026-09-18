@@ -277,12 +277,17 @@ fi
 # ===============================================================
 head1 "۶. تنظیمات خود اپ"
 
+# shellcheck source=config-lib.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/config-lib.sh"
+
 if [[ -r "$CONFIG" ]]; then
-    read_const() { php -r 'require $argv[1]; echo defined($argv[2]) ? constant($argv[2]) : "";' "$CONFIG" "$1" 2>/dev/null; }
     row "APP_BASE_PATH" "$(read_const APP_BASE_PATH)/ (ریشه‌ی نصب)"
     DB_NAME=$(read_const DB_NAME); DB_USER=$(read_const DB_USER); DB_PASS=$(read_const DB_PASSWORD)
+    if [[ -z "$DB_NAME" ]]; then
+        warn "ثابت‌های دیتابیس از config.php درنیامدند — بخش دیتابیس رد می‌شود" "$(config_problem DB_NAME)"
+    fi
 else
-    warn "config.php خوانده نشد ($CONFIG) — بخش دیتابیس رد می‌شود" "دسترسی فایل را بررسی کنید"
+    warn "config.php خوانده نشد ($CONFIG) — بخش دیتابیس رد می‌شود" "$(config_problem '')"
     DB_NAME=""; DB_USER=""; DB_PASS=""
 fi
 
