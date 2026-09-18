@@ -5,6 +5,10 @@ require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/sms_login.php';
 require_once __DIR__ . '/includes/user_data.php';
 require_once __DIR__ . '/includes/plan.php';
+// ⚠ صریح لود می‌شود، نه از راهِ غیرمستقیم: `passwordHint()` اینجا رندر
+//   می‌شود و همان درسِ `includes/sms.php` است — مصرف‌کننده باید خودش
+//   بیاوردش، وگرنه جابه‌جا شدنِ یک require دیگر این صفحه را می‌شکند.
+require_once __DIR__ . '/includes/signup.php';
 
 Auth::initSession();
 Auth::requireLogin();
@@ -211,7 +215,7 @@ include __DIR__ . '/includes/header.php';
             <div class="form-group">
                 <label for="pf_new_pass"><?= $hasPassword ? 'رمز جدید' : 'رمز عبور' ?></label>
                 <input type="password" id="pf_new_pass" name="new_password" required autocomplete="new-password">
-                <p class="hint">حداقل ۶ کاراکتر.</p>
+                <p class="hint"><?= h(passwordHint()) ?></p>
             </div>
 
             <div class="form-group">

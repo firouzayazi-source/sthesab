@@ -1374,6 +1374,46 @@ foreach ($nativeJava as $j) {
         if (!str_contains($src, 'BankSmsReceiver.postNotification')) {
             $smsBad[] = "$name — آزمایشِ اعلان از مسیرِ واقعی نمی‌رود";
         }
+
+        // ⛔ رفعِ بهینه‌سازیِ باتری — تنها راهِ حلِ «پیامک اصلاً به گیرنده
+        //    نرسید»، که تا امروز فقط **تشخیص** داده می‌شد و هیچ دکمه‌ای
+        //    نداشت. سه چیزش بی‌صدا شکستنی است:
+        //
+        //    ۱. ⛔ اکشنِ `…REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` (و مجوزِ
+        //       هم‌نامش) از **مجوزهای محدودشده‌ی گوگل‌پلی** است. یک تپ
+        //       کمتر می‌گیرد و در عوض کلِ اپ را در معرضِ رد شدن
+        //       می‌گذارد. اکشنِ درست `…IGNORE_BATTERY_OPTIMIZATION_SETTINGS`
+        //       است که هیچ مجوزی نمی‌خواهد.
+        //    ۲. دکمه باید **شرطی** باشد: روی گوشیِ از قبل معاف، یک
+        //       دکمه‌ی بی‌کار فقط صفحه را شلوغ می‌کند.
+        //    ۳. بعضی رام‌ها آن اکشن را ندارند؛ بدونِ `try` تپِ کاربر اپ
+        //       را می‌بندد — همان کرشِ بی‌توضیحی که گاردِ `onCreate`
+        //       برایش نوشته شد.
+        // ⚠ روی سورسِ **بدونِ کامنت** سنجیده می‌شود. همین توضیح‌ها نامِ
+        //   همان اکشنِ ممنوع را در متنشان دارند، پس با سورسِ خام تست روی
+        //   فایلِ **سالم** قرمز می‌شد — همان دامی که قاعده ۳۰ و ۳۵ و ۳۸
+        //   و ۴۴ هم در آن افتادند.
+        $srcNC = preg_replace('~/\\*.*?\\*/|//[^\\n]*~s', '', $src) ?? $src;
+
+        if (str_contains($srcNC, 'REQUEST_IGNORE_BATTERY_OPTIMIZATIONS')) {
+            $smsBad[] = "$name — اکشن/مجوزِ REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+                      . ' محدودشده‌ی گوگل‌پلی است؛ از ..._SETTINGS استفاده کنید';
+        }
+        if (!str_contains($srcNC, 'isIgnoringBatteryOptimizations')) {
+            $smsBad[] = "$name — وضعیتِ بهینه‌سازیِ باتری سنجیده نمی‌شود؛"
+                      . ' علتِ اولِ «هیچ پیامکی نرسید» بی‌راه‌حل می‌ماند';
+        }
+        if (!preg_match('~fixBattery\.setVisibility\([^;]*batteryOk\(\)~', $srcNC)) {
+            $smsBad[] = "$name — دکمه‌ی باتری شرطی نیست؛ روی گوشیِ معاف"
+                      . ' یک دکمه‌ی بی‌کار می‌ماند';
+        }
+        $ob = strpos($srcNC, 'private void openBatterySettings()');
+        if ($ob === false) {
+            $smsBad[] = "$name — openBatterySettings() پیدا نشد";
+        } elseif (!preg_match('~try\s*\{.*?startActivity.*?catch~s', substr($srcNC, $ob, 600))) {
+            $smsBad[] = "$name — openBatterySettings() گاردِ try ندارد؛"
+                      . ' روی رامی که این صفحه را ندارد اپ بسته می‌شود';
+        }
     }
 }
 
@@ -1388,6 +1428,12 @@ if ($manifest !== '') {
         if (!str_contains($manifest, $needle)) {
             $smsBad[] = "AndroidManifest — {$what} ثبت نشده";
         }
+    }
+    // ⛔ و آن مجوزِ محدودشده نباید هرگز اعلام شود — نه حالا، نه با یک
+    //    «فقط برای اینکه یک تپ کمتر شود» در آینده.
+    if (str_contains($manifest, 'REQUEST_IGNORE_BATTERY_OPTIMIZATIONS')) {
+        $smsBad[] = 'AndroidManifest — مجوزِ REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'
+                  . ' محدودشده‌ی گوگل‌پلی است و لازم هم نیست';
     }
 }
 
@@ -2112,10 +2158,15 @@ if ($flowStart === false) {
 }
 
 // مصرف‌کننده‌ها: باید تابع را صدا بزنند و کلاسِ Sms را هم لود کنند.
+//
+// ⚠ کامنت‌ها **پیش از** بررسی حذف می‌شوند، وگرنه هر توضیحی که نامِ این
+//   تابع را در متنش داشته باشد فایلِ **سالم** را قرمز می‌کند — همان
+//   دامی که قاعده ۱۹ و ۳۵ و ۳۸ و ۴۴ هم در آن افتادند، و این بار یک
+//   کامنت در `includes/signup.php` گرفتارش کرد.
 $privConsumers = 0;
 foreach (['api', 'includes', 'admin', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) {
-        $src = (string)@file_get_contents($p);
+        $src = $stripComments($p);
         if (!str_contains($src, 'outboundDataFlows(')
             || preg_match('/function\s+outboundDataFlows\s*\(/', $src)) {
             continue;
@@ -3850,6 +3901,124 @@ if ($fCat === false || $fBill === false || $fBill < $fCat) {
 }
 
 T::bulk(12, $badSS, '⛔ سهم سهامدار: خواندنی، بی‌حساب، ایدمپوتنت، و پشتِ تأییدِ مدیر');
+
+// ═══════════════════════════════════════════════════════════════
+// قاعده ۴۷ — معرفیِ اولیه: «حالت رد شدن» باید واقعاً رد کند
+// ═══════════════════════════════════════════════════════════════
+//
+// ⛔ چرا قاعده‌ی شکل هم لازم است: تستِ رفتاریِ `tests/test_intro.php`
+//    نیمه‌ی اصلی‌اش را در **کرومیوم** می‌سنجد و کرومیوم ابزارِ
+//    **اختیاری** است (`T::skip`) — یعنی روی ماشینِ بی‌مرورگر هیچ‌کدام
+//    از بررسی‌های «هر راهِ خروج نشانه می‌زند» اجرا نمی‌شوند. همان
+//    استدلالی که قاعده ۴۳ را کنارِ `test_number_align` نشاند.
+//
+// سه خرابیِ بی‌صدا، و هر سه فقط روی دستگاهِ کاربر دیده می‌شوند:
+//  ۱. `done()` بدونِ `introMarkSeen()` → معرفی هر بار باز می‌شود و
+//     دقیقاً همان مزاحمی می‌شود که «حالت رد شدن» برای نبودنش خواسته شد.
+//  ۲. نشانه‌گذاری فقط روی اسلایدِ آخر → کسی که وسطش می‌بندد هرگز خلاص
+//     نمی‌شود.
+//  ۳. `catch` ای که `false` برمی‌گرداند → در پنجره‌ی ناشناس، هر
+//     بارگذاری یک لایه.
+
+T::group('قاعده ۴۷ — معرفیِ اولیه');
+
+$badIntro = [];
+
+// ⚠ `token_get_all()` روی `app.js` همه‌چیز را `T_INLINE_HTML` می‌بیند و
+//   کامنت‌ها دست‌نخورده می‌مانند، پس اینجا با حذفِ کامنتِ C-مانند خوانده
+//   می‌شود — وگرنه همین توضیحاتِ کنارِ کد، بررسی‌ها را روی فایلِ **سالم**
+//   سبز نگه می‌داشتند (همان دامِ قاعده ۳۸).
+$introJs = preg_replace('~/\*.*?\*/|//[^\n]*~s', '',
+    (string)file_get_contents($root . '/assets/js/app.js')) ?? '';
+
+// ۱) دو تابعِ نشانه بیرون از `DOMContentLoaded` باشند تا در node
+//    آزمودنی بمانند — همان قاعده‌ی `parseBankSms()` و `kbNeedsKeyboard()`.
+$domReady = strpos($introJs, "addEventListener('DOMContentLoaded'");
+$posSeen  = strpos($introJs, 'window.introSeen = function');
+$posMark  = strpos($introJs, 'window.introMarkSeen = function');
+if ($posSeen === false || $posMark === false) {
+    $badIntro[] = '⛔ app.js — introSeen/introMarkSeen تعریف نشده‌اند';
+} elseif ($domReady !== false && ($posSeen > $domReady || $posMark > $domReady)) {
+    $badIntro[] = '⛔ app.js — نشانه‌ی معرفی داخلِ DOMContentLoaded رفته؛ در node آزمودنی نیست';
+}
+
+// ۲) شکستِ `localStorage` به سمتِ «نشان نده» می‌رود.
+if (preg_match('~window\.introSeen\s*=\s*function\s*\([^)]*\)\s*\{(.*?)\n    \};~s', $introJs, $mSeen)) {
+    if (!preg_match('~catch\s*\([^)]*\)\s*\{\s*return\s+true;~', $mSeen[1])) {
+        $badIntro[] = '⛔ introSeen() — شکستِ localStorage باید true بدهد (پنجره‌ی ناشناس: نشان نده)';
+    }
+} else {
+    $badIntro[] = '⛔ introSeen() — بدنه‌اش خوانده نشد';
+}
+
+// ۳) `done()` نشانه می‌زند، و **همه‌ی** راه‌های خروج از همان رد می‌شوند.
+// ⚠ بررسی‌های زیر روی **بلوکِ خودِ معرفی** انجام می‌شوند، نه کلِ
+//   `app.js`: آن فایل ده‌ها `close.addEventListener('click'` دیگر دارد
+//   (هر مودال یکی) و با جست‌وجوی سراسری، اولینشان پیدا می‌شد و بررسی
+//   درباره‌ی چیزِ دیگری حرف می‌زد — روی فایلِ سالم هم قرمز شد و همان
+//   نشان داد که پنجره باید بسته باشد.
+$introBlock = '';
+$bStart = strpos($introJs, '(function intro()');
+if ($bStart === false) {
+    $badIntro[] = '⛔ app.js — بلوکِ intro() پیدا نشد';
+} else {
+    $bEnd = strpos($introJs, "\n    })();", $bStart);
+    $introBlock = substr($introJs, $bStart, $bEnd === false ? 4000 : $bEnd - $bStart);
+}
+
+if (preg_match('~function\s+done\s*\(\)\s*\{(.*?)\n        \}~s', $introBlock, $mDone)) {
+    if (strpos($mDone[1], 'introMarkSeen()') === false) {
+        $badIntro[] = '⛔ intro done() — نشانه را نمی‌زند؛ معرفی هر بار باز می‌شود';
+    }
+} else {
+    $badIntro[] = '⛔ intro — تابعِ done() پیدا نشد';
+}
+// ⛔ صریح و **هر چهار راه جدا**، نه «یکی از آن‌ها»: با نشانه‌گذاریِ فقط
+//    در پایانِ اسلایدها، کسی که وسطِ کار می‌بندد دفعه‌ی بعد دوباره همین
+//    را می‌بیند.
+//    ⚠ پنجره‌ی هر کدام از **خودِ همان ثبتِ شنونده** شروع می‌شود، نه
+//      جست‌وجوی `done()` در کلِ فایل: با جست‌وجوی سراسری، برداشتنِ سه
+//      راه از چهار راه هم سبز می‌ماند — یعنی بررسی پوچ بود.
+foreach ([
+    "close.addEventListener('click'" => 'دکمه‌ی «×»',
+    "next.addEventListener('click'"  => 'دکمه‌ی پایانی',
+    "box.addEventListener('click'"   => 'تپ روی خودِ لایه',
+    "e.key === 'Escape'"             => 'Escape',
+] as $anchor => $label) {
+    $at = strpos($introBlock, $anchor);
+    if ($at === false) {
+        $badIntro[] = '⛔ intro — راهِ خروجِ «' . $label . '» اصلاً وجود ندارد';
+        continue;
+    }
+    // ⛔ پنجره تا **ثبتِ شنونده‌ی بعدی** بریده می‌شود، نه یک تعدادِ ثابت
+    //    کاراکتر: با پنجره‌ی ۲۲۰ کاراکتری، جهشِ «دکمه‌ی × را از done()
+    //    جدا کن» **زنده ماند** چون `done()`ِ شنونده‌ی بعدی داخلِ همان
+    //    پنجره می‌افتاد. همان درسِ «تا اولین `;`» در قاعده ۶.
+    $stop = strpos($introBlock, '.addEventListener(', $at + strlen($anchor));
+    $win  = $stop === false ? substr($introBlock, $at) : substr($introBlock, $at, $stop - $at);
+    if (strpos($win, 'done') === false) {
+        $badIntro[] = '⛔ intro — ' . $label . ' از done() رد نمی‌شود';
+    }
+}
+
+// ۴) تنها مرجعِ اسلایدها همان آرایه‌ی PHP است؛ فهرستِ دومِ جاوااسکریپتی
+//    یعنی نقطه‌ها و اسلایدها دیر یا زود از هم می‌افتند.
+$introPhp = $stripComments($root . '/includes/intro_sheet.php');
+if (strpos($introPhp, 'const INTRO_SLIDES') === false) {
+    $badIntro[] = '⛔ intro_sheet.php — INTRO_SLIDES تنها مرجع نیست';
+}
+if (strpos($introJs, 'INTRO_SLIDES') !== false) {
+    $badIntro[] = '⛔ app.js — فهرستِ دومِ اسلایدها در جاوااسکریپت ساخته شده';
+}
+
+// ۵) فقط برای دفترِ خالی. بدونِ این شرط، معرفی به کسی که شش ماه از اپ
+//    استفاده کرده هم نشان داده می‌شود.
+$idxSrc = $stripComments($root . '/index.php');
+if (!preg_match('~if\s*\(\s*empty\(\$recentTransactions\)\s*\)\s*:\s*\?>\s*<\?php\s+include[^;]*intro_sheet\.php~', $idxSrc)) {
+    $badIntro[] = '⛔ index.php — معرفی پشتِ شرطِ «دفترِ خالی» نیست';
+}
+
+T::bulk(10, $badIntro, '⛔ معرفیِ اولیه: هر راهِ خروج نشانه می‌زند و فقط دفترِ خالی می‌بیندش');
 
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {

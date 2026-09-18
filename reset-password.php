@@ -12,6 +12,7 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/password_reset.php';
+require_once __DIR__ . '/includes/signup.php';
 
 Auth::initSession();
 
@@ -31,7 +32,7 @@ $reasons = [
     'used'      => 'این لینک قبلاً استفاده شده است. اگر باز هم لازم دارید، درخواست تازه بدهید.',
     'expired'   => 'مهلت این لینک تمام شده است. درخواست تازه بدهید.',
     'inactive'  => 'این حساب غیرفعال است. با مدیر تماس بگیرید.',
-    'weak'      => 'رمز باید حداقل ۸ کاراکتر باشد.',
+    'weak'      => 'رمز عبور باید حداقل ' . toPersianDigits(PASSWORD_MIN_LEN) . ' کاراکتر باشد.',
     'db-error'  => 'خطایی رخ داد. دوباره تلاش کنید.',
 ];
 
@@ -49,7 +50,7 @@ if (!$check['ok']) {
 
     if ($p1 !== $p2) {
         $error = 'دو رمز یکسان نیستند.';
-    } elseif (mb_strlen($p1) < 8) {
+    } elseif ($p1 === '' || passwordRuleError($p1) !== '') {
         $error = $reasons['weak'];
     } else {
         $done = PasswordReset::complete((string)$selector, (string)$validator, $p1);
@@ -117,7 +118,7 @@ if (!$check['ok']) {
                 <div class="form-group">
                     <label for="password">رمز تازه</label>
                     <input type="password" autocomplete="new-password" id="password" name="password" required autofocus
-                           minlength="8" placeholder="حداقل ۸ کاراکتر">
+                           minlength="<?= PASSWORD_MIN_LEN ?>" placeholder="<?= h(passwordHint()) ?>">
                 </div>
                 <div class="form-group">
                     <label for="password_confirm">تکرار رمز تازه</label>

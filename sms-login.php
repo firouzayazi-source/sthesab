@@ -6,8 +6,15 @@
  *    (۴۰۴)، نه اینکه بگوید «غیرفعال است». پیامِ «غیرفعال» به یک اسکنر
  *    می‌گوید اینجا راهِ ورودِ دومی هست که فقط خاموش است.
  *
- * ⛔ سه مرحله در یک صفحه (شماره → کد → رمز، و مرحله‌ی سوم فقط برای
- *    شماره‌ی تازه). شماره در فیلدِ پنهان حمل می‌شود نه در نشست: کاربر
+ * ⛔ **دو مرحله در یک صفحه: شماره → کد. و تمام.**
+ *
+ *    مرحله‌ی سومِ «یک رمز بگذارید» بود و **پس گرفته شد**: پرسیدنِ
+ *    رمز دقیقاً در ثانیه‌ای می‌نشست که کاربر هنوز هیچ دلیلی برای
+ *    ماندن نداشت. حالا کد که تأیید شد، حساب ساخته می‌شود و کاربر
+ *    مستقیم در خانه است؛ رمز و ایمیل هر وقت خودش خواست، از
+ *    پروفایل. استدلالِ کاملش بالای `validateNewUser()`.
+ *
+ *    شماره در فیلدِ پنهان حمل می‌شود نه در نشست: کاربر
  *    ممکن است پیامک را روی گوشیِ دیگری ببیند، صفحه را ببندد، یا اپ
  *    نشست را جمع کرده باشد. حمل در فرم هیچ چیزی را ناامن نمی‌کند —
  *    خودِ کد است که احراز می‌کند.
@@ -72,23 +79,26 @@ function finishPhoneLogin(array $user, bool $created, string $warning = ''): voi
     }
     Auth::rememberUsername((string)$user['username']);
 
-    // ⚠ کاربرِ تازه به پروفایل می‌رود نه به خانه: رمز را همین حالا
-    //   گذاشته ولی نامش هنوز «کاربر ۱۲۳۴» است، و اگر همان اول نبیندش
-    //   هرگز سراغش نمی‌رود.
+    // ⛔ **کاربرِ تازه هم به خانه می‌رود، نه به پروفایل** — و این عوض
+    //    شد. استدلالِ قبلی («نامش هنوز کاربر ۱۲۳۴ است و اگر همان اول
+    //    نبیند هرگز سراغش نمی‌رود») درست بود ولی جواب را اشتباه
+    //    می‌داد: اولین چیزی که کاربرِ تازه‌ی یک دفترِ مالی می‌دید یک
+    //    **فرمِ تنظیمات** بود، نه دفترش. کسی که آمده خرجش را ثبت کند،
+    //    باید بتواند همان لحظه ثبت کند.
     //
-    // ⛔ و پیام **نام کاربری را می‌گوید**. تا امروز نمی‌گفت: کاربر رمز
-    //    می‌گذاشت و شش ماه بعد پشتِ صفحه‌ی ورود نمی‌دانست چه چیزی تایپ
-    //    کند. شناسه از روزِ اول وجود داشت و فقط **دیده نمی‌شد** — و
-    //    شناسه‌ای که کاربر نداند، با نداشتنش فرقی ندارد.
+    // ⛔ و پیام **نام کاربری را می‌گوید**. تا امروز نمی‌گفت: کاربر شش
+    //    ماه بعد پشتِ صفحه‌ی ورود نمی‌دانست چه چیزی تایپ کند. شناسه از
+    //    روزِ اول وجود داشت و فقط **دیده نمی‌شد** — و شناسه‌ای که کاربر
+    //    نداند، با نداشتنش فرقی ندارد.
     if ($created) {
         $note = 'حساب شما ساخته شد. نام کاربری شما برای ورودهای بعدی: '
               . toPersianDigits((string)$user['username'])
-              . ' — با همین و رمزی که گذاشتید هم می‌توانید وارد شوید.';
+              . ' — هر وقت خواستید می‌توانید از پروفایل رمز عبور هم بگذارید.';
         if ($warning !== '') { $note .= ' ⚠ ایمیل ثبت نشد: ' . $warning; }
     }
 
     redirectWithMessage(
-        $created ? 'profile.php' : 'index.php',
+        'index.php',
         ($created && $warning !== '') ? 'error' : 'success',
         $created ? $note : 'خوش آمدید.'
     );
@@ -98,37 +108,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // ⚠ مثل login.php و register.php: توکنِ کهنه بن‌بست نمی‌سازد.
     if (!Csrf::validate(postParam('csrf_token'))) {
         $error = 'نشست شما منقضی شده بود. دوباره تلاش کنید.';
-        $step  = in_array(postParam('step'), ['code', 'password'], true)
-               ? postParam('step') : 'phone';
+        $step  = postParam('step') === 'code' ? 'code' : 'phone';
     } elseif (postParam('step') === 'code') {
         // ⛔ از `phoneAuthComplete()` رد می‌شود، نه از `verifyCode()` تنها:
         //    تصمیمِ «این کد به ورود می‌رسد یا به ساختِ حساب» یک جا گرفته
         //    می‌شود. با تصمیم‌گیری در همین صفحه، اپِ موبایل یا هر ورودیِ
         //    بعدی نسخه‌ی دومِ آن را می‌نوشت.
+        // ⛔ یک مرحله، نه دو. تا دیروز شماره‌ی تازه به مرحله‌ی سومِ «یک
+        //    رمز بگذارید» می‌رفت؛ حالا `phoneAuthComplete()` خودش حساب را
+        //    می‌سازد و کاربر مستقیم داخل است. رمز و ایمیل هر وقت خودش
+        //    خواست، از پروفایل.
         $res = phoneAuthComplete($phone, postParam('code'), $ip);
         if ($res['ok']) {
-            finishPhoneLogin($res['user'], false);
+            finishPhoneLogin($res['user'], (bool)($res['created'] ?? false),
+                             (string)($res['warning'] ?? ''));
         }
-        if ($res['need_password'] ?? false) {
-            // ⚠ این خطا نیست، یک مرحله‌ی دیگر است — پس `notice` می‌شود نه
-            //   `error`. با رنگِ قرمز، کاربری که همه‌چیز را درست انجام
-            //   داده فکر می‌کرد کارش نگرفته.
-            $notice = $res['message'];
-            $phone  = (string)($res['phone'] ?? $phone);
-            $step   = 'password';
-        } else {
-            $error   = $res['message'];
-            $needPro = (bool)($res['need_pro'] ?? false);
-            $step    = 'code';
-        }
-    } elseif (postParam('step') === 'password') {
-        $res = phoneSignupComplete($phone, postParam('password'), postParam('password_confirm'),
-                                   postParam('email'));
-        if ($res['ok']) {
-            finishPhoneLogin($res['user'], true, (string)($res['warning'] ?? ''));
-        }
-        $error = $res['message'];
-        $step  = ($res['restart'] ?? false) ? 'phone' : 'password';
+        $error   = $res['message'];
+        $needPro = (bool)($res['need_pro'] ?? false);
+        // ⚠ `restart` یعنی نشانه‌ی تأیید دیگر معتبر نیست و کدِ تازه لازم
+        //   است — ماندن روی همین مرحله فقط همان خطا را تکرار می‌کرد.
+        $step    = ($res['restart'] ?? false) ? 'phone' : 'code';
     } else {
         $res = SmsLogin::requestCode($phone, $ip);
         if ($res['success']) {
@@ -165,9 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <img src="<?= iconUrl('icon-180.png') ?>" alt="" class="auth-avatar auth-avatar-app" width="76" height="76">
             <h1><?= $canSignup ? 'ورود یا ثبت‌نام' : 'ورود با پیامک' ?></h1>
             <p class="auth-subtitle"><?php
-                if ($step === 'password') {
-                    echo 'یک رمز عبور بگذارید تا همیشه بتوانید وارد شوید';
-                } elseif ($step === 'code') {
+                if ($step === 'code') {
                     echo 'کد پیامک‌شده را وارد کنید';
                 } elseif ($canSignup) {
                     echo 'با شماره موبایل — حساب ندارید؟ همین‌جا ساخته می‌شود';
@@ -197,69 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="alert alert-success"><?= h($notice) ?></div>
         <?php endif; ?>
 
-        <?php if ($step === 'password'): ?>
-            <?php /* ⛔ مرحله‌ی سوم، فقط برای شماره‌ی تازه. رمز اینجا
-                     الزامی است و دلیلش بالای `validateNewUser()` نوشته
-                     شده: حسابِ بی‌رمز روی دستگاهِ دوم بن‌بست است و
-                     پیامکِ همیشگی قابلیتِ Pro است.
-                     ⚠ شماره فقط **حمل** می‌شود؛ چیزی که اجازه می‌دهد،
-                     نشانه‌ی نشست است. */ ?>
-            <form method="POST" class="auth-form" autocomplete="off">
-                <?= Csrf::field() ?>
-                <input type="hidden" name="step" value="password">
-                <input type="hidden" name="phone" value="<?= h($phone) ?>">
-
-                <?php /* ⛔ شناسه‌ی ورود بلوکِ خودش را دارد، نه یک `hint`
-                         زیرِ فیلدِ تکرارِ رمز. آنجا دقیقاً جایی است که
-                         چشم رد می‌شود — و کاربری که شناسه‌اش را نداند
-                         دفعه‌ی بعد ناچار است باز پیامک بگیرد، یعنی همان
-                         هزینه‌ای که این کار برای حذفش است. */ ?>
-                <div class="form-group">
-                    <label>نام کاربری شما</label>
-                    <p class="idcard ltr-num"><?= toPersianDigits(h($phone)) ?></p>
-                    <p class="hint">
-                        همین شماره است. دفعه‌ی بعد با همین و رمزی که
-                        می‌گذارید وارد شوید — بدون پیامک.
-                    </p>
-                </div>
-
-                <div class="form-group">
-                    <label for="password">رمز عبور</label>
-                    <input type="password" id="password" name="password" required autofocus
-                           autocomplete="new-password" minlength="8"
-                           placeholder="حداقل ۸ کاراکتر">
-                </div>
-                <div class="form-group">
-                    <label for="password_confirm">تکرار رمز عبور</label>
-                    <input type="password" id="password_confirm" name="password_confirm" required
-                           autocomplete="new-password" minlength="8"
-                           placeholder="همان رمز را دوباره بنویسید">
-                </div>
-
-                <?php /* ⛔ اختیاری و در همین مرحله، نه یک مرحله‌ی چهارم.
-                         دلیلش بالای `phoneSignupComplete()` نوشته شده:
-                         نپرسیدن در همین لحظه عملاً یعنی هرگز. */ ?>
-                <div class="form-group">
-                    <label for="email">ایمیل (اختیاری)</label>
-                    <input type="email" id="email" name="email" maxlength="190"
-                           autocapitalize="none" autocorrect="off" spellcheck="false"
-                           autocomplete="email" placeholder="مثلاً: you@gmail.com"
-                           value="<?= h($emailIn) ?>">
-                    <p class="hint">
-                        لازم نیست، ولی اگر روزی شماره‌تان عوض شود یا رمزتان
-                        را فراموش کنید، تنها راه بازگشت همین است.
-                    </p>
-                </div>
-
-                <label class="switch" style="margin:4px 0 16px;">
-                    <input type="checkbox" name="trust_device" value="1" checked>
-                    <span class="switch-track"><span class="switch-knob"></span></span>
-                    <span class="switch-text">این دستگاه را به خاطر بسپار — دفعه‌ی بعد بدون رمز و بدون پیامک وارد شوید</span>
-                </label>
-
-                <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ساخت حساب…">ساخت حساب</button>
-            </form>
-        <?php elseif ($step === 'code'): ?>
+        <?php if ($step === 'code'): ?>
             <form method="POST" class="auth-form" autocomplete="off">
                 <?= Csrf::field() ?>
                 <input type="hidden" name="step" value="code">

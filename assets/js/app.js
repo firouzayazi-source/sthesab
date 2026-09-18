@@ -594,6 +594,37 @@ if ('serviceWorker' in navigator) {
         catch (e) { return false; }
     };
 
+    /**
+     * ⛔ تنها جای تصمیمِ «معرفیِ اولیه را نشان بده یا نه».
+     *
+     * ⛔ **نشانه در `localStorage` است، نه دیتابیس** — و این با قاعده‌ی
+     *    `wallets.pinned` نمی‌جنگد، از همان قاعده می‌آید: «این حساب را
+     *    روی خانه می‌خواهم» تصمیمی ماندگار درباره‌ی خودِ حساب است، ولی
+     *    «این معرفی را دیدم» یک **رویدادِ نگاه** است، مثل
+     *    `daftar_asset_off`. و مهم‌تر: صفحه‌ی خانه پرهزینه‌ترین بودجه‌ی
+     *    کوئریِ اپ را دارد و یک ستونِ تازه یعنی یک کوئریِ تازه در هر
+     *    بارگذاری، برای چیزی که یک بار در عمرِ حساب دیده می‌شود.
+     *
+     * ⚠ پیشوندِ `daftar_` عمداً ماند — همان قاعده‌ای که در `CLAUDE.md`
+     *   نوشته شده: این کلیدها نامِ برند نیستند، نشانیِ چیزی هستند که
+     *   همین حالا روی دستگاهِ کاربر نشسته.
+     *
+     * ⛔ **شکستِ `localStorage` به سمتِ «نشان نده» می‌رود، نه برعکس.**
+     *   در پنجره‌ی ناشناس خودِ خواندن استثنا می‌دهد؛ اگر آنجا `true`
+     *   برمی‌گرداندیم، معرفی در **هر** بارگذاری باز می‌شد و دقیقاً به
+     *   همان مزاحمی تبدیل می‌شد که «حالت رد شدن» برای نبودنش خواسته
+     *   شده بود.
+     */
+    window.INTRO_SEEN_KEY = 'daftar_intro_seen';
+    window.introSeen = function () {
+        try { return localStorage.getItem(window.INTRO_SEEN_KEY) === '1'; }
+        catch (e) { return true; }
+    };
+    window.introMarkSeen = function () {
+        try { localStorage.setItem(window.INTRO_SEEN_KEY, '1'); }
+        catch (e) { /* پنجره‌ی ناشناس — چیزی برای از دست دادن نیست */ }
+    };
+
     window.smsFingerprint = function (raw) {
         var s = normalize(String(raw || '')).replace(/\s+/g, ' ').trim();
         var h = 0x811c9dc5;
@@ -3813,6 +3844,69 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // هر لایه‌ای که با کلاس show باز/بسته می‌شود، خودکار قفل را می‌گیرد
     // و پس می‌دهد — بدون اینکه لازم باشد هر جای کد یادش باشد.
+    // ---------- معرفیِ اولیه ----------
+    //
+    // ⛔ فقط وقتی اصلاً وجود دارد که `index.php` رندرش کرده باشد، و آن
+    //    هم فقط برای دفترِ خالی. پس اینجا هیچ شرطِ دومی درباره‌ی «کاربرِ
+    //    تازه» نوشته نمی‌شود — نسخه‌ی دومِ همان تصمیم، دیر یا زود با
+    //    اصلی‌اش اختلاف پیدا می‌کرد.
+    //
+    // ⛔ و **هر** راهِ خروجی نشانه را می‌زند، نه فقط اسلایدِ آخر: کسی که
+    //    وسطش می‌بندد یعنی «نمی‌خواهم». با نشانه‌گذاریِ فقط در پایان،
+    //    همان آدم هر بار دوباره همین را می‌دید.
+    (function intro() {
+        var box = document.getElementById('introModal');
+        if (!box) return;
+
+        var slides = box.querySelectorAll('.intro-slide');
+        var dots   = box.querySelectorAll('.intro-dot');
+        var prev   = document.getElementById('introPrev');
+        var next   = document.getElementById('introNext');
+        var close  = document.getElementById('introClose');
+        if (!slides.length || !prev || !next || !close) return;
+
+        var at = 0;
+
+        function paint() {
+            for (var i = 0; i < slides.length; i++) {
+                slides[i].classList.toggle('is-on', i === at);
+                if (dots[i]) dots[i].classList.toggle('is-on', i === at);
+            }
+            // ⚠ «قبلی» روی اسلایدِ اول پنهان می‌شود، نه غیرفعال: دکمه‌ای
+            //   که دیده شود و کاری نکند همان «دکمه‌ی بی‌کار».
+            prev.style.visibility = at === 0 ? 'hidden' : 'visible';
+            next.textContent = at === slides.length - 1 ? 'شروع کنیم' : 'بعدی';
+        }
+
+        function done() {
+            window.introMarkSeen();
+            box.classList.remove('show');
+        }
+
+        prev.addEventListener('click', function () {
+            if (at > 0) { at--; paint(); }
+        });
+        next.addEventListener('click', function () {
+            if (at < slides.length - 1) { at++; paint(); return; }
+            done();
+        });
+        close.addEventListener('click', done);
+
+        // ⚠ تپ روی خودِ لایه (نه جعبه) هم بستن است — همان رفتاری که
+        //   کاربر از هر مودالِ دیگری انتظار دارد.
+        box.addEventListener('click', function (e) {
+            if (e.target === box) done();
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && box.classList.contains('show')) done();
+        });
+
+        if (!window.introSeen()) {
+            paint();
+            box.classList.add('show');
+        }
+    })();
+
     (function watchOverlays() {
         var overlays = document.querySelectorAll('.modal-overlay, .sheet-overlay, .more-sheet-overlay');
         if (!overlays.length || !window.MutationObserver) return;

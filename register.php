@@ -124,7 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <div class="form-group">
                 <label for="password">رمز عبور</label>
                 <input type="password" id="password" name="password" required
-                       autocomplete="new-password" placeholder="حداقل ۸ کاراکتر">
+                       autocomplete="new-password" placeholder="<?= h(passwordHint()) ?>">
             </div>
             <div class="form-group">
                 <label for="password_confirm">تکرار رمز عبور</label>

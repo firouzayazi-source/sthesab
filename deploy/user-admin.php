@@ -116,7 +116,7 @@ if ($cmd === '--reset') {
     $i = array_search('--password', $argvIn, true);
     if ($i !== false) {
         $password = $argvIn[$i + 1] ?? fail('بعد از --password رمز را بنویسید.');
-        if (mb_strlen($password) < 8) { fail('رمز باید حداقل ۸ کاراکتر باشد.'); }
+        if (($pe = passwordRuleError($password)) !== '') { fail($pe); }
         $generated = false;
     } else {
         // رمز خوانا: بدون کاراکترهایی که در خواندن اشتباه می‌شوند (0/O, 1/l/I)

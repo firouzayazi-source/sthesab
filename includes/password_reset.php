@@ -14,6 +14,7 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/mailer.php';
 require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/signup.php';
 
 class PasswordReset
 {
@@ -139,7 +140,10 @@ class PasswordReset
         $check = self::verify($selector, $validator);
         if (!$check['ok']) { return ['ok' => false, 'reason' => $check['reason']]; }
 
-        if (mb_strlen($newPassword) < 8) {
+        // ⚠ رشته‌ی خالی را `passwordRuleError()` معتبر می‌شمارد («رمز
+        //   نگذاشتن» یک انتخاب است)، ولی اینجا نیست: بازیابی باید رمزی
+        //   بگذارد، وگرنه حسابِ کاربر بی‌رمز می‌شد بی‌آنکه خواسته باشد.
+        if ($newPassword === '' || passwordRuleError($newPassword) !== '') {
             return ['ok' => false, 'reason' => 'weak'];
         }
 

@@ -112,8 +112,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         //    از پروفایلِ خودش بیرون می‌کرد.
         } elseif (($usernameErr = usernameRuleError($username)) !== '') {
             $error = $usernameErr;
-        } elseif ($password !== '' && mb_strlen($password) < 6) {
-            $error = 'رمز عبور جدید باید حداقل ۶ کاراکتر باشد.';
+        } elseif (($pe = passwordRuleError($password)) !== '') {
+            $error = $pe;
         } elseif ($password !== '' && $password !== $passwordConfirm) {
             $error = 'رمز عبور و تکرار آن یکسان نیستند.';
         } elseif ($targetUser['role'] === 'admin' && $role === 'user' && (int)$targetUser['id'] === $currentUserId) {
@@ -476,7 +476,7 @@ include __DIR__ . '/../includes/header.php';
             </div>
             <div class="form-group">
                 <label>رمز عبور</label>
-                <input type="password" name="password" required placeholder="حداقل ۶ کاراکتر">
+                <input type="password" name="password" required placeholder="<?= h(passwordHint()) ?>">
             </div>
             <div class="form-group">
                 <label>تکرار رمز عبور</label>

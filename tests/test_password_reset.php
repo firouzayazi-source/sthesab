@@ -105,7 +105,10 @@ $pdo->prepare('UPDATE users SET is_active = 1 WHERE id = :id')->execute(['id' =>
 T::group('تعیین رمز تازه');
 
 [$s5, $v5] = $makeToken($uid);
-T::same('weak', PasswordReset::complete($s5, $v5, 'کوتاه')['reason'], 'رمز کوتاه رد می‌شود');
+// ⚠ عدد ثابت است نه از `PASSWORD_MIN_LEN` — وگرنه تست مرزِ خودش را از
+//   کدِ زیرِ آزمون می‌گرفت. (خودِ مقدارِ ثابت در `test_signup` سنجیده
+//   می‌شود.) «کوتاه» پنج کاراکتر است و با کفِ ۴ دیگر کوتاه نیست.
+T::same('weak', PasswordReset::complete($s5, $v5, 'اب')['reason'], 'رمز کوتاه رد می‌شود');
 
 $res = PasswordReset::complete($s5, $v5, 'BrandNewPass456');
 T::ok($res['ok'], 'رمز با توکن سالم عوض می‌شود', $res['reason'] ?? '');

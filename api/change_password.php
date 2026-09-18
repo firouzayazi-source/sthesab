@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/signup.php';
 
 Auth::initSession();
 header('Content-Type: application/json; charset=utf-8');
@@ -25,7 +26,8 @@ $hasPassword = userHasPassword($userId);
 
 $errors = [];
 if ($hasPassword && $current === '') { $errors[] = 'رمز فعلی را وارد کنید.'; }
-if (mb_strlen($new) < 6) { $errors[] = 'رمز جدید باید حداقل ۶ کاراکتر باشد.'; }
+if ($new === '') { $errors[] = 'رمز جدید را وارد کنید.'; }
+elseif (($pe = passwordRuleError($new)) !== '') { $errors[] = $pe; }
 if ($new !== $confirm) { $errors[] = 'رمز جدید و تکرار آن یکسان نیستند.'; }
 if ($hasPassword && $new === $current && $new !== '') { $errors[] = 'رمز جدید نباید با رمز فعلی یکی باشد.'; }
 

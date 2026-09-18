@@ -30,8 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'ایمیل الزامی است — بدون آن امکان بازیابی رمز وجود ندارد.';
     } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 190) {
         $error = 'ایمیل معتبر نیست.';
-    } elseif (mb_strlen($password) < 6) {
-        $error = 'رمز عبور باید حداقل ۶ کاراکتر باشد.';
+    // ⚠ خالی بودنِ رمز را همان شرطِ اولِ همین زنجیره گرفته، پس اینجا
+    //   فقط قاعده‌ی مشترک می‌ماند.
+    } elseif (($pe = passwordRuleError($password)) !== '') {
+        $error = $pe;
     } elseif ($password !== $passwordConfirm) {
         $error = 'رمز عبور و تکرار آن یکسان نیستند.';
     // ⛔ از قاعده‌ی مشترک، نه یک الگوی محلی. این **چهارمین** جایی بود که
@@ -144,7 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <div class="form-group">
                 <label for="password">رمز عبور</label>
-                <input type="password" autocomplete="new-password" id="password" name="password" required placeholder="حداقل ۶ کاراکتر">
+                <input type="password" autocomplete="new-password" id="password" name="password" required placeholder="<?= h(passwordHint()) ?>">
             </div>
             <div class="form-group">
                 <label for="password_confirm">تکرار رمز عبور</label>

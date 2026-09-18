@@ -10,6 +10,7 @@ import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
 import android.provider.Settings;
 import android.view.Gravity;
 import android.view.View;
@@ -73,6 +74,7 @@ public class SmsSetupActivity extends AppCompatActivity {
     private TextView diag;
     private Button   toggle;
     private Button   fixNotif;
+    private Button   fixBattery;
 
     @Override
     protected void onCreate(Bundle saved) {
@@ -142,6 +144,18 @@ public class SmsSetupActivity extends AppCompatActivity {
         });
         root.addView(fixNotif);
 
+        // ⛔ تنها راهِ رفعِ **علتِ اولِ** «هیچ اعلانی نیامد» — و تا امروز
+        //    هیچ‌جای اپ نداشتش: خطِ تشخیص می‌گفت «پیامک اصلاً نرسید» و
+        //    بالای همین فایل هم نوشته بود علتش «محدودیتِ پس‌زمینه‌ی رام»
+        //    است، ولی کاربر هیچ دکمه‌ای برای برداشتنِ آن محدودیت نداشت.
+        //    تشخیصی که راهِ حل ندارد، نصفِ کار است.
+        fixBattery = new Button(this);
+        fixBattery.setText(R.string.sms_battery_fix);
+        fixBattery.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { openBatterySettings(); }
+        });
+        root.addView(fixBattery);
+
         // ⛔ خطِ تشخیص — کم‌رنگ‌تر از خطِ وضعیت، چون جوابِ سؤالِ دوم است
         //    نه اول: «روشن است یا نه» را بالا می‌گوید، این می‌گوید
         //    «آخرین پیامک چه شد».
@@ -202,6 +216,48 @@ public class SmsSetupActivity extends AppCompatActivity {
         return true;
     }
 
+    /**
+     * ⛔ «اندروید این برنامه را در پس‌زمینه محدود کرده؟» — یک **واقعیتِ
+     *    سنجیدنی**، نه یک حدس.
+     *
+     *    این تنها علتِ «پیامک اصلاً به گیرنده نرسید» است که از داخلِ اپ
+     *    هم دیدنی است و هم قابلِ رفع. روی شیائومی و سامسونگ و هواوی
+     *    حالتِ **پیش‌فرض** همین است، و خرابی‌اش کاملاً بی‌صداست: مجوز
+     *    داده شده، کلید روشن است، اعلان‌ها باز — و هیچ پیامکی خوانده
+     *    نمی‌شود.
+     *
+     * ⚠ زیرِ اندروید ۶ اصلاً چنین چیزی نیست، پس آنجا `true` — وگرنه
+     *   دکمه‌ای می‌ساختیم که به صفحه‌ای می‌رود که وجود ندارد.
+     */
+    private boolean batteryOk() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) { return true; }
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (pm == null) { return true; }
+        return pm.isIgnoringBatteryOptimizations(getPackageName());
+    }
+
+    /**
+     * ⛔ `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS` است، نه
+     *    `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
+     *
+     *    دومی یک دیالوگِ یک‌تپی می‌دهد ولی مجوزِ
+     *    `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` می‌خواهد و آن از
+     *    مجوزهای **محدودشده‌ی گوگل‌پلی** است — یعنی برای یک دکمه‌ی
+     *    کمکی، ریسکِ ردِ کلِ اپ. اولی هیچ مجوزی نمی‌خواهد و همان فهرستِ
+     *    سیستم را باز می‌کند؛ یک تپ بیشتر است و هیچ هزینه‌ای ندارد.
+     *
+     * ⚠ و بعضی رام‌ها این اکشن را ندارند. بدونِ `try`، تپِ کاربر اپ را
+     *   می‌بست — همان کرشِ بی‌توضیحی که گاردِ `onCreate` برایش نوشته شد.
+     *   اینجا به‌جای بستن، صریح می‌گوید مسیرِ دستی کجاست.
+     */
+    private void openBatterySettings() {
+        try {
+            startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+        } catch (Throwable t) {
+            Toast.makeText(this, R.string.sms_battery_none, Toast.LENGTH_LONG).show();
+        }
+    }
+
     private void render() {
         // ⛔ «روشن» یعنی هر دو: کلیدِ خودمان **و** مجوزِ اندروید. اگر فقط
         //    کلید سنجیده می‌شد، کاربری که مجوز را از تنظیماتِ گوشی پس
@@ -222,6 +278,12 @@ public class SmsSetupActivity extends AppCompatActivity {
         //   همیشه باشد و بیشترِ وقت‌ها کاری نکند، همان «دکمه‌ی بی‌کار از
         //   نبودنش بدتر است».
         fixNotif.setVisibility(on && !notifVisible() ? View.VISIBLE : View.GONE);
+
+        // ⚠ همان قاعده: فقط وقتی دیده می‌شود که سیستم واقعاً بگوید این
+        //   برنامه محدود است. روی گوشیِ معافْ دکمه هیچ کاری نمی‌کرد و
+        //   فقط صفحه را شلوغ می‌کرد — «دکمه‌ی بی‌کار از نبودنش بدتر
+        //   است». و با روشن شدنِ معافیت، خودش ناپدید می‌شود.
+        fixBattery.setVisibility(on && !batteryOk() ? View.VISIBLE : View.GONE);
 
         diag.setText(lastEventLine());
     }
@@ -252,9 +314,15 @@ public class SmsSetupActivity extends AppCompatActivity {
             //
             // ⚠ و این حالت **بعد از نصبِ دوباره طبیعی است**: پاک شدنِ اپ
             //   تنظیماتش را هم می‌برد، پس کلید به پیش‌فرضِ خاموش برمی‌گردد.
-            return getString(enabled() && granted()
-                             ? R.string.sms_diag_none
-                             : R.string.sms_diag_off);
+            if (!(enabled() && granted())) { return getString(R.string.sms_diag_off); }
+
+            // ⛔ ادعای علت فقط جایی که اثباتش دستِ خودِ سیستم است. روی
+            //    گوشیِ معاف این جمله یک هشدارِ الکی بود و کاربر را دنبالِ
+            //    چیزی می‌فرستاد که از قبل درست است — و هشدارِ الکی از
+            //    نبودِ تشخیص بدتر است، چون آدم را عادت می‌دهد نادیده‌شان
+            //    بگیرد.
+            return getString(R.string.sms_diag_none)
+                 + (batteryOk() ? "" : getString(R.string.sms_diag_battery));
         }
 
         String from = prefs().getString(BankSmsReceiver.PREF_LAST_FROM, "");

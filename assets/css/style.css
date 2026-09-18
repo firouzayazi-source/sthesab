@@ -3980,6 +3980,34 @@ html[data-theme="dark"] .stay-chip.active { box-shadow: none; }
      **دعوت** است نه هشدار. با رنگِ هشدار، اولین چیزی که کاربرِ تازه
      می‌بیند یک اخطار می‌شد — و آن‌وقت رنگِ هشدار در بقیه‌ی اپ هم بی‌اثر
      می‌شود. همان درسِ «هشدارِ همیشگی بدتر از نبودنش است». */
+/* ============================================================
+   معرفیِ اولیه — چند اسلاید داخلِ همان `.modal-overlay`
+   ============================================================
+   ⛔ لایه‌ی تازه‌ای ساخته نشد: `.modal-overlay` از قبل حاشیه‌ی امن و
+      اسکرولِ لایه را درست دارد و `watchOverlays()` هم بدنه را قفل
+      می‌کند. این چند قاعده فقط **داخلِ** آن جعبه را می‌چیند.
+   ⚠ اسلایدها با `display` عوض می‌شوند نه با `transform` و اسکرول:
+     اسلایدرِ خانه به آن شکل است چون کاربر باید بتواند بکشد؛ اینجا
+     ناوبری فقط با دکمه است و یک نوارِ اسکرولیِ راست‌به‌چپ همان سه
+     باگی را برمی‌گرداند که `CLAUDE.md` برایشان نوشته دارد
+     (`scroll-snap`، علامتِ `scrollLeft`، و سایه‌ی بریده‌شده). */
+.intro-box { max-width: 380px; }
+.intro-slide { display: none; text-align: center; padding: 6px 2px 2px; }
+.intro-slide.is-on { display: block; }
+.intro-icon { font-size: 40px; line-height: 1; margin-bottom: 14px; }
+.intro-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+.intro-body { font-size: 14px; line-height: 1.9; color: var(--muted); }
+.intro-dots {
+    display: flex; justify-content: center; gap: 7px;
+    margin-top: 16px;
+}
+.intro-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--line);
+    transition: background .15s, width .15s;
+}
+.intro-dot.is-on { width: 18px; border-radius: 4px; background: var(--accent); }
+
 .start-card {
     border-inline-start: 3px solid var(--gold);
     background: linear-gradient(180deg, var(--gold-wash) 0%, var(--surface) 62%);
