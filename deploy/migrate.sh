@@ -116,6 +116,7 @@ MIGRATIONS=(
     migration_audit_log.sql
     migration_error_triage.sql
     migration_store_share.sql
+    migration_store_owed.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -277,6 +278,7 @@ declare -A SENTINEL=(
     #   وجودش یعنی کلِ فایل اجرا شده. با شاهدِ «جدول هست»، فایلی که
     #   وسطِ کار مرده باشد هم «اجراشده» ثبت می‌شد.
     [migration_store_share.sql]="app_settings~setting_key=store_share_seeded"
+    [migration_store_owed.sql]="net_worth_snapshots.store_owed"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

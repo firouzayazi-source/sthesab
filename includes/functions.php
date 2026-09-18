@@ -714,14 +714,20 @@ function recordNetWorthSnapshot(int $userId, array $parts): void
     //   migration‌نخورده کوئری بدونشان ساخته می‌شود، وگرنه کلِ عکسِ
     //   روزانه با «Unknown column» بی‌صدا از کار می‌افتاد.
     $store = tableHasColumn('net_worth_snapshots', 'store_share');
+    // ⚠ سطلِ سومِ فروشگاه با `migration_store_owed` می‌آید و ممکن است
+    //   هنوز نیامده باشد حتی وقتی دو تای اول آمده‌اند — پس جدا سنجیده
+    //   می‌شود، نه با همان یک پرچم.
+    $owed  = $store && tableHasColumn('net_worth_snapshots', 'store_owed');
 
     try {
         Database::getConnection()->prepare(
             'INSERT IGNORE INTO net_worth_snapshots
                 (user_id, snap_date, wallets, assets, trades_open, cheques_net, debts_net'
-            . ($store ? ', store_share, store_total' : '') . ')
+            . ($store ? ', store_share, store_total' : '')
+            . ($owed ? ', store_owed' : '') . ')
              VALUES (:u, :d, :w, :a, :t, :c, :b'
-            . ($store ? ', :ss, :st' : '') . ')'
+            . ($store ? ', :ss, :st' : '')
+            . ($owed ? ', :so' : '') . ')'
         )->execute([
             'u' => $userId,
             'd' => today(),
@@ -731,7 +737,8 @@ function recordNetWorthSnapshot(int $userId, array $parts): void
             'c' => (int)($parts['cheques_net'] ?? 0),
             'b' => (int)($parts['debts_net'] ?? 0),
         ] + ($store ? ['ss' => (int)($parts['store_share'] ?? 0),
-                       'st' => (int)($parts['store_total'] ?? 0)] : []));
+                       'st' => (int)($parts['store_total'] ?? 0)] : [])
+          + ($owed ? ['so' => (int)($parts['store_owed'] ?? 0)] : []));
     } catch (PDOException $e) { /* کارِ جانبی — صفحه نباید بشکند */ }
 }
 
@@ -749,9 +756,11 @@ function netWorthHistory(int $userId, int $limit = 12): array
         //   صریحاً PARAM_INT باشد، وگرنه MySQL آن را رشته می‌بیند و
         //   کوئری با خطای نحوی می‌شکند.
         $store = tableHasColumn('net_worth_snapshots', 'store_share');
+        $owed  = $store && tableHasColumn('net_worth_snapshots', 'store_owed');
         $st = Database::getConnection()->prepare(
             'SELECT snap_date, wallets, assets, trades_open, cheques_net, debts_net'
-            . ($store ? ', store_share, store_total' : '') . '
+            . ($store ? ', store_share, store_total' : '')
+            . ($owed ? ', store_owed' : '') . '
              FROM net_worth_snapshots WHERE user_id = :u
              ORDER BY snap_date DESC LIMIT :n'
         );
@@ -767,7 +776,8 @@ function netWorthHistory(int $userId, int $limit = 12): array
         'date'  => $r['snap_date'],
         'total' => (int)$r['wallets'] + (int)$r['assets'] + (int)$r['trades_open']
                  + (int)$r['cheques_net'] + (int)$r['debts_net']
-                 + (int)($r['store_share'] ?? 0) + (int)($r['store_total'] ?? 0),
+                 + (int)($r['store_share'] ?? 0) + (int)($r['store_total'] ?? 0)
+                 + (int)($r['store_owed'] ?? 0),
     ], $rows);
 }
 

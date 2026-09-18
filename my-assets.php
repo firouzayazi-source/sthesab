@@ -219,17 +219,42 @@ if ($storeShare !== null) {
 //    فروشگاه منهای بدهی‌اش به سهامداران. با عددِ ناخالص، گوشیِ
 //    سهامدارها هم جزو ثروتِ مالکِ فروشگاه شمرده می‌شد — همان پول دو
 //    بار، یک بار در دفترِ سهامدار و یک بار اینجا.
-$storeNet = null;
+$storeNet  = null;
+$storeOwed = null;
+$owedMine  = false;
 if (Auth::isAdmin() && StoreShare::available()) {
-    $storeNet = StoreShare::storeNetWorth();
+    $storeNet  = StoreShare::storeNetWorth();
+    // ⛔ سهمِ خودِ همین مدیر کم می‌شود، وگرنه با «دارایی من در فروشگاه»
+    //    هم‌پوشانی دارد و مانده‌اش دو بار در جمع می‌نشیند.
+    $storeOwed = StoreShare::storeOwed($userId);
+    $owedMine  = StoreShare::ownShareCounted($userId);
 }
 if ($storeNet !== null) {
     $portfolio[] = [
-        'name'  => 'دارایی کل فروشگاه',
+        'name'  => 'دارایی خودِ فروشگاه',
         'qty'   => 1.0,
         'unit'  => 'فروشگاه',
         'value' => (int)$storeNet,
         'kind'  => 'store_total',
+    ];
+}
+// ---------- طلبِ سهامدارانِ فروشگاه (فقط مدیر) ----------
+//
+// ⛔ قلمِ جدا، چون مالکِ نصب خواست سه چیز را از هم تفکیک کند: داراییِ
+//    خودِ فروشگاه، داراییِ بچه‌ها، و باهم. «باهم» همان کلیدِ روشن/خاموشِ
+//    همیشگی است — هر دو روشن، جمع می‌شوند — پس هیچ کنترلِ تازه‌ای لازم
+//    نشد. و چون `store_total` خالص است، جمعشان چیزی را دو بار نمی‌شمارد.
+//
+// ⚠ `null` یعنی اندپوینتِ فروشگاه هنوز این کلید را نمی‌دهد (نصبِ
+//   عقب‌مانده)؛ آن‌وقت قلم **اصلاً رندر نمی‌شود**، نه اینکه صفر نشان
+//   بدهد — صفرِ ساختگی از نبودنِ قلم گمراه‌کننده‌تر است.
+if ($storeOwed !== null) {
+    $portfolio[] = [
+        'name'  => $owedMine ? 'طلب سایر سهامداران فروشگاه' : 'طلب سهامداران فروشگاه',
+        'qty'   => 1.0,
+        'unit'  => 'فروشگاه',
+        'value' => (int)$storeOwed,
+        'kind'  => 'store_owed',
     ];
 }
 
@@ -260,7 +285,7 @@ $chartable = array_values(array_filter($portfolio, fn($r) => $r['value'] > 0));
 // می‌شوند نه جمع، چون هر قلم کلیدِ روشن/خاموش دارد.
 $snapParts = ['wallets' => 0, 'assets' => 0, 'trades_open' => 0,
               'cheques_net' => 0, 'debts_net' => 0,
-              'store_share' => 0, 'store_total' => 0];
+              'store_share' => 0, 'store_total' => 0, 'store_owed' => 0];
 // ⚠ نامِ کلیدها دقیقاً همانی است که بالا در $portfolio گذاشته شده:
 //   asset / trade / cheques / debts / wallets. اگر اینجا مفرد نوشته
 //   شود (wallet, cheque, debt) همه به شاخه‌ی else می‌افتند و جزوِ
@@ -269,7 +294,8 @@ $snapParts = ['wallets' => 0, 'assets' => 0, 'trades_open' => 0,
 //   می‌شود، چون عددِ روی صفحه فرقی نمی‌کند.
 $snapMap = ['wallets' => 'wallets', 'trade' => 'trades_open',
             'cheques' => 'cheques_net', 'debts' => 'debts_net',
-            'store_share' => 'store_share', 'store_total' => 'store_total'];
+            'store_share' => 'store_share', 'store_total' => 'store_total',
+            'store_owed' => 'store_owed'];
 foreach ($portfolio as $row) {
     $bucket = $snapMap[$row['kind']] ?? 'assets';
     $snapParts[$bucket] += $row['value'];

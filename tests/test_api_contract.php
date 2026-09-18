@@ -3700,9 +3700,44 @@ $maSrc = $stripComments($root . '/my-assets.php');
 if (!preg_match('/Auth::isAdmin\(\)\s*&&\s*StoreShare::available\(\)/', $maSrc)) {
     $badSS[] = '⛔ my-assets.php — «دارایی کل فروشگاه» پشتِ Auth::isAdmin() نیست';
 }
-foreach (['store_share', 'store_total'] as $kind) {
+foreach (['store_share', 'store_total', 'store_owed'] as $kind) {
     if (!preg_match("/'" . $kind . "'\s*=>\s*'" . $kind . "'/", $maSrc)) {
         $badSS[] = '⛔ my-assets.php — سطلِ ' . $kind . ' در $snapMap هم‌نامِ kind نیست';
+    }
+}
+
+// ۸‑ب) «طلب سهامداران» هم پشتِ مدیر است، و سهمِ خودِ همان مدیر از آن کم
+//      می‌شود — وگرنه با «دارایی من در فروشگاه» هم‌پوشانی دارد و مانده‌اش
+//      **دو بار** در جمعِ صفحه می‌نشیند. هر دو عدد جداگانه درست‌اند، پس
+//      این خرابی هیچ نشانه‌ای ندارد.
+if (!preg_match('/StoreShare::storeOwed\(\s*\$userId\s*\)/', $maSrc)) {
+    $badSS[] = '⛔ my-assets.php — storeOwed() بدونِ $userId صدا زده شده؛ سهمِ خودِ مدیر دو بار شمرده می‌شود';
+}
+if (!preg_match('/\$storeOwed\s*!==\s*null/', $maSrc)) {
+    $badSS[] = '⛔ my-assets.php — قلمِ «طلب سهامداران» بدونِ نگهبانِ null رندر می‌شود (صفرِ ساختگی)';
+}
+$ssOwed = $stripComments($root . '/includes/store_share.php');
+if (!preg_match("/array_key_exists\('shareholders_owed'/", $ssOwed)) {
+    $badSS[] = '⛔ store_share — storeOwed() وجودِ کلید را نمی‌سنجد؛ نصبِ عقب‌مانده صفر می‌گیرد';
+}
+if (!preg_match('/\$owed\s*-=\s*\$mine/', $ssOwed)) {
+    $badSS[] = '⛔ store_share — سهمِ خودِ کاربر از طلبِ سهامداران کم نمی‌شود';
+}
+
+// ۸‑ج) عکسِ روزانه هم باید سطلِ سوم را بنویسد و بخواند، وگرنه اجزای
+//      روندِ خالص دارایی بی‌صدا غلط می‌شوند (همان درسِ store_share).
+//      ⚠ **دو** جای فراخوانی لازم است — نوشتن و خواندن. نسخه‌ی اول
+//        فقط «یک بار هست» را می‌سنجید و جهشِ «یکی را بردار» **زنده
+//        ماند**: با از بین رفتنِ نوشتن، خواندن هنوز آن رشته را داشت.
+//        جهشِ زنده‌مانده یعنی تست ناقص است، نه اینکه کد امن است.
+$fnSS = $stripComments($root . '/includes/functions.php');
+if (substr_count($fnSS, "tableHasColumn('net_worth_snapshots', 'store_owed')") < 2) {
+    $badSS[] = '⛔ functions.php — سطلِ store_owed باید هم در نوشتنِ عکس باشد هم در خواندنش';
+}
+foreach (["'so' => (int)(\$parts['store_owed'] ?? 0)",
+          "(int)(\$r['store_owed'] ?? 0)"] as $needle) {
+    if (strpos($fnSS, $needle) === false) {
+        $badSS[] = '⛔ functions.php — «' . $needle . '» در عکسِ روزانه نیست';
     }
 }
 
@@ -3713,6 +3748,12 @@ if (!preg_match('/^\s*migration_store_share\.sql\s*$/m', $migSS)) {
 }
 if (!preg_match('/\[migration_store_share\.sql\]=/', $migSS)) {
     $badSS[] = 'migrate.sh — شاهدش در SENTINEL نیست';
+}
+if (!preg_match('/^\s*migration_store_owed\.sql\s*$/m', $migSS)) {
+    $badSS[] = 'migrate.sh — migration_store_owed.sql در MIGRATIONS نیست';
+}
+if (!preg_match('/\[migration_store_owed\.sql\]=/', $migSS)) {
+    $badSS[] = 'migrate.sh — شاهدِ migration_store_owed در SENTINEL نیست';
 }
 
 // ۱۰) پیوندِ سهامدار وارد نمی‌شود (اجازه است، نه دفترِ کاربر) و
