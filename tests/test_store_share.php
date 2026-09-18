@@ -204,13 +204,28 @@ $payload1 = ['ok' => true, 'generated_at' => '2026-09-18T00:00:00Z',
     'shareholders' => [[
         'id' => 900001, 'name' => 'علی اصغر', 'capital' => 453000000,
         'earned' => 4800000, 'paid' => 0, 'balance' => 457800000,
+        /*
+         * ⛔ این پیلود عیناً شکلِ واقعیِ `GET /api/shareholding` است، نه
+         *    یک نمونه‌ی دلخواه. اگر آن سمت کلیدی را عوض کند و اینجا
+         *    عوض نشود، تست روی قراردادی سبز می‌ماند که دیگر وجود
+         *    ندارد — همان «سنجشی که روی خرابی سبز می‌شود».
+         *
+         * ⚠ کلیدهای `active_*`/`sold_*`/`own_profit` و `profit`/`own`
+         *   روی هر دستگاه **افزوده**اند: حساب لند امروز نمی‌خواندشان و
+         *   بودنشان چیزی را نمی‌شکند. `condition` عمداً نیست — مدلِ
+         *   `ownedDevices()` آن را ندارد.
+         */
+        'active_count' => 1, 'active_cost' => 151000000,
+        'sold_count' => 1, 'sold_total' => 75000000, 'own_profit' => 4800000,
         'devices' => [
             ['id' => 11, 'imei' => '350000000000011', 'product' => 'آیفون ۱۳',
-             'status' => 'IN_STOCK', 'condition' => 'USED', 'cost' => 151000000,
-             'sale_price' => 0, 'purchased_at' => '2026-08-01', 'sold_at' => null],
+             'status' => 'IN_STOCK', 'cost' => 151000000,
+             'sale_price' => 0, 'purchased_at' => '2026-08-01', 'sold_at' => null,
+             'profit' => 0, 'own' => 0],
             ['id' => 12, 'imei' => '350000000000012', 'product' => 'آیفون ۱۴',
-             'status' => 'SOLD', 'condition' => 'USED', 'cost' => 63000000,
-             'sale_price' => 75000000, 'purchased_at' => '2026-08-02', 'sold_at' => '2026-09-01'],
+             'status' => 'SOLD', 'cost' => 63000000,
+             'sale_price' => 75000000, 'purchased_at' => '2026-08-02', 'sold_at' => '2026-09-01',
+             'profit' => 12000000, 'own' => 4800000],
         ],
         'shares' => [
             ['ref' => 'jl:5001', 'date' => '2026-09-01', 'amount' => 4800000,
