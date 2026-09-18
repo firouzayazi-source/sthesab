@@ -598,13 +598,20 @@ final class StoreShare
      *    بسته، پس curlِ خط‌فرمانی ممکن نیست؛ و افزونه‌ی curl هم روی هر
      *    نصبی نیست.
      *
-     * @return array{ok:bool,message:string,data:array}
+     * ⛔ `code` هم برمی‌گردد و این تزئین نیست: چهار خرابیِ کاملاً
+     *    متفاوت از بیرون **یک شکل** دارند و فقط همان عدد از هم
+     *    جداشان می‌کند — ۰ یعنی اصلاً وصل نشد، ۴۰۴ یعنی کدِ آن سیستم
+     *    منتشر نشده و مسیر وجود ندارد، ۵۰۳ یعنی منتشر شده ولی توکنش
+     *    آنجا تنظیم نیست، و ۴۰۱ یعنی هر دو طرف تنظیم‌اند و توکن‌ها یکی
+     *    نیستند. `deploy/store-check.php` روی همین می‌نشیند.
+     *
+     * @return array{ok:bool,message:string,data:array,code:int}
      */
     private static function fetch(): array
     {
         $url = self::endpoint();
         $tok = self::token();
-        $bad = ['ok' => false, 'data' => []];
+        $bad = ['ok' => false, 'data' => [], 'code' => 0];
 
         $headers = ['Authorization: Bearer ' . $tok, 'Accept: application/json'];
         $body    = null;
@@ -655,16 +662,26 @@ final class StoreShare
          */
         $data = json_decode($body, true);
         if (!is_array($data)) {
-            return $bad + ['message' => 'پاسخ حسابداری فروشگاه JSON نبود (کد ' . $code . ').'];
+            return ['ok' => false, 'data' => [], 'code' => $code,
+                    'message' => 'پاسخ حسابداری فروشگاه JSON نبود (کد ' . $code . ').'];
         }
         if (empty($data['ok'])) {
-            $msg = isset($data['error']) ? (string)$data['error'] : ('کد ' . $code);
-            return $bad + ['message' => 'حسابداری فروشگاه داده نداد: ' . mb_substr($msg, 0, 120)];
+            /*
+             * ⚠ کد **همیشه** در پیام می‌آید، حتی وقتی خودِ آن سیستم متنِ
+             *   خطا داده. بدونش «توکن پذیرفته نشد» و «این مسیر فعال
+             *   نیست» روی صفحه یک‌جور دیده می‌شوند، در حالی که یکی
+             *   ۴۰۱ است و دیگری ۵۰۳ — و راهِ حلشان فرق دارد.
+             */
+            $msg = isset($data['error']) ? (string)$data['error'] : '';
+            $msg = $msg === '' ? ('کد ' . $code) : (mb_substr($msg, 0, 120) . ' (کد ' . $code . ')');
+            return ['ok' => false, 'data' => [], 'code' => $code,
+                    'message' => 'حسابداری فروشگاه داده نداد: ' . $msg];
         }
         if (!isset($data['shareholders']) || !is_array($data['shareholders'])) {
-            return $bad + ['message' => 'پاسخ حسابداری فروشگاه فهرست سهامداران را نداشت.'];
+            return ['ok' => false, 'data' => [], 'code' => $code,
+                    'message' => 'پاسخ حسابداری فروشگاه فهرست سهامداران را نداشت.'];
         }
 
-        return ['ok' => true, 'message' => '', 'data' => $data];
+        return ['ok' => true, 'message' => '', 'data' => $data, 'code' => $code];
     }
 }
