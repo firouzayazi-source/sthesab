@@ -97,9 +97,16 @@ CREATE TABLE IF NOT EXISTS `transactions` (
     `title` VARCHAR(255) NOT NULL,
     `note` TEXT NULL,
     `transaction_date` DATE NOT NULL,
+    -- شناسه‌ی یکتای سطرِ سهمِ سود در حسابداری فروشگاه
+    -- (migration_store_share.sql). خالی برای هر ردیفِ عادی.
+    `store_share_ref` VARCHAR(64) NULL DEFAULT NULL,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
+    -- ⛔ یکتا روی خودِ ستون: بدونش هر همگام‌سازی همان سود را دوباره
+    --    به‌عنوان درآمد ثبت می‌کرد. MySQL چند `NULL` را می‌پذیرد، پس
+    --    ردیف‌های عادی دست‌نخورده می‌مانند.
+    UNIQUE KEY `uq_store_share_ref` (`store_share_ref`),
     KEY `idx_user_id` (`user_id`),
     KEY `idx_category_id` (`category_id`),
     KEY `idx_type` (`type`),
@@ -273,3 +280,46 @@ CREATE TABLE IF NOT EXISTS `reminder_notifications` (
         REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_persian_ci;
 
+
+-- ═══════════ سهمِ سهامدارِ حسابداریِ فروشگاه (migration_store_share.sql) ═══════════
+--
+-- فهرستِ **اجازه**: مدیر یک سهامدارِ آن سیستم را به یک کاربرِ اینجا وصل
+-- می‌کند. سقفِ پنج نفر در `StoreShare::MAX_LINKS` است، نه در دیتابیس —
+-- چون پیام دادنِ روشن کارِ کد است نه کارِ کلیدِ یکتا.
+--
+-- ⛔ `store_contact_id` هم یکتاست، نه فقط `user_id`: یک سهامدارِ فروشگاه
+--    نباید به دو کاربرِ اینجا وصل شود، وگرنه سهمِ سودش دو بار در دو
+--    دفتر ثبت می‌شد.
+CREATE TABLE IF NOT EXISTS `store_shareholders` (
+    `id`               INT AUTO_INCREMENT PRIMARY KEY,
+    -- ⛔ `INT UNSIGNED` چون `users.id` همان است. با `INT`ِ علامت‌دار،
+    --    MySQL کلیدِ خارجی را با «errno 150» رد می‌کند و migration وسطِ
+    --    کار می‌ایستد — روی همین دیتابیس واقعاً دیده شد، نه در بازبینی.
+    `user_id`          INT UNSIGNED NOT NULL,
+    `store_contact_id` INT NOT NULL,
+    `display_name`     VARCHAR(120) NOT NULL DEFAULT '',
+    `is_active`        TINYINT(1) NOT NULL DEFAULT 1,
+    `approved_by`      INT UNSIGNED NULL,
+    `approved_at`      DATETIME NULL,
+    `created_at`       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY `uq_store_user` (`user_id`),
+    UNIQUE KEY `uq_store_contact` (`store_contact_id`),
+    KEY `idx_active` (`is_active`),
+    CONSTRAINT `fk_store_sh_user` FOREIGN KEY (`user_id`)
+        REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_persian_ci;
+
+-- آینه‌ی تک‌ردیفیِ پاسخِ اندپوینت. پاسخِ خامِ JSON نگه داشته می‌شود نه
+-- جدولِ نرمال‌شده: اینجا فقط **نمایش** می‌دهیم و هیچ کوئری‌ای روی
+-- اجزایش زده نمی‌شود، پس هر ستونِ تازه‌ی آن گزارش یک migration لازم
+-- نداشته باشد.
+CREATE TABLE IF NOT EXISTS `store_sync` (
+    `id`         TINYINT NOT NULL PRIMARY KEY,
+    `payload`    LONGTEXT NULL,
+    `fetched_at` DATETIME NULL,
+    `last_error` VARCHAR(255) NULL,
+    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                 ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_persian_ci;
+
+INSERT IGNORE INTO `store_sync` (`id`) VALUES (1);

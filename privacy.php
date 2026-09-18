@@ -12,6 +12,7 @@ require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/sms.php';
 require_once __DIR__ . '/includes/user_data.php';
+require_once __DIR__ . '/includes/store_share.php';
 
 Auth::initSession();
 Auth::requireLogin();
@@ -52,6 +53,16 @@ $flows   = outboundDataFlows();
         <?php foreach ($flows as $flow): ?>
             <p class="privacy-p"><?= h($flow['text']) ?></p>
         <?php endforeach; ?>
+    <?php endif; ?>
+
+    <?php if (StoreShare::available() && StoreShare::linkFor(Auth::userId()) !== null): ?>
+        <p class="privacy-p">
+            <strong>دارایی شما در فروشگاه</strong> از حسابداری همان فروشگاه
+            خوانده می‌شود — سرویسی روی همین سرور، با تأییدِ مدیر و فقط
+            <strong>خواندنی</strong>. یک نسخه از همان اعداد اینجا کش می‌شود
+            تا صفحه با ری‌استارتِ آن سرویس خالی نشود. هیچ چیزی از دفترِ
+            شخصیِ شما به آن سمت نمی‌رود.
+        </p>
     <?php endif; ?>
 
     <p class="privacy-p">

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/store_share.php';
 
 Auth::initSession();
 Auth::requireLogin();
@@ -182,6 +183,56 @@ if ($walletsCount > 0) {
     ];
 }
 
+// ---------- سهمِ سهامدارِ فروشگاه ----------
+//
+// ⛔ عددش **مانده‌ی دفترِ آن سیستم** است، نه جمعِ بهای گوشی‌های
+//    نفروخته — دلیلش بالای `StoreShare::valueFor()` نوشته شده: لحظه‌ی
+//    فروش، گوشی از انبار بیرون می‌رود ولی پولش همچنان به او بدهکار
+//    است، پس با جمعِ گوشی‌ها خالص داراییِ او سرِ هر فروش سقوط می‌کرد.
+//
+// ⛔ و هیچ محاسبه‌ای اینجا نیست: درصدِ سهم و سودِ هر قلم در حسابداریِ
+//    فروشگاه حساب و سند می‌شوند. اینجا فقط نمایش است.
+$storeShare = null;
+$storeSyncStatus = ['fetched_at' => null, 'last_error' => null];
+if (StoreShare::available()) {
+    // آینه اگر کهنه بود تازه می‌شود — و همان‌جا سهمِ سود در دفترِ
+    // کاربر ثبت می‌شود. جای این فراخوانی عمداً همین یک صفحه است.
+    StoreShare::refreshIfStale();
+    $storeSyncStatus = StoreShare::status();
+    $storeShare      = StoreShare::forUser($userId);
+}
+if ($storeShare !== null) {
+    $storeDevices = isset($storeShare['devices']) && is_array($storeShare['devices'])
+        ? $storeShare['devices'] : [];
+    $portfolio[] = [
+        'name'  => 'دارایی من در فروشگاه',
+        'qty'   => (float)count($storeDevices),
+        'unit'  => 'دستگاه',
+        'value' => (int)StoreShare::valueFor($userId),
+        'kind'  => 'store_share',
+    ];
+}
+
+// ---------- خالص داراییِ کلِ فروشگاه (فقط مدیر) ----------
+//
+// ⛔ فقط برای مدیر رندر می‌شود و **خالص** است، نه ناخالص: داراییِ
+//    فروشگاه منهای بدهی‌اش به سهامداران. با عددِ ناخالص، گوشیِ
+//    سهامدارها هم جزو ثروتِ مالکِ فروشگاه شمرده می‌شد — همان پول دو
+//    بار، یک بار در دفترِ سهامدار و یک بار اینجا.
+$storeNet = null;
+if (Auth::isAdmin() && StoreShare::available()) {
+    $storeNet = StoreShare::storeNetWorth();
+}
+if ($storeNet !== null) {
+    $portfolio[] = [
+        'name'  => 'دارایی کل فروشگاه',
+        'qty'   => 1.0,
+        'unit'  => 'فروشگاه',
+        'value' => (int)$storeNet,
+        'kind'  => 'store_total',
+    ];
+}
+
 // بزرگ‌ترین‌ها اول — وقتی اقلام زیاد شوند، مهم‌ها بالا می‌مانند
 usort($portfolio, fn($a, $b) => $b['value'] <=> $a['value']);
 
@@ -208,7 +259,8 @@ $chartable = array_values(array_filter($portfolio, fn($r) => $r['value'] > 0));
 // cron، به همان روشِ processRecurringTransactions. اجزا جدا ذخیره
 // می‌شوند نه جمع، چون هر قلم کلیدِ روشن/خاموش دارد.
 $snapParts = ['wallets' => 0, 'assets' => 0, 'trades_open' => 0,
-              'cheques_net' => 0, 'debts_net' => 0];
+              'cheques_net' => 0, 'debts_net' => 0,
+              'store_share' => 0, 'store_total' => 0];
 // ⚠ نامِ کلیدها دقیقاً همانی است که بالا در $portfolio گذاشته شده:
 //   asset / trade / cheques / debts / wallets. اگر اینجا مفرد نوشته
 //   شود (wallet, cheque, debt) همه به شاخه‌ی else می‌افتند و جزوِ
@@ -216,7 +268,8 @@ $snapParts = ['wallets' => 0, 'assets' => 0, 'trades_open' => 0,
 //   همه‌ی دلیلِ جدا ذخیره کردنشان از بین می‌رود. بی‌صدا هم خراب
 //   می‌شود، چون عددِ روی صفحه فرقی نمی‌کند.
 $snapMap = ['wallets' => 'wallets', 'trade' => 'trades_open',
-            'cheques' => 'cheques_net', 'debts' => 'debts_net'];
+            'cheques' => 'cheques_net', 'debts' => 'debts_net',
+            'store_share' => 'store_share', 'store_total' => 'store_total'];
 foreach ($portfolio as $row) {
     $bucket = $snapMap[$row['kind']] ?? 'assets';
     $snapParts[$bucket] += $row['value'];
@@ -371,6 +424,82 @@ include __DIR__ . '/includes/header.php';
         <?php endif; ?>
     <?php endif; ?>
 </div>
+
+<?php if ($storeShare !== null): ?>
+<?php
+/*
+ * ⛔ این کارت **هیچ دکمه‌ی اقدامی ندارد و نباید داشته باشد.** خواسته‌ی
+ *    صریحِ مالکِ نصب «فقط رویت» بود، و مرزش هم فنی است: منطقِ خرید و
+ *    فروش و درصدِ سهم در حسابداریِ فروشگاه است. یک دکمه‌ی «فروش» اینجا
+ *    یعنی نسخه‌ی دومِ آن منطق — همان مرزی که بین `my-assets.php` و
+ *    `trades.php` هم عمداً کشیده شده.
+ */
+$shDevices = isset($storeShare['devices']) && is_array($storeShare['devices'])
+    ? $storeShare['devices'] : [];
+$shSold    = array_values(array_filter($shDevices, fn($d) => ($d['status'] ?? '') === 'SOLD'));
+$shOpen    = array_values(array_filter($shDevices, fn($d) => ($d['status'] ?? '') !== 'SOLD'));
+?>
+<div class="card">
+    <div class="card-header-row">
+        <h2 class="card-title">دارایی من در فروشگاه</h2>
+        <span class="asset-tag">فقط نمایش</span>
+    </div>
+
+    <div class="asset-total-row">
+        <span class="asset-total-label">مانده</span>
+        <b class="asset-total-value<?= StoreShare::valueFor($userId) < 0 ? ' asset-amount-neg' : '' ?>">
+            <span class="ltr-num"><?= formatMoney((int)StoreShare::valueFor($userId)) ?></span>
+        </b>
+    </div>
+    <div class="asset-total-row">
+        <span class="asset-total-label">اصل سرمایه</span>
+        <b class="asset-total-value"><span class="ltr-num"><?= formatMoney((int)round((float)($storeShare['capital'] ?? 0))) ?></span></b>
+    </div>
+    <div class="asset-total-row">
+        <span class="asset-total-label">سهم سود</span>
+        <b class="asset-total-value"><span class="ltr-num"><?= formatMoney((int)round((float)($storeShare['earned'] ?? 0))) ?></span></b>
+    </div>
+    <div class="asset-total-row">
+        <span class="asset-total-label">پرداخت‌شده</span>
+        <b class="asset-total-value"><span class="ltr-num"><?= formatMoney((int)round((float)($storeShare['paid'] ?? 0))) ?></span></b>
+    </div>
+
+    <p class="hint asset-total-note">
+        <?= toPersianDigits((string)count($shOpen)) ?> دستگاه فروش‌نرفته و
+        <?= toPersianDigits((string)count($shSold)) ?> دستگاه فروخته‌شده.
+        سهمِ سود خودکار در دفتر شما ثبت می‌شود.
+        <?php if ($storeSyncStatus['fetched_at']): ?>
+            آخرین به‌روزرسانی: <?= h(jalaliWithWeekday(substr((string)$storeSyncStatus['fetched_at'], 0, 10))) ?>.
+        <?php endif; ?>
+        <?php if ($storeSyncStatus['last_error']): ?>
+            <br><span style="color:var(--warn-ink);">آخرین تلاش ناموفق بود؛ عددهای بالا از آخرین نسخه‌ی موفق است.</span>
+        <?php endif; ?>
+    </p>
+
+    <?php if ($shDevices !== []): ?>
+        <?php foreach ($shDevices as $d): ?>
+            <div class="tx-row">
+                <div class="tx-row-summary">
+                    <div class="tx-row-texts">
+                        <span class="tx-row-title"><?= h((string)($d['product'] ?? '—')) ?></span>
+                        <span class="tx-row-cat">
+                            <?= ($d['status'] ?? '') === 'SOLD' ? 'فروخته شد' : 'در انبار' ?>
+                            <?php if (!empty($d['imei'])): ?>
+                                · <span class="ltr-num"><?= h((string)$d['imei']) ?></span>
+                            <?php endif; ?>
+                        </span>
+                    </div>
+                    <span class="tx-row-amount">
+                        <span class="ltr-num"><?= formatMoney((int)round((float)(
+                            ($d['status'] ?? '') === 'SOLD' ? ($d['sale_price'] ?? 0) : ($d['cost'] ?? 0)
+                        ))) ?></span>
+                    </span>
+                </div>
+            </div>
+        <?php endforeach; ?>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
 
 <div class="card">
     <div class="card-header-row">

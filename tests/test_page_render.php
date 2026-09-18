@@ -117,6 +117,7 @@ const EXPECT = [
     'admin/categories.php'  => 'page',
     'admin/insights.php'    => 'page',
     'admin/errors.php'      => 'page',
+    'admin/store-share.php' => 'page',
     // ⛔ partial است، نه صفحه. nginx مسیرِ `/admin/` را نمی‌بندد، پس
     //    بدونِ نگهبانِ خودش از بیرون ۵۰۰ می‌داد.
     'admin/_nav.php'        => 'blocked',

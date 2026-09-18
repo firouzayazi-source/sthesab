@@ -115,6 +115,7 @@ MIGRATIONS=(
     migration_category_pin.sql
     migration_audit_log.sql
     migration_error_triage.sql
+    migration_store_share.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -264,6 +265,11 @@ declare -A SENTINEL=(
     [migration_category_pin.sql]="category_pins"
     [migration_audit_log.sql]="audit_log"
     [migration_error_triage.sql]="app_errors.resolved_at"
+    # ⚠ شاهدش **داده** است نه ساختار، و عمداً: آن `INSERT` آخرین کارِ
+    #   فایل است (بعد از دو جدول، یک ستون، یک ایندکس و seedِ دسته)، پس
+    #   وجودش یعنی کلِ فایل اجرا شده. با شاهدِ «جدول هست»، فایلی که
+    #   وسطِ کار مرده باشد هم «اجراشده» ثبت می‌شد.
+    [migration_store_share.sql]="app_settings~setting_key=store_share_seeded"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

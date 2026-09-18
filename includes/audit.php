@@ -65,6 +65,12 @@ final class Audit
         'data.exported', 'data.imported',
         // دسته‌بندی (مدیر)
         'category.privatized', 'category.merged',
+        /*
+         * سهامدارِ فروشگاه (مدیر) — وصل کردن یعنی دادنِ دسترسی به
+         * داده‌ی مالیِ یک سیستمِ دیگر به یک کاربر، پس دقیقاً از همان
+         * جنسِ `plan.granted` است و باید رد داشته باشد.
+         */
+        'store_share.linked', 'store_share.unlinked',
     ];
 
     /** کلیدهای تنظیماتی که مقدارشان هرگز در `detail` نمی‌آید. */

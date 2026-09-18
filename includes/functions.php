@@ -710,11 +710,18 @@ function recordNetWorthSnapshot(int $userId, array $parts): void
 {
     if (!tableExists('net_worth_snapshots')) { return; }
 
+    // ⚠ دو سطلِ فروشگاه با `migration_store_share` می‌آیند؛ روی نصبِ
+    //   migration‌نخورده کوئری بدونشان ساخته می‌شود، وگرنه کلِ عکسِ
+    //   روزانه با «Unknown column» بی‌صدا از کار می‌افتاد.
+    $store = tableHasColumn('net_worth_snapshots', 'store_share');
+
     try {
         Database::getConnection()->prepare(
             'INSERT IGNORE INTO net_worth_snapshots
-                (user_id, snap_date, wallets, assets, trades_open, cheques_net, debts_net)
-             VALUES (:u, :d, :w, :a, :t, :c, :b)'
+                (user_id, snap_date, wallets, assets, trades_open, cheques_net, debts_net'
+            . ($store ? ', store_share, store_total' : '') . ')
+             VALUES (:u, :d, :w, :a, :t, :c, :b'
+            . ($store ? ', :ss, :st' : '') . ')'
         )->execute([
             'u' => $userId,
             'd' => today(),
@@ -723,7 +730,8 @@ function recordNetWorthSnapshot(int $userId, array $parts): void
             't' => (int)($parts['trades_open'] ?? 0),
             'c' => (int)($parts['cheques_net'] ?? 0),
             'b' => (int)($parts['debts_net'] ?? 0),
-        ]);
+        ] + ($store ? ['ss' => (int)($parts['store_share'] ?? 0),
+                       'st' => (int)($parts['store_total'] ?? 0)] : []));
     } catch (PDOException $e) { /* کارِ جانبی — صفحه نباید بشکند */ }
 }
 
@@ -740,8 +748,10 @@ function netWorthHistory(int $userId, int $limit = 12): array
         //   درجِ متغیر را ممنوع کرده. با EMULATE_PREPARES=false باید
         //   صریحاً PARAM_INT باشد، وگرنه MySQL آن را رشته می‌بیند و
         //   کوئری با خطای نحوی می‌شکند.
+        $store = tableHasColumn('net_worth_snapshots', 'store_share');
         $st = Database::getConnection()->prepare(
-            'SELECT snap_date, wallets, assets, trades_open, cheques_net, debts_net
+            'SELECT snap_date, wallets, assets, trades_open, cheques_net, debts_net'
+            . ($store ? ', store_share, store_total' : '') . '
              FROM net_worth_snapshots WHERE user_id = :u
              ORDER BY snap_date DESC LIMIT :n'
         );
@@ -756,7 +766,8 @@ function netWorthHistory(int $userId, int $limit = 12): array
     return array_map(fn($r) => [
         'date'  => $r['snap_date'],
         'total' => (int)$r['wallets'] + (int)$r['assets'] + (int)$r['trades_open']
-                 + (int)$r['cheques_net'] + (int)$r['debts_net'],
+                 + (int)$r['cheques_net'] + (int)$r['debts_net']
+                 + (int)($r['store_share'] ?? 0) + (int)($r['store_total'] ?? 0),
     ], $rows);
 }
 

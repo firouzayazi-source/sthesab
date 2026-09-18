@@ -80,6 +80,13 @@ require_once __DIR__ . '/user_data.php';
 const USER_IMPORT_SKIP = [
     'api_tokens', 'password_resets', 'trusted_devices', 'sms_codes',
     'payments',
+    /*
+     * ⛔ `store_shareholders` یک **اجازه**ی مدیر است، نه دفترِ کاربر —
+     *    دقیقاً از جنسِ `payments`. با نوشتنش، یک فایلِ دست‌ساز به
+     *    خودش پیوندِ یک سهامدار می‌داد و دفترِ مالیِ یک سیستمِ دیگر را
+     *    باز می‌کرد. بدترین شکلِ خرابی، چون هیچ خطایی نمی‌دهد.
+     */
+    'store_shareholders',
 ];
 
 /** سقفِ حجمِ فایلِ ورودی. */

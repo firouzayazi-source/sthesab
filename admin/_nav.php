@@ -31,6 +31,7 @@ $__adminTabs = [
     'categories.php' => 'دسته‌بندی‌ها',
     'insights.php'   => 'آمار استفاده',
     'errors.php'     => 'خطاها',
+    'store-share.php' => 'سهامداران فروشگاه',
 ];
 $__here = basename($_SERVER['SCRIPT_NAME'] ?? '');
 

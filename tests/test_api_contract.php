@@ -3163,8 +3163,10 @@ if (!is_file($impPath)) {
 }
 $impApi = $stripComments(__DIR__ . '/../api/import_data.php');
 
-// ⛔ فهرستِ ردشده بسته است: اعتبارنامه‌ها و `payments`.
-foreach (['api_tokens', 'password_resets', 'trusted_devices', 'sms_codes', 'payments'] as $t) {
+// ⛔ فهرستِ ردشده بسته است: اعتبارنامه‌ها، `payments`، و پیوندِ سهامدار
+//    (هر سه «رکوردِ نصب درباره‌ی کاربر»اند، نه دفترِ او).
+foreach (['api_tokens', 'password_resets', 'trusted_devices', 'sms_codes', 'payments',
+          'store_shareholders'] as $t) {
     if (!preg_match('/const\s+USER_IMPORT_SKIP\s*=\s*\[[^\]]*\'' . $t . '\'/s', $impSrc)) {
         $badImp[] = 'USER_IMPORT_SKIP — جدولِ ' . $t . ' باید رد شود';
     }
@@ -3587,6 +3589,142 @@ if (!preg_match('/\[migration_error_triage\.sql\]="app_errors\.resolved_at"/', $
 }
 
 T::bulk(7, $badTri, '⛔ «برطرف شد» برگشت‌پذیر است و اطلاع‌رسانی سرِ جایش');
+
+
+// ═══════════════════════════════════════════════════════════════
+// قاعده ۴۶ — سهمِ سهامدارِ فروشگاه: خواندنی، بی‌حساب، و ایدمپوتنت
+// ═══════════════════════════════════════════════════════════════
+//
+// چهار خرابیِ این قابلیت همه **بی‌صدا**اند و هیچ‌کدام را تستِ رفتاری
+// روی نصبِ خاموش نمی‌بیند (پیش‌فرض `STORE_API_URL` خالی است، پس آن تست
+// روی ماشینِ بی‌پیکربندی `T::blocked` می‌شود):
+//
+//  ۱. تراکنشِ سود با `wallet_id` → همان پول دو بار (یک بار در قلمِ
+//     دارایی، یک بار در موجودیِ حساب).
+//  ۲. نبودِ `store_share_ref` → هر همگام‌سازی درآمد را از نو ثبت می‌کند.
+//  ۳. `forUser()` با یک شرط → یا مدیر پیوند را غیرفعال می‌کند و کاربر
+//     باز هم می‌بیند، یا کاربری دفترِ سهامدارِ دیگری را می‌بیند.
+//  ۴. محاسبه‌ی درصد/سود در این سمت → نسخه‌ی دومِ منطقِ پول بینِ دو برنامه.
+
+T::group('قاعده ۴۶ — سهم سهامدار فروشگاه');
+
+$badSS  = [];
+$ssPath = $root . '/includes/store_share.php';
+if (!is_file($ssPath)) {
+    $badSS[] = 'includes/store_share.php پیدا نشد';
+    $ssSrc   = '';
+} else {
+    $ssSrc = $stripComments($ssPath);
+}
+
+// ۱) تراکنشِ سود عمداً بدون حساب است.
+if (preg_match('/INSERT\s+INTO\s+transactions(.*?)VALUES/is', $ssSrc, $mIns)) {
+    if (stripos($mIns[1], 'wallet_id') !== false) {
+        $badSS[] = '⛔ store_share — تراکنشِ سود wallet_id گرفته؛ پول دو بار شمرده می‌شود';
+    }
+    if (stripos($mIns[1], 'store_share_ref') === false) {
+        $badSS[] = '⛔ store_share — ستونِ store_share_ref در INSERT نیست؛ همگام‌سازی تکراری می‌سازد';
+    }
+} else {
+    $badSS[] = 'store_share — INSERT INTO transactions پیدا نشد';
+}
+
+// ۲) ایدمپوتنسی: هم `ON DUPLICATE KEY` هم کلیدِ یکتا در migration.
+if (stripos($ssSrc, 'ON DUPLICATE KEY UPDATE') === false) {
+    $badSS[] = '⛔ store_share — ON DUPLICATE KEY نیست؛ مبلغِ اصلاح‌شده در سمتِ فروشگاه اینجا کهنه می‌ماند';
+}
+
+// ۳) `forUser()` هر دو شرط را می‌خواهد: پیوندِ فعال **و** ردیفِ آینه.
+if (preg_match('/function\s+forUser\s*\([^)]*\)\s*:\s*\??array\s*\{(.*?)\n    \}/s', $ssSrc, $mFu)) {
+    $fu = $mFu[1];
+    if (strpos($fu, 'linkFor(') === false) {
+        $badSS[] = '⛔ forUser() — پیوندِ فعال را نمی‌سنجد';
+    }
+    if (strpos($fu, 'payload(') === false) {
+        $badSS[] = '⛔ forUser() — آینه را نمی‌سنجد';
+    }
+    if (strpos($fu, 'store_contact_id') === false) {
+        $badSS[] = '⛔ forUser() — شناسه‌ی سهامدار را با ردیفِ آینه تطبیق نمی‌دهد';
+    }
+} else {
+    $badSS[] = 'forUser() پیدا نشد';
+}
+
+// ۴) هیچ محاسبه‌ی سهم/درصدی این سمت نیست — فقط خواندن.
+foreach (['shareholderPhonePct', 'buyerPct', 'sellerPct', 'itemProfit'] as $needle) {
+    if (stripos($ssSrc, $needle) !== false) {
+        $badSS[] = '⛔ store_share — «' . $needle . '» اینجا نباید باشد؛ محاسبه کارِ حسابداری فروشگاه است';
+    }
+}
+
+// ۵) سقفِ پنج نفر در **دو** جا: تابعِ خواندن و مسیرِ نوشتن.
+// ⚠ مرزِ `;` اجباری است: بدونش `= 50` هم با `= 5` تطبیق می‌کرد و
+//   جهشِ «سقف را ۵۰ کن» **زنده ماند**. جهشِ زنده‌مانده یعنی تست ناقص
+//   است، نه اینکه کد امن است.
+if (!preg_match('/const\s+MAX_LINKS\s*=\s*5\s*;/', $ssSrc)) {
+    $badSS[] = '⛔ store_share — MAX_LINKS = 5 نیست (خواسته‌ی صریحِ مالکِ نصب)';
+}
+if (!preg_match('/function\s+link\s*\(.*?activeCount\(\)\s*>=\s*self::MAX_LINKS/s', $ssSrc)) {
+    $badSS[] = '⛔ store_share — سقف در مسیرِ وصل کردن اعمال نمی‌شود (درسِ PINNED_WALLET_MAX)';
+}
+
+// ۶) پیش‌فرض خاموش: هم آدرس هم توکن لازم است.
+if (!preg_match('/function\s+configured\s*\(\)\s*:\s*bool\s*\{(.*?)\n    \}/s', $ssSrc, $mCf)
+    || strpos($mCf[1], "!== ''") === false
+    || strpos($mCf[1], '&&') === false) {
+    $badSS[] = '⛔ configured() — باید هر دوی آدرس و توکن را بخواهد، وگرنه قابلیت نیم‌بند روشن می‌شود';
+}
+
+// ۷) تنها درِ وصل کردن، صفحه‌ی مدیر است — هیچ اندپوینتِ `api/` ای نه.
+foreach (glob($root . '/api/*.php') as $apiFile) {
+    $src = $stripComments($apiFile);
+    if (strpos($src, 'StoreShare::link(') !== false || strpos($src, 'StoreShare::unlink(') !== false) {
+        $badSS[] = '⛔ ' . basename($apiFile) . ' — وصل/قطع کردنِ سهامدار فقط از admin/store-share.php';
+    }
+}
+if (!is_file($root . '/admin/store-share.php')) {
+    $badSS[] = 'admin/store-share.php پیدا نشد';
+} else {
+    $ssAdmin = $stripComments($root . '/admin/store-share.php');
+    if (strpos($ssAdmin, 'Auth::requireAdmin()') === false) {
+        $badSS[] = '⛔ admin/store-share.php — requireAdmin() ندارد';
+    }
+    if (strpos($ssAdmin, 'Csrf::verifyOrFail(') === false) {
+        $badSS[] = '⛔ admin/store-share.php — CSRF ندارد (قاعده ۳)';
+    }
+}
+
+// ۸) توگلِ «دارایی کل فروشگاه» فقط برای مدیر، و سطلِ عکسِ روزانه
+//    دقیقاً هم‌نامِ `kind` — وگرنه اجزا بی‌صدا غلط می‌شوند.
+$maSrc = $stripComments($root . '/my-assets.php');
+if (!preg_match('/Auth::isAdmin\(\)\s*&&\s*StoreShare::available\(\)/', $maSrc)) {
+    $badSS[] = '⛔ my-assets.php — «دارایی کل فروشگاه» پشتِ Auth::isAdmin() نیست';
+}
+foreach (['store_share', 'store_total'] as $kind) {
+    if (!preg_match("/'" . $kind . "'\s*=>\s*'" . $kind . "'/", $maSrc)) {
+        $badSS[] = '⛔ my-assets.php — سطلِ ' . $kind . ' در $snapMap هم‌نامِ kind نیست';
+    }
+}
+
+// ۹) migration در هر دو فهرستِ migrate.sh (همان قاعده‌ی بسته‌ی MIGRATIONS).
+$migSS = (string)file_get_contents($root . '/deploy/migrate.sh');
+if (!preg_match('/^\s*migration_store_share\.sql\s*$/m', $migSS)) {
+    $badSS[] = 'migrate.sh — migration_store_share.sql در MIGRATIONS نیست';
+}
+if (!preg_match('/\[migration_store_share\.sql\]=/', $migSS)) {
+    $badSS[] = 'migrate.sh — شاهدش در SENTINEL نیست';
+}
+
+// ۱۰) پیوندِ سهامدار وارد نمی‌شود (اجازه است، نه دفترِ کاربر) و
+//     رویدادهایش ممیزی می‌شوند.
+$audSS = $stripComments($root . '/includes/audit.php');
+foreach (['store_share.linked', 'store_share.unlinked'] as $act) {
+    if (strpos($audSS, $act) === false) {
+        $badSS[] = '⛔ Audit::ACTIONS — «' . $act . '» نیست';
+    }
+}
+
+T::bulk(10, $badSS, '⛔ سهم سهامدار: خواندنی، بی‌حساب، ایدمپوتنت، و پشتِ تأییدِ مدیر');
 
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {

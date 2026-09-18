@@ -84,6 +84,7 @@ const BUDGET = [
     'pro.php'               => 17,
     'admin/insights.php'    => 32,
     'admin/errors.php'      => 15,
+    'admin/store-share.php' => 14,
     'admin/users.php'       => 17,
     'admin/access.php'      => 15,
     'admin/billing.php'     => 17,

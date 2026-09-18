@@ -1,0 +1,301 @@
+<?php
+/**
+ * ⛔ وصل کردنِ سهامدارِ فروشگاه به کاربرِ حساب لند — با تأییدِ مدیر.
+ *
+ * **خواسته‌ی مالکِ نصب:** «برای هر شخص هم با وصل کردنِ من داراییِ خودش
+ * را ببیند… البته با تأیید خودم و افرادِ خاص، نهایتاً ۵ نفر هستند.»
+ *
+ * ⛔ **تنها درِ ورودیِ این قابلیت همین صفحه است.** هیچ کاربری نمی‌تواند
+ *    خودش را به یک سهامدار وصل کند و هیچ اندپوینتی هم برای این کار
+ *    نیست؛ پس «نهایتاً ۵ نفر» یعنی پنج ردیفی که مدیر با دست ساخته، نه
+ *    پنج نفری که زودتر ثبت‌نام کرده‌اند.
+ *
+ * ⛔ **فهرستِ سهامدارها از خودِ آینه می‌آید، نه از یک فیلدِ متنی.** با
+ *    تایپِ دستیِ شناسه، یک رقمِ اشتباه دفترِ یک سهامدار را به کاربرِ
+ *    دیگری وصل می‌کرد — بدترین شکلِ خرابی، چون هیچ خطایی نمی‌دهد و
+ *    فقط عددِ کسی در دفترِ کسِ دیگری می‌نشیند.
+ *
+ * ⚠ و دقیقاً به همین دلیل، اگر آینه خالی باشد این صفحه **فرمِ وصل کردن
+ *   را رندر نمی‌کند** و می‌گوید اول همگام‌سازی کنید. فرمی با منوی خالی،
+ *   همان «دکمه‌ی بی‌کار از نبودنش بدتر است».
+ */
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/csrf.php';
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/store_share.php';
+
+Auth::initSession();
+Auth::requireAdmin();
+
+$pdo = Database::getConnection();
+
+// ⛔ POST → ریدایرکت، نه رندرِ مستقیم (همان قاعده‌ی `admin/errors.php`):
+//    با رندر، تازه‌سازیِ صفحه همان وصل کردن را دوباره می‌فرستاد.
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    Csrf::verifyOrFail(postParam('csrf_token'));
+    $act  = (string)postParam('action');
+    $done = '';
+
+    if ($act === 'sync') {
+        $res  = StoreShare::sync();
+        $done = $res['ok']
+            ? 'synced:' . $res['written'] . ':' . $res['removed']
+            : 'syncfail';
+    } elseif ($act === 'link') {
+        $uid  = (int)postParam('user_id', '0');
+        $cid  = (int)postParam('contact_id', '0');
+        $name = '';
+        foreach ((StoreShare::payload()['shareholders'] ?? []) as $sh) {
+            if ((int)($sh['id'] ?? 0) === $cid) { $name = (string)($sh['name'] ?? ''); break; }
+        }
+        $res  = StoreShare::link($uid, $cid, $name);
+        $done = $res['ok'] ? 'linked' : 'err:' . $res['message'];
+        if ($res['ok']) {
+            Audit::log('store_share.linked', 'store_shareholder', $cid,
+                ['contact' => $cid], null, $uid);
+            // ⛔ بلافاصله همگام می‌شود: بدونش کاربرِ تازه‌وصل‌شده تا
+            //    سرِ TTL بعدی صفحه‌ی خالی می‌دید و مدیر فکر می‌کرد
+            //    وصل کردن کار نکرده.
+            StoreShare::sync();
+        }
+    } elseif ($act === 'unlink') {
+        $id = (int)postParam('id', '0');
+        if (StoreShare::unlink($id)) {
+            Audit::log('store_share.unlinked', 'store_shareholder', $id);
+            $done = 'unlinked';
+        }
+    }
+
+    header('Location: ' . APP_BASE_PATH . '/admin/store-share.php'
+        . ($done !== '' ? '?done=' . urlencode($done) : ''));
+    exit;
+}
+
+$ready   = StoreShare::available();
+$payload = $ready ? StoreShare::payload() : null;
+$status  = $ready ? StoreShare::status() : ['fetched_at' => null, 'last_error' => null];
+$links   = $ready ? StoreShare::links() : [];
+$done    = (string)getParam('done');
+
+// شناسه‌های وصل‌شده، تا در منو دوباره پیشنهاد نشوند
+$taken = [];
+foreach ($links as $l) {
+    if ((int)$l['is_active'] === 1) { $taken[(int)$l['store_contact_id']] = true; }
+}
+
+$shareholders = [];
+foreach (($payload['shareholders'] ?? []) as $sh) {
+    if (is_array($sh) && !empty($sh['id'])) { $shareholders[] = $sh; }
+}
+
+// کاربرانِ فعالی که هنوز وصل نشده‌اند
+$candidates = [];
+try {
+    $linkedUsers = [];
+    foreach ($links as $l) {
+        if ((int)$l['is_active'] === 1) { $linkedUsers[(int)$l['user_id']] = true; }
+    }
+    foreach ($pdo->query('SELECT id, username, full_name FROM users WHERE is_active = 1 ORDER BY id')->fetchAll() as $u) {
+        if (isset($linkedUsers[(int)$u['id']])) { continue; }
+        $candidates[] = $u;
+    }
+} catch (PDOException $e) { $candidates = []; }
+
+$activeLinks = count($taken);
+
+$pageWide  = true;
+$pageTitle = 'سهامداران فروشگاه';
+include __DIR__ . '/../includes/header.php';
+?>
+
+<?php include __DIR__ . '/_nav.php'; ?>
+
+<?php if ($done !== ''): ?>
+    <div class="alert <?= (str_starts_with($done, 'err:') || $done === 'syncfail') ? 'alert-error' : 'alert-success' ?>">
+        <p style="margin:0;">
+            <?php if ($done === 'linked'): ?>
+                سهامدار وصل شد و داده‌اش همگام شد.
+            <?php elseif ($done === 'unlinked'): ?>
+                پیوند غیرفعال شد. تراکنش‌های سودِ ثبت‌شده دست‌نخورده ماندند.
+            <?php elseif (str_starts_with($done, 'synced:')): ?>
+                <?php [, $w, $r] = explode(':', $done, 3); ?>
+                همگام شد — <?= h(toPersianDigits($w)) ?> ردیف ثبت یا به‌روز شد و
+                <?= h(toPersianDigits($r)) ?> ردیفِ بی‌مرجع برداشته شد.
+            <?php elseif ($done === 'syncfail'): ?>
+                همگام‌سازی انجام نشد. پیام خطا پایین‌تر آمده است.
+            <?php elseif (str_starts_with($done, 'err:')): ?>
+                <?= h(substr($done, 4)) ?>
+            <?php endif; ?>
+        </p>
+    </div>
+<?php endif; ?>
+
+<?php if (!$ready): ?>
+    <div class="card">
+        <h2 class="card-title">سهامداران فروشگاه</h2>
+        <p class="hint">
+            این قابلیت خاموش است. برای روشن کردنش دو ثابتِ
+            <span class="ltr-num">STORE_API_URL</span> و
+            <span class="ltr-num">STORE_API_TOKEN</span> را در
+            <span class="ltr-num">config/config.php</span> پر کنید و
+            <span class="ltr-num">migration_store_share.sql</span> را اجرا کنید.
+        </p>
+        <p class="hint">
+            ⛔ پیش‌فرض خاموش بودن عمدی است: یک به‌روزرسانی به‌تنهایی نباید
+            دری به داده‌ی مالیِ فروشگاه باز کند.
+        </p>
+    </div>
+<?php else: ?>
+
+<div class="card">
+    <div class="card-head-row">
+        <h2 class="card-title">وضعیت اتصال</h2>
+        <span class="status-badge <?= $status['last_error'] ? 'status-badge-warn' : 'status-badge-in' ?>">
+            <?= $status['last_error'] ? 'آخرین تلاش ناموفق' : 'متصل' ?>
+        </span>
+    </div>
+
+    <div class="asset-total-row">
+        <span class="asset-total-label">آخرین به‌روزرسانی</span>
+        <b class="asset-total-value">
+            <?php if ($status['fetched_at']): ?>
+                <span class="ltr-num"><?= h(toPersianDigits(toJalali(substr((string)$status['fetched_at'], 0, 10))
+                    . ' ' . substr((string)$status['fetched_at'], 11, 5))) ?></span>
+            <?php else: ?>
+                —
+            <?php endif; ?>
+        </b>
+    </div>
+    <div class="asset-total-row">
+        <span class="asset-total-label">خالص دارایی کل فروشگاه</span>
+        <b class="asset-total-value">
+            <?php $net = StoreShare::storeNetWorth(); ?>
+            <?php if ($net === null): ?>—<?php else: ?>
+                <span class="ltr-num"><?= formatMoney($net) ?></span>
+            <?php endif; ?>
+        </b>
+    </div>
+    <div class="asset-total-row">
+        <span class="asset-total-label">سهامدارهای وصل‌شده</span>
+        <b class="asset-total-value">
+            <span class="ltr-num"><?= h(toPersianDigits((string)$activeLinks)) ?></span>
+            <small>از <?= h(toPersianDigits((string)StoreShare::MAX_LINKS)) ?></small>
+        </b>
+    </div>
+
+    <?php if ($status['last_error']): ?>
+        <p class="hint" style="color:var(--warn-ink);"><?= h($status['last_error']) ?></p>
+    <?php endif; ?>
+
+    <form method="POST" style="margin-top:12px;">
+        <?= Csrf::field() ?>
+        <input type="hidden" name="action" value="sync">
+        <button type="submit" class="btn btn-secondary btn-sm">همگام‌سازی حالا</button>
+    </form>
+
+    <p class="hint asset-total-note">
+        عددها در حسابداری فروشگاه حساب می‌شوند و اینجا فقط نمایش داده و در دفترِ
+        شخصیِ هر سهامدار ثبت می‌شوند. هیچ محاسبه‌ای اینجا انجام نمی‌شود.
+    </p>
+</div>
+
+<div class="card">
+    <h2 class="card-title">پیوندها</h2>
+    <?php if ($links === []): ?>
+        <p class="empty-row">هنوز هیچ سهامداری وصل نشده است.</p>
+    <?php else: ?>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>کاربر</th>
+                    <th>سهامدار</th>
+                    <th>وضعیت</th>
+                    <th class="actions-cell">عملیات</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($links as $l): ?>
+                    <tr>
+                        <td><?= h($l['full_name'] ?: $l['username']) ?>
+                            <small class="ltr-num">(<?= h($l['username']) ?>)</small></td>
+                        <td><?= h($l['display_name'] ?: '—') ?>
+                            <small class="ltr-num">#<?= h(toPersianDigits((string)$l['store_contact_id'])) ?></small></td>
+                        <td>
+                            <span class="status-badge <?= (int)$l['is_active'] === 1 ? 'status-active' : 'status-inactive' ?>">
+                                <?= (int)$l['is_active'] === 1 ? 'فعال' : 'غیرفعال' ?>
+                            </span>
+                        </td>
+                        <td class="actions-cell">
+                            <div class="table-actions">
+                                <?php if ((int)$l['is_active'] === 1): ?>
+                                    <form method="POST" onsubmit="return confirm('پیوند غیرفعال شود؟ تراکنش‌های ثبت‌شده پاک نمی‌شوند.');">
+                                        <?= Csrf::field() ?>
+                                        <input type="hidden" name="action" value="unlink">
+                                        <input type="hidden" name="id" value="<?= (int)$l['id'] ?>">
+                                        <button type="submit" class="btn btn-secondary btn-sm">غیرفعال‌سازی</button>
+                                    </form>
+                                <?php else: ?>
+                                    <span class="hint">—</span>
+                                <?php endif; ?>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    <?php endif; ?>
+</div>
+
+<div class="card">
+    <h2 class="card-title">وصل کردن</h2>
+    <?php if ($shareholders === []): ?>
+        <p class="empty-row">
+            فهرستِ سهامدارها خالی است. اول «همگام‌سازی حالا» را بزنید؛
+            اگر باز هم خالی بود، در حسابداری فروشگاه هیچ سهامداری تعریف نشده.
+        </p>
+    <?php elseif ($activeLinks >= StoreShare::MAX_LINKS): ?>
+        <p class="empty-row">
+            سقف <?= h(toPersianDigits((string)StoreShare::MAX_LINKS)) ?> سهامدار پر شده است.
+            برای وصل کردنِ یک نفرِ تازه، اول یکی را غیرفعال کنید.
+        </p>
+    <?php elseif ($candidates === []): ?>
+        <p class="empty-row">همه‌ی کاربرانِ فعال از قبل وصل شده‌اند.</p>
+    <?php else: ?>
+        <form method="POST">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="action" value="link">
+            <div class="form-group">
+                <label for="ss_user">کاربر <?= h(defined('APP_NAME') ? APP_NAME : 'برنامه') ?></label>
+                <select name="user_id" id="ss_user" class="input" required>
+                    <?php foreach ($candidates as $u): ?>
+                        <option value="<?= (int)$u['id'] ?>">
+                            <?= h($u['full_name'] ?: $u['username']) ?> (<?= h($u['username']) ?>)
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="ss_contact">سهامدار در حسابداری فروشگاه</label>
+                <select name="contact_id" id="ss_contact" class="input" required>
+                    <?php foreach ($shareholders as $sh): ?>
+                        <?php $cid = (int)$sh['id']; ?>
+                        <option value="<?= $cid ?>" <?= isset($taken[$cid]) ? 'disabled' : '' ?>>
+                            <?= h((string)($sh['name'] ?? '—')) ?>
+                            <?= isset($taken[$cid]) ? ' — وصل شده' : '' ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">وصل کن</button>
+        </form>
+        <p class="hint asset-total-note">
+            سهامدار فقط داراییِ <b>خودش</b> را می‌بیند و هیچ اقدامی نمی‌تواند
+            انجام دهد. سهمِ سودش در دفترِ شخصیِ خودش ثبت می‌شود، بدون حساب —
+            پس موجودیِ حساب‌هایش عوض نمی‌شود.
+        </p>
+    <?php endif; ?>
+</div>
+
+<?php endif; ?>
+
+<?php include __DIR__ . '/../includes/footer.php'; ?>
