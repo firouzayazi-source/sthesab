@@ -140,6 +140,19 @@ if (Auth::isLoggedIn()) {
                 <span>دارایی‌ها</span>
             </a>
         </li>
+        <?php
+        /* ⛔ پشتیبانی **بیرون** از بلوکِ `Auth::isAdmin()` است و این
+           عمدی: یک بار «سررسیدها» و «یادآورها» اشتباهاً داخلِ آن بلوک
+           افتادند و کاربر عادی روی دسکتاپ هیچ راهی به آن‌ها نداشت — نه
+           خطایی، نه بریدگی‌ای؛ فقط نبودند. (روی موبایل از شیتِ ابزارها
+           پیدا می‌شدند، پس «روی گوشی درست است» مدرک نبود.) */
+        ?>
+        <li>
+            <a href="<?= APP_BASE_PATH ?>/support.php" class="<?= $currentPage === 'support.php' ? 'active' : '' ?>">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 015.8 1c0 2-3 2.5-3 4"/><circle cx="12" cy="17.5" r=".8" fill="currentColor" stroke="none"/></svg>
+                <span>پشتیبانی و راهنما</span>
+            </a>
+        </li>
         <?php if (Auth::isAdmin()): ?>
         <li class="nav-divider">مدیریت</li>
         <li>

@@ -34,6 +34,7 @@ $__adminTabs = [
     //   وگرنه کاربر روی گوشی و روی دسکتاپ دو ترتیبِ متفاوت می‌بیند.
     'billing.php'    => 'اشتراک و پرداخت',
     'insights.php'   => 'آمار استفاده',
+    'support.php'    => 'پشتیبانی',
     'errors.php'     => 'خطاها',
     'store-share.php' => 'سهامداران فروشگاه',
 ];
@@ -58,6 +59,23 @@ $__here = basename($_SERVER['SCRIPT_NAME'] ?? '');
  *   عادت می‌دهد نگاهش نکند، و آن‌وقت «۳ خطا» هم دیده نمی‌شود.
  */
 $__errOpen = Auth::isAdmin() ? AppErrors::openCount() : 0;
+
+/**
+ * ⛔ و همان استدلال برای تیکتِ منتظرِ پاسخ.
+ *
+ * تیکتی که مدیر ندیده باشد از خطای برنامه بدتر است: پشتِ آن یک آدم
+ * نشسته و منتظر است. نشان اینجاست تا در هر شش صفحه‌ی `admin/` دیده
+ * شود، نه فقط وقتی کسی صفحه‌ی پشتیبانی را باز کند.
+ *
+ * ⚠ **هزینه‌اش یک `COUNT` روی هر صفحه‌ی `admin/` است و نوشته می‌ماند**
+ *   (روی ایندکسِ `idx_tk_wait`). بودجه‌ی صفحه‌های مدیر در
+ *   `test_query_budget` همان‌قدر بالا رفت.
+ *
+ * ⚠ و **با صفر رندر نمی‌شود** — همان قاعده‌ی نشانِ خطاها: نشانِ «۰»
+ *   فقط آدم را عادت می‌دهد نگاهش نکند.
+ */
+require_once __DIR__ . '/../includes/support.php';
+$__supWait = Auth::isAdmin() ? Support::adminWaiting() : 0;
 ?>
 <nav class="admin-tabs" aria-label="بخش‌های مدیریت">
     <?php foreach ($__adminTabs as $__file => $__label): ?>
@@ -67,6 +85,9 @@ $__errOpen = Auth::isAdmin() ? AppErrors::openCount() : 0;
            <?= $__here === $__file ? 'aria-current="page"' : '' ?>><?= h($__label) ?><?php
             if ($__file === 'errors.php' && $__errOpen > 0): ?><span
                 class="admin-tab-badge ltr-num"><?= h(toPersianDigits((string)$__errOpen)) ?></span><?php
+            endif;
+            if ($__file === 'support.php' && $__supWait > 0): ?><span
+                class="admin-tab-badge ltr-num"><?= h(toPersianDigits((string)$__supWait)) ?></span><?php
             endif; ?></a>
     <?php endforeach; ?>
 </nav>

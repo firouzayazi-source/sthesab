@@ -4,7 +4,7 @@ require_once __DIR__ . '/plan_gate.php';
  * فوتر مشترک صفحات داخلی — شامل ناوبری پایین صفحه
  */
 $bottomPage = basename($_SERVER['PHP_SELF']);
-$morePages = ['profile.php', 'wallets.php', 'budget.php', 'savings.php', 'recurring.php', 'due.php', 'search.php', 'data.php', 'cheques.php', 'debts.php', 'my-assets.php', 'category-report.php', 'references.php', 'person.php', 'users.php', 'categories.php', 'insights.php', 'backup.php'];
+$morePages = ['profile.php', 'wallets.php', 'budget.php', 'savings.php', 'recurring.php', 'due.php', 'search.php', 'data.php', 'cheques.php', 'debts.php', 'my-assets.php', 'category-report.php', 'references.php', 'person.php', 'users.php', 'categories.php', 'insights.php', 'backup.php', 'support.php'];
 $moreActive = in_array($bottomPage, $morePages, true);
 ?>
         </div>
@@ -118,6 +118,20 @@ $moreActive = in_array($bottomPage, $morePages, true);
                 <span>مدیریت</span>
             </button>
             <?php endif; ?>
+            <?php
+            /* پشتیبانی — راهنما و تیکت. نشانِ کنارش فقط وقتی می‌آید که
+               پاسخِ خوانده‌نشده‌ای باشد (همان قاعده‌ی نشانِ خطاها: نشانِ
+               صفر آدم را عادت می‌دهد نگاهش نکند).
+
+               ⚠ شمارشش یک `COUNT` روی فوترِ **هر** صفحه بود، پس از
+                 `Notify` استفاده می‌کنیم نه از کوئریِ تازه: پاسخِ تازه
+                 همان لحظه یک اعلان می‌سازد و زنگوله‌ی بالای صفحه که از
+                 قبل شمرده می‌شود خودش عدد را نشان می‌دهد. */
+            ?>
+            <a href="<?= APP_BASE_PATH ?>/support.php" class="tool-card" style="--tc1:#0d9488; --tc2:#0f766e;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 015.8 1c0 2-3 2.5-3 4"/><circle cx="12" cy="17.5" r=".8" fill="currentColor" stroke="none"/></svg>
+                <span>پشتیبانی و راهنما</span>
+            </a>
             <a href="<?= APP_BASE_PATH ?>/profile.php" class="tool-card" style="--tc1:#334155; --tc2:#1e293b;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1"/></svg>
                 <span>حساب کاربری من</span>
@@ -162,6 +176,12 @@ $moreActive = in_array($bottomPage, $morePages, true);
             <a href="<?= APP_BASE_PATH ?>/admin/insights.php" class="tool-card" style="--tc1:#525252; --tc2:#404040;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
                 <span>آمار استفاده</span>
+            </a>
+            <?php /* ⚠ هم‌ترتیب با `admin/_nav.php` — وگرنه کاربر روی گوشی
+                     و روی دسکتاپ دو ترتیبِ متفاوت می‌بیند. */ ?>
+            <a href="<?= APP_BASE_PATH ?>/admin/support.php" class="tool-card" style="--tc1:#0d9488; --tc2:#0f766e;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                <span>پشتیبانی</span>
             </a>
         </div>
     </div>

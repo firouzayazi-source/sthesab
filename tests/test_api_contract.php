@@ -4116,6 +4116,204 @@ if (strpos($pagedSrc, 'function pagedWindow(') === false) {
 
 T::bulk(18, $badUsers, '⛔ مدیریت کاربران: صافیِ یک‌مرجعی، برشِ SQL، و هیچ عملیاتِ کم‌نشده');
 
+// ═══════════════════════════════════════════════════════════════
+// قاعده ۴۹ — مرکز راهنما و تیکت
+// ═══════════════════════════════════════════════════════════════
+//
+// **خواسته‌ی مالکِ نصب:** «پشتیبانی نباید به شکل چت مستقیم و آزاد با
+// ادمین باشد… این بخش را به چت بی‌نهایت تبدیل نکن.»
+//
+// ⛔ چرا قاعده‌ی شکل هم لازم است: تستِ رفتاری
+//    (`tests/test_support.php`) نیمی‌اش با HTTP و نشستِ واقعی کار
+//    می‌کند و به دیتابیس نیاز دارد (`T::blocked`) — روی ماشینی که
+//    دیتابیس ندارد فقط همین قاعده می‌ماند. و سه تا از خرابی‌های این
+//    بخش **بی‌صدا** هستند: نشتیِ تیکتِ کاربرِ دیگر، از کار افتادنِ
+//    نشانِ «پاسخ تازه»، و باز شدنِ دروازه‌ی «هنوز مشکل دارم».
+
+T::group('قاعده ۴۹ — مرکز راهنما و تیکت');
+
+$badSup   = [];
+$supSrc   = $stripComments($root . '/includes/support.php');
+$supPage  = $stripComments($root . '/support.php');
+$supAdmin = $stripComments($root . '/admin/support.php');
+
+// ۱) `ticketFor()` تنها مسیرِ خواندنِ یک تیکت است و **همیشه** با
+//    `user_id` دامنه می‌گیرد. با یک `SELECT … FROM support_tickets
+//    WHERE id = …` در صفحه، اولین مسیری که یادش برود تیکتِ کاربرِ
+//    دیگری را نشان می‌دهد — همان قاعده‌ی «جداسازی کاربران».
+if (strpos($supSrc, 'AND t.user_id = :u') === false) {
+    $badSup[] = '⛔ Support::ticketFor() — دامنه‌ی user_id ندارد';
+}
+foreach (['support.php' => $supPage, 'admin/support.php' => $supAdmin] as $name => $src) {
+    if (preg_match('~FROM\s+support_tickets~i', $src)) {
+        $badSup[] = "⛔ {$name} — کوئریِ مستقیم روی support_tickets (باید از Support:: رد شود)";
+    }
+}
+
+// ۲) `addMessage()` تنها جایی است که `last_sender`/`user_unread`/
+//    `status` نوشته می‌شوند، و هر سه **با هم** در یک تراکنش. اگر یکی
+//    جا بماند خرابی بی‌صداست: مدیر جواب می‌دهد و نشانِ «پاسخ تازه»
+//    هرگز روشن نمی‌شود، یا تیکتِ بسته با پاسخِ تازه بسته می‌ماند.
+if (!preg_match('~function addMessage\(.*?\n    \}~s', $supSrc, $mAdd)) {
+    $badSup[] = '⛔ Support::addMessage() پیدا نشد';
+} else {
+    foreach (["last_sender = 'admin'", 'user_unread = 1', "status = 'answered'",
+              "last_sender = 'user'", 'closed_at = NULL', 'last_activity_at = NOW()'] as $frag) {
+        if (strpos($mAdd[0], $frag) === false) {
+            $badSup[] = "⛔ addMessage() — «{$frag}» را نمی‌نویسد";
+        }
+    }
+    if (strpos($mAdd[0], 'beginTransaction') === false || strpos($mAdd[0], 'commit') === false) {
+        $badSup[] = '⛔ addMessage() — درجِ پیام و به‌روزرسانیِ تیکت زیرِ یک تراکنش نیستند';
+    }
+}
+// و هیچ فایلِ دیگری این ستون‌ها را ننویسد.
+foreach (glob($root . '/{,admin/,api/,includes/}*.php', GLOB_BRACE) as $p) {
+    if (realpath($p) === realpath($root . '/includes/support.php')) { continue; }
+    $s = $stripComments($p);
+    if (preg_match('~UPDATE\s+support_tickets\s+SET[^;]*(last_sender|user_unread)~i', $s)) {
+        $badSup[] = '⛔ ' . basename($p) . ' — خودش last_sender/user_unread می‌نویسد (نسخه‌ی دوم)';
+    }
+}
+
+// ۳) دروازه‌ی «هنوز مشکل دارم» یک **گامِ واقعی در آدرس** است: فرمِ ثبت
+//    فقط در `?v=new` رندر می‌شود. اگر داخلِ `?v=ask` هم بیاید، کلِ
+//    خواسته («اول مقاله، بعد تیکت») بی‌صدا از بین می‌رود و هیچ خطایی
+//    هم نمی‌دهد.
+if (!preg_match("~elseif\s*\(\s*\\\$view\s*===\s*'new'\s*\)~", $supPage)) {
+    $badSup[] = '⛔ support.php — نمای «new» جدا از «ask» نیست';
+}
+if (preg_match("~\\\$view\s*===\s*'ask'.*?\\\$view\s*===\s*'new'~s", $supPage, $mAsk)
+    && strpos($mAsk[0], 'name="subject"') !== false) {
+    $badSup[] = '⛔ support.php — فرمِ ثبت داخلِ نمای «ask» رندر می‌شود (دروازه بی‌اثر)';
+}
+
+// ۴) سقفِ پیامِ کاربر — «چت بی‌نهایت نشود». تنها مرجعش همان ثابت است و
+//    صفحه باید با همان بسنجد، نه یک عددِ سخت‌کد.
+if (!preg_match('~const\s+MAX_USER_MESSAGES\s*=~', $supSrc)) {
+    $badSup[] = '⛔ Support::MAX_USER_MESSAGES تعریف نشده';
+}
+if (substr_count($supPage, 'Support::MAX_USER_MESSAGES') < 2) {
+    $badSup[] = '⛔ support.php — سقفِ پیام هم در مسیرِ POST و هم در رندر اعمال نمی‌شود';
+}
+if (!preg_match('~const\s+MAX_OPEN_TICKETS\s*=~', $supSrc)) {
+    $badSup[] = '⛔ Support::MAX_OPEN_TICKETS تعریف نشده';
+}
+
+// ۵) فهرست‌های بسته تنها مرجع‌اند و ورودی با همان‌ها سنجیده می‌شود
+//    (درسِ `DUE_TABS`): صافیِ ناشناخته باید به پیش‌فرض برگردد، نه
+//    فهرستِ خالی بدهد.
+foreach (['CATEGORIES', 'STATUSES', 'PRIORITIES', 'ADMIN_FILTERS'] as $c) {
+    if (!preg_match('~const\s+' . $c . '\s*=~', $supSrc)) {
+        $badSup[] = "⛔ Support::{$c} تعریف نشده";
+    }
+}
+// `ADMIN_FILTERS` هم منو را می‌سازد هم `$_GET` را می‌سنجد، و
+// `adminFilterSql()` برای صافیِ ناشناخته شاخه‌ی `default` دارد —
+// وگرنه یک آدرسِ دست‌کاری‌شده فهرستِ خالی می‌داد و مدیر فکر می‌کرد
+// تیکتی نیست.
+if (strpos($supAdmin, 'isset(Support::ADMIN_FILTERS[') === false) {
+    $badSup[] = '⛔ admin/support.php — ورودیِ صافی با ADMIN_FILTERS سنجیده نمی‌شود';
+}
+if (strpos($supAdmin, 'foreach (Support::ADMIN_FILTERS as') === false) {
+    $badSup[] = '⛔ admin/support.php — منوی صافی از ADMIN_FILTERS رندر نمی‌شود (فهرستِ دوم)';
+}
+if (!preg_match('~function adminFilterSql\(.*?\n    \}~s', $supSrc, $mFilt)) {
+    $badSup[] = '⛔ Support::adminFilterSql() پیدا نشد';
+} elseif (strpos($mFilt[0], 'default:') === false
+          || strpos($mFilt[0], 'self::STATUSES[$filter]') === false) {
+    $badSup[] = '⛔ adminFilterSql() — صافیِ ناشناخته fallback ندارد یا با STATUSES سنجیده نمی‌شود';
+} elseif (substr_count($mFilt[0], "t.last_sender = 'user' AND t.status <> 'closed'") < 2) {
+    // ⚠ «`default:` وجود دارد» کافی نیست — جهش نشان داد که می‌شود شاخه‌ی
+    //   پیش‌فرض را نگه داشت و مقدارش را `1 = 0` کرد: آن‌وقت یک آدرسِ
+    //   دست‌کاری‌شده فهرستِ **خالی** می‌دهد و مدیر فکر می‌کند تیکتی
+    //   نیست. پس همان SQLِ «منتظر پاسخ من» باید دو بار بیاید.
+    $badSup[] = '⛔ adminFilterSql() — fallback همان نمای «منتظر پاسخ من» را برنمی‌گرداند';
+}
+foreach (['setStatus' => 'STATUSES', 'setPriority' => 'PRIORITIES'] as $fn => $list) {
+    if (preg_match('~function ' . $fn . '\(.*?\n    \}~s', $supSrc, $mFn)
+        && strpos($mFn[0], 'self::' . $list) === false) {
+        $badSup[] = "⛔ Support::{$fn}() مقدار را با {$list} نمی‌سنجد";
+    }
+}
+
+// ۶) هیچ اندپوینتِ **نویسنده‌ی** تازه‌ای در `api/` ساخته نشد: همه‌ی
+//    نوشتن‌ها فرمِ POST با CSRF و بعد ریدایرکت‌اند (الگوی
+//    `admin/errors.php`). پس بدونِ جاوااسکریپت هم کار می‌کند و
+//    تازه‌سازیِ صفحه پیامِ تکراری نمی‌سازد.
+foreach (glob($root . '/api/*support*.php') as $p) {
+    if (basename($p) !== 'view_support_file.php') {
+        $badSup[] = '⛔ api/' . basename($p) . ' — اندپوینتِ تازه‌ی پشتیبانی (باید POST→redirect باشد)';
+    }
+}
+foreach (['support.php' => $supPage, 'admin/support.php' => $supAdmin] as $name => $src) {
+    if (strpos($src, 'Csrf::verifyOrFail') === false) {
+        $badSup[] = "⛔ {$name} — CSRF ندارد";
+    }
+    if (strpos($src, "header('Location: ") === false) {
+        $badSup[] = "⛔ {$name} — بعد از POST ریدایرکت نمی‌کند";
+    }
+}
+if (strpos($supAdmin, 'Auth::requireAdmin()') === false) {
+    $badSup[] = '⛔ admin/support.php — requireAdmin ندارد';
+}
+if (strpos($stripComments($root . '/admin/support-content.php'), 'Auth::requireAdmin()') === false) {
+    $badSup[] = '⛔ admin/support-content.php — requireAdmin ندارد';
+}
+
+// ۷) تحویلِ پیوست فقط از راهی که مالکیت را می‌سنجد. بدونِ آن شرط، هر
+//    کاربری با حدسِ شناسه فایلِ دیگری را می‌گرفت.
+$supFile = $stripComments($root . '/api/view_support_file.php');
+if (strpos($supFile, 'Auth::isAdmin()') === false || strpos($supFile, 'user_id = :u') === false) {
+    $badSup[] = '⛔ api/view_support_file.php — مالکیتِ پیوست سنجیده نمی‌شود';
+}
+
+// ۸) نامِ پاسخِ آماده را مدیر می‌نویسد و داخلِ `<script>` می‌نشیند —
+//    `JSON_HEX_TAG` اجباری است، همان درسِ قاعده ۳۸.
+if (preg_match('~window\.SUPPORT_CANNED\s*=\s*<\?=\s*json_encode\((.*?)\)\s*\?>~s', $supAdmin, $mJ)) {
+    if (strpos($mJ[1], 'JSON_HEX_TAG') === false) {
+        $badSup[] = '⛔ admin/support.php — SUPPORT_CANNED بدونِ JSON_HEX_TAG';
+    }
+} else {
+    $badSup[] = '⛔ admin/support.php — window.SUPPORT_CANNED رندر نمی‌شود';
+}
+
+// ۹) هر سه جدول باید در فهرست‌های بسته ثبت شده باشند، وگرنه دو خرابیِ
+//    بی‌صدا: فایلِ دست‌سازِ بازگرداندن می‌توانست پاسخِ جعلیِ مدیر
+//    بسازد، و «آمار استفاده» گفت‌وگو را رکوردِ دفتر می‌شمرد.
+$impSrc  = $stripComments($root . '/includes/user_import.php');
+$statSrc = $stripComments($root . '/includes/admin_insights.php');
+foreach (['support_tickets', 'support_messages', 'support_attachments'] as $t) {
+    if (strpos($impSrc, "'{$t}'") === false) {
+        $badSup[] = "⛔ {$t} در USER_IMPORT_SKIP نیست";
+    }
+    if (strpos($statSrc, "'{$t}'") === false) {
+        $badSup[] = "⛔ {$t} در NON_ACTIVITY_TABLES نیست";
+    }
+}
+
+// ۱۰) migration در **هر دو** فهرستِ `migrate.sh` ثبت شده باشد — بدونِ
+//     شاهد، `--verify` همان دروغی را می‌گوید که برای گرفتنش ساخته شده.
+$mig = file_get_contents($root . '/deploy/migrate.sh');
+if (strpos($mig, 'migration_support.sql') === false) {
+    $badSup[] = '⛔ migration_support.sql در MIGRATIONS ثبت نشده';
+}
+if (strpos($mig, '[migration_support.sql]=') === false) {
+    $badSup[] = '⛔ migration_support.sql در SENTINEL شاهد ندارد';
+}
+
+// ۱۱) نشانِ «پاسخ تازه» از `Notify` می‌آید، نه یک کوئریِ تازه روی هر
+//     صفحه: شمارشِ زنگِ سرآیند از قبل یک کوئری دارد و این قابلیت
+//     هیچ هزینه‌ای به آن اضافه نکرد.
+if (strpos($supSrc, 'Notify::push(') === false) {
+    $badSup[] = '⛔ Support::notifyReply() از Notify::push استفاده نمی‌کند';
+}
+if (!preg_match("~'support:msg:'~", $supSrc)) {
+    $badSup[] = '⛔ اعلانِ پاسخ dedup_key ندارد (فهرستِ اعلان پر از تکراری می‌شود)';
+}
+
+T::bulk(22, $badSup, '⛔ پشتیبانی: یک مرجع، دامنه‌ی کاربر، دروازه‌ی مقاله، و سقفِ گفت‌وگو');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

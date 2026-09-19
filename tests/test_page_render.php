@@ -86,6 +86,7 @@ const EXPECT = [
     'data.php'              => 'page',
     'privacy.php'           => 'page',
     'pro.php'               => 'page',
+    'support.php'           => 'page',
 
     // ⚠ CSV می‌دهد، نه HTML — پس `</html>` از آن خواسته نمی‌شود.
     'export_transactions.php' => 'file',
@@ -119,6 +120,8 @@ const EXPECT = [
     'admin/insights.php'    => 'page',
     'admin/errors.php'      => 'page',
     'admin/store-share.php' => 'page',
+    'admin/support.php'     => 'page',
+    'admin/support-content.php' => 'page',
     // ⛔ partial است، نه صفحه. nginx مسیرِ `/admin/` را نمی‌بندد، پس
     //    بدونِ نگهبانِ خودش از بیرون ۵۰۰ می‌داد.
     'admin/_nav.php'        => 'blocked',

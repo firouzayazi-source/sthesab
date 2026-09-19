@@ -937,6 +937,119 @@ textarea { resize: vertical; }
 .user-filters .user-filter-q { flex: 1 1 200px; min-width: 0; }
 .user-filters select { flex: 0 1 auto; width: auto; min-width: 0; }
 .user-filter-note { margin: -4px 0 10px; }
+.user-filters input[type="date"] { flex: 0 1 auto; width: auto; min-width: 0; }
+
+/* ---------- پشتیبانی: مرکز راهنما و تیکت ---------- */
+
+.sup-flash {
+    padding: 11px 14px; border-radius: 12px; margin-bottom: 12px;
+    border: 1px solid var(--line); font-size: .93rem; line-height: 1.8;
+}
+/* ⚠ زمینه‌ی صریح لازم است: `html[data-theme="dark"] .card` با وزنِ
+   بیشتر هر زمینه‌ای را بازنویسی می‌کند — همان درسِ `.start-card`. این
+   عنصر `.card` نیست، ولی متغیرها تم‌آگاه‌اند و همان کار را می‌کنند. */
+.sup-flash-ok  { background: var(--in-wash);   border-color: var(--in);   color: var(--in); }
+.sup-flash-err { background: var(--warn-wash); border-color: var(--warn-ink); color: var(--warn-ink); }
+
+.sup-empty { text-align: center; padding: 26px 16px; }
+.sup-empty h2 { margin: 0 0 8px; font-size: 1.02rem; }
+.sup-empty p { margin: 0 0 14px; color: var(--ink-soft); line-height: 1.9; }
+
+.sup-note { margin: 0 0 10px; color: var(--ink-soft); font-size: .9rem; line-height: 1.9; }
+.sup-cat-title { margin: 0 0 10px; font-size: 1rem; }
+.sup-cat-card + .sup-cat-card { margin-top: 12px; }
+
+.sup-search-label { display: block; margin-bottom: 6px; font-size: .9rem; color: var(--ink-soft); }
+.sup-search-row { display: flex; gap: 8px; align-items: center; }
+/* ⚠ `min-width: 0` کنارِ `flex: 1`: بدونش فیلد حاضر نیست از
+   placeholder اش کوتاه‌تر شود و ردیف روی موبایل سرریز می‌کند. */
+.sup-search-row input[type="search"] { flex: 1 1 auto; min-width: 0; }
+
+.sup-article { border-top: 1px solid var(--line); padding: 10px 0; }
+.sup-article:first-of-type { border-top: 0; }
+.sup-article summary {
+    cursor: pointer; font-weight: 600; font-size: .95rem; line-height: 1.8;
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.sup-article summary::-webkit-details-marker { display: none; }
+.sup-article-body { margin-top: 8px; color: var(--ink-soft); line-height: 2; font-size: .92rem; }
+.sup-cat-tag {
+    font-size: .74rem; padding: 2px 8px; border-radius: 999px;
+    background: var(--chip-bg); color: var(--ink-soft); font-weight: 500;
+}
+
+.sup-pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: 8px; }
+.sup-pick-item {
+    display: block; padding: 13px 14px; border: 1px solid var(--line);
+    border-radius: 12px; font-size: .93rem; color: inherit; text-decoration: none;
+}
+.sup-pick-item:hover { border-color: var(--brand); }
+
+.sup-gate { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+.sup-still { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
+.sup-still p { margin: 0; color: var(--ink-soft); }
+.sup-close-form { margin-top: 10px; text-align: center; }
+.sup-meta-note { margin-top: -4px; }
+
+.sup-ticket-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.sup-no { font-weight: 700; }
+.sup-subject { margin: 0 0 8px; font-size: 1.05rem; line-height: 1.7; }
+.sup-meta { margin: 0; display: flex; gap: 10px; flex-wrap: wrap; font-size: .84rem; color: var(--ink-soft); }
+.sup-tech { margin: 8px 0 0; font-size: .78rem; color: var(--ink-soft); opacity: .75; word-break: break-all; }
+
+/* ⚠ `white-space: nowrap` لازم است — همان درسِ نیم‌فاصله در قاعده ۳۱:
+   «پاسخ داده شد» جای شکستن دارد و نشان را دو خط می‌کرد. */
+.sup-status, .sup-prio {
+    font-size: .76rem; padding: 3px 9px; border-radius: 999px;
+    font-weight: 600; white-space: nowrap;
+}
+.sup-status-new      { background: var(--in-wash);   color: var(--in); }
+.sup-status-review   { background: var(--warn-wash); color: var(--warn-ink); }
+/* ⚠ «پاسخ داده شد» عمداً رنگِ هشدار نمی‌گیرد: چیزی خراب نشده. و
+   `--gold` هم به کار نمی‌رود — پالتِ دومِ همین فایل آن را به آبی
+   بازتعریف می‌کند و نشان با نشانِ «اطلاع» یکی دیده می‌شد. */
+.sup-status-answered { background: var(--chip-bg); color: var(--brand); }
+.sup-status-closed   { background: var(--chip-bg);   color: var(--ink-soft); }
+.sup-prio-low    { background: var(--chip-bg);   color: var(--ink-soft); }
+.sup-prio-normal { background: var(--chip-bg);   color: var(--ink-soft); }
+.sup-prio-high   { background: var(--out-wash);  color: var(--out); }
+
+.sup-thread { display: flex; flex-direction: column; gap: 12px; }
+.sup-msg { border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; }
+.sup-msg-admin { border-color: var(--brand); }
+.sup-msg-who {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    font-size: .82rem; font-weight: 600; color: var(--ink-soft); margin-bottom: 6px;
+}
+.sup-msg-time { font-weight: 400; opacity: .8; }
+.sup-msg-body { line-height: 2; font-size: .93rem; white-space: pre-wrap; }
+.sup-file {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
+    font-size: .84rem; color: var(--brand); text-decoration: none;
+}
+
+.sup-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 11px 0; border-top: 1px solid var(--line); color: inherit; text-decoration: none;
+}
+.sup-row:first-of-type { border-top: 0; }
+.sup-row-main { min-width: 0; }
+.sup-row-title { display: block; font-weight: 600; font-size: .94rem; }
+.sup-row-sub { display: block; font-size: .8rem; color: var(--ink-soft); margin-top: 3px; }
+.sup-row-side { display: flex; align-items: center; gap: 8px; flex: none; }
+.sup-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--out); display: inline-block; }
+.sup-wait { color: var(--out); font-weight: 900; }
+
+.sup-badge {
+    display: inline-block; min-width: 17px; padding: 1px 5px; margin-inline-start: 5px;
+    border-radius: 999px; background: var(--out); color: #fff;
+    font-size: .7rem; font-weight: 700; text-align: center;
+}
+
+.sup-admin-ops { display: flex; gap: 18px; flex-wrap: wrap; align-items: flex-end; }
+.sup-op-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.sup-op-form label { font-size: .86rem; color: var(--ink-soft); }
+.sup-op-form select { width: auto; min-width: 0; }
 
 /* ---------- کد تخفیف ---------- */
 

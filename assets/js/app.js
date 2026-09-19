@@ -5454,6 +5454,26 @@ document.addEventListener('DOMContentLoaded', function () {
                     .catch(function () { alert(netErr()); });
             });
         });
+    /* ── پاسخِ آماده‌ی پشتیبانی ──
+       انتخابگر فقط متن را داخلِ همان `<textarea>` می‌ریزد و چیزی
+       نمی‌فرستد: مدیر باید بتواند قبلِ ارسال ویرایشش کند.
+
+       ⚠ متنِ قبلی **پاک نمی‌شود** بلکه پاسخِ آماده به آن اضافه می‌شود؛
+         وگرنه یک انتخابِ اشتباه، جمله‌ای را که مدیر نوشته بی‌صدا از
+         بین می‌برد و راهِ برگشتی هم ندارد. */
+    (function () {
+        var sel = document.getElementById('supCanned');
+        var box = document.getElementById('supAdminReply');
+        if (!sel || !box || !window.SUPPORT_CANNED) return;
+        sel.addEventListener('change', function () {
+            var body = window.SUPPORT_CANNED[sel.value];
+            if (!body) return;
+            box.value = box.value.trim() === '' ? body : (box.value.replace(/\s+$/, '') + '\n\n' + body);
+            box.focus();
+            sel.selectedIndex = 0;
+        });
+    })();
+
         document.querySelectorAll('.js-del-sale').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 if (!confirm('این فروش حذف شود؟')) return;
