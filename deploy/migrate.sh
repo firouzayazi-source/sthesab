@@ -119,6 +119,7 @@ MIGRATIONS=(
     migration_store_owed.sql
     migration_support.sql
     migration_user_roles.sql
+    migration_trades_default.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -288,6 +289,12 @@ declare -A SENTINEL=(
     #   `--verify` برای گرفتنش ساخته شده.
     [migration_support.sql]="app_settings~setting_key=support_seeded"
     [migration_user_roles.sql]="users.role>=20"
+    # ⚠ شاهدش **داده** است نه ساختار، و عمداً: این فایل پیش‌فرضِ یک ستونِ
+    #   موجود را عوض می‌کند و هیچ شاهدِ ساختاری‌ای برای «مقدارِ پیش‌فرض»
+    #   وجود ندارد — شاهدِ «ستون هست» همیشه درست می‌بود و `--verify`
+    #   همان دروغی را می‌گفت که برای گرفتنش ساخته شده. آن `INSERT`
+    #   آخرین کارِ فایل است، پس وجودش یعنی کلِ فایل اجرا شده.
+    [migration_trades_default.sql]="app_settings~setting_key=trades_default_on"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

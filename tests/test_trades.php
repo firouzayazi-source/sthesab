@@ -89,7 +89,77 @@ try {
     // ---------------------------------------------------------------
     T::group('پیش‌فرض و روشن/خاموش');
 
-    T::same(false, tradesEnabled($pdo, $uid), 'بخش معاملات به‌صورت پیش‌فرض خاموش است');
+    // ⛔ fixture این ستون را در `INSERT` نمی‌آورد — دقیقاً مثل
+    //    `createUserAccount()` — پس این بررسی واقعاً **پیش‌فرضِ ستون** را
+    //    می‌سنجد، نه یک مقدارِ دستی. جهشِ «پیش‌فرض را به ۰ برگردان» همین
+    //    را قرمز می‌کند.
+    T::same(true, tradesEnabled($pdo, $uid), 'بخش معاملات برای کاربرِ تازه پیش‌فرض روشن است');
+
+    // ---------------------------------------------------------------
+    // ⛔ و نیمه‌ی دومِ همان تصمیم: کاربرانِ **موجود** یک بار روشن
+    //    می‌شوند و از آن به بعد انتخابشان محترم است. این گروه خودِ فایلِ
+    //    migration را دوباره اجرا می‌کند — با ادعا کردن به‌جای اجرا،
+    //    جهشِ «نگهبانِ نشانه را بردار» زنده می‌ماند و هر deploy بی‌صدا
+    //    کلیدِ خاموش‌شده‌ی کاربر را روشن می‌کرد.
+    T::group('پیش‌فرضِ روشن: فقط یک بار');
+
+    $readTrades = function (int $id) use ($pdo): string {
+        $st = $pdo->prepare('SELECT trades_enabled FROM users WHERE id = :u');
+        $st->execute(['u' => $id]);
+        return (string)$st->fetchColumn();
+    };
+
+    // ⚠ کلِ ستون برداشته و **دقیقاً** برگردانده می‌شود: شاخه‌ی «بدونِ
+    //   نشانه» به تعریف همه‌ی کاربران را دست می‌زند و این یک دیتابیسِ
+    //   دارای داده است (همان کاری که test_error_triage با تاریخِ
+    //   خطاهای واقعی می‌کند).
+    $snapTrades = $pdo->query('SELECT id, trades_enabled FROM users')->fetchAll(PDO::FETCH_KEY_PAIR);
+    $snapMarker = getSetting('trades_default_on');
+
+    // ⚠ نشانه با SQL خوانده می‌شود نه `getSetting()`: خودِ migration آن
+    //   را مستقیم می‌نویسد، پس کشِ درخواستیِ `getSetting()` هنوز «نیست»
+    //   را یادش است و بررسی روی کدِ **سالم** قرمز می‌شد. اولین اجرای
+    //   واقعی روی دیتابیس همین را گرفت، نه بازبینی.
+    $readMarker = function () use ($pdo): string {
+        $st = $pdo->query("SELECT setting_value FROM app_settings WHERE setting_key = 'trades_default_on'");
+        return (string)$st->fetchColumn();
+    };
+
+    $runTradesMigration = function () use ($pdo) {
+        $sql = (string)file_get_contents(__DIR__ . '/../migration_trades_default.sql');
+        $lines = [];
+        foreach (explode("\n", $sql) as $line) {
+            if (strncmp(ltrim($line), '--', 2) === 0) { continue; }
+            $lines[] = $line;
+        }
+        foreach (explode(';', implode("\n", $lines)) as $stmt) {
+            $stmt = trim($stmt);
+            if ($stmt === '') { continue; }
+            $res = $pdo->query($stmt);
+            if ($res instanceof PDOStatement) { $res->closeCursor(); }
+        }
+    };
+
+    try {
+        // الف) نشانه هست → انتخابِ کاربر دست نمی‌خورد
+        setSetting('trades_default_on', '1');
+        $pdo->prepare('UPDATE users SET trades_enabled = 0 WHERE id = :u')->execute(['u' => $uid]);
+        $runTradesMigration();
+        T::same('0', $readTrades($uid), 'با نشانه‌ی موجود، کلیدی که کاربر خاموش کرده خاموش می‌ماند');
+
+        // ب) نشانه نیست → همان یک بار روشن می‌شود و نشانه نوشته می‌شود
+        forgetSetting('trades_default_on');
+        $runTradesMigration();
+        T::same('1', $readTrades($uid), 'بدونِ نشانه، کاربرِ موجود یک بار روشن می‌شود');
+        T::same('1', $readMarker(), 'و نشانه بعد از اجرا نوشته می‌شود');
+    } finally {
+        foreach ($snapTrades as $sid => $val) {
+            $pdo->prepare('UPDATE users SET trades_enabled = :v WHERE id = :u')
+                ->execute(['v' => (int)$val, 'u' => (int)$sid]);
+        }
+        if ($snapMarker === null) { forgetSetting('trades_default_on'); }
+        else { setSetting('trades_default_on', $snapMarker); }
+    }
 
     // ---------------------------------------------------------------
     T::group('ورودی تعداد');

@@ -4727,6 +4727,88 @@ if ($ruleBody($foldCss, '.ucard.is-flagged') === null) {
 
 T::bulk(11, $badFold, '⛔ کارت‌های کاربران تاشو، بسته‌به‌پیش‌فرض، و نشان‌دار می‌مانند');
 
+// -------------------------------------------------------------------
+// ⛔ قاعده ۵۳ — بخش معاملات پیش‌فرض روشن، و فقط یک بار
+//
+// دو خرابیِ کاملاً بی‌صدا را می‌بندد:
+//  الف) نگهبانِ نشانه از migration برداشته شود → **هر** deploy کلیدی را
+//       که کاربر عمداً خاموش کرده دوباره روشن می‌کند، بی‌هیچ خطایی.
+//  ب) کسی `trades_enabled` را در `INSERT`ِ `createUserAccount()`
+//       بنویسد → پیش‌فرض دو مرجع پیدا می‌کند و عوض کردنِ یکی، آن یکی را
+//       بی‌صدا عقب می‌گذارد (همان درسِ `ACTIVE_DAYS`).
+//
+// تستِ رفتاری‌اش (`tests/test_trades.php`) به دیتابیس نیاز دارد و روی
+// ماشینِ بی‌دیتابیس `T::blocked` می‌شود — پس این قاعده تنها چیزی است
+// که آنجا می‌ماند (همان استدلالِ قاعده ۴۸ و ۵۱).
+// -------------------------------------------------------------------
+T::group('قاعده ۵۳ — پیش‌فرضِ روشنِ معاملات');
+
+$badTd  = [];
+$tdFile = $root . '/migration_trades_default.sql';
+$tdSrc  = is_file($tdFile) ? (string)file_get_contents($tdFile) : '';
+$mgSrc  = (string)file_get_contents($root . '/deploy/migrate.sh');
+
+if ($tdSrc === '') {
+    $badTd[] = '⛔ migration_trades_default.sql نیست — قاعده ۵۳ کور شده';
+} else {
+    // ۱) پیش‌فرضِ ستون برای کاربرِ تازه
+    if (!preg_match('~ALTER\s+TABLE\s+`users`\s+ALTER\s+COLUMN\s+`trades_enabled`\s+SET\s+DEFAULT\s+1~i', $tdSrc)) {
+        $badTd[] = '⛔ migration_trades_default — پیش‌فرضِ ستون روی ۱ گذاشته نمی‌شود';
+    }
+    // ۲) نگهبانِ نشانه: خودِ `UPDATE` باید پشتِ «نشانه نیست» باشد.
+    //    ⚠ بررسی روی **همان بلوکِ IF** است نه کلِ فایل: نامِ نشانه در
+    //    `INSERT` پایانی هم هست، پس جست‌وجوی سراسری پوچ می‌بود و جهشِ
+    //    «نگهبان را بردار» را زنده می‌گذاشت.
+    $guarded = false;
+    if (preg_match_all('~SET\s+@sql\s*=\s*IF\((.*?)\);~s', $tdSrc, $mIf)) {
+        foreach ($mIf[1] as $body) {
+            if (!preg_match('~UPDATE\s+`users`\s+SET\s+`trades_enabled`~i', $body)) { continue; }
+            if (preg_match('~@already_on\s*=\s*0~', $body)) { $guarded = true; }
+        }
+    }
+    if (!$guarded) {
+        $badTd[] = '⛔ migration_trades_default — روشن کردنِ کاربرانِ موجود بی‌قید است؛ هر deploy کارِ کاربر را پس می‌زند';
+    }
+    // ۳) و آن نشانه واقعاً از `app_settings` خوانده و بعد نوشته شود.
+    if (!preg_match("~`setting_key`\s*=\s*'trades_default_on'~", $tdSrc)) {
+        $badTd[] = '⛔ migration_trades_default — نشانه‌ی trades_default_on خوانده نمی‌شود';
+    }
+    if (!preg_match("~INSERT\s+INTO\s+`app_settings`.*?'trades_default_on'~s", $tdSrc)) {
+        $badTd[] = '⛔ migration_trades_default — نشانه بعد از اجرا نوشته نمی‌شود';
+    }
+}
+
+// ۴) ثبت در هر دو فهرستِ migrate.sh، و **بعد از** فایلی که ستون را
+//    می‌سازد: با ترتیبِ برعکس، `ALTER` روی ستونی می‌افتد که هنوز نیست.
+$posCol = strpos($mgSrc, "\n    migration_trades.sql\n");
+$posDef = strpos($mgSrc, "\n    migration_trades_default.sql\n");
+if ($posDef === false) {
+    $badTd[] = '⛔ migration_trades_default.sql در آرایه‌ی MIGRATIONS نیست';
+} elseif ($posCol === false || $posDef < $posCol) {
+    $badTd[] = '⛔ migration_trades_default.sql پیش از migration_trades.sql آمده';
+}
+if (!str_contains($mgSrc, '[migration_trades_default.sql]=')) {
+    $badTd[] = '⛔ migration_trades_default.sql شاهدی در SENTINEL ندارد';
+}
+
+// ۵) پیش‌فرض فقط یک مرجع دارد: خودِ ستون.
+$signupNo = $stripComments($root . '/includes/signup.php');
+if (str_contains($signupNo, 'trades_enabled')) {
+    $badTd[] = '⛔ includes/signup.php — پیش‌فرضِ معاملات مرجعِ دومی پیدا کرده؛ فقط پیش‌فرضِ ستون';
+}
+
+// ۶) و خواندنش از همان ستون است، نه یک مقدارِ سخت‌کد.
+$fnSrc = $stripComments($root . '/includes/functions.php');
+if (preg_match('~function\s+tradesEnabled\s*\(.*?(?=\nfunction\s)~s', $fnSrc, $mTe)) {
+    if (!preg_match('~SELECT\s+trades_enabled\s+FROM\s+users~i', $mTe[0])) {
+        $badTd[] = '⛔ tradesEnabled() ستون را نمی‌خواند؛ پیش‌فرض سخت‌کد شده';
+    }
+} else {
+    $badTd[] = '⛔ tradesEnabled() پیدا نشد — قاعده ۵۳ کور شده';
+}
+
+T::bulk(8, $badTd, '⛔ معاملات پیش‌فرض روشن است و انتخابِ کاربر فقط یک بار بازنویسی می‌شود');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

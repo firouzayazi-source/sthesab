@@ -3858,7 +3858,18 @@ function tradesTablesExist(PDO $pdo): bool
     return tableExists('trades');
 }
 
-/** آیا این کاربر بخش معاملات را روشن کرده؟ پیش‌فرض خاموش. */
+/**
+ * آیا این کاربر بخش معاملات را می‌بیند؟
+ *
+ * ⛔ تنها مرجعِ «پیش‌فرض» خودِ ستون است (`users.trades_enabled`, پیش‌فرضِ
+ *    ۱ از `migration_trades_default.sql`) — نه یک `?:` در این تابع و نه
+ *    مقداری در `INSERT`ِ `createUserAccount()`. با نسخه‌ی دوم، عوض کردنِ
+ *    پیش‌فرض یک جا اثر می‌کرد و جای دیگر نه.
+ *
+ * ⚠ نبودِ ستون `false` می‌دهد و این درست است: ستون را همان
+ *   `migration_trades.sql` می‌سازد که جدول‌های `trades` را هم می‌سازد،
+ *   پس بی‌ستون اصلاً بخشی برای دیدن وجود ندارد.
+ */
 function tradesEnabled(PDO $pdo, int $userId): bool
 {
     static $cache = [];
