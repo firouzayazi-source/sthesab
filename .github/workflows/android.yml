@@ -51,7 +51,41 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
+      # ⛔ `android-actions/setup-android` برداشته شد، نه پین.
+      #
+      # آن اکشن بی‌قید `sdkmanager tools` را نصب می‌کند و گوگل بسته‌ی
+      # `tools` را از مخزن برداشته است: «Warning: Failed to find package
+      # 'tools'» و خروجِ ۱. یعنی ساخت برای چیزی قرمز می‌شد که **هیچ ربطی
+      # به کدِ ما ندارد** و با هیچ تغییری در این مخزن درست نمی‌شد.
+      #
+      # ایمیجِ ubuntu-latest خودش Android SDK را دارد، پس تنها کارِ لازم
+      # نصبِ **دقیقاً** همان چیزی است که پروژه می‌خواهد. با فهرستِ صریح،
+      # نسخه‌ی SDK هم دیگر به محتوای ایمیجِ آن روز بند نیست.
+      - name: آماده‌سازی Android SDK
+        run: |
+          set -eu
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK" || { echo "::error::Android SDK روی ایمیج پیدا نشد: $SDK"; exit 1; }
+
+          # ⚠ مسیرِ cmdline-tools نسخه‌دار است (`16.0/`, `latest/`, …) و
+          #    با ایمیج عوض می‌شود، پس سخت‌کد نمی‌شود.
+          SDKMGR=$(find "$SDK/cmdline-tools" -name sdkmanager -type f 2>/dev/null | sort | tail -1)
+          test -n "$SDKMGR" || { echo "::error::sdkmanager پیدا نشد."; exit 1; }
+
+          yes | "$SDKMGR" --licenses >/dev/null 2>&1 || true
+          "$SDKMGR" "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+
+          # ⛔ «دستور خطا نداد» با «ابزار سرِ جایش است» یکی نیست.
+          #    بدونِ این سنجش، نبودِ build-tools تازه در گامِ بازرسیِ
+          #    manifest معلوم می‌شد — یعنی بعد از چند دقیقه ساخت.
+          test -d "$SDK/platforms/android-35" \
+            || { echo "::error::platforms;android-35 نصب نشد."; exit 1; }
+          find "$SDK/build-tools" -name aapt2 -type f | grep -q . \
+            || { echo "::error::aapt2 در build-tools پیدا نشد."; exit 1; }
+
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          echo "✓ Android SDK آماده است: $SDK"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
