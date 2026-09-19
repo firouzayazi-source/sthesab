@@ -592,6 +592,17 @@ textarea { resize: vertical; }
 .version-line { margin-top: 16px; text-align: center; font-size: 11.5px; }
 .privacy-p { font-size: 13.5px; line-height: 2; color: var(--ink-soft); margin-bottom: 12px; }
 
+/* پوسته‌ی صفحه‌ی حریم خصوصی برای بازدیدکننده‌ی واردنشده (بازبینِ فروشگاه
+   یا کسی که هنوز حساب نساخته). عمداً نه منو دارد نه نوار پایین: آن‌ها به
+   نشستِ کاربر بندند و اینجا نشستی در کار نیست. عرض همان عرضِ خواندنِ
+   `.page-content` است تا متن در هر دو حالت یک شکل خوانده شود. */
+.privacy-shell {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: calc(20px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom));
+}
+.privacy-title { font-size: 17px; font-weight: 700; margin-bottom: 16px; text-align: center; }
+
 /* ورودیِ کدِ پیامکی. `direction: ltr` عمدی است: کد یک عددِ لاتین است و
    در صفحه‌ی راست‌به‌راست، رقم‌ها از سمتِ اشتباه پر می‌شدند. */
 .otp-input {

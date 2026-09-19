@@ -233,12 +233,57 @@ jobs:
               fi
             done
             echo "✓ گیرنده‌ی پیامک و مجوزش در APK هستند."
+
+            # ⛔ versionCode از خودِ APK خوانده می‌شود، نه از build.gradle.kts.
+            #    فروشگاه (مایکت/کافه‌بازار) این عدد را می‌بیند، نه فایلِ
+            #    منبع — و گامِ بعدی با همین عدد قضاوت می‌کند.
+            VC=$("$AAPT" dump badging "$APK" 2>/dev/null \
+                 | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -1)
+            test -n "$VC" || { echo "::error::versionCode از APK خوانده نشد."; exit 1; }
+            echo "VERSION_CODE=$VC" >> "$GITHUB_ENV"
+            echo "✓ versionCode = $VC"
           else
             echo "::warning::aapt2 پیدا نشد؛ بازرسیِ manifestِ APK انجام نشد."
           fi
 
           cp "$APK" "$GITHUB_WORKSPACE/hesabland-${{ github.run_number }}.apk"
           ls -lh "$GITHUB_WORKSPACE/hesabland-${{ github.run_number }}.apk"
+
+      # ⛔ «ساخت موفق شد» با «فروشگاه قبولش می‌کند» یکی نیست.
+      #
+      # مایکت (و هر فروشگاه دیگری) نسخه‌ای را که `versionCode` اش قبلاً
+      # بارگذاری شده **رد می‌کند**. خرابی‌اش بی‌صداست و دقیقاً در بدترین
+      # جا دیده می‌شود: APK سالم است، ساخت سبز است، و تازه پشتِ فرمِ
+      # بارگذاری معلوم می‌شود که باید از اول ساخت. و چون `versionCode`
+      # دستی در `build.gradle.kts` نوشته می‌شود، فراموش کردنش کارِ
+      # همیشگی است.
+      #
+      # ⚠ مرجعِ مقایسه، یادداشتِ همین Release هاست — نه یک فایلِ دوم در
+      #   مخزن که با فراموشیِ دیگری کهنه می‌شود. اگر Release ای بدونِ
+      #   این خط باشد (نسخه‌های پیش از این گام)، صفر شمرده می‌شود و
+      #   بررسی آبرومندانه از رویش رد می‌شود، نه اینکه بشکند.
+      - name: سنجش versionCode در برابر نسخه‌های منتشرشده
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          test -n "${VERSION_CODE:-}" || { echo "::error::versionCode خوانده نشده."; exit 1; }
+
+          MAX=0
+          for TAG in $(gh release list --limit 100 --json tagName -q '.[].tagName'); do
+            N=$(gh release view "$TAG" --json body -q .body 2>/dev/null \
+                | sed -n 's/^ *versionCode: *\([0-9]*\).*/\1/p' | head -1)
+            [ -n "$N" ] && [ "$N" -gt "$MAX" ] && MAX="$N" || true
+          done
+
+          echo "بالاترین versionCode منتشرشده: $MAX — این ساخت: $VERSION_CODE"
+          if [ "$MAX" -gt 0 ] && [ "$VERSION_CODE" -le "$MAX" ]; then
+            echo "::error::versionCode ($VERSION_CODE) از نسخه‌ی منتشرشده ($MAX) بالاتر نیست."
+            echo "::error::مایکت این APK را رد می‌کند. در mobile/app/build.gradle.kts"
+            echo "::error::مقدار versionCode را به $((MAX + 1)) (یا بالاتر) ببرید و versionName را هم به‌روز کنید."
+            exit 1
+          fi
+          echo "✓ versionCode قابل بارگذاری است."
 
       - uses: actions/upload-artifact@v4
         with:
@@ -258,6 +303,8 @@ jobs:
             "hesabland-${{ github.run_number }}.apk" \
             --title "نسخه ${{ github.run_number }}" \
             --notes "ساخته‌شده از ${{ github.sha }}
+
+          versionCode: ${VERSION_CODE}
 
           پوسته‌ی TWA روی hesab.stland.ir — همان سایت، تمام‌صفحه.
 

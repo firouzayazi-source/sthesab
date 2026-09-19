@@ -15,13 +15,30 @@ require_once __DIR__ . '/includes/user_data.php';
 require_once __DIR__ . '/includes/store_share.php';
 
 Auth::initSession();
-Auth::requireLogin();
 
-$pageTitle = 'حریم خصوصی';
-include __DIR__ . '/includes/header.php';
+/**
+ * ⛔ اینجا عمداً `Auth::requireLogin()` نیست، و این یک سهو نیست.
+ *
+ *    سیاستِ حریم خصوصی چیزی است که آدم **پیش از** ساختنِ حساب می‌خواند —
+ *    و فروشگاه‌های اندروید (مایکت) هم برای اپی که مجوزِ خواندنِ پیامک
+ *    می‌خواهد، همین آدرس را باز می‌کنند. پشتِ صفحه‌ی ورود، بازبینِ
+ *    فروشگاه به‌جای سیاست یک فرمِ ورود می‌دید و هیچ‌جا هم نوشته نمی‌شد
+ *    چرا — خرابیِ بی‌صدا، این بار بیرون از اپ.
+ *
+ *    امنیتی هم کم نمی‌شود: تمامِ متنِ این صفحه درباره‌ی **خودِ برنامه**
+ *    است، نه درباره‌ی یک کاربرِ مشخص. تنها بندی که به کاربر بند است
+ *    (دارایی در فروشگاه) پشتِ `isLoggedIn()` می‌ماند.
+ *
+ *    قاعده ۳۰ در `test_api_contract.php` برگشتِ همان یک خط را می‌بندد.
+ */
+$__loggedIn = Auth::isLoggedIn();
 
 $support = getSetting('support_email', '');
 $flows   = outboundDataFlows();
+
+if ($__loggedIn):
+    $pageTitle = 'حریم خصوصی';
+    include __DIR__ . '/includes/header.php';
 ?>
 
 <a href="<?= APP_BASE_PATH ?>/profile.php" class="page-back js-page-back">
@@ -29,6 +46,26 @@ $flows   = outboundDataFlows();
          stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
     بازگشت
 </a>
+
+<?php else: ?>
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <!-- viewport-fit=cover لازم است وگرنه iOS مقدار env(safe-area-inset-*)
+         را صفر می‌دهد و همه‌ی محاسبه‌های حاشیه‌ی امن بی‌اثر می‌مانند. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <title>حریم خصوصی | <?= h(defined('APP_NAME') ? APP_NAME : 'حساب لند') ?></title>
+    <?php foreach (assetUrls(['css/style.css']) as $__u): ?>
+    <link rel="stylesheet" href="<?= h($__u) ?>">
+    <?php endforeach; ?>
+    <link rel="icon" type="image/png" sizes="32x32" href="<?= iconUrl('icon-32.png') ?>">
+    <meta name="theme-color" content="#0b0b0b">
+</head>
+<body>
+<div class="privacy-shell">
+    <h1 class="privacy-title"><?= h(defined('APP_NAME') ? APP_NAME : 'حساب لند') ?> — حریم خصوصی</h1>
+<?php endif; ?>
 
 <div class="card">
     <h2 class="card-title">داده‌ی شما کجاست</h2>
@@ -55,7 +92,7 @@ $flows   = outboundDataFlows();
         <?php endforeach; ?>
     <?php endif; ?>
 
-    <?php if (StoreShare::available() && StoreShare::linkFor(Auth::userId()) !== null): ?>
+    <?php if ($__loggedIn && StoreShare::available() && StoreShare::linkFor(Auth::userId()) !== null): ?>
         <p class="privacy-p">
             <strong>دارایی شما در فروشگاه</strong> از حسابداری همان فروشگاه
             خوانده می‌شود — سرویسی روی همین سرور، با تأییدِ مدیر و فقط
@@ -158,4 +195,11 @@ $flows   = outboundDataFlows();
     <p class="hint version-line">نسخه: <?= h(appVersion()) ?></p>
 </div>
 
+<?php if ($__loggedIn): ?>
 <?php include __DIR__ . '/includes/footer.php'; ?>
+<?php else: ?>
+</div>
+</body>
+</html>
+<?php endif; ?>
+
