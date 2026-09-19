@@ -513,7 +513,10 @@ $users = $ls->fetchAll();
 
 $hasFilter = ($q !== '' || $fRole !== '' || $fState !== '');
 $pageTitle = 'مدیریت کاربران';
-/* جدولِ هفت‌ستونه با یک ستونِ دکمه — در ۷۲۰ پیکسل له می‌شود. */
+/* ⛔ عرضِ خواندنِ ۷۲۰ پیکسل اینجا کافی نیست و دلیلش با کارتی شدنِ فهرست
+   عوض شد، نه از بین رفت: توریِ کارت‌ها با آن عرض دو ستون می‌شود و
+   نصفِ فایده‌ی تاشو کردن — «تعدادِ زیادی کارت در یک نما» — از بین
+   می‌رود. اندازه‌گیری شد (کرومیوم، ۱۴۰۰): ۲ → ۴ ستون. */
 $pageWide  = true;
 include __DIR__ . '/../includes/header.php';
 ?>
@@ -595,115 +598,151 @@ include __DIR__ . '/../includes/header.php';
         </p>
     <?php endif; ?>
 
-    <div class="table-wrapper">
-        <table class="data-table users-table">
-            <thead>
-                <tr>
-                    <th>نام و نام خانوادگی</th>
-                    <th>نام کاربری</th>
-<?php if ($hasEmailColumn): ?>                    <th>ایمیل</th>
-<?php endif; ?>
-                    <th>نقش</th>
-                    <th>وضعیت</th>
-                    <th>تاریخ عضویت</th>
-                    <th class="actions-cell">عملیات</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (empty($users)): ?>
-                    <tr><td colspan="<?= $hasEmailColumn ? 7 : 6 ?>" class="empty-row">
-                        <?= $hasFilter ? 'با این صافی کاربری پیدا نشد.' : 'کاربری یافت نشد.' ?>
-                    </td></tr>
-                <?php else: ?>
-                    <?php foreach ($users as $u): ?>
-                        <tr>
-                            <?php $fails = $lockCounts[LoginThrottle::key($u['username'])] ?? 0; ?>
-                            <td data-label="نام"><?= h($u['full_name']) ?></td>
-                            <td data-label="نام کاربری">
-                                <?= h($u['username']) ?>
-                                <?php if ($fails > 0): ?>
-                                    <?php /* ⚠ نشان فقط وقتی می‌آید که واقعاً تلاشِ ناموفق
-                                             در پنجره باشد؛ وگرنه هر ردیف یک برچسبِ
-                                             بی‌معنا می‌گرفت. */ ?>
-                                    <span class="lock-chip <?= $fails >= LoginThrottle::MAX_PER_USER ? 'is-locked' : '' ?>"
-                                          title="<?= $fails >= LoginThrottle::MAX_PER_USER
-                                              ? 'ورود این کاربر قفل است' : 'تلاش ناموفق اخیر' ?>">
-                                        <?= toPersianDigits($fails) ?> تلاش ناموفق
-                                    </span>
-                                <?php endif; ?>
-                            </td>
+    <?php /* ⛔ کارتِ تاشو با `<details>` است، نه یک کلیدِ جاوااسکریپتی.
+             همان قاعده‌ی «همه در یک فهرست» که لینک است نه `fetch`: اگر
+             `app.js` نرسد، یک کلیدِ جاوااسکریپتی **بی‌صدا** همه‌ی کارت‌ها
+             را بسته نگه می‌دارد و مدیر هیچ راهی به دکمه‌ها ندارد. عنصرِ
+             بومی بدونِ هیچ اسکریپتی باز و بسته می‌شود، با صفحه‌کلید هم
+             کار می‌کند، و «بسته» حالتِ پیش‌فرضِ خودش است — یعنی
+             «پیش‌فرض همه تاشو» هیچ کدی لازم ندارد.
+
+             ⚠ هزینه‌اش نوشته می‌ماند: جدولِ هفت‌ستونه رفت، پس دیگر
+             نمی‌شود یک ستون (مثلاً ایمیلِ همه) را در یک نگاه پایین
+             خواند. جبرانش همان صافی و جست‌وجو و ترتیبِ بالای صفحه است،
+             و در عوض روی دسکتاپ به‌جای ۲۵ ردیف حدود سه برابر کارت در
+             یک نما دیده می‌شود. */ ?>
+    <div class="ucards">
+        <?php if (empty($users)): ?>
+            <p class="hint ucards-empty">
+                <?= $hasFilter ? 'با این صافی کاربری پیدا نشد.' : 'کاربری یافت نشد.' ?>
+            </p>
+        <?php else: ?>
+            <?php foreach ($users as $u): ?>
+                <?php
+                $fails    = $lockCounts[LoginThrottle::key($u['username'])] ?? 0;
+                $isActive = (int)$u['is_active'] === 1;
+                $isSelf   = (int)$u['id'] === $currentUserId;
+
+                /**
+                 * ⛔ تنها جای تصمیمِ «این کارتِ بسته نشان می‌خواهد؟».
+                 *
+                 * کلِ فایده‌ی تاشو کردن این است که مدیر بتواند صد کارت را
+                 * در یک نما ببیند؛ ولی همان لحظه، کارتی که کاری می‌خواهد
+                 * (قفلِ ورود، حسابِ بسته) **زیرِ تاخوردگی گم می‌شود**. نشان
+                 * تنها چیزی است که این دو را با هم ممکن می‌کند.
+                 *
+                 * ⚠ و کارتِ نشان‌دار عمداً **باز** نمی‌شود: «پیش‌فرض همه
+                 *   تاشو» خواسته‌ی صریح بود. نشان می‌گوید کجا را باز کن،
+                 *   نه اینکه به‌جای مدیر تصمیم بگیرد.
+                 */
+                $flags = [];
+                if ($fails >= LoginThrottle::MAX_PER_USER) {
+                    $flags[] = ['قفلِ ورود', 'is-locked', 'ورود این کاربر قفل است — دکمه‌ی «باز کردن قفل» داخل کارت'];
+                } elseif ($fails > 0) {
+                    $flags[] = [toPersianDigits($fails) . ' تلاش ناموفق', '', 'تلاشِ ناموفقِ اخیر؛ هنوز قفل نشده'];
+                }
+                if (!$isActive) {
+                    $flags[] = ['غیرفعال', 'is-locked', 'این حساب غیرفعال است و کاربر نمی‌تواند وارد شود'];
+                }
+                /* ⚠ نامِ خالی ممکن است (حساب‌های قدیمی)، و کارتی که فقط
+                   یک نشان دارد از بیرون معلوم نیست مالِ کیست. */
+                $title = trim((string)$u['full_name']) !== '' ? (string)$u['full_name'] : (string)$u['username'];
+                ?>
+                <details class="ucard<?= $flags ? ' is-flagged' : '' ?>">
+                    <summary class="ucard-head">
+                        <span class="ucard-name"><?= h($title) ?></span>
+                        <?php foreach ($flags as [$flagLabel, $flagClass, $flagTitle]): ?>
+                            <span class="lock-chip <?= $flagClass ?>" title="<?= h($flagTitle) ?>"><?= h($flagLabel) ?></span>
+                        <?php endforeach; ?>
+                    </summary>
+
+                    <div class="ucard-body">
+                        <div class="ucard-row">
+                            <span class="ucard-k">نام کاربری</span>
+                            <span class="ucard-v"><?= h($u['username']) ?></span>
+                        </div>
 <?php if ($hasEmailColumn): ?>
-                            <td data-label="ایمیل"><?= $u['email'] ? h($u['email']) : '<span style="color:var(--muted)">—</span>' ?></td>
+                        <div class="ucard-row">
+                            <span class="ucard-k">ایمیل</span>
+                            <span class="ucard-v"><?= $u['email'] ? h($u['email']) : '—' ?></span>
+                        </div>
 <?php endif; ?>
-                            <?php /* ⛔ برچسب از `Auth::roleLabel()` — با سه‌گانه‌ی
-                                     قبلی، «پشتیبان» و «همکار» هر دو «کاربر»
-                                     خوانده می‌شدند و مدیر نمی‌فهمید نقشی که
-                                     خودش داده کجا نشسته. */ ?>
-                            <td data-label="نقش"><?= h(Auth::roleLabel((string)$u['role'])) ?></td>
-                            <td data-label="وضعیت">
-                                <span class="status-badge <?= (int)$u['is_active'] === 1 ? 'status-active' : 'status-inactive' ?>">
-                                    <?= (int)$u['is_active'] === 1 ? 'فعال' : 'غیرفعال' ?>
+                        <?php /* ⛔ برچسب از `Auth::roleLabel()` — با سه‌گانه‌ی
+                                 قبلی، «پشتیبان» و «همکار» هر دو «کاربر»
+                                 خوانده می‌شدند و مدیر نمی‌فهمید نقشی که
+                                 خودش داده کجا نشسته. */ ?>
+                        <div class="ucard-row">
+                            <span class="ucard-k">نقش</span>
+                            <span class="ucard-v"><?= h(Auth::roleLabel((string)$u['role'])) ?></span>
+                        </div>
+                        <div class="ucard-row">
+                            <span class="ucard-k">وضعیت</span>
+                            <span class="ucard-v">
+                                <span class="status-badge <?= $isActive ? 'status-active' : 'status-inactive' ?>">
+                                    <?= $isActive ? 'فعال' : 'غیرفعال' ?>
                                 </span>
-                            </td>
-                            <td data-label="تاریخ عضویت"><?= toJalali(substr($u['created_at'], 0, 10)) ?></td>
-                            <td data-label="عملیات" class="actions-cell">
-                                <div class="table-actions">
-                                    <button type="button" class="btn btn-secondary btn-sm js-edit-user"
-                                        data-id="<?= (int)$u['id'] ?>"
-                                        data-full-name="<?= h($u['full_name']) ?>"
-                                        data-username="<?= h($u['username']) ?>"
-                                        data-email="<?= h($u['email'] ?? '') ?>"
-                                        data-phone="<?= h($u['phone'] ?? '') ?>"
-                                        data-role="<?= h($u['role']) ?>">ویرایش</button>
+                            </span>
+                        </div>
+                        <div class="ucard-row">
+                            <span class="ucard-k">تاریخ عضویت</span>
+                            <span class="ucard-v"><?= toJalali(substr($u['created_at'], 0, 10)) ?></span>
+                        </div>
 
-                                    <?php if ($fails > 0): ?>
-                                        <form method="POST">
-                                            <?= Csrf::field() ?>
-                                            <input type="hidden" name="action" value="unlock_login">
-                                            <input type="hidden" name="username" value="<?= h($u['username']) ?>">
-                                            <button type="submit" class="btn btn-secondary btn-sm"
-                                                    title="شمارنده‌ی تلاش ناموفق این نام کاربری پاک می‌شود">باز کردن قفل</button>
-                                        </form>
-                                    <?php endif; ?>
+                        <div class="ucard-actions">
+                            <button type="button" class="btn btn-secondary btn-sm js-edit-user"
+                                data-id="<?= (int)$u['id'] ?>"
+                                data-full-name="<?= h($u['full_name']) ?>"
+                                data-username="<?= h($u['username']) ?>"
+                                data-email="<?= h($u['email'] ?? '') ?>"
+                                data-phone="<?= h($u['phone'] ?? '') ?>"
+                                data-role="<?= h($u['role']) ?>">ویرایش</button>
 
-                                    <?php if ((int)$u['id'] !== $currentUserId): ?>
-                                        <form method="POST">
-                                            <?= Csrf::field() ?>
-                                            <input type="hidden" name="action" value="toggle_status">
-                                            <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
-                                            <button type="submit" class="btn btn-secondary btn-sm">
-                                                <?= (int)$u['is_active'] === 1 ? 'غیرفعال‌سازی' : 'فعال‌سازی' ?>
-                                            </button>
-                                        </form>
-                                        <?php if ((int)$u['is_active'] === 1): ?>
-                                        <form method="POST" onsubmit="return confirm('این کاربر از همه‌ی مرورگرها و اپ‌ها خارج می‌شود و باید دوباره وارد شود. ادامه؟');">
-                                            <?= Csrf::field() ?>
-                                            <input type="hidden" name="action" value="revoke_access">
-                                            <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
-                                            <button type="submit" class="btn btn-secondary btn-sm" title="دستگاه‌های مورد اعتماد، توکن‌های اپ و نشست‌های باز باطل می‌شوند؛ حساب باز می‌ماند">خروج از دستگاه‌ها</button>
-                                        </form>
-                                        <?php endif; ?>
-                                        <?php /* ⚠ اینجا عمداً `confirm()` مانده و «لغو» نشده:
-                                                 حذفِ کاربر داده‌ی هر جدولی را می‌برد و
-                                                 `Undo` فقط یک ردیف و فرزندانِ CASCADE اش را
-                                                 عکس می‌گیرد — همان دلیلی که حذفِ حساب و
-                                                 معامله هم `confirm()` نگه داشتند. */ ?>
-                                        <form method="POST" onsubmit="return confirm('کاربر و همه‌ی داده‌هایش (تراکنش، حساب، چک، …) برای همیشه حذف می‌شود. این کار برگشت ندارد. ادامه؟');">
-                                            <?= Csrf::field() ?>
-                                            <input type="hidden" name="action" value="delete">
-                                            <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
-                                            <button type="submit" class="delete-btn">حذف</button>
-                                        </form>
-                                    <?php else: ?>
-                                        <span class="self-note">(حساب شما)</span>
-                                    <?php endif; ?>
-                                </div>
-                            </td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
+                            <?php if ($fails > 0): ?>
+                                <form method="POST">
+                                    <?= Csrf::field() ?>
+                                    <input type="hidden" name="action" value="unlock_login">
+                                    <input type="hidden" name="username" value="<?= h($u['username']) ?>">
+                                    <button type="submit" class="btn btn-secondary btn-sm"
+                                            title="شمارنده‌ی تلاش ناموفق این نام کاربری پاک می‌شود">باز کردن قفل</button>
+                                </form>
+                            <?php endif; ?>
+
+                            <?php if (!$isSelf): ?>
+                                <form method="POST">
+                                    <?= Csrf::field() ?>
+                                    <input type="hidden" name="action" value="toggle_status">
+                                    <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
+                                    <button type="submit" class="btn btn-secondary btn-sm">
+                                        <?= $isActive ? 'غیرفعال‌سازی' : 'فعال‌سازی' ?>
+                                    </button>
+                                </form>
+                                <?php if ($isActive): ?>
+                                <form method="POST" onsubmit="return confirm('این کاربر از همه‌ی مرورگرها و اپ‌ها خارج می‌شود و باید دوباره وارد شود. ادامه؟');">
+                                    <?= Csrf::field() ?>
+                                    <input type="hidden" name="action" value="revoke_access">
+                                    <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
+                                    <button type="submit" class="btn btn-secondary btn-sm" title="دستگاه‌های مورد اعتماد، توکن‌های اپ و نشست‌های باز باطل می‌شوند؛ حساب باز می‌ماند">خروج از دستگاه‌ها</button>
+                                </form>
+                                <?php endif; ?>
+                                <?php /* ⚠ اینجا عمداً `confirm()` مانده و «لغو» نشده:
+                                         حذفِ کاربر داده‌ی هر جدولی را می‌برد و
+                                         `Undo` فقط یک ردیف و فرزندانِ CASCADE اش را
+                                         عکس می‌گیرد — همان دلیلی که حذفِ حساب و
+                                         معامله هم `confirm()` نگه داشتند. */ ?>
+                                <form method="POST" onsubmit="return confirm('کاربر و همه‌ی داده‌هایش (تراکنش، حساب، چک، …) برای همیشه حذف می‌شود. این کار برگشت ندارد. ادامه؟');">
+                                    <?= Csrf::field() ?>
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
+                                    <button type="submit" class="delete-btn">حذف</button>
+                                </form>
+                            <?php else: ?>
+                                <span class="self-note">(حساب شما)</span>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </details>
+            <?php endforeach; ?>
+        <?php endif; ?>
     </div>
 
     <?php pagedNav($pg); ?>

@@ -865,6 +865,71 @@ textarea { resize: vertical; }
 .grid-card-name { font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
 .grid-card-sub  { display: block; line-height: 1.9; }
 
+/* ---------- کارت‌های تاشوی کاربران (admin/users.php) ----------
+   ⛔ زمینه عمداً ندارد — همان درسِ `.grid-card` و `.start-card`:
+   `html[data-theme="dark"] .card` با وزنِ بیشتر `background` را
+   بازنویسی می‌کند. مرز از `--line` می‌آید که خودش تم‌آگاه است. */
+.ucards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
+    gap: 8px;
+    /* ⛔ `start` اجباری است: بدونش باز کردنِ یک کارت، هم‌ردیف‌هایش را هم
+       به همان قد می‌کشد و صفحه پر از کارتِ بلندِ خالی می‌شود. */
+    align-items: start;
+    margin-top: 12px;
+}
+.ucards-empty { grid-column: 1 / -1; text-align: center; margin: 14px 0; }
+
+.ucard {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    min-width: 0;
+}
+/* کارتی که کاری می‌خواهد باید از دور هم دیده شود، نه فقط از روی نشانش:
+   با صد کارتِ بسته، چشم مرزِ رنگی را زودتر از متن پیدا می‌کند. */
+.ucard.is-flagged { border-color: color-mix(in srgb, var(--warn-ink) 45%, var(--line)); }
+
+.ucard-head {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 10px 12px;
+    cursor: pointer;
+    font-size: 13.5px;
+    /* مثلثِ پیش‌فرض: فایرفاکس با `list-style`، وبکیت با شبه‌عنصرِ خودش. */
+    list-style: none;
+}
+.ucard-head::-webkit-details-marker { display: none; }
+/* ⚠ `overflow-wrap: anywhere` لازم است: نام را خودِ کاربر می‌نویسد و یک
+   رشته‌ی بی‌فاصله‌ی بلند از کارت بیرون می‌زد (درسِ `.grid-card-name`). */
+.ucard-name { font-weight: 700; min-width: 0; overflow-wrap: anywhere; flex: 1; }
+/* نشانگرِ باز/بسته، جای همان مثلثِ برداشته‌شده.
+   ⚠ مرزها عمداً فیزیکی‌اند نه منطقی: این یک شکل است نه متن، و مقدارِ
+     منطقی در راست‌به‌چپ آینه می‌شد. */
+.ucard-head::after {
+    content: '';
+    width: 7px; height: 7px; flex: 0 0 auto;
+    border-right: 2px solid var(--muted);
+    border-bottom: 2px solid var(--muted);
+    transform: rotate(45deg);
+    transition: transform .15s ease;
+    margin-bottom: 3px;
+}
+.ucard[open] > .ucard-head::after { transform: rotate(-135deg); margin-bottom: -3px; }
+.ucard[open] > .ucard-head { border-bottom: 1px solid var(--line-soft); }
+
+.ucard-body { padding: 8px 12px 12px; font-size: 13px; }
+.ucard-row { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; }
+.ucard-k { color: var(--muted); font-size: 12px; font-weight: 600; flex: 0 0 auto; }
+.ucard-v { min-width: 0; text-align: left; overflow-wrap: anywhere; }
+/* ⚠ اینجا `wrap` درست است، برخلافِ ستونِ عملیاتِ جدول در قاعده ۳۱: کارت
+   باریک است و ردیفِ دکمه‌ها باید بشکند، نه اینکه از کارت بیرون بزند. */
+.ucard-actions {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    margin-top: 8px; padding-top: 8px;
+    border-top: 1px solid var(--line-soft);
+}
+.ucard-actions form { display: inline-flex; margin: 0; }
+.ucard-actions .self-note { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
 .pager {
     display: flex; align-items: center; justify-content: center;
     gap: 6px; flex-wrap: wrap; margin-top: 14px;
