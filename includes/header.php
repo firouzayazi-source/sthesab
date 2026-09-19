@@ -103,8 +103,17 @@ if (!isset($pageWide)) {
                     <svg class="theme-icon-sun" width="19" height="19" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="2"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
                 </button>
                 <a href="<?= APP_BASE_PATH ?>/profile.php" class="user-name" style="text-decoration:none;"><?= h(Auth::fullName()) ?></a>
+                <?php
+                /* ⛔ برچسب از `Auth::roleLabel()` می‌آید، نه از یک
+                   سه‌گانه‌ی محلی. با `isAdmin() ? 'مدیر' : 'کاربر'`،
+                   «پشتیبان» و «همکار» هر دو «کاربر» دیده می‌شدند —
+                   یعنی نقشی که مدیر با دست داده، **هیچ‌جا** دیده
+                   نمی‌شد و کاربر هم نمی‌فهمید چرا بخشی برایش باز است.
+                   رنگ فقط دو حالت دارد (مدیر/غیرمدیر) چون معنای
+                   `badge-admin` همان «دسترسیِ کامل» است. */
+                ?>
                 <span class="user-role-badge <?= Auth::isAdmin() ? 'badge-admin' : 'badge-user' ?>">
-                    <?= Auth::isAdmin() ? 'مدیر' : 'کاربر' ?>
+                    <?= h(Auth::roleLabel(Auth::role())) ?>
                 </span>
             </div>
         </header>
@@ -116,7 +125,17 @@ if (!isset($pageWide)) {
                      روی اندروید و فقط وقتی APK واقعاً وجود دارد. خودش
                      تصمیم می‌گیرد که رندر شود یا نه. */ ?>
             <?= androidInstallBanner() ?>
-            <?php $flash = getFlash(); ?>
-            <?php if ($flash): ?>
-                <div class="alert alert-<?= h($flash['type']) ?>"><?= h($flash['message']) ?></div>
+            <?php /* ⛔ پیشوندِ `__` اجباری است و یک خرابیِ واقعی را بست.
+                     این فایل در **دامنه‌ی سراسریِ خودِ صفحه** اجرا می‌شود،
+                     پس هر نامِ عمومی‌ای که اینجا مقدار بگیرد، متغیرِ
+                     هم‌نامِ صفحه را — که پیش از این include مقدار گرفته —
+                     بی‌صدا بازنویسی می‌کند. `$flash` دقیقاً همین را کرد:
+                     `support.php` پیامِ «درخواست شما ثبت شد» را در
+                     `$flash` می‌گذاشت، اینجا `null` می‌شد، و چون
+                     `null !== ''` است نوارِ سبز **خالی** روی هر صفحه‌ی
+                     پشتیبانی رندر می‌شد و پیامِ واقعی هرگز دیده نمی‌شد.
+                     قاعده ۵۰ در `test_api_contract.php` این را می‌سنجد. */ ?>
+            <?php $__flash = getFlash(); ?>
+            <?php if ($__flash): ?>
+                <div class="alert alert-<?= h($__flash['type']) ?>"><?= h($__flash['message']) ?></div>
             <?php endif; ?>

@@ -148,7 +148,37 @@ function unassignedVars(string $file): array
         $p = $start - 1;
         while ($p >= 0 && is_array($tokens[$p])
                && in_array($tokens[$p][0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) { $p--; }
-        $isForeach = is_array($tokens[$p] ?? null) && $tokens[$p][0] === T_AS;
+        $prevTok   = $tokens[$p] ?? null;
+        $isForeach = is_array($prevTok) && $prevTok[0] === T_AS;
+
+        /*
+         * ⛔ و شکلِ **کلیددارش** هم همین است:
+         *   `foreach ($tabs as $file => [$label, $cap])`
+         * اینجا توکنِ قبلِ براکت `=>` است نه `as`، پس شرطِ بالا نمی‌گرفتش
+         * و ابزار روی یک اصطلاحِ کاملاً معمولیِ PHP **هشدارِ الکی**
+         * می‌داد — همان چیزی که یک بار سرِ `foreach ($rows as [$a,$b])`
+         * افتاد و همان‌جا هم نوشته شد که «هشدارِ الکی از نبودِ تست بدتر
+         * است»، چون آدم را وادار می‌کند کدِ بدتر بنویسد تا تست سبز شود.
+         *
+         * ⚠ `=>` به‌تنهایی کافی نیست: `['a' => [$x, $y]]` یک آرایه‌ی
+         *   تودرتوی معمولی است و آنجا `$x`/`$y` **خوانده** می‌شوند نه
+         *   ساخته. پس از `=>` به عقب می‌رویم و فقط وقتی تخصیص می‌شماریم
+         *   که به `as` برسیم — یعنی واقعاً داخلِ سرِ یک `foreach` باشیم.
+         */
+        if (!$isForeach && is_array($prevTok) && $prevTok[0] === T_DOUBLE_ARROW) {
+            $q = $p - 1;
+            // از کلیدِ حلقه (یک متغیر یا یک عبارتِ کوتاه) رد می‌شویم
+            while ($q >= 0 && (
+                       (is_array($tokens[$q]) && in_array($tokens[$q][0],
+                            [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT, T_VARIABLE], true))
+                   )) {
+                if (is_array($tokens[$q]) && $tokens[$q][0] === T_VARIABLE) { $q--; break; }
+                $q--;
+            }
+            while ($q >= 0 && is_array($tokens[$q])
+                   && in_array($tokens[$q][0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) { $q--; }
+            $isForeach = is_array($tokens[$q] ?? null) && $tokens[$q][0] === T_AS;
+        }
 
         if (!$isAssign && !$isForeach) { continue; }
 

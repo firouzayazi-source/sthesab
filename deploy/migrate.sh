@@ -118,6 +118,7 @@ MIGRATIONS=(
     migration_store_share.sql
     migration_store_owed.sql
     migration_support.sql
+    migration_user_roles.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -286,6 +287,7 @@ declare -A SENTINEL=(
     #   جدولِ سوم مرده باشد هم «اجراشده» ثبت می‌شد — همان دروغی که
     #   `--verify` برای گرفتنش ساخته شده.
     [migration_support.sql]="app_settings~setting_key=support_seeded"
+    [migration_user_roles.sql]="users.role>=20"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

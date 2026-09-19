@@ -10,9 +10,14 @@
  *   قاعده‌ی `api/view_attachment.php`. اگر روزی نویسنده شد، باید اضافه
  *   شود.
  *
- * ⛔ مدیر هم می‌تواند ببیند، و این لازم است: کاربر اسکرین‌شات را
+ * ⛔ پشتیبانی هم می‌تواند ببیند، و این لازم است: کاربر اسکرین‌شات را
  *    می‌فرستد **برای اینکه پشتیبانی ببیندش**. ولی شرطش
- *    `Auth::isAdmin()` است نه یک پارامترِ ورودی.
+ *    `Auth::can('support')` است نه یک پارامترِ ورودی.
+ *
+ * ⚠ و عمداً `can('support')` است نه `isAdmin()`: با `isAdmin()`، یک
+ *   کاربرِ نقشِ «پشتیبان» تیکت را باز می‌کرد ولی پیوستش **۴۰۴**
+ *   می‌گرفت — یعنی دقیقاً همان کاری که برایش استخدام شده انجام‌نشدنی
+ *   می‌شد، بی‌آنکه هیچ‌کجا بگوید چرا.
  */
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/functions.php';
@@ -27,7 +32,7 @@ if ($id < 1 || !tableExists('support_attachments')) { http_response_code(404); e
 
 $sql    = 'SELECT file_name, original_name, mime_type FROM support_attachments WHERE id = :id';
 $params = ['id' => $id];
-if (!Auth::isAdmin()) { $sql .= ' AND user_id = :u'; $params['u'] = $userId; }
+if (!Auth::can('support')) { $sql .= ' AND user_id = :u'; $params['u'] = $userId; }
 
 $st = Database::getConnection()->prepare($sql);
 $st->execute($params);

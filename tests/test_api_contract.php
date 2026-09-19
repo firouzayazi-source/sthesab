@@ -4254,17 +4254,27 @@ foreach (['support.php' => $supPage, 'admin/support.php' => $supAdmin] as $name 
         $badSup[] = "⛔ {$name} — بعد از POST ریدایرکت نمی‌کند";
     }
 }
-if (strpos($supAdmin, 'Auth::requireAdmin()') === false) {
-    $badSup[] = '⛔ admin/support.php — requireAdmin ندارد';
+/*
+ * ⚠ این دو بررسی **جایگزین** شدند، نه برداشته: تا دیروز
+ *   `requireAdmin()` را می‌خواستند، ولی با آمدنِ نقشِ «پشتیبان» همان
+ *   شرط دقیقاً چیزی را می‌بست که این نقش برایش ساخته شده. نگهبان سرِ
+ *   جایش است و فقط **نامش** عوض شد — `requireCap('support')` که مدیر
+ *   هم از آن رد می‌شود. قاعده‌ای که موضوعش عوض شده باید جایگزین شود،
+ *   نه خالی بماند (درسِ قاعده ۳۲).
+ */
+if (strpos($supAdmin, "Auth::requireCap('support')") === false) {
+    $badSup[] = '⛔ admin/support.php — نگهبانِ دسترسی ندارد';
 }
-if (strpos($stripComments($root . '/admin/support-content.php'), 'Auth::requireAdmin()') === false) {
-    $badSup[] = '⛔ admin/support-content.php — requireAdmin ندارد';
+if (strpos($stripComments($root . '/admin/support-content.php'), "Auth::requireCap('support')") === false) {
+    $badSup[] = '⛔ admin/support-content.php — نگهبانِ دسترسی ندارد';
 }
 
 // ۷) تحویلِ پیوست فقط از راهی که مالکیت را می‌سنجد. بدونِ آن شرط، هر
 //    کاربری با حدسِ شناسه فایلِ دیگری را می‌گرفت.
+// ⚠ شرطِ معافیت از `isAdmin()` به `can('support')` رفت (قاعده ۵۱)؛
+//   نکته‌ی این بررسی همان `user_id = :u` است که برای بقیه می‌ماند.
 $supFile = $stripComments($root . '/api/view_support_file.php');
-if (strpos($supFile, 'Auth::isAdmin()') === false || strpos($supFile, 'user_id = :u') === false) {
+if (strpos($supFile, "Auth::can('support')") === false || strpos($supFile, 'user_id = :u') === false) {
     $badSup[] = '⛔ api/view_support_file.php — مالکیتِ پیوست سنجیده نمی‌شود';
 }
 
@@ -4313,6 +4323,308 @@ if (!preg_match("~'support:msg:'~", $supSrc)) {
 }
 
 T::bulk(22, $badSup, '⛔ پشتیبانی: یک مرجع، دامنه‌ی کاربر، دروازه‌ی مقاله، و سقفِ گفت‌وگو');
+
+// ═══════════════════════════════════════════════════════════════
+// قاعده ۵۰ — قالبِ مشترک متغیرِ صفحه را بازنویسی نکند
+// ═══════════════════════════════════════════════════════════════
+//
+// **خرابیِ واقعی، و مالکِ نصب از روی اسکرین‌شات گزارشش کرد:** بالای
+// صفحه‌ی پشتیبانی یک **نوارِ سبزِ خالی** دیده می‌شد.
+//
+// علتش این بود که `includes/header.php` خطِ `$flash = getFlash();` را
+// در **دامنه‌ی سراسریِ خودِ صفحه** اجرا می‌کند. `support.php` پیشتر
+// `$flash = ''` گذاشته و بعد از `?done=created` پیامِ «درخواست شما ثبت
+// شد» را در همان می‌نوشت؛ ولی `include header.php` **بعد از آن** و
+// **پیش از رندر** است، پس مقدار به `null` تبدیل می‌شد. و چون شرطِ
+// رندر `$flash !== ''` بود و `null !== ''` **درست** است، هر بارگذاری
+// یک `<div class="sup-flash sup-flash-ok"></div>`ِ خالی می‌ساخت.
+//
+// ⛔ دو خرابی در یک خط، و دومی بدتر: نوارِ خالی دیده می‌شد (زشت، ولی
+//    بی‌ضرر)، ولی **پیامِ تأییدِ ثبتِ تیکت هرگز نمایش داده نمی‌شد** —
+//    کاربر درخواست می‌فرستاد و هیچ نشانه‌ای نمی‌گرفت که ثبت شده.
+//    با A/B سنجیده شد: با نامِ `$flash` پیام **دیده نمی‌شد**، با
+//    `$__flash` دیده می‌شود.
+//
+// ⛔ قاعده: هر متغیری که یک قالبِ مشترک در دامنه‌ی سراسری مقدار
+//    می‌دهد باید با `__` شروع شود. استثناء فقط **ورودی‌های
+//    مستندشده** است — نام‌هایی که *صفحه* پیش از include می‌گذارد و
+//    قالب فقط می‌خواندشان.
+//
+// ⛔ **فهرستِ قالب‌ها از خودِ کد کشف می‌شود، نه از یک آرایه‌ی دستی** —
+//    همان قاعده‌ی `categoryRefTables()` و `userDataTables()`. با
+//    فهرستِ دستی، انداختنِ یک نام از آن، بررسی را **بی‌صدا** حذف
+//    می‌کرد و تست سبز می‌ماند؛ همان جهش را اجرا کردیم و **زنده ماند**،
+//    و همین قاعده را از فهرستِ دستی به کشف برد.
+//
+// ⚠ معیارِ «مشترک» **دسترسیِ گذرا از صفحه‌هاست**، نه تعدادِ
+//   include‌کننده‌ی مستقیم: `sidebar.php` فقط یک include‌کننده دارد
+//   (`header.php`) ولی روی **هر ۳۲ صفحه** اجرا می‌شود. و به همین
+//   دلیل `includes/due_tab_*.php` بیرون می‌مانند: آن‌ها تکه‌های خودِ
+//   `due.php` هستند و `$userId`/`$today` را عمداً با همان یک صفحه
+//   شریک‌اند — اجبارِ `__` آنجا یک **هشدارِ الکی** بود.
+
+T::group('قاعده ۵۰ — قالبِ مشترک متغیرِ صفحه را بازنویسی نکند');
+
+/** نام‌هایی که در دامنه‌ی سراسریِ یک فایل مقدار می‌گیرند (بیرونِ هر تابع/کلاس). */
+$globalAssigns = function (string $file): array {
+    $t = token_get_all((string)file_get_contents($file));
+    $n = count($t); $names = [];
+    for ($i = 0; $i < $n; $i++) {
+        $tk = $t[$i];
+        // بدنه‌ی تابع/کلاس کاملاً رد می‌شود — متغیرِ محلی نشتی ندارد.
+        if (is_array($tk) && in_array($tk[0], [T_FUNCTION, T_CLASS, T_TRAIT, T_INTERFACE], true)) {
+            $d = 0;
+            for ($j = $i + 1; $j < $n; $j++) {
+                if ($t[$j] === '{') { $d++; }
+                elseif ($t[$j] === '}') { $d--; if ($d === 0) { $i = $j; break; } }
+                elseif ($t[$j] === ';' && $d === 0) { $i = $j; break; }
+            }
+            continue;
+        }
+        if (is_array($tk) && $tk[0] === T_VARIABLE) {
+            for ($j = $i + 1; $j < $n; $j++) {
+                if (is_array($t[$j]) && in_array($t[$j][0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) { continue; }
+                if ($t[$j] === '=') { $names[ltrim($tk[1], '$')] = true; }
+                elseif (is_array($t[$j]) && in_array($t[$j][0],
+                    [T_PLUS_EQUAL, T_CONCAT_EQUAL, T_MINUS_EQUAL, T_COALESCE_EQUAL], true)) {
+                    $names[ltrim($tk[1], '$')] = true;
+                }
+                break;
+            }
+        }
+    }
+    foreach (['_SESSION', '_SERVER', '_GET', '_POST', '_FILES', '_COOKIE', 'this'] as $sup) { unset($names[$sup]); }
+    return array_keys($names);
+};
+
+/* ⛔ ورودی‌های مستندشده — تنها نام‌هایی که صفحه و قالب عمداً شریک‌اند.
+   `$pageTitle`/`$pageWide` را صفحه پیش از `header.php` می‌گذارد، و
+   `$incomeCategories`/`$expenseCategories` را صفحه‌ای که از قبل
+   دسته‌ها را خوانده به `add_tx_sheet`/`edit_tx_modal` می‌دهد (هر دو
+   با `isset()` می‌سنجند و اگر نبود خودشان می‌سازند). */
+$tplInputs = ['pageTitle', 'pageWide', 'incomeCategories', 'expenseCategories'];
+
+/* کشفِ گرافِ include: هر فایل → فایل‌هایی که `include` می‌کند. */
+$includesOf = function (string $file): array {
+    $out = [];
+    if (!is_file($file)) { return $out; }
+    $src = (string)file_get_contents($file);
+    if (preg_match_all("~\binclude(?:_once)?\s+__DIR__\s*\.\s*'([^']+)'~", $src, $m)) {
+        foreach ($m[1] as $rel) {
+            $t = realpath(dirname($file) . $rel);
+            if ($t !== false) { $out[] = $t; }
+        }
+    }
+    return $out;
+};
+
+/* صفحه‌ها = هر `*.php` در ریشه و `admin/`. از هر کدام گرافِ include را
+   می‌پیماییم و می‌شماریم هر partial از چند **صفحه** قابل دسترس است. */
+$reach = [];
+foreach (array_merge(glob($root . '/*.php'), glob($root . '/admin/*.php')) as $page) {
+    $seen = [];
+    $stack = $includesOf($page);
+    while ($stack) {
+        $t = array_pop($stack);
+        if (isset($seen[$t])) { continue; }
+        $seen[$t] = true;
+        foreach ($includesOf($t) as $next) { $stack[] = $next; }
+    }
+    foreach (array_keys($seen) as $t) { $reach[$t] = ($reach[$t] ?? 0) + 1; }
+}
+$sharedTpl = [];
+foreach ($reach as $path => $n) {
+    if ($n >= 2) { $sharedTpl[] = str_replace($root . '/', '', $path); }
+}
+sort($sharedTpl);
+
+$badTpl = [];
+
+/* ⚠ کشفی که چیزی پیدا نکند، بررسی را بی‌صدا خاموش می‌کند — همان
+   «سنجشی که روی خرابی سبز می‌شود». پس خودِ کشف هم سنجیده می‌شود. */
+foreach (['includes/header.php', 'includes/sidebar.php', 'includes/footer.php', 'includes/add_tx_sheet.php'] as $must) {
+    if (!in_array($must, $sharedTpl, true)) {
+        $badTpl[] = "⛔ کشفِ قالب‌های مشترک «{$must}» را پیدا نکرد — خودِ بررسی خراب است";
+    }
+}
+
+foreach ($sharedTpl as $rel) {
+    $path = $root . '/' . $rel;
+    foreach ($globalAssigns($path) as $v) {
+        if (in_array($v, $tplInputs, true)) { continue; }
+        if (strncmp($v, '__', 2) !== 0) {
+            $badTpl[] = "⛔ {$rel} متغیرِ سراسریِ \${$v} می‌سازد — با \$__{$v} عوضش کنید"
+                . ' (متغیرِ هم‌نامِ صفحه بی‌صدا بازنویسی می‌شود)';
+        }
+    }
+}
+
+/* ⛔ و نیمه‌ی دوم: خودِ `support.php` هم باید از `$flash` فاصله گرفته
+   باشد؟ نه — با قاعده‌ی بالا نامِ صفحه دیگر برخورد نمی‌کند و قاعده
+   نباید چیزی را ببندد که خراب نیست (هشدارِ الکی از نبودِ تست بدتر
+   است). ولی این یکی را صریح می‌سنجیم، چون خرابی‌اش دیده شد: شرطِ
+   رندرِ نوارِ پیام باید با رشته بسنجد، نه با truthiness. */
+$supPageRaw = $stripComments($root . '/support.php');
+if (strpos($supPageRaw, "\$flash !== ''") === false) {
+    $badTpl[] = '⛔ support.php شرطِ رندرِ نوارِ پیام را با مقایسه‌ی رشته‌ای نمی‌سنجد';
+}
+
+T::bulk(count($sharedTpl) + 5, $badTpl,
+    '⛔ قالبِ مشترک فقط متغیرِ `__`دار می‌سازد (نوارِ سبزِ خالی از همین‌جا آمد)');
+
+// -----------------------------------------------------------------
+// ⛔ قاعده ۵۱ — نقشِ محدود محدود بماند
+//
+// **خواسته‌ی مالکِ نصب:** «امکان اضافه کردن ادمین با دسترسی محدود مثلاً
+// پشتیبانی» و «یک گزینه همکار هم می‌خوام».
+//
+// ⛔ خطرِ کلِ این کار یک چیز است: باز کردنِ `Auth::isAdmin()` برای
+//    «پشتیبان». آن تابع در بیش از بیست جا خوانده می‌شود (کاربران،
+//    اشتراک، دسته‌بندی، آمار، سهامداران، پیوستِ هر کاربر، جزئیاتِ
+//    `health.php`) و ساده‌ترین راهِ باز کردنِ صفحه‌ی پشتیبانی بود —
+//    ولی **بی‌صدا** همه‌ی آن‌ها را هم باز می‌کرد.
+//
+// ⚠ تستِ رفتاری (`tests/test_roles.php`) این را با سه نشستِ واقعی
+//   می‌سنجد، ولی به دیتابیس نیاز دارد (`T::blocked`)؛ روی ماشینی که
+//   دیتابیس ندارد فقط همین قاعده می‌ماند — همان استدلالی که قاعده ۴۸
+//   را کنارِ `test_admin_users` و قاعده ۴۳ را کنارِ `test_number_align`
+//   نشاند.
+
+T::group('قاعده ۵۱ — نقشِ محدود (پشتیبان) و نقشِ برچسبی (همکار)');
+
+$badRole = [];
+$authSrc = $stripComments($root . '/includes/auth.php');
+
+// ۱) `isAdmin()` عمداً فقط `admin` است — و این مهم‌ترین بررسیِ قاعده.
+if (!preg_match('~function\s+isAdmin\(\)[^{]*\{\s*return\s+self::isLoggedIn\(\)\s*&&\s*\(\$_SESSION\[\x27role\x27\]\s*\?\?\s*\x27\x27\)\s*===\s*\x27admin\x27;~', $authSrc)) {
+    $badRole[] = '⛔ `Auth::isAdmin()` دیگر فقط `admin` نیست — بیست‌ویک گیتِ دیگر بی‌صدا باز می‌شود';
+}
+
+// ۲) فهرستِ بسته‌ی توانایی‌ها، و `can()` که پیش‌فرضش **بسته** است.
+if (!preg_match('~const\s+CAPS\s*=\s*\[\x27admin\x27,\s*\x27support\x27\]~', $authSrc)) {
+    $badRole[] = '⛔ `Auth::CAPS` فهرستِ بسته‌ی دو تاییِ خودش نیست';
+}
+if (strpos($authSrc, 'in_array($cap, self::CAPS, true)') === false) {
+    $badRole[] = '⛔ `can()` تواناییِ بیرونِ `CAPS` را رد نمی‌کند (نامِ اشتباه‌تایپ‌شده صفحه را باز می‌کند)';
+}
+
+// ۳) `hasAnyCap()` روی `CAPS` حلقه می‌زند، نه یک `||` دستی — وگرنه
+//    تواناییِ سومِ فردا در یکی از دو منو جا می‌ماند.
+if (strpos($authSrc, 'foreach (self::CAPS as $cap)') === false) {
+    $badRole[] = '⛔ `hasAnyCap()` از روی `CAPS` حلقه نمی‌زند (فهرستِ دوم)';
+}
+
+// ۴) صفحه‌های پشتیبانی از `requireCap('support')` می‌روند، نه
+//    `requireAdmin()` — وگرنه نقش هیچ کاری نمی‌تواند بکند.
+foreach (['admin/support.php', 'admin/support-content.php'] as $rel) {
+    if (!is_file($root . '/' . $rel)) {
+        $badRole[] = "⛔ {$rel} روی دیسک نیست — بررسی بی‌صدا ناپدید می‌شود";
+        continue;
+    }
+    $s = $stripComments($root . '/' . $rel);
+    if (strpos($s, "Auth::requireCap('support')") === false) {
+        $badRole[] = "⛔ {$rel} از `requireCap('support')` رد نمی‌شود";
+    }
+    if (strpos($s, 'Auth::requireAdmin()') !== false) {
+        $badRole[] = "⛔ {$rel} هنوز `requireAdmin()` دارد — نقشِ پشتیبان بی‌مصرف می‌شود";
+    }
+}
+
+// ۵) و برعکس: هر صفحه‌ی **دیگرِ** `admin/` باید `requireAdmin()` بماند.
+//    فهرست از خودِ پوشه کشف می‌شود، نه دستی — صفحه‌ی فردا خودبه‌خود
+//    پوشش می‌گیرد (همان قاعده‌ی `EXPECT`).
+$adminPages = glob($root . '/admin/*.php') ?: [];
+if (count($adminPages) < 5) {
+    $badRole[] = '⛔ کشفِ صفحه‌های admin/ چیزی برنگرداند — خودِ بررسی خراب است';
+}
+foreach ($adminPages as $p) {
+    $base = basename($p);
+    if ($base === '_nav.php' || $base === 'support.php' || $base === 'support-content.php') { continue; }
+    $s = $stripComments($p);
+    if (strpos($s, 'Auth::requireAdmin()') === false) {
+        $badRole[] = "⛔ admin/{$base} دیگر `requireAdmin()` ندارد";
+    }
+    if (preg_match('~Auth::requireCap\(\x27support\x27\)~', $s)) {
+        $badRole[] = "⛔ admin/{$base} با تواناییِ پشتیبانی باز شده — دسترسیِ محدود دیگر محدود نیست";
+    }
+}
+
+// ۶) تحویلِ پیوستِ تیکت. با `isAdmin()` آنجا، پشتیبان تیکت را باز
+//    می‌کرد ولی پیوستش ۴۰۴ می‌گرفت — کارِ اصلی‌اش انجام‌نشدنی می‌شد.
+$vsf = $stripComments($root . '/api/view_support_file.php');
+if (strpos($vsf, "Auth::can('support')") === false || strpos($vsf, 'Auth::isAdmin()') !== false) {
+    $badRole[] = '⛔ api/view_support_file.php باید از `can(\x27support\x27)` برود، نه `isAdmin()`';
+}
+
+// ۷) ⛔ هیچ فهرستِ دستیِ نقش نماند. با `['admin','user']` محلی، نقشِ
+//    انتخاب‌شده **بی‌صدا** به `user` برمی‌گردد و پیامِ سبز هم می‌آید.
+foreach (['includes/signup.php', 'admin/users.php', 'api/update_profile.php', 'setup.php'] as $rel) {
+    if (!is_file($root . '/' . $rel)) { continue; }
+    $s = $stripComments($root . '/' . $rel);
+    if (preg_match('~in_array\(\s*\$role\s*,\s*\[\x27admin\x27~', $s)) {
+        $badRole[] = "⛔ {$rel} فهرستِ دستیِ نقش دارد — باید از `Auth::ROLES` برود";
+    }
+}
+
+// ۸) صافیِ نقش در `admin/users.php` از `Auth::ROLES` ساخته شود.
+$uSrc = $stripComments($root . '/admin/users.php');
+if (strpos($uSrc, "+ Auth::ROLES") === false) {
+    $badRole[] = '⛔ `USER_ROLE_FILTERS` از `Auth::ROLES` ساخته نمی‌شود — نقشِ تازه صافی نمی‌گیرد';
+}
+
+// ۹) نگهبانِ «آخرین مدیر» هر نقشِ غیرِ admin را بگیرد، نه فقط `user`.
+//    با `=== 'user'` تنها، «مدیر → همکار» پنل را برای همیشه می‌بست.
+if (substr_count($uSrc, "\$targetUser['role'] === 'admin' && \$role !== 'admin'") < 2) {
+    $badRole[] = '⛔ admin/users.php — نگهبانِ «آخرین مدیر» فقط `user` را می‌گیرد';
+}
+
+// ۱۰) نشانِ نقش در سرآیند از `roleLabel()` بیاید، وگرنه «پشتیبان» و
+//     «همکار» هر دو «کاربر» دیده می‌شوند و نقش هیچ‌جا پیدا نیست.
+$hdrSrc = $stripComments($root . '/includes/header.php');
+if (strpos($hdrSrc, 'Auth::roleLabel(Auth::role())') === false) {
+    $badRole[] = '⛔ نشانِ نقش در header.php از `roleLabel()` نمی‌آید';
+}
+
+// ۱۱) هر دو منوی مدیریت از `hasAnyCap()` گیت شوند — یکی‌شان که جا
+//     بماند، کاربر روی گوشی و روی دسکتاپ دو چیزِ متفاوت می‌بیند.
+foreach (['includes/sidebar.php', 'includes/footer.php'] as $rel) {
+    $s = $stripComments($root . '/' . $rel);
+    if (strpos($s, 'Auth::hasAnyCap()') === false) {
+        $badRole[] = "⛔ {$rel} سرتیترِ مدیریت را با `hasAnyCap()` گیت نمی‌کند";
+    }
+    if (strpos($s, "Auth::can('support')") === false) {
+        $badRole[] = "⛔ {$rel} قلمِ پشتیبانی را برای نقشِ «پشتیبان» رندر نمی‌کند";
+    }
+}
+
+// ۱۲) نوارِ `admin/_nav.php` هر بخش را با تواناییِ خودش گیت کند، و
+//     پیش‌فرضِ بخشِ تازه **بسته** بماند.
+$navSrc = $stripComments($root . '/admin/_nav.php');
+if (strpos($navSrc, 'Auth::can($__cap)') === false) {
+    $badRole[] = '⛔ admin/_nav.php هر بخش را با تواناییِ خودش گیت نمی‌کند';
+}
+if (!preg_match("~\x27support\.php\x27\s*=>\s*\[\x27پشتیبانی\x27,\s*\x27support\x27\]~u", $navSrc)) {
+    $badRole[] = '⛔ admin/_nav.php — بخشِ پشتیبانی تواناییِ `support` ندارد';
+}
+if (preg_match_all("~=>\s*\[\x27[^\x27]+\x27,\s*\x27support\x27\]~u", $navSrc) > 1) {
+    $badRole[] = '⛔ admin/_nav.php — بیش از یک بخش با تواناییِ `support` باز شده';
+}
+
+// ۱۳) migration در هر دو فهرستِ `migrate.sh` ثبت شده باشد — بدونِ
+//     شاهد، `--verify` همان دروغی را می‌گوید که برای گرفتنش ساخته شده.
+// ⚠ الگو به **خطِ کامل** بسته است، نه `strpos`: با جست‌وجوی متنی،
+//   کامنت کردنِ همان خط (`# migration_user_roles.sql`) بررسی را سبز
+//   نگه می‌داشت — جهش نشانش داد، نه بازبینی.
+$migSh = (string)@file_get_contents($root . '/deploy/migrate.sh');
+if (!preg_match('~^\s*migration_user_roles\.sql\s*$~m', $migSh)) {
+    $badRole[] = '⛔ migration_user_roles.sql در آرایه‌ی MIGRATIONS نیست';
+}
+if (strpos($migSh, '[migration_user_roles.sql]="users.role>=20"') === false) {
+    $badRole[] = '⛔ شاهدِ migration_user_roles در SENTINEL نیست (یا روی طولِ ستون نیست)';
+}
+
+T::bulk(13 + count($adminPages), $badRole,
+    '⛔ نقشِ «پشتیبان» فقط بخشِ پشتیبانی را باز می‌کند و «همکار» فقط یک برچسب است');
 
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {

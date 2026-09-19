@@ -21,7 +21,9 @@ CREATE TABLE IF NOT EXISTS `users` (
     -- ⚠ پیش از هر `password_verify()` باید نبودنش سنجیده شود؛ آن تابع
     --   با `null` امروز `Deprecated` می‌دهد و در PHP 9 خطای کشنده.
     `password_hash` VARCHAR(255) NULL DEFAULT NULL,
-    `role` ENUM('admin', 'user') NOT NULL DEFAULT 'user',
+    -- ⛔ VARCHAR نه ENUM: فهرستِ نقش‌ها در `Auth::ROLES` است و نقشِ
+    --    تازه نباید `ALTER TABLE` بخواهد (همان دلیلِ `payments.method`).
+    `role` VARCHAR(20) NOT NULL DEFAULT 'user',
     -- بعد از چند دقیقه بی‌فعالیتی دوباره رمز پرسیده شود. ۰ = هرگز.
     -- مقدارهای مجاز در Auth::SESSION_WINDOWS تعریف شده‌اند.
     `session_minutes` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '0 = بدون مهلت',

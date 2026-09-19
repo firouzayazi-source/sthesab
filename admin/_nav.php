@@ -24,19 +24,30 @@ if (!defined('APP_BASE_PATH')) {
     exit;
 }
 
+/**
+ * ⛔ هر بخش **توانایی**ِ لازمش را کنارِ خودش دارد، نه یک `if` پراکنده.
+ *
+ * **خواسته‌ی مالکِ نصب:** «امکان اضافه کردن ادمین با دسترسی محدود
+ * مثلاً پشتیبانی». با یک نوارِ ثابت و چند `if` در صفحه‌های مختلف،
+ * اولین بخشی که یادمان برود یعنی «پشتیبان» چیزی را می‌بیند که نباید.
+ *
+ * ⛔ و پیش‌فرض عمداً `'admin'` است — سمتِ **بسته**. بخشِ تازه‌ای که فردا
+ *    بدونِ فکر اضافه شود مدیر-فقط می‌ماند؛ اگر پیش‌فرض `'support'`
+ *    بود، هر صفحه‌ی تازه‌ی مدیر **بی‌صدا** برای پشتیبان باز می‌شد.
+ */
 $__adminTabs = [
-    'users.php'      => 'کاربران',
-    'access.php'     => 'ورود و پیامک',
-    'categories.php' => 'دسته‌بندی‌ها',
+    'users.php'      => ['کاربران', 'admin'],
+    'access.php'     => ['ورود و پیامک', 'admin'],
+    'categories.php' => ['دسته‌بندی‌ها', 'admin'],
     // ⚠ جای این قلم **زیرِ دسته‌بندی‌ها**ست، به خواسته‌ی صریحِ مالکِ
     //   نصب. ترتیبِ این آرایه همان ترتیبی است که روی نوار دیده می‌شود،
     //   و شیتِ مدیریت در `includes/footer.php` هم باید با آن بخواند —
     //   وگرنه کاربر روی گوشی و روی دسکتاپ دو ترتیبِ متفاوت می‌بیند.
-    'billing.php'    => 'اشتراک و پرداخت',
-    'insights.php'   => 'آمار استفاده',
-    'support.php'    => 'پشتیبانی',
-    'errors.php'     => 'خطاها',
-    'store-share.php' => 'سهامداران فروشگاه',
+    'billing.php'    => ['اشتراک و پرداخت', 'admin'],
+    'insights.php'   => ['آمار استفاده', 'admin'],
+    'support.php'    => ['پشتیبانی', 'support'],
+    'errors.php'     => ['خطاها', 'admin'],
+    'store-share.php' => ['سهامداران فروشگاه', 'admin'],
 ];
 $__here = basename($_SERVER['SCRIPT_NAME'] ?? '');
 
@@ -75,11 +86,12 @@ $__errOpen = Auth::isAdmin() ? AppErrors::openCount() : 0;
  *   فقط آدم را عادت می‌دهد نگاهش نکند.
  */
 require_once __DIR__ . '/../includes/support.php';
-$__supWait = Auth::isAdmin() ? Support::adminWaiting() : 0;
+$__supWait = Auth::can('support') ? Support::adminWaiting() : 0;
 ?>
 <nav class="admin-tabs" aria-label="بخش‌های مدیریت">
-    <?php foreach ($__adminTabs as $__file => $__label): ?>
+    <?php foreach ($__adminTabs as $__file => [$__label, $__cap]): ?>
         <?php if (!is_file(__DIR__ . '/' . $__file)) { continue; } ?>
+        <?php if (!Auth::can($__cap)) { continue; } ?>
         <a href="<?= APP_BASE_PATH ?>/admin/<?= h($__file) ?>"
            class="admin-tab <?= $__here === $__file ? 'is-active' : '' ?>"
            <?= $__here === $__file ? 'aria-current="page"' : '' ?>><?= h($__label) ?><?php

@@ -16,7 +16,29 @@ Auth::requireAdmin();
  *    با همین‌ها سنجیده می‌شود؛ فهرستِ دوم یعنی گزینه‌ای که کاربر
  *    می‌بیند بی‌صدا به پیش‌فرض برمی‌گردد.
  */
-const USER_ROLE_FILTERS = ['' => 'همه‌ی نقش‌ها', 'admin' => 'فقط مدیر', 'user' => 'فقط کاربر'];
+/**
+ * ⛔ از `Auth::ROLES` ساخته می‌شود، نه یک فهرستِ دستی.
+ *
+ * تا دیروز `['admin' => 'فقط مدیر', 'user' => 'فقط کاربر']` بود. با
+ * آمدنِ «پشتیبان» و «همکار»، صافی **بی‌صدا** عقب می‌ماند: مدیر نقش را
+ * می‌داد ولی هیچ راهی برای پیدا کردنِ آن کاربرها نداشت، و خرابی‌اش
+ * هیچ خطایی نمی‌داد — همان درسِ `ACTIVE_DAYS` که در سه جا سخت‌کد بود.
+ *
+ * ⚠ اجتماعِ آرایه‌ها در عبارتِ ثابت مجاز است، پس هنوز `const` می‌ماند
+ *   و قاعده ۴۸ دست‌نخورده کار می‌کند.
+ */
+const USER_ROLE_FILTERS = ['' => 'همه‌ی نقش‌ها'] + Auth::ROLES;
+
+/**
+ * ⛔ یک جمله زیرِ هر دو منوی نقش — و این تزئین نیست.
+ *
+ * نامِ نقش به‌تنهایی نمی‌گوید چه چیزی را باز می‌کند؛ مدیری که
+ * «پشتیبان» را انتخاب می‌کند باید همان‌جا بداند که این آدم **فقط**
+ * پنلِ تیکت را می‌بیند و نه کاربران و نه پرداخت‌ها. بدونِ آن، تنها
+ * راهِ فهمیدنش امتحان کردن روی یک حسابِ واقعی است.
+ */
+const ROLE_HELP = 'مدیر: همه‌ی پنل. پشتیبان: فقط بخش پشتیبانی و تیکت‌ها. '
+    . 'همکار: مثل کاربر عادی — فقط یک برچسب برای شناختنِ افرادِ فروشگاه.';
 const USER_STATE_FILTERS = [
     ''         => 'همه‌ی وضعیت‌ها',
     'active'   => 'فعال',
@@ -108,8 +130,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $username = postParam('username');
         $password = $_POST['password'] ?? '';
         $passwordConfirm = $_POST['password_confirm'] ?? '';
+        // ⛔ فهرستِ نقش از `Auth::ROLES` است، نه آرایه‌ی محلی — همان
+        //    دلیلی که بالای `USER_ROLE_FILTERS` نوشته شده.
         $role = postParam('role', 'user');
-        if (!in_array($role, ['admin', 'user'], true)) {
+        if (!array_key_exists($role, Auth::ROLES)) {
             $role = 'user';
         }
 
@@ -142,7 +166,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $role = postParam('role', 'user');
         $password = $_POST['password'] ?? '';
         $passwordConfirm = $_POST['password_confirm'] ?? '';
-        if (!in_array($role, ['admin', 'user'], true)) {
+        if (!array_key_exists($role, Auth::ROLES)) {
             $role = 'user';
         }
 
@@ -166,9 +190,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = $pe;
         } elseif ($password !== '' && $password !== $passwordConfirm) {
             $error = 'رمز عبور و تکرار آن یکسان نیستند.';
-        } elseif ($targetUser['role'] === 'admin' && $role === 'user' && (int)$targetUser['id'] === $currentUserId) {
+        /*
+         * ⛔ شرط `$role !== 'admin'` است نه `$role === 'user'`.
+         *
+         * تا دیروز فقط دو نقش وجود داشت و آن دو یکی بودند. حالا «مدیر →
+         * پشتیبان» و «مدیر → همکار» هم **برداشتنِ مدیریت**اند و از کنارِ
+         * شرطِ قدیمی رد می‌شدند: آخرین مدیرِ نصب می‌توانست خودش را
+         * «همکار» کند و آن‌وقت **هیچ‌کس** به پنل مدیریت راه نداشت — نه
+         * خطایی، نه هشداری، و تنها راهِ برگشت `deploy/user-admin.php`
+         * روی SSH بود.
+         */
+        } elseif ($targetUser['role'] === 'admin' && $role !== 'admin' && (int)$targetUser['id'] === $currentUserId) {
             $error = 'نمی‌توانید نقش مدیریتی خودتان را تغییر دهید.';
-        } elseif ($targetUser['role'] === 'admin' && $role === 'user' && countOtherActiveAdmins($pdo, $targetId) < 1) {
+        } elseif ($targetUser['role'] === 'admin' && $role !== 'admin' && countOtherActiveAdmins($pdo, $targetId) < 1) {
             $error = 'حداقل باید یک مدیر فعال در سیستم باقی بماند.';
         } else {
             $dupStmt = $pdo->prepare('SELECT id FROM users WHERE username = :username AND id != :id');
@@ -601,7 +635,11 @@ include __DIR__ . '/../includes/header.php';
 <?php if ($hasEmailColumn): ?>
                             <td data-label="ایمیل"><?= $u['email'] ? h($u['email']) : '<span style="color:var(--muted)">—</span>' ?></td>
 <?php endif; ?>
-                            <td data-label="نقش"><?= $u['role'] === 'admin' ? 'مدیر' : 'کاربر' ?></td>
+                            <?php /* ⛔ برچسب از `Auth::roleLabel()` — با سه‌گانه‌ی
+                                     قبلی، «پشتیبان» و «همکار» هر دو «کاربر»
+                                     خوانده می‌شدند و مدیر نمی‌فهمید نقشی که
+                                     خودش داده کجا نشسته. */ ?>
+                            <td data-label="نقش"><?= h(Auth::roleLabel((string)$u['role'])) ?></td>
                             <td data-label="وضعیت">
                                 <span class="status-badge <?= (int)$u['is_active'] === 1 ? 'status-active' : 'status-inactive' ?>">
                                     <?= (int)$u['is_active'] === 1 ? 'فعال' : 'غیرفعال' ?>
@@ -704,10 +742,21 @@ include __DIR__ . '/../includes/header.php';
 <?php endif; ?>
             <div class="form-group">
                 <label>نقش</label>
+                <?php
+                /* ⛔ گزینه‌ها از `Auth::ROLES` — و انتخابِ پیش‌فرض
+                   **صریح** است، نه «اولین گزینه». `Auth::ROLES` با
+                   `admin` شروع می‌شود، پس با تکیه بر ترتیب، هر کاربری
+                   که مدیر نقش را دست نمی‌زد **مدیر** ساخته می‌شد —
+                   خرابیِ بی‌صدا و از بدترین نوعش. */
+                $roleSel = $reopenModal === 'add' ? (string)postParam('role', 'user') : 'user';
+                if (!array_key_exists($roleSel, Auth::ROLES)) { $roleSel = 'user'; }
+                ?>
                 <select name="role">
-                    <option value="user" <?= ($reopenModal === 'add' && postParam('role') === 'user') ? 'selected' : '' ?>>کاربر</option>
-                    <option value="admin" <?= ($reopenModal === 'add' && postParam('role') === 'admin') ? 'selected' : '' ?>>مدیر</option>
+                    <?php foreach (Auth::ROLES as $rk => $rlabel): ?>
+                        <option value="<?= h($rk) ?>" <?= $roleSel === $rk ? 'selected' : '' ?>><?= h($rlabel) ?></option>
+                    <?php endforeach; ?>
                 </select>
+                <p class="hint"><?= h(ROLE_HELP) ?></p>
             </div>
             <div class="form-group">
                 <label>رمز عبور</label>
@@ -775,10 +824,20 @@ include __DIR__ . '/../includes/header.php';
 <?php endif; ?>
             <div class="form-group">
                 <label>نقش</label>
+                <?php
+                /* ⚠ مقدارِ واقعی را جاوااسکریپت از `data-role` همان ردیف
+                   می‌گذارد؛ این فقط حالتِ «فرم با خطا دوباره باز شد»
+                   است. باز هم انتخابِ پیش‌فرض صریح است، نه ترتیبِ
+                   گزینه‌ها. */
+                $roleSelEdit = $reopenModal === 'edit' ? (string)postParam('role', 'user') : 'user';
+                if (!array_key_exists($roleSelEdit, Auth::ROLES)) { $roleSelEdit = 'user'; }
+                ?>
                 <select name="role">
-                    <option value="user" <?= ($reopenModal === 'edit' && postParam('role') === 'user') ? 'selected' : '' ?>>کاربر</option>
-                    <option value="admin" <?= ($reopenModal === 'edit' && postParam('role') === 'admin') ? 'selected' : '' ?>>مدیر</option>
+                    <?php foreach (Auth::ROLES as $rk => $rlabel): ?>
+                        <option value="<?= h($rk) ?>" <?= $roleSelEdit === $rk ? 'selected' : '' ?>><?= h($rlabel) ?></option>
+                    <?php endforeach; ?>
                 </select>
+                <p class="hint"><?= h(ROLE_HELP) ?></p>
             </div>
             <div class="form-group">
                 <label>رمز عبور جدید (اختیاری)</label>

@@ -3,9 +3,9 @@ require_once __DIR__ . '/plan_gate.php';
 /**
  * فوتر مشترک صفحات داخلی — شامل ناوبری پایین صفحه
  */
-$bottomPage = basename($_SERVER['PHP_SELF']);
-$morePages = ['profile.php', 'wallets.php', 'budget.php', 'savings.php', 'recurring.php', 'due.php', 'search.php', 'data.php', 'cheques.php', 'debts.php', 'my-assets.php', 'category-report.php', 'references.php', 'person.php', 'users.php', 'categories.php', 'insights.php', 'backup.php', 'support.php'];
-$moreActive = in_array($bottomPage, $morePages, true);
+$__bottomPage = basename($_SERVER['PHP_SELF']);
+$__morePages = ['profile.php', 'wallets.php', 'budget.php', 'savings.php', 'recurring.php', 'due.php', 'search.php', 'data.php', 'cheques.php', 'debts.php', 'my-assets.php', 'category-report.php', 'references.php', 'person.php', 'users.php', 'categories.php', 'insights.php', 'backup.php', 'support.php'];
+$__moreActive = in_array($__bottomPage, $__morePages, true);
 ?>
         </div>
     </div>
@@ -13,12 +13,12 @@ $moreActive = in_array($bottomPage, $morePages, true);
 
 <!-- ناوبری پایین صفحه -->
 <nav class="bottom-nav">
-    <a href="<?= APP_BASE_PATH ?>/index.php" class="bottom-nav-item <?= $bottomPage === 'index.php' ? 'active' : '' ?>">
+    <a href="<?= APP_BASE_PATH ?>/index.php" class="bottom-nav-item <?= $__bottomPage === 'index.php' ? 'active' : '' ?>">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M3 9L12 2L21 9V20A2 2 0 0119 22H5A2 2 0 013 20V9Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
         <span>خانه</span>
     </a>
 
-    <a href="<?= APP_BASE_PATH ?>/transactions.php" class="bottom-nav-item <?= $bottomPage === 'transactions.php' ? 'active' : '' ?>">
+    <a href="<?= APP_BASE_PATH ?>/transactions.php" class="bottom-nav-item <?= $__bottomPage === 'transactions.php' ? 'active' : '' ?>">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         <span>تراکنش‌ها</span>
     </a>
@@ -29,12 +29,12 @@ $moreActive = in_array($bottomPage, $morePages, true);
         </span>
     </button>
 
-    <a href="<?= APP_BASE_PATH ?>/dashboard.php" class="bottom-nav-item <?= $bottomPage === 'dashboard.php' ? 'active' : '' ?>">
+    <a href="<?= APP_BASE_PATH ?>/dashboard.php" class="bottom-nav-item <?= $__bottomPage === 'dashboard.php' ? 'active' : '' ?>">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         <span>گزارش</span>
     </a>
 
-    <button type="button" class="bottom-nav-item <?= $moreActive ? 'active' : '' ?>" id="moreTabBtn">
+    <button type="button" class="bottom-nav-item <?= $__moreActive ? 'active' : '' ?>" id="moreTabBtn">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="5" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="19" cy="12" r="1.7" fill="currentColor"/></svg>
         <span>بیشتر</span>
     </button>
@@ -109,10 +109,15 @@ $moreActive = in_array($bottomPage, $morePages, true);
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <span>خروجی و ورودی</span>
             </a>
-            <?php if (Auth::isAdmin()): ?>
+            <?php if (Auth::hasAnyCap()): ?>
             <!-- کارهای مدیریتی زیر یک در جمع شده‌اند تا این شیت برای
                  مدیر و کاربر عادی یک شکل باشد و ابزارهای روزمره میان
-                 گزینه‌های مدیریتی گم نشوند. -->
+                 گزینه‌های مدیریتی گم نشوند.
+
+                 ⛔ گیتش `hasAnyCap()` است نه `isAdmin()`: نقشِ «پشتیبان»
+                 باید همین در را داشته باشد، ولی پشتش فقط کارتِ خودش را
+                 ببیند. با `isAdmin()` روی این دکمه، آن کاربر **هیچ**
+                 راهی به پنلِ تیکت نداشت. -->
             <button type="button" class="tool-card js-open-admin" style="--tc1:#64748b; --tc2:#475569;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 11-4 0v-.09a1.7 1.7 0 00-1.11-1.55 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.7 1.7 0 00.34-1.87 1.7 1.7 0 00-1.55-1H3a2 2 0 110-4h.09A1.7 1.7 0 004.6 8.6a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06a1.7 1.7 0 001.87.34H9a1.7 1.7 0 001-1.55V3a2 2 0 114 0v.09a1.7 1.7 0 001 1.55 1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87V9a1.7 1.7 0 001.55 1H21a2 2 0 110 4h-.09a1.7 1.7 0 00-1.55 1z"/></svg>
                 <span>مدیریت</span>
@@ -144,7 +149,7 @@ $moreActive = in_array($bottomPage, $morePages, true);
     </div>
 </div>
 
-<?php if (Auth::isAdmin()): ?>
+<?php if (Auth::hasAnyCap()): ?>
 <!-- زیرشیت مدیریت -->
 <div class="more-sheet-overlay" id="adminSheet">
     <div class="more-sheet">
@@ -154,6 +159,10 @@ $moreActive = in_array($bottomPage, $morePages, true);
             <button type="button" class="modal-close js-close-admin" aria-label="بستن">&times;</button>
         </div>
         <div class="tools-grid">
+            <?php /* ⚠ هر کارت گیتِ **خودش** را دارد، نه یک `if` دور کلِ
+                     شبکه: «پشتیبان» باید همین شیت را باز کند و فقط
+                     آخرین کارت را ببیند. */ ?>
+            <?php if (Auth::can('admin')): ?>
             <a href="<?= APP_BASE_PATH ?>/admin/users.php" class="tool-card" style="--tc1:#64748b; --tc2:#475569;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 <span>کاربران</span>
@@ -177,12 +186,15 @@ $moreActive = in_array($bottomPage, $morePages, true);
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>
                 <span>آمار استفاده</span>
             </a>
+            <?php endif; ?>
             <?php /* ⚠ هم‌ترتیب با `admin/_nav.php` — وگرنه کاربر روی گوشی
                      و روی دسکتاپ دو ترتیبِ متفاوت می‌بیند. */ ?>
+            <?php if (Auth::can('support')): ?>
             <a href="<?= APP_BASE_PATH ?>/admin/support.php" class="tool-card" style="--tc1:#0d9488; --tc2:#0f766e;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
                 <span>پشتیبانی</span>
             </a>
+            <?php endif; ?>
         </div>
     </div>
 </div>

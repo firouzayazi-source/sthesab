@@ -52,6 +52,9 @@ function usage(): void
     out("  $me --test-mail you@gmail.com          آزمایش تنظیمات ایمیل");
     out("  $me --set-phone ali 09123456789        ثبت شماره برای ورود با پیامک");
     out("  $me --sms-check 09123456789            چرا کدِ ورود برای این شماره نمی‌رود؟");
+    out("  $me --set-role ali support             نقش: admin / support / colleague / user");
+    out("  $me --mark-colleagues                  چه کسانی به فروشگاه وصل‌اند (فقط نمایش)");
+    out("  $me --mark-colleagues --apply          همان‌ها را «همکار» کن");
     out("  $me --stats-check ali                  عددِ «آمار استفاده» این کاربر از کجا می‌آید؟");
     out("  $me --merge-categories                 فهرستِ دسته‌بندی‌ها با شناسه (برای پیدا کردنِ عدد)");
     out("  $me --merge-categories 12 7            ادغامِ دسته‌بندیِ ۱۲ در ۷ (۱۲ حذف می‌شود)");
@@ -276,6 +279,128 @@ if ($cmd === '--set-phone') {
     ok("شماره «{$norm}» برای کاربر «{$username}» ثبت شد.");
     out('حالا می‌تواند از صفحه‌ی ورود، «ورود با کد پیامکی» را بزند.');
     out("برای اطمینان:  php deploy/user-admin.php --sms-check {$norm}");
+    exit(0);
+}
+
+// ---------------------------------------------------------------
+// ⛔ همان جنسِ در پشتیِ `--unlock` و `--set-phone`: نقشِ کاربر از خط
+//    فرمان.
+//
+//    دو حالتِ واقعی دارد که از مرورگر بن‌بست‌اند: (۱) آخرین مدیر نقشش
+//    را از دست داده و دیگر هیچ‌کس به پنل راه ندارد؛ (۲) مالکِ نصب
+//    می‌خواهد نقشی را روی چند نفر بگذارد و هر بار باز کردنِ مودالِ
+//    ویرایش روی SSH موبایل کارِ ساده‌ای نیست.
+if ($cmd === '--set-role') {
+    require_once __DIR__ . '/../includes/auth.php';
+
+    $username = $argvIn[1] ?? fail('استفاده — نمونه:  --set-role ali support');
+    $roleIn   = $argvIn[2] ?? fail('استفاده — نمونه:  --set-role ali support');
+
+    // ⛔ فهرست از `Auth::ROLES` است، نه یک آرایه‌ی محلی — وگرنه این ابزار
+    //    و خودِ اپ دیر یا زود دو فهرستِ متفاوت می‌شدند و نقشی که اینجا
+    //    ثبت می‌شد در `can()` هیچ معنایی نداشت.
+    if (!array_key_exists($roleIn, Auth::ROLES)) {
+        fail('نقشِ نامعتبر. نقش‌های مجاز: ' . implode('، ', array_keys(Auth::ROLES)));
+    }
+
+    $user = $findUser($username);
+
+    // ⛔ همان نگهبانِ صفحه‌ی مدیر، اینجا هم — و اینجا **لازم‌تر** است:
+    //    این ابزار هیچ فرمی ندارد که جلوی آدم را بگیرد، و برداشتنِ نقشِ
+    //    آخرین مدیر یعنی پنل برای همیشه بسته می‌شود.
+    if ((string)$user['role'] === 'admin' && $roleIn !== 'admin'
+        && countOtherActiveAdmins($pdo, (int)$user['id']) < 1) {
+        fail('این تنها مدیرِ فعالِ سیستم است؛ اول یک مدیرِ دیگر بسازید.');
+    }
+
+    if ((string)$user['role'] === $roleIn) {
+        ok("نقشِ «{$username}» از قبل «" . Auth::roleLabel($roleIn) . "» است — چیزی عوض نشد.");
+        exit(0);
+    }
+
+    $st = $pdo->prepare('UPDATE users SET role = :r WHERE id = :id');
+    $st->execute(['r' => $roleIn, 'id' => (int)$user['id']]);
+
+    ok("نقشِ «{$username}» به «" . Auth::roleLabel($roleIn) . "» تغییر کرد.");
+    // ⚠ نشستِ باز فوراً عوض نمی‌شود: `refreshAccountState()` هر یک دقیقه
+    //   نقش را از دیتابیس تازه می‌کند (بخشِ «تصمیمِ مدیر باید به نشستِ
+    //   زنده برسد»). پس این را می‌گوییم تا کسی فکر نکند کار نکرده.
+    out('اگر همین حالا وارد است، تا یک دقیقه‌ی دیگر اعمال می‌شود.');
+    exit(0);
+}
+
+// ---------------------------------------------------------------
+// ⛔ یک **عملیات** است، نه یک قابلیت — همان جنسِ `--merge-categories`.
+//
+//    **خواسته‌ی مالکِ نصب:** «همین ۴ نفری که حسابداری به حسابشون وصل
+//    شده در اون دسته قرار می‌گیرن». یعنی یک بار برچسب زدن، نه یک
+//    قاعده‌ی همیشگی — و عمداً **قاعده‌ی خودکار نشد**: با همگام‌سازیِ
+//    خودکارِ نقش از روی پیوندِ فروشگاه، قطعِ یک پیوند نقشِ کاربر را هم
+//    بی‌صدا عوض می‌کرد، در حالی که «همکار» یک واقعیتِ سازمانی است نه
+//    یک اثرِ جانبیِ پیکربندی.
+if ($cmd === '--mark-colleagues') {
+    require_once __DIR__ . '/../includes/auth.php';
+
+    if (!tableExists('store_shareholders')) {
+        fail("جدولِ پیوندِ سهامداران هنوز ساخته نشده. اول:  bash deploy/migrate.sh --apply");
+    }
+
+    $apply = in_array('--apply', $argvIn, true);
+
+    /*
+     * ⛔ فقط `user` → `colleague`، و هیچ‌وقت برعکس.
+     *
+     * مدیر و پشتیبان **دست نمی‌خورند**: این ابزار برچسب می‌زند، نه
+     * دسترسی می‌گیرد. بدونِ این شرط، یک اجرای بی‌دقت می‌توانست مدیرِ
+     * نصب را «همکار» کند و پنل را ببندد.
+     */
+    $rows = $pdo->query(
+        "SELECT u.id, u.username, u.full_name, u.role
+           FROM store_shareholders s
+           JOIN users u ON u.id = s.user_id
+          WHERE s.is_active = 1
+          ORDER BY u.username"
+    )->fetchAll();
+
+    if (!$rows) {
+        info('هیچ کاربری به سهامدارِ فروشگاه وصل نیست — چیزی برای برچسب زدن نیست.');
+        out('وصل کردن از:  admin/store-share.php');
+        exit(0);
+    }
+
+    out('');
+    info('— کاربرانِ وصل‌شده به سهامدارِ فروشگاه —');
+    $todo = [];
+    foreach ($rows as $r) {
+        $label = Auth::roleLabel((string)$r['role']);
+        if ((string)$r['role'] === 'user') {
+            $todo[] = $r;
+            out("  {$r['username']} ({$r['full_name']}) — {$label} → همکار");
+        } else {
+            out("  {$r['username']} ({$r['full_name']}) — {$label} (دست نمی‌خورد)");
+        }
+    }
+
+    if (!$todo) {
+        out('');
+        ok('هیچ‌کدام نیاز به تغییر ندارند.');
+        exit(0);
+    }
+
+    if (!$apply) {
+        out('');
+        info('این فقط نمایش بود. برای اعمال:  php deploy/user-admin.php --mark-colleagues --apply');
+        exit(0);
+    }
+
+    $st = $pdo->prepare("UPDATE users SET role = 'colleague' WHERE id = :id AND role = 'user'");
+    $n = 0;
+    foreach ($todo as $r) {
+        $st->execute(['id' => (int)$r['id']]);
+        $n += $st->rowCount();
+    }
+    out('');
+    ok("{$n} کاربر به نقشِ «همکار» تغییر کرد.");
     exit(0);
 }
 

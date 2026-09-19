@@ -319,7 +319,24 @@ function createUserAccount(PDO $pdo, string $fullName, string $username,
                            string $email, string $password, string $role = 'user',
                            string $phone = ''): array
 {
-    if (!in_array($role, ['admin', 'user'], true)) { $role = 'user'; }
+    /*
+     * ⛔ فهرستِ نقش‌ها از `Auth::ROLES` می‌آید، نه یک آرایه‌ی محلی.
+     *
+     * تا دیروز اینجا `['admin', 'user']` نوشته بود؛ با آمدنِ «پشتیبان»
+     * و «همکار»، مدیر نقش را در فرم انتخاب می‌کرد و همین خط **بی‌صدا**
+     * به `user` برش می‌گرداند — یعنی صفحه می‌گفت «کاربر ساخته شد» و
+     * نقشی که انتخاب شده بود هیچ‌جا نمی‌نشست.
+     *
+     * ⚠ ناشناخته به `user` می‌افتد، نه به خطا: این تابع از پنج مسیر
+     *   صدا زده می‌شود و سمتِ **بسته** پیش‌فرضِ درست است.
+     *
+     * ⚠ `auth.php` همین‌جا لود می‌شود نه بالای فایل — همان الگوی
+     *   `SmsLogin::normalizePhone()` در `validateNewUser()`:
+     *   `includes/password_reset.php` این فایل را بدونِ `Auth` لود
+     *   می‌کند و یک `require` بالای فایل هزینه‌ی بی‌مصرف می‌داد.
+     */
+    require_once __DIR__ . '/auth.php';
+    if (!array_key_exists($role, Auth::ROLES)) { $role = 'user'; }
 
     try {
         $st = $pdo->prepare(

@@ -33,7 +33,7 @@ require_once __DIR__ . '/../includes/support.php';
 require_once __DIR__ . '/../includes/paged_list.php';
 
 Auth::initSession();
-Auth::requireAdmin();
+Auth::requireCap('support');
 
 const SUPPORT_ADMIN_PAGE_SIZE = 15;
 

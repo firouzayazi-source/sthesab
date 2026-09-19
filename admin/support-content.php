@@ -23,7 +23,7 @@ require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/support.php';
 
 Auth::initSession();
-Auth::requireAdmin();
+Auth::requireCap('support');
 
 $ready = Support::available();
 $tab   = (string)getParam('tab', 'articles');
