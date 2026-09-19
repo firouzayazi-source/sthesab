@@ -4020,6 +4020,102 @@ if (!preg_match('~if\s*\(\s*empty\(\$recentTransactions\)\s*\)\s*:\s*\?>\s*<\?ph
 
 T::bulk(10, $badIntro, '⛔ معرفیِ اولیه: هر راهِ خروج نشانه می‌زند و فقط دفترِ خالی می‌بیندش');
 
+// ═══════════════════════════════════════════════════════════════
+// قاعده ۴۸ — مدیریت کاربران در مقیاس
+// ═══════════════════════════════════════════════════════════════
+//
+// **گزارشِ مالکِ نصب:** «مدیریت کاربران خیلی بزرگ هست… بهینه کن بدون
+// کم کردن قابلیتها.»
+//
+// صفحه همه‌ی ردیف‌های `users` را یک‌جا رندر می‌کرد. اندازه‌گیری شد با
+// هزار کاربر: **۴٬۳۴۱٬۳۷۴ بایت** HTML و ۱۹٫۲ میلی‌ثانیه رندر؛ بعد از
+// `LIMIT`: **۱۵۶٬۵۰۹ بایت** و ۷٫۵ میلی‌ثانیه.
+//
+// ⛔ چرا قاعده‌ی شکل هم لازم است: با برداشتنِ `LIMIT` صفحه **درست کار
+//    می‌کند** و فقط دوباره چهار مگابایت می‌شود. تستِ رفتاری
+//    (`tests/test_admin_users.php`) این را می‌گیرد ولی به دیتابیس
+//    نیاز دارد (`T::blocked`)؛ روی ماشینی که دیتابیس ندارد فقط همین
+//    قاعده می‌ماند.
+
+T::group('قاعده ۴۸ — مدیریت کاربران در مقیاس');
+
+$badUsers = [];
+$usersSrc = $stripComments($root . '/admin/users.php');
+
+// ۱) فهرستِ صافی‌ها تنها مرجع باشد — هم منو از آن رندر شود هم `$_GET`
+//    با آن سنجیده شود. با فهرستِ دوم، گزینه‌ای که مدیر می‌بیند هنگام
+//    اعمال بی‌صدا به پیش‌فرض برمی‌گردد (درسِ `DUE_TABS`).
+foreach (['USER_ROLE_FILTERS', 'USER_STATE_FILTERS', 'USER_SORTS'] as $c) {
+    if (!preg_match('~const\s+' . $c . '\s*=~', $usersSrc)) {
+        $badUsers[] = "⛔ admin/users.php — ثابتِ {$c} تعریف نشده";
+        continue;
+    }
+    if (strpos($usersSrc, 'isset(' . $c . '[') === false) {
+        $badUsers[] = "⛔ admin/users.php — ورودی با {$c} سنجیده نمی‌شود";
+    }
+    if (strpos($usersSrc, 'foreach (' . $c . ' as') === false) {
+        $badUsers[] = "⛔ admin/users.php — منو از {$c} رندر نمی‌شود (فهرستِ دوم)";
+    }
+}
+
+// ۲) خودِ `LIMIT` — قلبِ این کار.
+if (!preg_match('~\$limitSql\s*=\s*\$pg\[\x27all\x27\]\s*\?\s*\x27\x27\s*:\s*\x27 LIMIT ~', $usersSrc)) {
+    $badUsers[] = '⛔ admin/users.php — فهرست دیگر با LIMIT بریده نمی‌شود (چهار مگابایت HTML برمی‌گردد)';
+}
+if (strpos($usersSrc, 'pagedWindow(') === false || strpos($usersSrc, 'pagedNav(') === false) {
+    $badUsers[] = '⛔ admin/users.php — از `includes/paged_list.php` رد نمی‌شود';
+}
+
+// ۳) فرارِ وایلدکارت. بدونش تایپِ `%` کلِ فهرست را برمی‌گرداند و مدیر
+//    نمی‌فهمد چرا — همان کاری که `includes/tx_query.php` هم می‌کند.
+// ⚠ الگو هر دو شکل را می‌پذیرد: رشته‌ی PHP این را با بک‌اسلش می‌نویسد
+//   (`ESCAPE \'!\'`) و توکنایزر متنِ خامِ همان را برمی‌گرداند. با
+//   جست‌وجوی سرراستِ `ESCAPE '!'` تست روی فایلِ **سالم** قرمز می‌شد.
+if (preg_match_all('~ESCAPE\s+\\\\?\x27!\\\\?\x27~', $usersSrc) < 2) {
+    $badUsers[] = '⛔ admin/users.php — جست‌وجو `ESCAPE` با کاراکترِ فرار ندارد';
+}
+if (!preg_match('~str_replace\(\s*\[\x27!\x27,\s*\x27%\x27,\s*\x27_\x27\]~', $usersSrc)) {
+    $badUsers[] = '⛔ admin/users.php — `%`/`_`/`!` پیش از LIKE فرار داده نمی‌شوند';
+}
+
+// ۴) ریدایرکتِ بعد از عملیات، نمای جاری را نگه دارد. با `'users.php'`
+//    خام، مدیر از صفحه‌ی ۱۲ به صفحه‌ی ۱ پرت می‌شود — خرابی‌ای بی‌خطا.
+if (strpos($usersSrc, "redirectWithMessage('users.php'") !== false) {
+    $badUsers[] = '⛔ admin/users.php — ریدایرکتِ خام برگشت؛ صافی و صفحه از دست می‌رود';
+}
+if (!preg_match('~\$backTo\s*=~', $usersSrc) || substr_count($usersSrc, 'redirectWithMessage($backTo') < 10) {
+    $badUsers[] = '⛔ admin/users.php — همه‌ی مسیرها از `$backTo` رد نمی‌شوند';
+}
+
+// ۵) ⛔ «بدون کم کردن قابلیت‌ها» — خواسته‌ی صریح. هر شش ورودیِ عملیات
+//    باید سرِ جایش بماند؛ بهینه‌سازی‌ای که یک دکمه را ببرد، خواسته را
+//    برآورده نکرده.
+foreach ([
+    "value=\"create\""        => 'ساخت کاربر',
+    "js-edit-user"            => 'ویرایش',
+    "value=\"toggle_status\"" => 'فعال/غیرفعال',
+    "value=\"revoke_access\"" => 'خروج از دستگاه‌ها',
+    "value=\"unlock_login\""  => 'باز کردن قفل',
+    "value=\"delete\""        => 'حذف',
+] as $needle => $what) {
+    if (strpos($usersSrc, $needle) === false) {
+        $badUsers[] = "⛔ admin/users.php — عملیاتِ «{$what}» از صفحه حذف شده";
+    }
+}
+
+// ۶) و خودِ `pagedWindow()` نباید ردیف بخواند — اگر روزی کوئری داخلش
+//    برود، همان «نسخه‌ی دوم» می‌شود که مرزِ بینِ برشِ PHP و `LIMIT` را
+//    بی‌معنا می‌کند.
+$pagedSrc = $stripComments($root . '/includes/paged_list.php');
+if (strpos($pagedSrc, 'function pagedWindow(') === false) {
+    $badUsers[] = '⛔ includes/paged_list.php — `pagedWindow()` نیست';
+} elseif (preg_match('~function pagedWindow\(.*?\n\}~s', $pagedSrc, $mw)
+          && preg_match('~Database::|->query\(|->prepare\(~', $mw[0])) {
+    $badUsers[] = '⛔ pagedWindow() به دیتابیس دست می‌زند — باید فقط حساب کند';
+}
+
+T::bulk(18, $badUsers, '⛔ مدیریت کاربران: صافیِ یک‌مرجعی، برشِ SQL، و هیچ عملیاتِ کم‌نشده');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

@@ -5,15 +5,65 @@ require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/signup.php';
 require_once __DIR__ . '/../includes/login_throttle.php';
 require_once __DIR__ . '/../includes/user_data.php';
+require_once __DIR__ . '/../includes/paged_list.php';
 
 Auth::initSession();
 Auth::requireAdmin();
+
+/**
+ * ⛔ صافی‌ها و ترتیب — تنها مرجع (همان قاعده‌ی `DUE_TABS` و
+ *    `AppErrors::FILTERS`). هم منوها از اینجا رندر می‌شوند هم `$_GET`
+ *    با همین‌ها سنجیده می‌شود؛ فهرستِ دوم یعنی گزینه‌ای که کاربر
+ *    می‌بیند بی‌صدا به پیش‌فرض برمی‌گردد.
+ */
+const USER_ROLE_FILTERS = ['' => 'همه‌ی نقش‌ها', 'admin' => 'فقط مدیر', 'user' => 'فقط کاربر'];
+const USER_STATE_FILTERS = [
+    ''         => 'همه‌ی وضعیت‌ها',
+    'active'   => 'فعال',
+    'inactive' => 'غیرفعال',
+    'locked'   => 'قفلِ ورود',
+];
+const USER_SORTS = [
+    'new'  => 'تازه‌ترین',
+    'old'  => 'قدیمی‌ترین',
+    'name' => 'نام (الفبا)',
+    'user' => 'نام کاربری (الفبا)',
+];
+
+/**
+ * ⛔ بیست‌وپنج، نه `PAGED_LIST_SIZE` (ده).
+ *
+ * آن عدد برای کارت‌های توریِ `admin/insights.php` انتخاب شد. اینجا یک
+ * جدولِ فشرده است و با هزار کاربر، صفحه‌های ده‌تایی یعنی **صد صفحه** —
+ * صفحه‌بندی‌ای که خودش به اندازه‌ی فهرستِ بی‌انتها آزاردهنده است.
+ * اندازه‌گیری شد: ۲۵ ردیف روی دسکتاپ یک پرده و نیم است و روی موبایل
+ * (که جدول کارتی می‌شود) هم تهش با دو کشیدن می‌آید.
+ */
+const USERS_PAGE_SIZE = 25;
 
 $pdo = Database::getConnection();
 $currentUserId = Auth::userId();
 
 $error = '';
 $reopenModal = '';
+
+/**
+ * ⛔ بعد از هر POST باید به **همین** نما برگردیم، نه به صفحه‌ی اول.
+ *
+ * با هزار کاربر، «غیرفعال‌سازی» روی صفحه‌ی ۱۲ کاربر را به صفحه‌ی ۱
+ * برمی‌گرداند و او باید دوباره دوازده بار ورق بزند — همان خرابیِ
+ * بی‌صدایی که `pagedUrl()` برای نبودنش نوشته شد، این بار در مسیرِ
+ * ریدایرکت. فقط کلیدهای شناخته‌شده حمل می‌شوند تا `$_GET` دلخواه وارد
+ * سرآیندِ `Location` نشود.
+ */
+$backTo = (static function (): string {
+    $keep = [];
+    foreach (['q', 'role', 'state', 'sort', 'pg_users', 'all'] as $k) {
+        $v = $_GET[$k] ?? null;
+        if (is_string($v) && $v !== '') { $keep[$k] = $v; }
+    }
+    return 'users.php' . ($keep ? '?' . http_build_query($keep) : '');
+})();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Csrf::verifyOrFail(postParam('csrf_token'));
@@ -75,10 +125,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$res['ok']) {
                 $error = $res['error'] ?? 'خطایی در ساخت کاربر رخ داد.';
             } elseif (($res['error'] ?? '') !== '') {
-                redirectWithMessage('users.php', 'error',
+                redirectWithMessage($backTo, 'error',
                     'کاربر ساخته شد، ولی ایمیل ثبت نشد: ' . $res['error']);
             } else {
-                redirectWithMessage('users.php', 'success', 'کاربر جدید با موفقیت ساخته شد.');
+                redirectWithMessage($backTo, 'success', 'کاربر جدید با موفقیت ساخته شد.');
             }
         }
 
@@ -163,7 +213,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ], null, $targetId);
                     if ($emailErr === '') { $emailErr = $saveEmail($targetId); }
                     if ($emailErr !== '') {
-                        redirectWithMessage('users.php', 'error',
+                        redirectWithMessage($backTo, 'error',
                             'اطلاعات ذخیره شد، ولی ایمیل ثبت نشد: ' . $emailErr);
                     }
                     // ⛔ شماره از `saveUserPhone()` رد می‌شود، نه یک
@@ -174,10 +224,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     //    نزن» (همان قاعده‌ی ایمیل).
                     $phoneErr = saveUserPhone($pdo, $targetId, postParam('phone'));
                     if ($phoneErr !== '') {
-                        redirectWithMessage('users.php', 'error',
+                        redirectWithMessage($backTo, 'error',
                             'اطلاعات ذخیره شد، ولی شماره موبایل ثبت نشد: ' . $phoneErr);
                     }
-                    redirectWithMessage('users.php', 'success', 'اطلاعات کاربر بروزرسانی شد.');
+                    redirectWithMessage($backTo, 'success', 'اطلاعات کاربر بروزرسانی شد.');
                 } catch (PDOException $e) {
                     Log::error('admin.update_user_failed', $e);
                     $error = 'خطایی در بروزرسانی کاربر رخ داد.';
@@ -192,7 +242,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $targetId = (int)postParam('user_id');
 
         if ($targetId === $currentUserId) {
-            redirectWithMessage('users.php', 'error', 'نمی‌توانید وضعیت حساب خودتان را تغییر دهید.');
+            redirectWithMessage($backTo, 'error', 'نمی‌توانید وضعیت حساب خودتان را تغییر دهید.');
         }
 
         $targetStmt = $pdo->prepare('SELECT * FROM users WHERE id = :id');
@@ -200,13 +250,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $targetUser = $targetStmt->fetch();
 
         if (!$targetUser) {
-            redirectWithMessage('users.php', 'error', 'کاربر مورد نظر یافت نشد.');
+            redirectWithMessage($backTo, 'error', 'کاربر مورد نظر یافت نشد.');
         }
 
         $newStatus = (int)$targetUser['is_active'] === 1 ? 0 : 1;
 
         if ($targetUser['role'] === 'admin' && $newStatus === 0 && countOtherActiveAdmins($pdo, $targetId) < 1) {
-            redirectWithMessage('users.php', 'error', 'حداقل باید یک مدیر فعال در سیستم باقی بماند.');
+            redirectWithMessage($backTo, 'error', 'حداقل باید یک مدیر فعال در سیستم باقی بماند.');
         }
 
         $stmt = $pdo->prepare('UPDATE users SET is_active = :status WHERE id = :id');
@@ -222,7 +272,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         Audit::log($newStatus === 1 ? 'user.activated' : 'user.deactivated', 'user', $targetId, [], null, $targetId);
 
-        redirectWithMessage('users.php', 'success', $newStatus === 1
+        redirectWithMessage($backTo, 'success', $newStatus === 1
             ? 'کاربر فعال شد.'
             : 'کاربر غیرفعال شد و از همه‌ی دستگاه‌ها خارج می‌شود.');
     } elseif ($action === 'revoke_access') {
@@ -232,17 +282,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $targetId = (int)postParam('user_id');
 
         if ($targetId === $currentUserId) {
-            redirectWithMessage('users.php', 'error', 'برای خروج از دستگاه‌های خودتان از پروفایل استفاده کنید.');
+            redirectWithMessage($backTo, 'error', 'برای خروج از دستگاه‌های خودتان از پروفایل استفاده کنید.');
         }
 
         $targetStmt = $pdo->prepare('SELECT id FROM users WHERE id = :id');
         $targetStmt->execute(['id' => $targetId]);
         if (!$targetStmt->fetch()) {
-            redirectWithMessage('users.php', 'error', 'کاربر مورد نظر یافت نشد.');
+            redirectWithMessage($backTo, 'error', 'کاربر مورد نظر یافت نشد.');
         }
 
         revokeAllAccessFor($targetId);
-        redirectWithMessage('users.php', 'success', 'کاربر از همه‌ی دستگاه‌ها و اپ‌ها خارج می‌شود؛ حسابش باز است و با رمزِ خودش دوباره وارد می‌شود.');
+        redirectWithMessage($backTo, 'success', 'کاربر از همه‌ی دستگاه‌ها و اپ‌ها خارج می‌شود؛ حسابش باز است و با رمزِ خودش دوباره وارد می‌شود.');
     } elseif ($action === 'unlock_login') {
         // ⛔ سدِ حدسِ رمز بین کاربرِ واقعی و مهاجم فرق نمی‌گذارد، پس
         //    کاربری که رمزش را چند بار غلط زده تا پایانِ پنجره بیرون
@@ -251,7 +301,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         //    بود — یعنی مالکِ نصبی که SSH ندارد اصلاً راهی نداشت.
         $targetName = trim(postParam('username'));
         if ($targetName === '') {
-            redirectWithMessage('users.php', 'error', 'کاربر مشخص نشد.');
+            redirectWithMessage($backTo, 'error', 'کاربر مشخص نشد.');
         }
         LoginThrottle::clear($targetName);
         // ⚠ شناسه از نام پیدا می‌شود فقط برای ستونِ هدف؛ خودِ نام نوشته نمی‌شود.
@@ -259,13 +309,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $tgt->execute(['u' => $targetName]);
         $tgtId = (int)$tgt->fetchColumn() ?: null;
         Audit::log('user.login_unlocked', 'user', $tgtId, [], null, $tgtId);
-        redirectWithMessage('users.php', 'success',
+        redirectWithMessage($backTo, 'success',
             'قفلِ ورودِ «' . $targetName . '» باز شد. حالا می‌تواند دوباره رمزش را وارد کند.');
     } elseif ($action === 'delete') {
         $targetId = (int)postParam('user_id');
 
         if ($targetId === $currentUserId) {
-            redirectWithMessage('users.php', 'error', 'نمی‌توانید حساب خودتان را حذف کنید.');
+            redirectWithMessage($backTo, 'error', 'نمی‌توانید حساب خودتان را حذف کنید.');
         }
 
         $targetStmt = $pdo->prepare('SELECT * FROM users WHERE id = :id');
@@ -273,11 +323,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $targetUser = $targetStmt->fetch();
 
         if (!$targetUser) {
-            redirectWithMessage('users.php', 'error', 'کاربر مورد نظر یافت نشد.');
+            redirectWithMessage($backTo, 'error', 'کاربر مورد نظر یافت نشد.');
         }
 
         if ($targetUser['role'] === 'admin' && countOtherActiveAdmins($pdo, $targetId) < 1) {
-            redirectWithMessage('users.php', 'error', 'حداقل باید یک مدیر فعال در سیستم باقی بماند.');
+            redirectWithMessage($backTo, 'error', 'حداقل باید یک مدیر فعال در سیستم باقی بماند.');
         }
 
         // ⛔ از `deleteUserAccount()` رد می‌شود، نه یک `DELETE FROM users`
@@ -290,10 +340,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         //    همین کاربر حذف نشده باشد.
         $res = deleteUserAccount($targetId);
         if ($res['ok']) {
-            redirectWithMessage('users.php', 'success',
+            redirectWithMessage($backTo, 'success',
                 'کاربر و همه‌ی داده‌هایش حذف شد.');
         }
-        redirectWithMessage('users.php', 'error',
+        redirectWithMessage($backTo, 'error',
             'حذف انجام نشد: ' . ($res['reason'] ?? 'خطای نامشخص') . ' — می‌توانید کاربر را غیرفعال کنید.');
     }
 }
@@ -307,11 +357,127 @@ $hasPhoneColumn = tableHasColumn('users', 'phone');
 $cols = 'id, full_name, username, role, is_active, created_at';
 if ($hasEmailColumn) { $cols .= ', email'; }
 if ($hasPhoneColumn) { $cols .= ', phone'; }
-// ⚠ نامِ ستون‌ها از ثابت‌های خودِ کد می‌آید نه از ورودی، پس درجِ مستقیمش امن است.
-$users = $pdo->query("SELECT {$cols} FROM users ORDER BY created_at ASC")->fetchAll();
 
-// ⚠ یک کوئری برای کلِ فهرست، نه یکی به‌ازای هر ردیف.
+// ⚠ یک کوئری برای کلِ فهرست، نه یکی به‌ازای هر ردیف. جدولش فقط
+//   تلاش‌های ۱۵ دقیقه‌ی اخیر را دارد، پس با هزار کاربر هم کوچک است.
 $lockCounts = LoginThrottle::failureCounts();
+
+// ---------- صافی‌ها ----------
+$q     = trim((string)getParam('q'));
+$fRole = (string)getParam('role');
+$fState = (string)getParam('state');
+$sort  = (string)getParam('sort', 'new');
+if (!isset(USER_ROLE_FILTERS[$fRole]))   { $fRole = ''; }
+if (!isset(USER_STATE_FILTERS[$fState])) { $fState = ''; }
+if (!isset(USER_SORTS[$sort]))           { $sort = 'new'; }
+
+/**
+ * ⛔ قطعه‌های ثابت در آرایه، مقدارها همیشه bind — قاعده ۲ی خودِ پروژه.
+ *
+ * ⚠ و `%`/`_` فرار داده می‌شوند (`ESCAPE '!'`)، همان کاری که
+ *   `includes/tx_query.php` می‌کند: بدونِ آن تایپِ `%` کلِ فهرست را
+ *   برمی‌گرداند و مدیر نمی‌فهمد چرا. کاراکترِ فرار عمداً `!` است نه
+ *   بک‌اسلش، که در رشته‌ی SQL یک لایه‌ی تفسیرِ دیگر دارد.
+ */
+$where  = [];
+$params = [];
+
+if ($q !== '') {
+    // شماره‌ی خالص می‌تواند شناسه باشد یا شماره‌ی موبایل — هر دو سنجیده
+    // می‌شوند، چون مدیر هر دو را از گزارشِ کاربر کپی می‌کند.
+    $like = '%' . str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $q) . '%';
+    $or   = ['u.full_name LIKE :q1 ESCAPE \'!\'', 'u.username LIKE :q2 ESCAPE \'!\''];
+    $params['q1'] = $like;
+    $params['q2'] = $like;
+    if ($hasEmailColumn) { $or[] = 'u.email LIKE :q3 ESCAPE \'!\''; $params['q3'] = $like; }
+    if ($hasPhoneColumn) { $or[] = 'u.phone LIKE :q4 ESCAPE \'!\''; $params['q4'] = $like; }
+    $digits = toLatinDigits($q);
+    if (ctype_digit($digits)) { $or[] = 'u.id = :qid'; $params['qid'] = (int)$digits; }
+    $where[] = '(' . implode(' OR ', $or) . ')';
+}
+
+if ($fRole !== '') { $where[] = 'u.role = :role'; $params['role'] = $fRole; }
+if ($fState === 'active')   { $where[] = 'u.is_active = 1'; }
+if ($fState === 'inactive') { $where[] = 'u.is_active = 0'; }
+if ($fState === 'locked') {
+    // ⚠ «قفل» در SQL نیست، در `login_attempts` است. فهرستِ نام‌ها از همان
+    //   یک کوئریِ بالا می‌آید، پس کوئریِ تازه‌ای اضافه نمی‌کند.
+    $locked = [];
+    foreach ($lockCounts as $name => $c) {
+        if ($c >= LoginThrottle::MAX_PER_USER) { $locked[] = $name; }
+    }
+    if (!$locked) {
+        $where[] = '1 = 0';   // ⚠ `IN ()` نحوِ نامعتبر است
+    } else {
+        $in = [];
+        foreach (array_values($locked) as $i => $name) {
+            $in[] = ':lk' . $i;
+            $params['lk' . $i] = $name;
+        }
+        $where[] = 'u.username IN (' . implode(', ', $in) . ')';
+    }
+}
+
+$whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
+
+/**
+ * ⛔ ترتیبِ پیش‌فرض «تازه‌ترین» شد، نه «قدیمی‌ترین».
+ *
+ * با سه کاربر فرقی نداشت. با هزار کاربر، صفحه‌ی اولِ «قدیمی‌ترین» یعنی
+ * حساب‌هایی که سال‌هاست دست‌نخورده‌اند، در حالی که کارِ پشتیبانی تقریباً
+ * همیشه با تازه‌ترین‌هاست. هر چهار ترتیب در منو هستند، پس چیزی از دست
+ * نرفته — فقط پیش‌فرض همان کاری را می‌کند که لازم است.
+ *
+ * ⚠ نامِ ستون از `USER_SORTS` می‌آید نه از ورودی؛ درجِ مستقیمش امن است.
+ */
+$orderSql = [
+    'new'  => 'u.created_at DESC, u.id DESC',
+    'old'  => 'u.created_at ASC, u.id ASC',
+    'name' => 'u.full_name ASC, u.id ASC',
+    'user' => 'u.username ASC, u.id ASC',
+][$sort];
+
+// ---------- شمارش و صفحه‌بندی ----------
+// ⚠ یک کوئریِ تجمیعی برای کارتِ خلاصه؛ و **فقط وقتی صافی هست** یک
+//   `COUNT` دوم برای صفحه‌بندی. در نمای بدونِ صافی، جمعِ همان کارت
+//   خودش مخرجِ صفحه‌بندی است — پس نمای معمول یک کوئری بیشتر نمی‌گیرد.
+$sum = $pdo->query(
+    'SELECT COUNT(*) AS total, SUM(is_active = 1) AS active, SUM(role = \'admin\') AS admins FROM users'
+)->fetch();
+$totalUsers  = (int)($sum['total'] ?? 0);
+$activeUsers = (int)($sum['active'] ?? 0);
+$adminUsers  = (int)($sum['admins'] ?? 0);
+$lockedUsers = count(array_filter($lockCounts, fn ($c) => $c >= LoginThrottle::MAX_PER_USER));
+
+if ($whereSql === '') {
+    $matched = $totalUsers;
+} else {
+    $cs = $pdo->prepare('SELECT COUNT(*) FROM users u' . $whereSql);
+    $cs->execute($params);
+    $matched = (int)$cs->fetchColumn();
+}
+
+$pg = pagedWindow($matched, 'users', USERS_PAGE_SIZE);
+
+/**
+ * ⛔ `LIMIT` در SQL، نه `array_slice` روی هزار ردیف.
+ *
+ * `admin/insights.php` عمداً در PHP می‌برد، چون سه فهرستش از **یک**
+ * آرایه‌ی از قبل خوانده‌شده می‌آیند. اینجا برعکس است: این فهرست تنها
+ * مصرف‌کننده‌ی کوئری است، پس کشیدنِ هزار ردیف برای نشان دادنِ بیست‌وپنج‌تا
+ * دقیقاً همان «خزشِ بی‌صدا»یی است که `test_query_budget` برای گرفتنش
+ * نوشته شد. توضیحِ کاملِ مرزِ این دو بالای `pagedWindow()` است.
+ *
+ * ⚠ «همه در یک فهرست» سرِ جایش است و عمداً بی‌سقف: خواسته‌ی صریحِ مالکِ
+ *   نصب است و یک انتخابِ آگاهانه، چون عددِ کل همیشه روی نوار نوشته شده.
+ */
+$limitSql = $pg['all'] ? '' : ' LIMIT ' . (int)$pg['size'] . ' OFFSET ' . (int)$pg['offset'];
+// ⚠ نامِ ستون‌ها از ثابت‌های خودِ کد می‌آید نه از ورودی، پس درجِ مستقیمش امن است.
+$ls = $pdo->prepare("SELECT {$cols} FROM users u{$whereSql} ORDER BY {$orderSql}{$limitSql}");
+$ls->execute($params);
+$users = $ls->fetchAll();
+
+$hasFilter = ($q !== '' || $fRole !== '' || $fState !== '');
 $pageTitle = 'مدیریت کاربران';
 /* جدولِ هفت‌ستونه با یک ستونِ دکمه — در ۷۲۰ پیکسل له می‌شود. */
 $pageWide  = true;
@@ -330,6 +496,71 @@ include __DIR__ . '/../includes/header.php';
         <div class="alert alert-error"><?= h($error) ?></div>
     <?php endif; ?>
 
+    <?php /* ⚠ خلاصه‌ی چهارتایی: با هزار کاربر، «چند نفر فعال‌اند» و «چند
+             نفر قفل‌اند» سؤال‌هایی هستند که پیش از باز کردنِ فهرست
+             پرسیده می‌شوند. هر چیپ خودش صافیِ همان نما هم هست، پس عدد
+             به اقدام می‌رسد نه اینکه فقط خوانده شود. */ ?>
+    <div class="user-stats">
+        <a class="user-stat <?= !$hasFilter ? 'is-current' : '' ?>"
+           href="<?= pagedUrl(['q' => null, 'role' => null, 'state' => null, 'pg_users' => null, 'all' => null]) ?>">
+            <span class="user-stat-num ltr-num"><?= toPersianDigits($totalUsers) ?></span>
+            <span class="user-stat-label">کاربر</span>
+        </a>
+        <a class="user-stat <?= $fState === 'active' ? 'is-current' : '' ?>"
+           href="<?= pagedUrl(['state' => 'active', 'pg_users' => null, 'all' => null]) ?>">
+            <span class="user-stat-num ltr-num"><?= toPersianDigits($activeUsers) ?></span>
+            <span class="user-stat-label">فعال</span>
+        </a>
+        <a class="user-stat <?= $fRole === 'admin' ? 'is-current' : '' ?>"
+           href="<?= pagedUrl(['role' => 'admin', 'pg_users' => null, 'all' => null]) ?>">
+            <span class="user-stat-num ltr-num"><?= toPersianDigits($adminUsers) ?></span>
+            <span class="user-stat-label">مدیر</span>
+        </a>
+        <?php /* ⚠ چیپِ قفل با صفر هم رندر می‌شود — برخلافِ نشانِ خطاها —
+                 چون اینجا «صفر» خودش خبرِ خوبی است و جایش در یک ردیفِ
+                 چهارتایی ثابت می‌ماند؛ نه یک نشانِ هشدار که با ماندنش
+                 آدم را به نادیده گرفتن عادت بدهد. */ ?>
+        <a class="user-stat <?= $fState === 'locked' ? 'is-current' : '' ?> <?= $lockedUsers > 0 ? 'is-warn' : '' ?>"
+           href="<?= pagedUrl(['state' => 'locked', 'pg_users' => null, 'all' => null]) ?>">
+            <span class="user-stat-num ltr-num"><?= toPersianDigits($lockedUsers) ?></span>
+            <span class="user-stat-label">قفلِ ورود</span>
+        </a>
+    </div>
+
+    <?php /* ⛔ فرمِ `GET` است، نه `fetch`: با دکمه‌ی بازگشتِ مرورگر و با
+             کپیِ آدرس کار می‌کند، و اگر `app.js` نرسد هم سالم می‌ماند
+             (همان درسِ «همه در یک فهرست» که لینک است نه جاوااسکریپت). */ ?>
+    <form method="GET" class="user-filters">
+        <input type="search" name="q" value="<?= h($q) ?>" class="user-filter-q"
+               placeholder="نام، نام کاربری، ایمیل، شماره یا شناسه"
+               autocapitalize="none" autocorrect="off" spellcheck="false">
+        <select name="role">
+            <?php foreach (USER_ROLE_FILTERS as $k => $label): ?>
+                <option value="<?= h($k) ?>" <?= $fRole === $k ? 'selected' : '' ?>><?= h($label) ?></option>
+            <?php endforeach; ?>
+        </select>
+        <select name="state">
+            <?php foreach (USER_STATE_FILTERS as $k => $label): ?>
+                <option value="<?= h($k) ?>" <?= $fState === $k ? 'selected' : '' ?>><?= h($label) ?></option>
+            <?php endforeach; ?>
+        </select>
+        <select name="sort">
+            <?php foreach (USER_SORTS as $k => $label): ?>
+                <option value="<?= h($k) ?>" <?= $sort === $k ? 'selected' : '' ?>><?= h($label) ?></option>
+            <?php endforeach; ?>
+        </select>
+        <button type="submit" class="btn btn-sm">جست‌وجو</button>
+        <?php if ($hasFilter): ?>
+            <a class="btn btn-secondary btn-sm" href="<?= h(basename($_SERVER['SCRIPT_NAME'])) ?>">پاک کردن</a>
+        <?php endif; ?>
+    </form>
+
+    <?php if ($hasFilter): ?>
+        <p class="hint user-filter-note">
+            <?= toPersianDigits($matched) ?> کاربر از <?= toPersianDigits($totalUsers) ?> با این صافی می‌خواند.
+        </p>
+    <?php endif; ?>
+
     <div class="table-wrapper">
         <table class="data-table users-table">
             <thead>
@@ -346,7 +577,9 @@ include __DIR__ . '/../includes/header.php';
             </thead>
             <tbody>
                 <?php if (empty($users)): ?>
-                    <tr><td colspan="<?= $hasEmailColumn ? 7 : 6 ?>" class="empty-row">کاربری یافت نشد.</td></tr>
+                    <tr><td colspan="<?= $hasEmailColumn ? 7 : 6 ?>" class="empty-row">
+                        <?= $hasFilter ? 'با این صافی کاربری پیدا نشد.' : 'کاربری یافت نشد.' ?>
+                    </td></tr>
                 <?php else: ?>
                     <?php foreach ($users as $u): ?>
                         <tr>
@@ -434,6 +667,8 @@ include __DIR__ . '/../includes/header.php';
             </tbody>
         </table>
     </div>
+
+    <?php pagedNav($pg); ?>
 </div>
 
 <!-- مودال افزودن کاربر -->

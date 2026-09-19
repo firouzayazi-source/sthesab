@@ -86,7 +86,11 @@ const BUDGET = [
     'admin/insights.php'    => 32,
     'admin/errors.php'      => 15,
     'admin/store-share.php' => 14,
-    'admin/users.php'       => 17,
+    // ⚠ از ۱۷ به ۱۶: فهرست دیگر همه‌ی کاربران را نمی‌خواند، ولی یک
+    //   کوئریِ تجمیعیِ تازه برای کارتِ خلاصه اضافه شد. نمای بدونِ صافی
+    //   همان یک کوئری را می‌دهد؛ با صافی یکی بیشتر (`COUNT` برای
+    //   صفحه‌بندی). اندازه‌گیری شد، حدس زده نشد.
+    'admin/users.php'       => 16,
     'admin/access.php'      => 15,
     'admin/billing.php'     => 17,
     'admin/categories.php'  => 15,
