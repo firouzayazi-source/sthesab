@@ -199,9 +199,9 @@ document.addEventListener('DOMContentLoaded', function () {
     var chart = new Chart(document.getElementById('categoryChart').getContext('2d'), {
         type: 'doughnut',
         data: {
-            labels: <?= json_encode($chartLabels, JSON_UNESCAPED_UNICODE) ?>,
+            labels: <?= json_encode($chartLabels, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,
             datasets: [{
-                data: <?= json_encode($chartValues) ?>,
+                data: <?= json_encode($chartValues, JSON_HEX_TAG) ?>,
                 borderWidth: 2
             }]
         },
@@ -215,8 +215,8 @@ document.addEventListener('DOMContentLoaded', function () {
     // رنگ و رنگِ فاصله‌ی بین قاچ‌ها را همین‌جا نمی‌گذاریم: با عوض شدن
     // حالت شب باید عوض شوند.
     registerThemedChart(chart,
-        <?= json_encode($colorsLight) ?>,
-        <?= json_encode($colorsDark) ?>);
+        <?= json_encode($colorsLight, JSON_HEX_TAG) ?>,
+        <?= json_encode($colorsDark, JSON_HEX_TAG) ?>);
 });
 </script>
 <?php endif; ?>

@@ -263,8 +263,8 @@ if ($planRO) { echo planReadOnlyNotice('recurring'); }
 
 <script>
     window.CATEGORY_DATA = {
-        income: <?= json_encode(array_map(fn($c) => ['id' => (int)$c['id'], 'name' => $c['name']], $incomeCategories), JSON_UNESCAPED_UNICODE) ?>,
-        expense: <?= json_encode(array_map(fn($c) => ['id' => (int)$c['id'], 'name' => $c['name']], $expenseCategories), JSON_UNESCAPED_UNICODE) ?>
+        income: <?= json_encode(array_map(fn($c) => ['id' => (int)$c['id'], 'name' => $c['name']], $incomeCategories), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,
+        expense: <?= json_encode(array_map(fn($c) => ['id' => (int)$c['id'], 'name' => $c['name']], $expenseCategories), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>
     };
 </script>
 

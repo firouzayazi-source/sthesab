@@ -340,8 +340,21 @@ T::bulk(count($appFiles), $bad, 'هیچ متغیری بدون مقدار گرف�
 T::group('گزارش کد مرده (شکست نیست، فقط اطلاع)');
 
 // ---- توابعی که هیچ‌جا صدا زده نمی‌شوند ----
+// ⛔ پیکره‌ی «فراخوان» از پیکره‌ی «تعریف» بزرگ‌تر است، و این عمدی است:
+//    تابع فقط در `$appFiles` تعریف می‌شود، ولی `deploy/*.php` و
+//    `api/v1/` هم صدایش می‌زنند. بدونِ آن‌ها گزارش **هشدارِ الکی**
+//    می‌داد — `customReminderEvents()` را «مرده» می‌نامید در حالی که
+//    cronِ یادآوریِ روزانه از آن می‌خواند، و حذفش یعنی خاموش شدنِ
+//    بی‌صدای ایمیلِ سررسید. «هشدارِ الکی از نبودِ تست بدتر است»، و
+//    اینجا خطرش این است که کسی به اعتمادِ گزارش کدِ زنده را بردارد.
 $allSource = '';
-foreach (array_merge($appFiles, glob($root . '/assets/js/app.js') ?: []) as $f) {
+foreach (array_merge(
+    $appFiles,
+    glob($root . '/deploy/*.php') ?: [],
+    glob($root . '/api/v1/*.php') ?: [],
+    glob($root . '/api/v1/routes/*.php') ?: [],
+    glob($root . '/assets/js/app.js') ?: []
+) as $f) {
     $allSource .= "\n" . (string)file_get_contents($f);
 }
 

@@ -216,10 +216,10 @@ $__catJson = static function (array $cats) use ($__useCounts): string {
         income: <?= json_encode(array_map(
             fn($c) => (int)$c['id'],
             categoriesForGrid(cachedCategories(), $__useCounts, 'income')
-        )) ?>,
+        ), JSON_HEX_TAG) ?>,
         expense: <?= json_encode(array_map(
             fn($c) => (int)$c['id'],
             categoriesForGrid(cachedCategories(), $__useCounts, 'expense')
-        )) ?>
+        ), JSON_HEX_TAG) ?>
     };
 </script>

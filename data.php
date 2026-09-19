@@ -309,9 +309,9 @@ include __DIR__ . '/includes/header.php';
 </div>
 
 <script>
-    window.IMPORT_ROWS = <?= json_encode($rawRows, JSON_UNESCAPED_UNICODE) ?>;
-    window.IMPORT_CATEGORIES = <?= json_encode(array_values(array_map(fn($c) => ['name' => $c['name'], 'id' => (int)$c['id'], 'type' => $c['type']], $catMap)), JSON_UNESCAPED_UNICODE) ?>;
-    window.IMPORT_WALLETS = <?= json_encode(array_map(fn($k, $v) => ['name' => $k, 'id' => $v], array_keys($walletMap), array_values($walletMap)), JSON_UNESCAPED_UNICODE) ?>;
+    window.IMPORT_ROWS = <?= json_encode($rawRows, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
+    window.IMPORT_CATEGORIES = <?= json_encode(array_values(array_map(fn($c) => ['name' => $c['name'], 'id' => (int)$c['id'], 'type' => $c['type']], $catMap)), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
+    window.IMPORT_WALLETS = <?= json_encode(array_map(fn($k, $v) => ['name' => $k, 'id' => $v], array_keys($walletMap), array_values($walletMap)), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
     window.IMPORT_DEFAULT_WALLET = <?= $defaultWalletId !== null ? (int)$defaultWalletId : 'null' ?>;
 </script>
 <?php endif; ?>

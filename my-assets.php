@@ -691,7 +691,7 @@ foreach ($shDevices as $d) { if (is_array($d) && ($d['status'] ?? '') === 'SOLD'
 <script id="netWorthData" type="application/json"><?= json_encode(array_map(fn($r) => [
     'd' => toJalali($r['date']),
     'v' => (int)$r['total'],
-], $nwHistory), JSON_UNESCAPED_UNICODE) ?></script>
+], $nwHistory), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?></script>
 <?php endif; ?>
 <?php endif; ?>
 
@@ -702,7 +702,7 @@ foreach ($shDevices as $d) { if (is_array($d) && ($d['status'] ?? '') === 'SOLD'
     'value' => (int)$r['value'],
     'cl'    => $r['color_l'],
     'cd'    => $r['color_d'],
-], $chartable), JSON_UNESCAPED_UNICODE) ?></script>
+], $chartable), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?></script>
 <?php endif; ?>
 
 <?php include __DIR__ . '/includes/footer.php'; ?>

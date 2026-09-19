@@ -456,9 +456,9 @@ include __DIR__ . '/includes/header.php';
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     var trendDatasets = {
-        week:  { labels: <?= json_encode($weekLabels, JSON_UNESCAPED_UNICODE) ?>,   income: <?= json_encode($weekIncome) ?>,   expense: <?= json_encode($weekExpense) ?> },
-        month: { labels: <?= json_encode($month30Labels, JSON_UNESCAPED_UNICODE) ?>, income: <?= json_encode($month30Income) ?>, expense: <?= json_encode($month30Expense) ?> },
-        year:  { labels: <?= json_encode($monthlyLabels, JSON_UNESCAPED_UNICODE) ?>,  income: <?= json_encode($monthlyIncome) ?>,  expense: <?= json_encode($monthlyExpense) ?> }
+        week:  { labels: <?= json_encode($weekLabels, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,   income: <?= json_encode($weekIncome, JSON_HEX_TAG) ?>,   expense: <?= json_encode($weekExpense, JSON_HEX_TAG) ?> },
+        month: { labels: <?= json_encode($month30Labels, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>, income: <?= json_encode($month30Income, JSON_HEX_TAG) ?>, expense: <?= json_encode($month30Expense, JSON_HEX_TAG) ?> },
+        year:  { labels: <?= json_encode($monthlyLabels, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,  income: <?= json_encode($monthlyIncome, JSON_HEX_TAG) ?>,  expense: <?= json_encode($monthlyExpense, JSON_HEX_TAG) ?> }
     };
 
     var trendCtx = document.getElementById('trendChart').getContext('2d');

@@ -448,8 +448,8 @@ function renderChequeCard(array $c, string $todayStr): void
 
 <script>
     window.BANK_DATA = {
-        mine: <?= json_encode(array_map(fn($b) => ['id' => (int)$b['id'], 'name' => $b['name']], $myBanks), JSON_UNESCAPED_UNICODE) ?>,
-        external: <?= json_encode(array_map(fn($b) => ['id' => (int)$b['id'], 'name' => $b['name']], $externalBanks), JSON_UNESCAPED_UNICODE) ?>
+        mine: <?= json_encode(array_map(fn($b) => ['id' => (int)$b['id'], 'name' => $b['name']], $myBanks), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,
+        external: <?= json_encode(array_map(fn($b) => ['id' => (int)$b['id'], 'name' => $b['name']], $externalBanks), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>
     };
 </script>
 

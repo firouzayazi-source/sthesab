@@ -4809,6 +4809,93 @@ if (preg_match('~function\s+tradesEnabled\s*\(.*?(?=\nfunction\s)~s', $fnSrc, $m
 
 T::bulk(8, $badTd, '⛔ معاملات پیش‌فرض روشن است و انتخابِ کاربر فقط یک بار بازنویسی می‌شود');
 
+// ---------------------------------------------------------------------------
+// ⛔ قاعده ۵۴ — هر json_encode داخلِ <script> باید JSON_HEX_TAG داشته باشد
+//
+// قاعده ۳۸ همین را برای شبکه‌ی دسته‌بندی نوشته بود، ولی فقط برای **یک**
+// فایل. بقیه‌ی ۲۳ فراخوانی از زیرش رد شده بودند — و در ۶ تای آن‌ها
+// محتوایی می‌نشست که **خودِ کاربر** نوشته است: نامِ دسته
+// (`category-report`, `recurring`, `data`)، نامِ بانک (`cheques`)، نامِ
+// حساب و نوعِ دارایی (`data`, `my-assets`)، و بدتر از همه ردیف‌های
+// **فایلِ CSVِ آپلودشده** (`data.php` → `window.IMPORT_ROWS`).
+//
+// ⛔ و خرابی‌اش آن چیزی نیست که به نظر می‌رسد: `json_encode` اسلش را
+//    خودش فرار می‌دهد (`<\/script>`)، پس بستنِ مستقیمِ تگ ممکن نیست.
+//    ولی `<!--<script>` **فرار داده نمی‌شود** و توکنایزرِ HTML را به
+//    حالتِ «script data double escaped» می‌برد؛ آن‌وقت `</script>`ِ
+//    واقعی دیگر تگ را نمی‌بندد و **بقیه‌ی صفحه بلعیده می‌شود**.
+//    در کرومیوم اندازه‌گیری شد، نه استدلال: با آن مقدار،
+//    `<div id="after">` اصلاً عنصر نبود و داخلِ متنِ اسکریپت می‌نشست.
+//    روی `data.php` یعنی فوتر — و با آن `app.js` — هرگز اجرا نمی‌شود:
+//    صفحه کامل بالا می‌آید و هیچ دکمه‌ای کار نمی‌کند، همان
+//    «صفحه‌ی بی‌جان»ِ بخشِ PWA، این بار بدونِ هیچ راهِ تشخیصی.
+//
+// ⛔ شرط **بی‌قید** است، نه «هر جا محتوای کاربر هست»: قضاوتِ «این فیلد
+//    را کاربر می‌نویسد یا نه» همان چیزی است که با اولین تغییرِ فیلد
+//    کهنه می‌شود. و هزینه‌اش صفر است — روی آرایه‌ی عدد و تاریخ و رنگِ
+//    هگز خروجی **بایت‌به‌بایت** همان است، چون هیچ `<`/`>`/`&` ای ندارد.
+//
+// ⚠ فهرستِ فراخوانی‌ها **کشف** می‌شود نه دستی (قاعده‌ی
+//   `categoryRefTables()`)، و کامنت‌ها پیش از بررسی حذف می‌شوند —
+//   وگرنه یک `/* JSON_HEX_TAG */` کنارِ فراخوانی، بررسی را پوچ می‌کرد
+//   (همان دامی که قاعده ۱۹ و ۳۵ و ۳۸ هم در آن افتادند).
+T::group('قاعده ۵۴ — JSON_HEX_TAG در هر <script>');
+
+$badHex = [];
+$hexFiles = array_merge(
+    glob(__DIR__ . '/../*.php') ?: [],
+    glob(__DIR__ . '/../admin/*.php') ?: [],
+    glob(__DIR__ . '/../includes/*.php') ?: []
+);
+if (count($hexFiles) < 40) {
+    $badHex[] = '⛔ فهرستِ فایل‌ها خالی/ناقص است — قاعده ۵۴ بی‌صدا کور شده';
+}
+
+$hexSites = 0;
+foreach ($hexFiles as $hf) {
+    $hTok = token_get_all(file_get_contents($hf));
+    $hn = count($hTok);
+    $inScript = false;
+    for ($i = 0; $i < $hn; $i++) {
+        $t = $hTok[$i];
+        if (is_array($t) && $t[0] === T_INLINE_HTML) {
+            $txt = $t[1]; $off = 0;
+            while (true) {
+                $o = $inScript ? stripos($txt, '</script', $off) : stripos($txt, '<script', $off);
+                if ($o === false) { break; }
+                $inScript = !$inScript;
+                $off = $o + 7;
+            }
+            continue;
+        }
+        if (!$inScript) { continue; }
+        if (!(is_array($t) && $t[0] === T_STRING && strcasecmp($t[1], 'json_encode') === 0)) { continue; }
+
+        $depth = 0; $started = false; $buf = '';
+        for ($j = $i + 1; $j < $hn; $j++) {
+            $tk = $hTok[$j];
+            $s  = is_array($tk) ? $tk[1] : $tk;
+            if ($s === '(') { $depth++; $started = true; }
+            elseif ($s === ')') { $depth--; }
+            // کامنت‌ها شمرده نمی‌شوند، وگرنه بررسی پوچ می‌شود
+            if (!(is_array($tk) && ($tk[0] === T_COMMENT || $tk[0] === T_DOC_COMMENT))) { $buf .= $s; }
+            if ($started && $depth === 0) { break; }
+        }
+        $hexSites++;
+        if (strpos($buf, 'JSON_HEX_TAG') === false) {
+            $badHex[] = '⛔ ' . basename(dirname($hf)) . '/' . basename($hf) . ' خط ' . $t[2]
+                . ' — json_encode داخلِ <script> بدونِ JSON_HEX_TAG';
+        }
+    }
+}
+// ⛔ اگر ردیابیِ <script> بشکند، هیچ فراخوانی‌ای دیده نمی‌شود و قاعده
+//    روی هر خرابی‌ای سبز می‌ماند — همان «سنجشی که روی خرابی سبز می‌شود».
+if ($hexSites < 20) {
+    $badHex[] = '⛔ فقط ' . $hexSites . ' فراخوانی پیدا شد — ردیابیِ <script> شکسته است';
+}
+
+T::bulk(count($hexFiles) + 1, $badHex, '⛔ هر json_encode داخلِ <script> با JSON_HEX_TAG می‌رود');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }
