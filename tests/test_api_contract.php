@@ -747,15 +747,38 @@ if (!file_exists($gradlePath)) {
     // ۱) `POST_NOTIFICATIONS` هم باید اعلام شود. بدونش روی اندروید ۱۳
     //    به بالا پیامک خوانده می‌شود، `notify()` بی‌خطا اجرا می‌شود، و
     //    **هیچ اعلانی دیده نمی‌شود**.
-    foreach (['android.permission.RECEIVE_SMS', 'android.permission.POST_NOTIFICATIONS'] as $p) {
+    //
+    // ⛔ و `READ_SMS` هم از امروز در همین فهرست است — این قاعده یک بار
+    //    **برعکس** بود («READ_SMS لازم نیست و نباید خواسته شود») و عمداً
+    //    برگشت. علتش این است که `RECEIVE_SMS` فقط پیامکِ **تازه‌رسیده**
+    //    را می‌دهد: هر چیزی که پیش از نصبِ اپ، یا پشتِ محدودیتِ رام، یا
+    //    وقتی کلید خاموش بود آمده باشد برای همیشه از دست می‌رفت. بدونِ
+    //    این مجوز هیچ راهی برای جبرانش نبود.
+    foreach (['android.permission.RECEIVE_SMS',
+              'android.permission.READ_SMS',
+              'android.permission.POST_NOTIFICATIONS'] as $p) {
         if (!str_contains($mf, $p)) { $permBad[] = "AndroidManifest — «{$p}» اعلام نشده"; }
     }
 
-    // ۲) و `READ_SMS` نباید باشد: این اپ صندوقِ پیامک را نمی‌خواند،
-    //    فقط پیامکِ **رسیده** را می‌گیرد. مجوزی که لازم نیست، هم
-    //    کاربر را می‌ترساند هم اپ را از هر فروشگاهی بیرون می‌اندازد.
-    if (str_contains($mf, 'android.permission.READ_SMS')) {
-        $permBad[] = 'AndroidManifest — READ_SMS لازم نیست و نباید خواسته شود';
+    // ۲) ⛔ و **هیچ مجوزِ خطرناکِ دیگری**. درخواستِ مالکِ نصب «تمام
+    //    اجازه‌های سخت‌افزاری» بود، ولی هدفش را خودش گفت: «که اپ بتواند
+    //    به پیامک‌ها دسترسی کامل داشته باشد». دوربین، موقعیت مکانی،
+    //    میکروفون، مخاطبین، حافظه و تماس هیچ‌کدام به آن هدف ربطی ندارند
+    //    و قاعده‌ی خودِ پروژه صریح است: «مجوزی که لازم نیست نباید خواسته
+    //    شود».
+    //
+    //    این فهرست همان تصمیم را **پین** می‌کند، وگرنه اولین «فقط برای
+    //    اینکه بعداً لازم نشود» آن را بی‌صدا باز می‌کرد — و هزینه‌اش روی
+    //    کاربر می‌نشیند (دیالوگِ ترسناک) و روی فروشگاه (ردِ بازبینی).
+    //    `SEND_SMS` جدای بقیه هم بد است: هزینه‌ی واقعیِ پول دارد.
+    foreach (['CAMERA', 'RECORD_AUDIO', 'ACCESS_FINE_LOCATION',
+              'ACCESS_COARSE_LOCATION', 'READ_CONTACTS', 'WRITE_CONTACTS',
+              'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE',
+              'READ_MEDIA_', 'READ_CALL_LOG', 'READ_PHONE_STATE',
+              'SEND_SMS', 'WRITE_SMS'] as $p) {
+        if (str_contains($mf, 'android.permission.' . $p)) {
+            $permBad[] = "AndroidManifest — «{$p}» به پیامک ربطی ندارد و نباید خواسته شود";
+        }
     }
 
     // ۳) `MAIN`/`LAUNCHER` باید روی `LauncherActivity` باشد و روی
@@ -801,13 +824,50 @@ if (!file_exists($gradlePath)) {
         // `//` فقط وقتی کامنت است که بخشی از `://` نباشد.
         $setupCode = preg_replace('~(?<!:)//[^\n]*~', '', (string)$setupCode);
 
-        foreach (['RECEIVE_SMS', 'POST_NOTIFICATIONS'] as $p) {
-            if (!str_contains((string)$setupCode, $p)) {
-                $permBad[] = "SmsSetupActivity — «{$p}» در زمانِ اجرا خواسته نمی‌شود";
+        // ⚠ «نامِ مجوز جایی در فایل هست» **پوچ** است و جهش نشانش داد:
+        //   هر سه نام در جاهای دیگرِ همین فایل هم می‌آیند (سنجشِ
+        //   `checkSelfPermission`، دکمه‌ی گرفتنِ مجوز)، پس با برداشتنِ
+        //   کاملِ یکی از آن‌ها از خودِ `requestPermissions(…)` هم تست
+        //   سبز می‌ماند. پس فقط **آرگومان‌های همان فراخوانی** گشته
+        //   می‌شوند.
+        //   ⚠ و «جمعِ همه‌ی فراخوانی‌ها» هم **پوچ** بود، با جهش دیده شد:
+        //     `askReadOrOpenSettings()` خودش یک `requestPermissions(…
+        //     READ_SMS …, REQ_READ)` دارد، پس با برداشتنِ `READ_SMS` از
+        //     مسیرِ **کلید** (`REQ_SMS`) باز هم سبز می‌ماند — یعنی کاربری
+        //     که کلید را روشن می‌کند دو دیالوگِ جدا می‌گیرد یا اصلاً
+        //     مجوزِ صندوق را نمی‌گیرد. پس هر فراخوانی با **کدِ خودش**
+        //     شناخته می‌شود و مسیرِ کلید جدا سنجیده می‌شود.
+        $reqByCode = [];
+        if (preg_match_all(
+            '~requestPermissions\s*\(\s*(.*?),\s*(REQ_[A-Za-z_]+)\s*\)\s*;~s',
+            (string)$setupCode,
+            $mReq,
+            PREG_SET_ORDER
+        )) {
+            foreach ($mReq as $m) {
+                $reqByCode[$m[2]] = ($reqByCode[$m[2]] ?? '') . ' ' . $m[1];
             }
         }
-        if (!str_contains((string)$setupCode, 'requestPermissions')) {
+        if ($reqByCode === []) {
             $permBad[] = 'SmsSetupActivity — هیچ درخواستِ مجوزی در کار نیست';
+        } else {
+            // مسیرِ روشن کردنِ کلید باید **هر دو** مجوزِ پیامک را با هم
+            // بخواهد: `RECEIVE_SMS` برای پیامکِ تازه و `READ_SMS` برای
+            // صندوق.
+            $toggle = $reqByCode['REQ_SMS'] ?? '';
+            if ($toggle === '') {
+                $permBad[] = 'SmsSetupActivity — درخواستِ مجوزِ مسیرِ کلید (REQ_SMS) پیدا نشد';
+            } else {
+                foreach (['RECEIVE_SMS', 'READ_SMS'] as $p) {
+                    if (!str_contains($toggle, $p)) {
+                        $permBad[] = "SmsSetupActivity — «{$p}» در مسیرِ روشن کردنِ کلید خواسته نمی‌شود";
+                    }
+                }
+            }
+            $anyAsk = implode(' | ', $reqByCode);
+            if (!str_contains($anyAsk, 'POST_NOTIFICATIONS')) {
+                $permBad[] = 'SmsSetupActivity — «POST_NOTIFICATIONS» در زمانِ اجرا خواسته نمی‌شود';
+            }
         }
 
         // ⛔ و چون همین اکتیویتی **درِ ورودیِ اپ** است، دو چیز روی آن
@@ -851,7 +911,7 @@ if (!file_exists($gradlePath)) {
             }
         }
     }
-    T::bulk(10, $permBad, 'مجوزهای پیامک و اعلان اعلام و در زمانِ اجرا خواسته می‌شوند');
+    T::bulk(13, $permBad, 'مجوزهای پیامک و اعلان اعلام و در زمانِ اجرا خواسته می‌شوند');
 
     // آدرسِ باز شونده باید روی همان دامنه‌ای باشد که intent-filter
     // تأییدش می‌کند؛ وگرنه اپ صفحه‌ای را باز می‌کند که برایش تأیید ندارد.
@@ -1414,6 +1474,67 @@ foreach ($nativeJava as $j) {
             $smsBad[] = "$name — openBatterySettings() گاردِ try ندارد؛"
                       . ' روی رامی که این صفحه را ندارد اپ بسته می‌شود';
         }
+
+        // ⛔ بررسیِ صندوقِ پیامک (`READ_SMS`) — و سه چیزی که نبودشان
+        //    بی‌صداست:
+        //
+        //    ۱. **فقط با تپِ کاربر.** کاوشِ خودکارِ صندوق دقیقاً همان
+        //       چیزی است که کاربر از یک دفترِ مالی انتظار ندارد، و از
+        //       بیرون هیچ نشانه‌ای ندارد. پس `scanInbox()` نباید از
+        //       `onCreate`/`onResume` صدا زده شود.
+        //    ۲. **همان صافی و همان اعلانِ مسیرِ واقعی.** با یک صافیِ
+        //       دومِ محلی، بررسیِ دستی و پیامکِ زنده دیر یا زود دو جواب
+        //       می‌دادند — همان دلیلی که کلِ پارس در `parseBankSms()`
+        //       مانده و همان دلیلی که آزمایشِ اعلان از `postNotification`
+        //       می‌رود.
+        //    ۳. **نشانه‌ی «تا اینجا دیده شده».** بدونش هر تپ همان
+        //       پیامک‌ها را دوباره اعلان می‌کرد و کاربر یک تراکنش را دو
+        //       بار ثبت می‌کرد.
+        $si = strpos($srcNC, 'private void scanInbox()');
+        if ($si === false) {
+            $smsBad[] = "$name — scanInbox() پیدا نشد؛ پیامک‌های پیش از نصب"
+                      . ' برای همیشه از دست می‌روند';
+        } else {
+            $scanBody = substr($srcNC, $si, 3000);
+            // ⚠ نشانه با جای **نوشتنش** سنجیده می‌شود، نه با خودِ نام:
+            //   همان نام یک خط بالاتر برای **خواندن** هم هست، پس جهشِ
+            //   «ننویس» از زیرِ یک `str_contains`ِ ساده رد می‌شد — همان
+            //   دامی که یک بار سرِ `PREF_LAST_WHY` در همین قاعده افتاد.
+            foreach (['BankSmsReceiver.classify'          => 'صافیِ مسیرِ واقعی',
+                      'BankSmsReceiver.postNotification'  => 'اعلانِ مسیرِ واقعی',
+                      'putLong(BankSmsReceiver.PREF_SCAN_AT' => 'نوشتنِ نشانه‌ی «تا اینجا دیده شده»'] as $needle => $what) {
+                if (!str_contains($scanBody, $needle)) {
+                    $smsBad[] = "$name — scanInbox() {$what} را ندارد";
+                }
+            }
+            // ⚠ «جایی در فایل کلیک هست» کافی نیست: باید **همین** تابع
+            //   به یک شنونده بسته باشد. و هیچ‌کدام از دو چرخه‌ی عمر
+            //   نباید صدایش بزنند.
+            if (!preg_match('~onClick\([^)]*\)\s*\{\s*scanInbox\(\);~', $srcNC)) {
+                $smsBad[] = "$name — scanInbox() به تپِ کاربر بسته نیست";
+            }
+            foreach (['onCreate', 'onResume', 'build'] as $auto) {
+                if (preg_match('~' . $auto . '\b[^{]*\{(?:[^{}]|\{[^{}]*\})*scanInbox\(\)~s', $srcNC)) {
+                    $smsBad[] = "$name — scanInbox() از {$auto}() صدا زده می‌شود؛"
+                              . ' صندوقِ پیامک هرگز نباید خودکار خوانده شود';
+                }
+            }
+        }
+        // ⛔ و متنِ خوانده‌شده هیچ‌جا ذخیره نمی‌شود — همان قاعده‌ای که در
+        //    گیرنده هم هست. صندوقِ پیامک از قبل روی گوشی هست؛ نسخه‌ی
+        //    دومش در SharedPreferences فقط سطحِ افشا را بزرگ می‌کند.
+        if (preg_match('~put[A-Za-z]*\([^)]*\b(body|txt|text)\b~', $srcNC)) {
+            $smsBad[] = "$name — متنِ پیامک در prefs ذخیره می‌شود";
+        }
+    }
+
+    // ⛔ و **گیرنده** هرگز صندوق را نمی‌خواند. کارش فقط تحویلِ پیامکِ
+    //    رسیده است؛ اگر روزی `content://sms` را باز کند، خواندنِ صندوق
+    //    از یک تصمیمِ آگاهانه‌ی کاربر به یک کارِ خودکارِ پس‌زمینه تبدیل
+    //    می‌شود — بی‌آنکه هیچ‌جا دیده شود.
+    if ($name === 'BankSmsReceiver.java' && str_contains($src, 'content://sms')) {
+        $smsBad[] = "$name — گیرنده صندوقِ پیامک را می‌خواند؛"
+                  . ' خواندنِ صندوق فقط با تپِ کاربر در صفحه‌ی تنظیم است';
     }
 }
 

@@ -69,6 +69,24 @@ public class BankSmsReceiver extends BroadcastReceiver {
     public static final String PREF_LAST_FROM = "sms_last_from";
     public static final String PREF_LAST_WHY  = "sms_last_why";
 
+    /**
+     * ⛔ «تا اینجا اعلان ساخته شده» — نشانه‌ی بررسیِ دستیِ صندوقِ پیامک.
+     *
+     *    `SmsSetupActivity` می‌تواند به خواستِ کاربر صندوق را بگردد و
+     *    پیامک‌هایی را که این گیرنده هرگز ندید (پیش از نصب، یا وقتی رام
+     *    جلویش را گرفته بود) پیدا کند. بدونِ این نشانه، همان بررسی برای
+     *    پیامک‌هایی که **همین حالا** از این مسیر اعلان گرفته‌اند دوباره
+     *    اعلان می‌ساخت — یعنی کاربر یک تراکنش را دو بار ثبت می‌کرد،
+     *    بی‌هیچ خطایی.
+     *
+     * ⛔ و فقط بعد از ساختنِ **واقعیِ** اعلان جلو می‌رود، نه در هر
+     *    دریافت. اگر با هر پیامکی جلو می‌رفت، پیامکی که به‌خاطرِ بسته
+     *    بودنِ اعلان‌ها دیده نشده بود هم «رسیدگی‌شده» علامت می‌خورد و
+     *    بررسیِ دستی دیگر پیدایش نمی‌کرد — همان چیزی که این بررسی برای
+     *    نجاتش ساخته شده.
+     */
+    public static final String PREF_SCAN_AT = "sms_scan_at";
+
     /** نتیجه‌ی صافی — همان دو شرطی که از قبل بود، فقط حالا نام دارند. */
     public static final String WHY_OK        = "ok";
     public static final String WHY_NO_HINT   = "no_hint";
@@ -128,6 +146,12 @@ public class BankSmsReceiver extends BroadcastReceiver {
         if (!WHY_OK.equals(why)) { return; }
 
         postNotification(ctx, sender, text);
+
+        // ⚠ بعد از ساختِ اعلان، نه پیش از آن (دلیلش بالای PREF_SCAN_AT).
+        //   `currentTimeMillis()` عمداً کمی **جلوتر** از تاریخِ خودِ ردیفِ
+        //   صندوق است، پس بررسیِ دستی این پیامک را رد می‌کند — خطا به
+        //   سمتِ «دوباره اعلان نساز» می‌رود، نه «دوباره بساز».
+        sp.edit().putLong(PREF_SCAN_AT, System.currentTimeMillis()).apply();
     }
 
     /**

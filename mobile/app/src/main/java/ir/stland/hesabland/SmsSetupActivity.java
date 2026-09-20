@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -20,6 +21,8 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+
+import java.util.ArrayList;
 
 /**
  * تنها صفحه‌ی «بومی» این اپ — و عمداً همین یکی.
@@ -69,12 +72,36 @@ public class SmsSetupActivity extends AppCompatActivity {
 
     private static final int REQ_SMS   = 4021;
     private static final int REQ_NOTIF = 4022;
+    private static final int REQ_READ  = 4023;
+
+    /**
+     * ⛔ بررسیِ صندوقِ پیامک — و سه عددی که مرزش را می‌سازند.
+     *
+     *    `RECEIVE_SMS` فقط پیامکِ **تازه‌رسیده** را می‌دهد، پس هر چیزی
+     *    که پیش از نصبِ اپ یا در مدتِ خاموشیِ کلید یا پشتِ محدودیتِ رام
+     *    آمده باشد برای همیشه از دست می‌رفت. این بررسی همان را برمی‌گرداند.
+     *
+     * ⛔ ولی **فقط با تپِ کاربر**: هیچ‌جا — نه `onCreate`، نه `onResume`،
+     *    نه گیرنده — صندوق خودکار خوانده نمی‌شود. کاوشِ خودکارِ صندوقِ
+     *    پیامک دقیقاً همان چیزی است که کاربر از یک دفترِ مالی انتظار
+     *    ندارد. قاعده ۱۹ همین را می‌سنجد.
+     *
+     * ⚠ `SCAN_MAX` سقفِ اعلان در هر تپ است: با سی اعلانِ یک‌باره، نوارِ
+     *   اعلان غیرقابل استفاده می‌شود و کاربر همه را یک‌جا پاک می‌کند —
+     *   یعنی همان چیزی که قرار بود پیدا شود، گم می‌شود. باقی‌مانده
+     *   **گفته می‌شود** و با تپِ بعدی ادامه پیدا می‌کند؛ سقفِ بی‌صدا نیست.
+     */
+    private static final int  SCAN_MAX       = 5;
+    private static final int  SCAN_ROWS      = 200;
+    private static final long SCAN_WINDOW_MS = 7L * 24 * 60 * 60 * 1000;
 
     private TextView state;
     private TextView diag;
     private Button   toggle;
     private Button   fixNotif;
     private Button   fixBattery;
+    private Button   fixRead;
+    private Button   scan;
 
     @Override
     protected void onCreate(Bundle saved) {
@@ -156,6 +183,24 @@ public class SmsSetupActivity extends AppCompatActivity {
         });
         root.addView(fixBattery);
 
+        // ⚠ دو دکمه‌ی زیر هم مثل بالایی‌ها **شرطی** رندر می‌شوند (در
+        //   `render()`): روی گوشی‌ای که مجوزِ صندوق را دارد، دکمه‌ی
+        //   گرفتنِ مجوز یک دکمه‌ی بی‌کار است؛ و بدونِ آن مجوز، دکمه‌ی
+        //   بررسی فقط خطا می‌دهد.
+        fixRead = new Button(this);
+        fixRead.setText(R.string.sms_read_fix);
+        fixRead.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { askReadOrOpenSettings(); }
+        });
+        root.addView(fixRead);
+
+        scan = new Button(this);
+        scan.setText(R.string.sms_scan);
+        scan.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { scanInbox(); }
+        });
+        root.addView(scan);
+
         // ⛔ خطِ تشخیص — کم‌رنگ‌تر از خطِ وضعیت، چون جوابِ سؤالِ دوم است
         //    نه اول: «روشن است یا نه» را بالا می‌گوید، این می‌گوید
         //    «آخرین پیامک چه شد».
@@ -195,6 +240,22 @@ public class SmsSetupActivity extends AppCompatActivity {
     private boolean granted() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) { return true; }
         return checkSelfPermission(Manifest.permission.RECEIVE_SMS)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    /**
+     * ⛔ مجوزِ خواندنِ صندوق **جدا** سنجیده می‌شود، نه با `granted()` یکی.
+     *
+     *    وسوسه‌ی اول این بود که `granted()` هر دو را بخواهد؛ آن‌وقت
+     *    کاربری که `RECEIVE_SMS` را می‌داد ولی `READ_SMS` را نه، کلِ
+     *    قابلیت برایش خاموش می‌ماند — یعنی بخشی که **کار می‌کند** هم
+     *    گروگانِ مجوزی می‌شد که فقط برای پیدا کردنِ پیامک‌های قدیمی لازم
+     *    است. حالا قابلیت با همان یکی روشن می‌شود و نبودِ این یکی فقط
+     *    یک حالتِ جدا با دکمه‌ی خودش است.
+     */
+    private boolean inboxGranted() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) { return true; }
+        return checkSelfPermission(Manifest.permission.READ_SMS)
                 == PackageManager.PERMISSION_GRANTED;
     }
 
@@ -265,8 +326,12 @@ public class SmsSetupActivity extends AppCompatActivity {
         //    دقیقاً همان خرابیِ بی‌صدایی که این پروژه دنبالش است.
         boolean on = enabled() && granted();
 
+        // ⚠ ترتیب معنا دارد و از شدید به خفیف است: «اعلان‌ها بسته‌اند»
+        //   یعنی هیچ چیزی دیده نمی‌شود، ولی «صندوق خوانده نمی‌شود» یعنی
+        //   فقط پیامک‌های قبلی پیدا نمی‌شوند و خودِ قابلیت کار می‌کند.
         int msg;
         if (on && !notifVisible())      { msg = R.string.sms_state_no_notif; }
+        else if (on && !inboxGranted()) { msg = R.string.sms_state_no_read; }
         else if (on)                    { msg = R.string.sms_state_on; }
         else if (enabled())             { msg = R.string.sms_state_no_perm; }
         else                            { msg = R.string.sms_state_off; }
@@ -285,7 +350,99 @@ public class SmsSetupActivity extends AppCompatActivity {
         //   است». و با روشن شدنِ معافیت، خودش ناپدید می‌شود.
         fixBattery.setVisibility(on && !batteryOk() ? View.VISIBLE : View.GONE);
 
+        // ⚠ همان قاعده، برای دو دکمه‌ی صندوق: هر کدام دقیقاً در یک حالت
+        //   دیده می‌شود و در آن یکی حالت اصلاً رندر نمی‌شود. دکمه‌ی
+        //   «بررسی» بدونِ مجوز فقط خطا می‌داد، و دکمه‌ی «اجازه» روی
+        //   گوشیِ مجوزدار کاری نمی‌کرد.
+        fixRead.setVisibility(on && !inboxGranted() ? View.VISIBLE : View.GONE);
+        scan.setVisibility(on && inboxGranted() ? View.VISIBLE : View.GONE);
+
         diag.setText(lastEventLine());
+    }
+
+    /**
+     * ⛔ بررسیِ صندوقِ پیامک — **فقط از همین‌جا، فقط با تپِ کاربر.**
+     *
+     *    هیچ پارسِ تازه‌ای اینجا نیست: صافی همان `BankSmsReceiver.classify()`
+     *    است و اعلان همان `BankSmsReceiver.postNotification()`. با یک
+     *    صافیِ دومِ محلی، بررسیِ دستی و مسیرِ واقعی دیر یا زود دو جواب
+     *    می‌دادند و خرابی‌اش بی‌صدا بود — همان دلیلی که کلِ منطقِ پارس در
+     *    `parseBankSms()` مانده.
+     *
+     * ⛔ و متنِ پیامک **هیچ‌جا ذخیره نمی‌شود**: همان‌طور که گیرنده فقط
+     *    زمان و فرستنده و نتیجه را می‌نویسد، اینجا هم متن فقط از حافظه
+     *    به آدرسِ فرگمنتِ اعلان می‌رود و تمام.
+     */
+    private void scanInbox() {
+        long now  = System.currentTimeMillis();
+        long mark = prefs().getLong(BankSmsReceiver.PREF_SCAN_AT, 0L);
+
+        // ⚠ عقب‌گرد محدود است: بدونِ کف، اولین تپ روی گوشیِ چندساله کلِ
+        //   تاریخچه را می‌گشت و پیامک‌های پارسال را به‌عنوان تراکنشِ
+        //   نیامده پیشنهاد می‌داد — چیزی که کاربر از قبل ثبت کرده.
+        long from = Math.max(mark, now - SCAN_WINDOW_MS);
+
+        ArrayList<String> body = new ArrayList<>();
+        ArrayList<String> from_ = new ArrayList<>();
+        ArrayList<Long>   when = new ArrayList<>();
+        long scannedTo = now;
+
+        Cursor c = null;
+        try {
+            // ⚠ `date ASC` لازم است: اعلان‌ها به ترتیبِ وقوع ساخته می‌شوند
+            //   و نشانه‌ی ادامه هم از روی همان ترتیب درست درمی‌آید.
+            c = getContentResolver().query(
+                    Uri.parse("content://sms/inbox"),
+                    new String[]{ "address", "body", "date" },
+                    "date > ?",
+                    new String[]{ String.valueOf(from) },
+                    "date ASC");
+            if (c == null) {
+                Toast.makeText(this, R.string.sms_scan_failed, Toast.LENGTH_LONG).show();
+                return;
+            }
+            int rows = 0;
+            while (c.moveToNext()) {
+                long at = c.getLong(2);
+                // ⚠ سقفِ ردیف هم بی‌صدا نیست: با شکستنِ حلقه، نشانه روی
+                //   همین ردیف می‌ماند و تپِ بعدی از همین‌جا ادامه می‌دهد.
+                if (++rows > SCAN_ROWS) { scannedTo = at; break; }
+                String txt = c.getString(1);
+                if (txt == null || txt.isEmpty()) { continue; }
+                if (!BankSmsReceiver.WHY_OK.equals(BankSmsReceiver.classify(txt))) { continue; }
+                String addr = c.getString(0);
+                body.add(txt);
+                from_.add(addr == null ? "" : addr);
+                when.add(at);
+            }
+        } catch (Throwable t) {
+            // ⚠ مجوز ممکن است بینِ رندر و تپ پس گرفته شده باشد، و بعضی
+            //   رام‌ها اصلاً این provider را ندارند. کرشِ بی‌توضیح بدترین
+            //   جواب است — همان استدلالِ گاردِ `onCreate`.
+            Toast.makeText(this, R.string.sms_scan_failed, Toast.LENGTH_LONG).show();
+            render();
+            return;
+        } finally {
+            if (c != null) { c.close(); }
+        }
+
+        int n = Math.min(body.size(), SCAN_MAX);
+        for (int i = 0; i < n; i++) {
+            BankSmsReceiver.postNotification(this, from_.get(i), body.get(i));
+        }
+
+        boolean more = body.size() > n;
+        prefs().edit()
+               .putLong(BankSmsReceiver.PREF_SCAN_AT, more ? when.get(n - 1) : scannedTo)
+               .apply();
+
+        String note;
+        if (n == 0)      { note = getString(R.string.sms_scan_none); }
+        else if (more)   { note = getString(R.string.sms_scan_more, n); }
+        else             { note = getString(R.string.sms_scan_done, n); }
+        Toast.makeText(this, note, Toast.LENGTH_LONG).show();
+
+        render();
     }
 
     /**
@@ -376,9 +533,14 @@ public class SmsSetupActivity extends AppCompatActivity {
             render();
             return;
         }
-        if (!granted()) {
+        if (!granted() || !inboxGranted()) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                requestPermissions(new String[]{ Manifest.permission.RECEIVE_SMS }, REQ_SMS);
+                // ⚠ هر دو با هم خواسته می‌شوند چون اندروید آن‌ها را یک
+                //   گروه («پیامک») می‌بیند و یک دیالوگ نشان می‌دهد؛ جدا
+                //   خواستنشان فقط دو بار پرسیدن بود.
+                requestPermissions(new String[]{
+                        Manifest.permission.RECEIVE_SMS,
+                        Manifest.permission.READ_SMS }, REQ_SMS);
             } else {
                 // اندروید ۵: مجوز هنگام نصب داده شده و درخواستی در کار نیست.
                 turnOn();
@@ -426,6 +588,25 @@ public class SmsSetupActivity extends AppCompatActivity {
         openAppSettings();
     }
 
+    /**
+     * همان الگو برای مجوزِ صندوق: اگر هنوز می‌شود پرسید بپرس، وگرنه
+     * تنظیماتِ خودِ اپ را باز کن.
+     *
+     * ⚠ بعد از «دیگر نپرس» دیالوگ اصلاً بالا نمی‌آید و `requestPermissions`
+     *   بی‌صدا رد می‌شود — یعنی بدونِ شاخه‌ی دوم، کاربر دکمه را می‌زد و
+     *   هیچ اتفاقی نمی‌افتاد.
+     */
+    private void askReadOrOpenSettings() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && shouldShowRequestPermissionRationale(Manifest.permission.READ_SMS)) {
+            requestPermissions(new String[]{ Manifest.permission.READ_SMS }, REQ_READ);
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !inboxGranted()) {
+            openAppSettings();
+        }
+    }
+
     private void openAppSettings() {
         try {
             Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
@@ -445,7 +626,11 @@ public class SmsSetupActivity extends AppCompatActivity {
         //   امروز چیزی نمی‌شکند ولی یک بدهیِ خاموش است.
         super.onRequestPermissionsResult(req, perms, results);
 
-        boolean ok = results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED;
+        // ⚠ با دو مجوز در یک درخواست، `results[0]` دیگر جوابِ سؤالِ ما
+        //   نیست: ترتیبِ آرایه را اندروید تضمین می‌کند ولی تکیه بر اندیس
+        //   یعنی افزودنِ مجوزِ سوم در آینده این خط را **بی‌صدا** غلط
+        //   می‌کند. پس با نامش خوانده می‌شود.
+        boolean ok = isGranted(perms, results, Manifest.permission.RECEIVE_SMS);
 
         if (req == REQ_SMS && ok) {
             turnOn();   // خودش مجوزِ اعلان را هم می‌پرسد
@@ -467,9 +652,19 @@ public class SmsSetupActivity extends AppCompatActivity {
             }
         }
 
-        // مجوزِ اعلان: چه بدهد چه ندهد، قابلیت روشن می‌ماند و `render()`
-        // حالتِ «اعلان‌ها بسته‌اند» را نشان می‌دهد.
+        // مجوزِ اعلان و مجوزِ صندوق: چه بدهد چه ندهد، قابلیت روشن می‌ماند و
+        // `render()` حالتِ مربوطه را با دکمه‌ی رفعش نشان می‌دهد.
         render();
+    }
+
+    /** آیا این مجوزِ مشخص در پاسخ داده شده؟ (به نام، نه به اندیس) */
+    private static boolean isGranted(String[] perms, int[] results, String want) {
+        for (int i = 0; i < perms.length && i < results.length; i++) {
+            if (want.equals(perms[i])) {
+                return results[i] == PackageManager.PERMISSION_GRANTED;
+            }
+        }
+        return false;
     }
 
     @Override
