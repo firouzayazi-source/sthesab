@@ -3854,6 +3854,12 @@ document.addEventListener('DOMContentLoaded', function () {
     // ⛔ و **هر** راهِ خروجی نشانه را می‌زند، نه فقط اسلایدِ آخر: کسی که
     //    وسطش می‌بندد یعنی «نمی‌خواهم». با نشانه‌گذاریِ فقط در پایان،
     //    همان آدم هر بار دوباره همین را می‌دید.
+    //
+    // ⛔ **هدفِ نورافکن از `data-target`ِ خودِ اسلاید خوانده می‌شود، نه از
+    //    یک فهرستِ جاوااسکریپتی.** تنها مرجع `INTRO_SLIDES` در
+    //    `includes/intro_sheet.php` است؛ با فهرستِ دوم، اولین باری که یک
+    //    انتخابگر عوض شود نورافکن بی‌صدا روی هیچ می‌نشیند و کاربر یک
+    //    حفره‌ی خالی وسطِ صفحه می‌بیند — همان قاعده‌ی `DUE_TABS`.
     (function intro() {
         var box = document.getElementById('introModal');
         if (!box) return;
@@ -3863,9 +3869,175 @@ document.addEventListener('DOMContentLoaded', function () {
         var prev   = document.getElementById('introPrev');
         var next   = document.getElementById('introNext');
         var close  = document.getElementById('introClose');
-        if (!slides.length || !prev || !next || !close) return;
+        var card   = document.getElementById('introCard');
+        var spot   = document.getElementById('introSpot');
+        var beak   = document.getElementById('introBeak');
+        if (!slides.length || !prev || !next || !close || !card || !spot || !beak) return;
 
         var at = 0;
+        var SPOT_PAD = 8;    // حاشیه‌ی حفره دورِ خودِ عنصر
+        var CARD_GAP = 12;   // فاصله‌ی کارت تا لبه‌ی حفره
+        var CARD_EDGE = 14;  // همان `left/right/bottom: 14px`ِ CSS
+        var CARD_MIN = 170;  // ⚠ کفِ ارتفاعِ کارت — پایین‌تر، متن می‌رود زیرِ اسکرول
+        var WIDE = 901;      // همان مرزی که `.bottom-nav` با آن کنار می‌رود
+
+        // ⛔ نامزدها **به ترتیبِ خودشان** آزموده می‌شوند، نه به ترتیبِ
+        //    سند. همین اپ روی موبایل و دسکتاپ دو چیدمان دارد: دکمه‌ی ثبت
+        //    روی موبایل `#addTxBtn`ِ نوارِ پایین است و روی دسکتاپ قلمِ
+        //    نوارِ کناری (نوارِ پایین بالای ۹۰۰ پیکسل `display: none`
+        //    می‌شود). یک `querySelectorAll` با کلِ فهرست، نتیجه را به
+        //    **ترتیبِ سند** می‌دهد نه به ترتیبِ انتخابگرها — و آنجا
+        //    نوارِ کناری و متنِ خالیِ صفحه هر دو جلوترند، پس روی موبایل
+        //    دکمه‌ی نوارِ پایین **هیچ‌وقت** برنده نمی‌شد. با اندازه‌گیری
+        //    دیده شد، نه با خواندنِ کد.
+        // ⚠ «دیده‌شدنی» یعنی هم اندازه دارد هم داخلِ پنجره است: عنصرِ
+        //   پایین‌ترِ صفحه با قفلِ اسکرولِ لایه دیگر بالا نمی‌آید، پس
+        //   نورافکن رویش یعنی حفره‌ای بیرون از صفحه — و کاربر فقط یک
+        //   صفحه‌ی تیره می‌دید. در آن حالت اسلاید تمام‌صفحه می‌شود.
+        function firstVisible(sel) {
+            if (!sel) return null;
+            var groups = sel.split(',');
+            var vw = window.innerWidth, vh = window.innerHeight;
+            for (var g = 0; g < groups.length; g++) {
+                var one = groups[g].trim();
+                if (!one) continue;
+                var list;
+                try { list = document.querySelectorAll(one); } catch (e) { continue; }
+                for (var i = 0; i < list.length; i++) {
+                    var r = list[i].getBoundingClientRect();
+                    if (r.width < 8 || r.height < 8) continue;
+                    if (r.bottom <= 0 || r.top >= vh) continue;
+                    if (r.right <= 0 || r.left >= vw) continue;
+                    return { el: list[i], rect: r };
+                }
+            }
+            return null;
+        }
+
+        // ⛔ عنصرِ برنده **خودش** علامت می‌خورد، نه اینکه نامش جایی نوشته
+        //    شود. تنها مصرف‌کننده‌اش تست است و دلیلش این است که آن باید
+        //    بسنجد **کدام** نامزد انتخاب شده، بدونِ اینکه قاعده‌ی ترتیب را
+        //    در خودش دوباره پیاده کند — همان دامِ «آزمونی که نسخه‌ی دومِ
+        //    خودش را می‌سنجد» که یک بار سرِ بخشِ CSVِ `test_tx_search`
+        //    افتاد. با نامِ متنی، دو عنصرِ هم‌کلاس از هم تشخیص داده
+        //    نمی‌شدند.
+        var marked = null;
+        function markHit(el) {
+            if (marked && marked !== el) { marked.removeAttribute('data-intro-hit'); }
+            marked = el;
+            if (el) { el.setAttribute('data-intro-hit', '1'); }
+        }
+
+        function place() {
+            var sel = slides[at].getAttribute('data-target') || '';
+            var hit = firstVisible(sel);
+            var r = hit ? hit.rect : null;
+
+            // ⛔ هر چیزی که جاوااسکریپت نوشته پاک می‌شود، وگرنه استایلِ
+            //    درون‌خطیِ اسلایدِ قبلی بر `.is-full` (که فقط یک قاعده‌ی
+            //    CSS است) برنده می‌شود و کارتِ تمام‌صفحه سرِ جای قبلی
+            //    می‌ماند — خرابی‌ای که هیچ خطایی نمی‌دهد.
+            card.classList.remove('is-full', 'is-under', 'is-over', 'is-left', 'is-right');
+            card.style.top = card.style.bottom = card.style.left = '';
+            card.style.maxHeight = '';
+            beak.style.top = beak.style.left = '';
+            beak.style.display = '';
+
+            if (!r) {
+                // بی‌هدف: حفره صفر می‌ماند و همان `box-shadow` کلِ صفحه را
+                // تیره می‌کند؛ کارت هم تمام‌صفحه می‌شود.
+                markHit(null);
+                spot.classList.remove('has-target');
+                spot.style.top = '50%';
+                spot.style.left = '50%';
+                spot.style.width = '0';
+                spot.style.height = '0';
+                card.classList.add('is-full');
+                return;
+            }
+
+            var vw = window.innerWidth, vh = window.innerHeight;
+            var top  = Math.max(0, r.top - SPOT_PAD);
+            var left = Math.max(0, r.left - SPOT_PAD);
+            var w = Math.min(vw, r.right + SPOT_PAD) - left;
+            var h = Math.min(vh, r.bottom + SPOT_PAD) - top;
+
+            markHit(hit.el);
+            spot.classList.add('has-target');
+            spot.style.top = top + 'px';
+            spot.style.left = left + 'px';
+            spot.style.width = w + 'px';
+            spot.style.height = h + 'px';
+
+            // ⛔ کارت همیشه **بیرونِ** حفره می‌نشیند، وگرنه دقیقاً چیزی را
+            //    می‌پوشاند که دارد نشانش می‌دهد. چهار سمت آزموده می‌شوند و
+            //    اولین سمتی که جا دارد برنده است.
+            //    ⚠ دو سمتِ افقی فقط روی عرضِ بزرگ ممکن‌اند: زیرِ ۹۰۱ پیکسل
+            //      کارت تمام‌عرض است و کنارِ حفره جا نمی‌شود. و لازم هم
+            //      هستند — روی دسکتاپ هدفِ «ناوبری» خودِ نوارِ کناری است و
+            //      آن از بالا تا پایینِ صفحه کشیده شده، پس نه بالایش جا
+            //      هست نه پایینش. اندازه‌گیری شد: بالا ۵۸ و پایین ۱۱۶
+            //      پیکسل، هر دو کمتر از کفِ کارت.
+            var wide = vw >= WIDE;
+            var cw = card.getBoundingClientRect().width;
+            var needV = CARD_MIN + CARD_GAP + CARD_EDGE;
+            var needH = cw + CARD_GAP + CARD_EDGE;
+            var side;
+            if (vh - (top + h) >= needV)            { side = 'under'; }
+            else if (top >= needV)                  { side = 'over'; }
+            else if (wide && vw - (left + w) >= needH) { side = 'right'; }
+            else if (wide && left >= needH)         { side = 'left'; }
+            else { side = (vh - (top + h) >= top) ? 'under' : 'over'; }
+            card.classList.add('is-' + side);
+
+            if (side === 'under' || side === 'over') {
+                if (side === 'under') {
+                    card.style.top = (top + h + CARD_GAP) + 'px';
+                    card.style.bottom = 'auto';
+                    card.style.maxHeight =
+                        Math.max(CARD_MIN, vh - (top + h + CARD_GAP) - CARD_EDGE) + 'px';
+                } else {
+                    card.style.bottom = (vh - top + CARD_GAP) + 'px';
+                    card.style.top = 'auto';
+                    card.style.maxHeight =
+                        Math.max(CARD_MIN, top - CARD_GAP - CARD_EDGE) + 'px';
+                }
+                // روی عرضِ بزرگ کارت هم‌مرکزِ حفره می‌شود، نه وسطِ صفحه:
+                // کارتی که وسطِ یک صفحه‌ی ۱۴۰۰ پیکسلی بنشیند و به گوشه‌ی
+                // مقابل اشاره کند، اشاره نمی‌کند.
+                if (wide) {
+                    card.style.left = Math.max(CARD_EDGE,
+                        Math.min(vw - cw - CARD_EDGE, (left + w / 2) - cw / 2)) + 'px';
+                }
+            } else {
+                card.style.left = (side === 'right' ? (left + w + CARD_GAP)
+                                                    : (left - CARD_GAP - cw)) + 'px';
+                var ch = card.getBoundingClientRect().height;
+                card.style.top = Math.max(CARD_EDGE,
+                    Math.min(vh - ch - CARD_EDGE, (top + h / 2) - ch / 2)) + 'px';
+                card.style.bottom = 'auto';
+            }
+
+            // نوکِ اشاره: وسطِ همان ضلعِ حفره — ولی فقط اگر واقعاً داخلِ
+            // خودِ کارت بیفتد. نوکی که از لبه‌ی کارت بیرون بزند شبیهِ
+            // خرابیِ رندر دیده می‌شود، نه شبیهِ اشاره.
+            var cr = card.getBoundingClientRect();
+            var along, span;
+            if (side === 'under' || side === 'over') {
+                along = (left + w / 2) - cr.left;
+                span = cr.width;
+            } else {
+                along = (top + h / 2) - cr.top;
+                span = cr.height;
+            }
+            if (along < 18 || along > span - 18) {
+                beak.style.display = 'none';
+            } else if (side === 'under' || side === 'over') {
+                beak.style.left = (along - 7) + 'px';
+            } else {
+                beak.style.top = (along - 7) + 'px';
+            }
+        }
 
         function paint() {
             for (var i = 0; i < slides.length; i++) {
@@ -3874,13 +4046,23 @@ document.addEventListener('DOMContentLoaded', function () {
             }
             // ⚠ «قبلی» روی اسلایدِ اول پنهان می‌شود، نه غیرفعال: دکمه‌ای
             //   که دیده شود و کاری نکند همان «دکمه‌ی بی‌کار».
-            prev.style.visibility = at === 0 ? 'hidden' : 'visible';
+            // ⛔ و `display` است نه `visibility`: با `visibility` جای دکمه
+            //   خالی می‌ماند و روی اسلایدِ **تمام‌صفحه** «بعدی» نصفِ ردیف
+            //   را می‌گرفت و کنارش یک حفره‌ی خالی — در اسکرین‌شات دیده شد.
+            //   جهشِ چیدمانی‌اش هم اینجا بی‌خطر است: بینِ اسلایدِ اول و
+            //   دوم کلِ کارت از تمام‌صفحه به پاپ‌آپ تبدیل می‌شود، پس
+            //   چیدمانِ پایداری نیست که با این جابه‌جا شود.
+            prev.style.display = at === 0 ? 'none' : '';
             next.textContent = at === slides.length - 1 ? 'شروع کنیم' : 'بعدی';
+            place();
         }
 
         function done() {
             window.introMarkSeen();
             box.classList.remove('show');
+            // ⚠ علامت روی عنصرِ هدف است، نه روی لایه؛ با بستنِ معرفی باید
+            //   برداشته شود وگرنه تا پایانِ نشست روی DOMِ خودِ اپ می‌ماند.
+            markHit(null);
         }
 
         prev.addEventListener('click', function () {
@@ -3893,7 +4075,9 @@ document.addEventListener('DOMContentLoaded', function () {
         close.addEventListener('click', done);
 
         // ⚠ تپ روی خودِ لایه (نه جعبه) هم بستن است — همان رفتاری که
-        //   کاربر از هر مودالِ دیگری انتظار دارد.
+        //   کاربر از هر مودالِ دیگری انتظار دارد. `.intro-spot` عمداً
+        //   `pointer-events: none` دارد، پس تپ روی ناحیه‌ی تیره هم به
+        //   همین‌جا می‌رسد.
         box.addEventListener('click', function (e) {
             if (e.target === box) done();
         });
@@ -3901,9 +4085,15 @@ document.addEventListener('DOMContentLoaded', function () {
             if (e.key === 'Escape' && box.classList.contains('show')) done();
         });
 
+        // ⚠ چرخشِ گوشی و باز شدنِ کیبورد جای عنصرِ هدف را عوض می‌کنند؛
+        //   بدونِ این، حفره سرِ جای قبلی می‌ماند و روی هیچ می‌نشیند.
+        window.addEventListener('resize', function () {
+            if (box.classList.contains('show')) place();
+        });
+
         if (!window.introSeen()) {
-            paint();
             box.classList.add('show');
+            paint();
         }
     })();
 

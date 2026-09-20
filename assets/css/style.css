@@ -4224,20 +4224,120 @@ html[data-theme="dark"] .stay-chip.active { box-shadow: none; }
      می‌بیند یک اخطار می‌شد — و آن‌وقت رنگِ هشدار در بقیه‌ی اپ هم بی‌اثر
      می‌شود. همان درسِ «هشدارِ همیشگی بدتر از نبودنش است». */
 /* ============================================================
-   معرفیِ اولیه — چند اسلاید داخلِ همان `.modal-overlay`
+   معرفیِ اولیه — تورِ نورافکنی روی خودِ صفحه
    ============================================================
-   ⛔ لایه‌ی تازه‌ای ساخته نشد: `.modal-overlay` از قبل حاشیه‌ی امن و
-      اسکرولِ لایه را درست دارد و `watchOverlays()` هم بدنه را قفل
-      می‌کند. این چند قاعده فقط **داخلِ** آن جعبه را می‌چیند.
-   ⚠ اسلایدها با `display` عوض می‌شوند نه با `transform` و اسکرول:
-     اسلایدرِ خانه به آن شکل است چون کاربر باید بتواند بکشد؛ اینجا
-     ناوبری فقط با دکمه است و یک نوارِ اسکرولیِ راست‌به‌چپ همان سه
-     باگی را برمی‌گرداند که `CLAUDE.md` برایشان نوشته دارد
-     (`scroll-snap`، علامتِ `scrollLeft`، و سایه‌ی بریده‌شده). */
-.intro-box { max-width: 380px; }
+   ⛔ لایه‌ی تازه‌ای ساخته نشد: `.intro-overlay` همچنان روی همان
+      `.modal-overlay` می‌نشیند، چون سه چیز از آنجا می‌آید که نسخه‌ی
+      دومشان دیر یا زود از اصل دور می‌افتد — `display: none`ِ پیش‌فرض
+      (پس هیچ `hidden` ای رندر نمی‌شود و قاعده ۱۸ موضوعیت ندارد)،
+      قفلِ بدنه در `watchOverlays()`، و همان `z-index`.
+
+   ⛔ ولی `padding`ِ حاشیه‌ی امنِ آن کلاس اینجا **صفر می‌شود** —
+      تمام‌صفحه یعنی تمام‌صفحه — پس `env(safe-area-inset-*)` به خودِ
+      کارت منتقل شده است. بدونِ آن انتقال، دقیقاً همان خرابی برمی‌گردد
+      که قاعده ۱۳ برای گرفتنش نوشته شد، و چون سلکتورش `.intro-overlay`
+      است آن قاعده هم نمی‌گیردش. قاعده ۴۷ این یکی را جدا می‌سنجد.
+
+   ⛔ تاریکیِ صفحه از `box-shadow`ِ خودِ `.intro-spot` می‌آید، نه از
+      زمینه‌ی لایه. یک مکانیزم برای هر دو حالت: با هدف، حفره اندازه‌ی
+      هدف است؛ بی‌هدف، حفره صفر می‌ماند و همان سایه کلِ صفحه را تیره
+      می‌کند. با دو مکانیزمِ جدا (زمینه‌ی لایه + حفره) لبه‌ی بینشان در
+      جابه‌جاییِ اسلایدها یک لحظه دیده می‌شد.
+
+   ⚠ جای حفره با `top`/`left`ِ **فیزیکی** نوشته می‌شود، نه
+     `inset-inline-start`: مقدارِ منطقی در صفحه‌ی راست‌به‌چپ به `right`
+     نگاشت می‌شود و کنارِ `left`ی که جاوااسکریپت می‌نویسد جعبه را
+     بیش‌ازحد مقید می‌کند و `left` **بی‌صدا** نادیده می‌ماند — همان
+     چیزی که یک بار سرِ `optionPicker()` افتاد. و
+     `getBoundingClientRect()` هم فیزیکی می‌دهد. */
+.intro-overlay {
+    padding: 0;
+    background: transparent;
+    align-items: stretch;
+    justify-content: stretch;
+    overflow: hidden;
+}
+.intro-spot {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 0; height: 0;
+    border-radius: 18px;
+    box-shadow: 0 0 0 9999px rgba(12, 14, 20, .74);
+    pointer-events: none;
+    transition: top .2s ease, left .2s ease, width .2s ease, height .2s ease;
+}
+/* ⛔ رنگِ حلقه **ثابت** است، نه یک توکنِ تم — و این عمدی است: این حلقه
+   همیشه روی همان سایه‌ی تیره‌ی بالا می‌نشیند، نه روی سطحِ صفحه. یک
+   توکنِ تم (مثل `--brand`) در حالت شب زغالی می‌ماند و روی همان تیرگی
+   **ناپدید** می‌شود — یعنی نورافکن بی‌حلقه، بی‌هیچ خطایی.
+   ⚠ و نسخه‌ی اول `var(--accent)` داشت که در این فایل **اصلاً تعریف
+     نشده**: مرورگر کلِ اعلانِ `outline` را دور می‌ریزد، پس حلقه هرگز
+     کشیده نمی‌شد. در اسکرین‌شات دیده شد، نه در بازبینی. */
+.intro-spot.has-target {
+    outline: 2px solid rgba(255, 255, 255, .92);
+    outline-offset: 0;
+}
+
+/* کارتِ چسبیده به حفره. جای دقیقش را جاوااسکریپت می‌نویسد؛ این‌جا فقط
+   حالتِ پیش‌فرض و عرض است. */
+.intro-card {
+    position: absolute;
+    left: 14px; right: 14px; bottom: 14px;
+    background: var(--surface);
+    border-radius: var(--r-lg);
+    padding: 18px;
+    box-shadow: var(--sh-lg);
+    max-height: 72%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+/* ⛔ همان «مستطیلی که صفحه را در بر می‌گیرد»: اسلایدِ بی‌هدف.
+   ⚠ و تنها حالتی که کارت به لبه‌ی صفحه می‌چسبد، پس `env(...)` اینجا
+     لازم است — `.intro-overlay` همان padding را از `.modal-overlay`
+     برداشته و قاعده ۱۳ سلکتورِ تازه را نمی‌بیند. قاعده ۴۷ می‌سنجدش. */
+.intro-card.is-full {
+    top: 0; bottom: 0; left: 0; right: 0;
+    width: auto;
+    border-radius: 0;
+    max-height: none;
+    padding: calc(28px + env(safe-area-inset-top)) 22px
+             calc(24px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; justify-content: center;
+}
+.intro-card.is-full .intro-icon { font-size: 52px; margin-bottom: 20px; }
+.intro-card.is-full .intro-title { font-size: 20px; }
+.intro-card.is-full .intro-actions { margin-top: 26px; }
+
+.intro-close {
+    position: absolute;
+    top: 8px; inset-inline-end: 10px;
+    background: none; border: none;
+    font-size: 25px; line-height: 1;
+    color: var(--muted); padding: 0 4px;
+    z-index: 2;
+}
+.intro-card.is-full .intro-close { top: calc(14px + env(safe-area-inset-top)); }
+
+/* نوکِ اشاره به سمتِ عنصرِ نورافکن‌شده.
+   ⚠ نام‌ها **فیزیکی**اند (`is-left` یعنی کارت سمتِ چپِ حفره است)، نه
+     منطقی: مختصاتِ `getBoundingClientRect()` هم فیزیکی است و مقدارِ
+     منطقی در صفحه‌ی راست‌به‌چپ دقیقاً برعکس می‌نشیند — همان چیزی که یک
+     بار سرِ `optionPicker()` افتاد. */
+.intro-beak {
+    position: absolute;
+    width: 15px; height: 15px;
+    background: var(--surface);
+    transform: rotate(45deg);
+    display: none;
+}
+.intro-card.is-under .intro-beak { top: -7px; display: block; }
+.intro-card.is-over  .intro-beak { bottom: -7px; display: block; }
+.intro-card.is-right .intro-beak { left: -7px; display: block; }
+.intro-card.is-left  .intro-beak { right: -7px; display: block; }
+
 .intro-slide { display: none; text-align: center; padding: 6px 2px 2px; }
 .intro-slide.is-on { display: block; }
-.intro-icon { font-size: 40px; line-height: 1; margin-bottom: 14px; }
+.intro-icon { font-size: 40px; line-height: 1; margin-bottom: 12px; }
 .intro-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
 .intro-body { font-size: 14px; line-height: 1.9; color: var(--muted); }
 .intro-dots {
@@ -4249,7 +4349,24 @@ html[data-theme="dark"] .stay-chip.active { box-shadow: none; }
     background: var(--line);
     transition: background .15s, width .15s;
 }
-.intro-dot.is-on { width: 18px; border-radius: 4px; background: var(--accent); }
+/* ⚠ `--ink` است نه یک توکنِ برند: نقطه روی سطحِ `--surface` می‌نشیند و
+   `--ink` تنها چیزی است که در **هر دو** پالت با آن سطح تضاد دارد. */
+.intro-dot.is-on { width: 18px; border-radius: 4px; background: var(--ink); }
+
+/* ⛔ روی دسکتاپ کارتِ تمام‌عرض یک نوارِ درازِ لبه‌ی صفحه می‌شود — همان
+   چیزی که `.sheet` را روی عرضِ بزرگ خراب می‌کرد. فقط کارتِ چسبیده به
+   نورافکن جمع می‌شود؛ اسلایدِ تمام‌صفحه عمداً تمام‌صفحه می‌ماند.
+   ⚠ و هیچ `transform` ای اینجا نیست: جای افقیِ کارت را جاوااسکریپت با
+     `left` می‌نویسد تا هم‌مرکزِ حفره بنشیند. یک `translateX(-50%)`ِ
+     جامانده آن را **بی‌صدا** ۲۳۰ پیکسل جابه‌جا می‌کرد و نوکِ اشاره از
+     لبه‌ی کارت بیرون می‌افتاد — با اندازه‌گیری دیده شد، نه با نگاه. */
+@media (min-width: 901px) {
+    .intro-card {
+        right: auto;
+        width: min(460px, 92vw);
+    }
+    .intro-card.is-full { left: 0; right: 0; width: auto; }
+}
 
 .start-card {
     border-inline-start: 3px solid var(--gold);

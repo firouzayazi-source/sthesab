@@ -146,8 +146,10 @@ if (!bin) { fail('no_chromium'); }
     out.firstOn     = await evalJs(
         'var s = document.querySelectorAll("#introModal .intro-slide");'
         + 'return s[0].classList.contains("is-on") && !s[1].classList.contains("is-on");');
+    // ⚠ سبکِ **محاسبه‌شده**، نه استایلِ درون‌خطی: آنچه کاربر می‌بیند
+    //   حاصلِ جمعِ قاعده‌هاست، نه یک انتساب.
     out.prevHiddenAtFirst = await evalJs(
-        'return document.getElementById("introPrev").style.visibility === "hidden";');
+        'return getComputedStyle(document.getElementById("introPrev")).display === "none";');
     out.nextLabelFirst = await evalJs(
         'return document.getElementById("introNext").textContent;');
 
@@ -168,7 +170,7 @@ if (!bin) { fail('no_chromium'); }
         return ok;
     `);
     out.prevVisibleLater = await evalJs(
-        'return document.getElementById("introPrev").style.visibility === "visible";');
+        'return getComputedStyle(document.getElementById("introPrev")).display !== "none";');
     out.nextLabelLast = await evalJs(
         'return document.getElementById("introNext").textContent;');
     out.markBeforeExit = await evalJs(mark);
@@ -206,6 +208,107 @@ if (!bin) { fail('no_chromium'); }
         + 'return 1;');
     out.shownAfterEsc = await evalJs(shown);
     out.markAfterEsc  = await evalJs(mark);
+
+    // ---------- فاز ه: نورافکن روی عنصرِ **واقعی** می‌نشیند ----------
+    //
+    // ⛔ این نیمه فقط در مرورگر سنجیدنی است: هدفِ هر اسلاید یک فهرستِ
+    //    نامزد است و «کدام‌یک دیده می‌شود» را چیدمان تعیین می‌کند، نه
+    //    سورس. روی موبایل دکمه‌ی ثبت `#addTxBtn`ِ نوارِ پایین است و روی
+    //    دسکتاپ قلمِ نوارِ کناری — پس هر دو عرض جدا اندازه گرفته می‌شوند.
+    //
+    // ⛔ و مهم‌ترین چیزی که برمی‌گردد `covers` است: کارت **نباید** با
+    //    عنصری که نورافکن رویش است هم‌پوشانی عمودی داشته باشد، وگرنه
+    //    دقیقاً همان چیزی را می‌پوشاند که دارد نشانش می‌دهد — خرابی‌ای
+    //    که در سورس هیچ نشانه‌ای ندارد.
+    // ⚠ حفره و کارت `transition` دارند، پس `getBoundingClientRect()` بلافاصله
+    //   بعد از کلیک مقدارِ **شروعِ** انیمیشن را می‌دهد، نه مقصد را. نسخه‌ی اول
+    //   همین بود و برای هر پنج اسلاید حفره‌ی ۰×۰ گزارش کرد — یعنی سنجه‌ای که
+    //   روی کدِ سالم هم عددِ غلط می‌داد. پس بین کلیک و اندازه‌گیری مکث هست.
+    const STEP = `
+        var box = document.getElementById("introModal");
+        var spot = document.getElementById("introSpot");
+        var card = document.getElementById("introCard");
+        var beak = document.getElementById("introBeak");
+        var slides = box.querySelectorAll(".intro-slide");
+        if (!spot || !card || !beak) { return null; }
+        var idx = -1;
+        for (var i = 0; i < slides.length; i++) {
+            if (slides[i].classList.contains("is-on")) { idx = i; }
+        }
+        var sel = idx < 0 ? "" : (slides[idx].getAttribute("data-target") || "");
+        var sr = spot.getBoundingClientRect();
+        var cr = card.getBoundingClientRect();
+        // ⛔ عنصرِ هدف از علامتی خوانده می‌شود که **خودِ app.js** روی آن
+        //    گذاشته، نه با اجرای دوباره‌ی قاعده‌ی «اولین نامزدِ
+        //    دیده‌شدنی». با پیاده‌سازیِ دوم، probe نسخه‌ی خودش را
+        //    می‌سنجید و با خرابیِ آن قاعده هم سبز می‌ماند — همان دامِ
+        //    بخشِ CSV در test_tx_search. (⚠ بک‌تیک اینجا ممنوع است: این
+        //    متن داخلِ یک template literal است — دامِ قاعده ۳۶.)
+        var he = document.querySelector("[data-intro-hit]");
+        var t = he ? he.getBoundingClientRect() : null;
+        var hit = he ? (he.id || String(he.className || "")) : "";
+        var vw = document.documentElement.clientWidth;
+        var vh = document.documentElement.clientHeight;
+        return {
+            idx: idx,
+            sel: sel,
+            hit: hit,
+            full: card.classList.contains("is-full"),
+            hasTarget: spot.classList.contains("has-target"),
+            spot: { t: Math.round(sr.top), l: Math.round(sr.left),
+                    w: Math.round(sr.width), h: Math.round(sr.height) },
+            card: { t: Math.round(cr.top), l: Math.round(cr.left),
+                    w: Math.round(cr.width), h: Math.round(cr.height) },
+            target: t ? { t: Math.round(t.top), l: Math.round(t.left),
+                          w: Math.round(t.width), h: Math.round(t.height) } : null,
+            // ⛔ هم‌پوشانیِ **دوبعدی**، نه فقط عمودی: نسخه‌ی اول عمودی بود و
+            //    روی نوارِ کناریِ دسکتاپ (که از بالا تا پایین کشیده شده)
+            //    هشدارِ الکی می‌داد، در حالی که کارت کنارِ آن نشسته بود.
+            covers: t ? (cr.left < t.right && cr.right > t.left
+                      && cr.top < t.bottom && cr.bottom > t.top) : false,
+            // حفره باید کلِ عنصر را در بر بگیرد
+            wraps: t ? (sr.top <= t.top + 1 && sr.bottom >= t.bottom - 1
+                     && sr.left <= t.left + 1 && sr.right >= t.right - 1) : null,
+            inside: Math.round(sr.left) >= -1 && Math.round(sr.top) >= -1
+                 && Math.round(sr.right) <= vw + 1 && Math.round(sr.bottom) <= vh + 1,
+            // ⚠ سبکِ **محاسبه‌شده**، نه استایلِ درون‌خطی: نوک را CSS پنهان
+            //   می‌کند و درون‌خطی خالی می‌ماند.
+            beak: window.getComputedStyle(beak).display !== "none",
+            // ⚠ با **لایه** سنجیده می‌شود نه با innerWidth: نوارِ اسکرول
+            //   ۱۵ پیکسل اختلاف می‌ساخت و بررسی روی چیدمانِ سالم قرمز
+            //   می‌شد. «صفحه را در بر می‌گیرد» یعنی کلِ همان لایه.
+            //   (⚠ بک‌تیک اینجا ممنوع است: این متن داخلِ یک template
+            //    literal است و همان دامِ قاعده ۳۶ را می‌زند.)
+            fills: card.classList.contains("is-full")
+                ? (function () {
+                    var br = box.getBoundingClientRect();
+                    return Math.round(cr.width) >= Math.round(br.width) - 1
+                        && Math.round(cr.height) >= Math.round(br.height) - 1;
+                })()
+                : null,
+            overflowX: document.documentElement.scrollWidth > vw + 1,
+        };
+    `;
+
+    const tour = async (width, height) => {
+        await send('Emulation.setDeviceMetricsOverride', {
+            width, height, deviceScaleFactor: 1, mobile: width < 900,
+        }, sid);
+        await evalJs(clearMark);
+        if (!(await load())) { return null; }
+        const n = await evalJs('return document.querySelectorAll("#introModal .intro-slide").length;');
+        const steps = [];
+        for (let i = 0; i < n; i++) {
+            if (i) { await evalJs('document.getElementById("introNext").click(); return 1;'); }
+            await sleep(350);
+            steps.push(await evalJs(STEP));
+        }
+        return steps;
+    };
+
+    out.tourMobile  = await tour(390, 844);
+    out.tourDesktop = await tour(1400, 900);
+    await send('Emulation.clearDeviceMetricsOverride', {}, sid);
 
     // نشانه را پاک نگذار: اجرای بعدیِ تست نباید به ترتیبِ اجراها بند باشد.
     await evalJs(clearMark);
