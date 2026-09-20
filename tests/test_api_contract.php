@@ -3991,6 +3991,35 @@ if (!is_file($saPath)) {
     if (!preg_match('/isset\(STORE_ASSET_FILTERS\[\$filter\]\)/', $saSrc)) {
         $badSS[] = '⛔ store-assets.php — «?f=» با STORE_ASSET_FILTERS سنجیده نمی‌شود';
     }
+    // ⛔ اختلافِ «اصل سرمایه» با «در انبار» دو جهت دارد و دو معنای کاملاً
+    //    متفاوت، پس نباید یک پیامِ سخت‌کد بگیرد:
+    //      سرمایه **کمتر** → خریدی سند نخورده (خرابیِ دفترِ فروشگاه).
+    //      سرمایه **بیشتر** → پولی که هنوز به کالا تبدیل نشده، یعنی یک
+    //        حالتِ کاملاً سالم — و هشدارِ کهربایی رویش همان «هشدارِ
+    //        همیشگی» است که آدم را عادت می‌دهد هشدارها را نادیده بگیرد.
+    //    نسخه‌ی اول با `abs()` علامت را دور می‌ریخت و برای هر دو یک علت
+    //    ادعا می‌کرد.
+    if (!preg_match('/\$capGap\s*=[^;]*\$own\[[\x27"]capital[\x27"]\]\s*-\s*\$expectCapital/', $saSrc)) {
+        $badSS[] = '⛔ store-assets.php — اختلافِ اصل سرمایه علامت‌دار حساب نمی‌شود';
+    }
+    if (preg_match('/\babs\s*\(/', $saSrc)) {
+        $badSS[] = '⛔ store-assets.php — abs() علامتِ اختلاف را دور می‌ریزد؛ دو جهت دو معنا دارند';
+    }
+    if (!preg_match('/\$capGap\s*<\s*0/', $saSrc) || !preg_match('/\$capGap\s*>\s*0/', $saSrc)) {
+        $badSS[] = '⛔ store-assets.php — هر دو جهتِ اختلافِ سرمایه شاخه‌ی خودش را ندارد';
+    }
+    // ⚠ پنجره تا `endif`ِ همان زنجیره بریده می‌شود، نه تعدادِ ثابتی
+    //   کاراکتر: پایین‌تر در همین فایل یک `warn-ink`ِ کاملاً درست هست
+    //   (پیامِ «فهرست بریده شده») و با پنجره‌ی باز، بررسی روی فایلِ
+    //   **سالم** قرمز می‌شد.
+    $gapPos = strpos($saSrc, '$capGap > 0');
+    if ($gapPos !== false) {
+        $gapEnd = strpos($saSrc, 'endif', $gapPos);
+        $gapWin = substr($saSrc, $gapPos, $gapEnd === false ? 500 : $gapEnd - $gapPos);
+        if (strpos($gapWin, 'warn-ink') !== false) {
+            $badSS[] = '⛔ store-assets.php — سرمایه‌ی خرج‌نشده هشدارِ کهربایی گرفته؛ آن حالت خرابی نیست';
+        }
+    }
 }
 // دکمه‌ی ورود به **همان** تابع بند است، نه یک شرطِ محلیِ دوم.
 if (!preg_match('/StoreShare::canViewAssets\(\s*\$userId\s*,\s*Auth::isAdmin\(\)\s*\)/', $maSrc)) {
