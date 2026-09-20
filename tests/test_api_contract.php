@@ -5241,6 +5241,114 @@ if ($hexSites < 20) {
 
 T::bulk(count($hexFiles) + 1, $badHex, '⛔ هر json_encode داخلِ <script> با JSON_HEX_TAG می‌رود');
 
+// ---------------------------------------------------------------------------
+// ⛔ قاعده ۵۵ — «Script error.»ِ کور انداخته می‌شود، ولی **فقط همان**
+//
+// مالکِ نصب در `admin/errors.php` یک خطای **باز** دید که هیچ‌وقت بسته
+// نمی‌شد: «مرورگر / Script error. / خط ۰ / ۱ بار». آن رشته را خودِ
+// مرورگر می‌سازد وقتی اسکریپتی از **مبدأ دیگری** استثنا بدهد — پیام و
+// فایل و خط و ردِ پشته عمداً پنهان می‌شوند. همه‌ی اسکریپت‌های این اپ
+// هم‌مبدأ می‌آیند (`assetUrls()` مسیرِ نسبی می‌سازد و Chart.js داخلِ
+// مخزن است)، پس خطای کدِ خودمان همیشه فایل و خط دارد و هرگز به این
+// شکل نمی‌رسد. چیزی که به این شکل می‌رسد افزونه یا میزبانِ وب‌ویو است.
+//
+// ⛔ و ثبتش همان «هشدارِ همیشگی» بود: ردیفی بی‌هیچ اطلاعاتِ تشخیصی که
+//    نشانِ نوارِ مدیر را روشن می‌کند و «برطرف شد» هم بسته نگهش
+//    نمی‌دارد، چون `AppErrors::record()` با رخدادِ بعدی بازش می‌کند.
+//
+// ⚠ خطرِ خودِ رفع، گشاد شدنش است. صافی باید **هر چهار** نشانه را با هم
+//   بخواهد و پیش از `sent++` بنشیند (وگرنه یک افزونه سهمیه‌ی دوتاییِ
+//   صفحه را می‌خورد و خطای واقعی گزارش نمی‌شود). رفتارش در
+//   `tests/test_client_error.php` با node روی خودِ `app.js` سنجیده
+//   می‌شود؛ اینجا فقط *شکل* است، چون آن تست به node نیاز دارد
+//   (`T::skip`) و روی ماشینِ بی‌node فقط همین قاعده می‌ماند — همان
+//   استدلالِ قاعده ۴۳ و ۴۷.
+T::group('قاعده ۵۵ — صافیِ خطای کورِ مرورگر');
+
+$badOpq = [];
+$opqSrc = @file_get_contents(__DIR__ . '/../assets/js/app.js');
+if ($opqSrc === false || $opqSrc === '') {
+    $badOpq[] = '⛔ assets/js/app.js خوانده نشد — قاعده ۵۵ کور شده';
+    $opqSrc = '';
+}
+// کامنت‌های C-مانند حذف می‌شوند: همین توضیح نامِ همان رشته را دارد و
+// بدونِ حذف، بررسی روی فایلِ **سالم** هم سبز می‌ماند (دامِ قاعده ۱۹/۳۵/۳۸).
+$opqCode = preg_replace('#/\*.*?\*/#s', '', $opqSrc);
+$opqCode = preg_replace('#^\s*//.*$#m', '', (string)$opqCode);
+
+// بدنه‌ی خودِ صافی: از `function isOpaque(` تا تعریفِ بعدی.
+$opqBody = '';
+$opqAt = strpos((string)$opqCode, 'function isOpaque(');
+if ($opqAt === false) {
+    $badOpq[] = '⛔ `function isOpaque(` در app.js نیست — صافی برداشته شده';
+} else {
+    $opqEnd = strpos((string)$opqCode, 'function report(', $opqAt);
+    $opqBody = substr((string)$opqCode, $opqAt, ($opqEnd === false ? 1200 : $opqEnd - $opqAt));
+}
+
+if ($opqBody !== '') {
+    // ⛔ هر چهار نشانه با هم — نه یکی کمتر.
+    if (!preg_match('/\^script\s*error/i', $opqBody)) {
+        $badOpq[] = '⛔ صافی پیام را با الگوی **لنگرزده** نمی‌سنجد — «Script error.» داخلِ یک پیامِ واقعی هم انداخته می‌شود';
+    }
+    if (strpos($opqBody, 'indexOf(') !== false || strpos($opqBody, '.includes(') !== false) {
+        $badOpq[] = '⛔ تطابقِ «شامل» در صافی — با آن هر پیامی که این عبارت را داشته باشد بی‌صدا دور ریخته می‌شود';
+    }
+    if (!preg_match('/&&\s*!file/', $opqBody)) {
+        $badOpq[] = '⛔ صافی خالی بودنِ `file` را نمی‌خواهد — خطای هم‌مبدأ هم دور ریخته می‌شود';
+    }
+    if (!preg_match('/&&\s*Number\(\s*line/', $opqBody)) {
+        $badOpq[] = '⛔ صافی صفر بودنِ `line` را نمی‌خواهد';
+    }
+    if (!preg_match('/&&\s*!stack/', $opqBody)) {
+        $badOpq[] = '⛔ صافی نبودنِ ردِ پشته را نمی‌خواهد';
+    }
+}
+
+// ⛔ صافی باید **پیش از** `sent++` صدا زده شود، داخلِ `report()`.
+$repAt = strpos((string)$opqCode, 'function report(');
+if ($repAt === false) {
+    $badOpq[] = '⛔ `function report(` پیدا نشد — گزارش‌گر عوض شده';
+} else {
+    $repBody = substr((string)$opqCode, $repAt, 600);
+    $callAt  = strpos($repBody, 'isOpaque(message');
+    $sentAt  = strpos($repBody, 'sent++');
+    if ($callAt === false) {
+        $badOpq[] = '⛔ `report()` صافی را صدا نمی‌زند — خطای کور دوباره ثبت می‌شود';
+    } elseif ($sentAt === false) {
+        $badOpq[] = '⛔ `sent++` در `report()` نیست — سقفِ دوتاییِ صفحه رفته';
+    } elseif ($callAt > $sentAt) {
+        $badOpq[] = '⛔ صافی **بعد از** `sent++` است — خطای کور سهمیه‌ی صفحه را می‌خورد و خطای واقعی گزارش نمی‌شود';
+    }
+}
+
+// ⛔ و «همه‌ی خطاهای مرورگر را نفرست» بازنویسیِ ممنوعِ این تابع است:
+//    هر دو شنونده باید همچنان `report(` را صدا بزنند.
+// ⚠ پنجره تا **ثبتِ شنونده‌ی بعدی** بریده می‌شود، نه یک طولِ ثابت:
+//   با ۲۶۰ کاراکتر، جهشِ «report را از شنونده‌ی error بردار» زنده ماند
+//   چون `report(`ِ شنونده‌ی بعدی داخلِ همان پنجره می‌افتاد — همان درسِ
+//   «تا اولین `;`» در قاعده ۶ و پنجره‌ی قاعده ۴۷.
+foreach (["addEventListener('error'", "addEventListener('unhandledrejection'"] as $opqEv) {
+    $evAt = strpos((string)$opqCode, $opqEv);
+    if ($evAt === false) {
+        $badOpq[] = '⛔ شنونده‌ی ' . $opqEv . ' برداشته شده';
+        continue;
+    }
+    $nextAt = strpos((string)$opqCode, 'addEventListener(', $evAt + strlen($opqEv));
+    $evWin  = substr((string)$opqCode, $evAt, ($nextAt === false ? 260 : $nextAt - $evAt));
+    if (strpos($evWin, 'report(') === false) {
+        $badOpq[] = '⛔ شنونده‌ی ' . $opqEv . ' دیگر `report(` را صدا نمی‌زند';
+    }
+}
+
+// ⛔ و صافی روی `window` باشد تا در node آزمودنی بماند (قاعده‌ی
+//    `parseBankSms()` و `kbNeedsKeyboard()`).
+if (strpos((string)$opqCode, 'window.isOpaqueClientError') === false) {
+    $badOpq[] = '⛔ `window.isOpaqueClientError` در معرض نیست — tests/test_client_error.php کور می‌شود';
+}
+
+T::bulk(11, $badOpq, '⛔ فقط امضای کورِ مرورگر انداخته می‌شود، و پیش از شمارشِ سهمیه');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }
