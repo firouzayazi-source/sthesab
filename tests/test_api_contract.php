@@ -4072,7 +4072,96 @@ if ($fCat === false || $fBill === false || $fBill < $fCat) {
     $badSS[] = '⛔ includes/footer.php — ترتیبِ شیتِ مدیریت با نوارِ مدیر نمی‌خواند';
 }
 
-T::bulk(12, $badSS, '⛔ سهم سهامدار: خواندنی، بی‌حساب، ایدمپوتنت، و پشتِ تأییدِ مدیر');
+// ۱۳) تسویه‌ی نقدی — **انتقال** است، نه درآمد.
+//
+//     ⛔ بدترین خرابیِ این مسیر یک خطِ ساده است: ثبتِ پولِ تسویه به
+//        شکلِ یک ردیفِ `transactions`. سهمِ سود از قبل درآمد ثبت شده،
+//        پس گزارشِ درآمدِ همان ماه به اندازه‌ی **کلِ پرداخت** باد
+//        می‌کند — و هیچ خطایی هم نمی‌دهد، چون هر دو ردیف جداگانه
+//        درست‌اند. تنها جای نشستنِ این پول `store_settlements` است،
+//        یعنی هفتمین منبعِ `walletBalances()`.
+//
+//     ⚠ و چرا قاعده‌ی شکل هم لازم است: تستِ رفتاری بدونِ migration
+//       تسویه `T::blocked` می‌شود، پس روی ماشینِ عقب‌مانده فقط همین
+//       می‌ماند — همان استدلالِ قاعده ۴۸ و ۵۱.
+if ($ssSrc !== '') {
+    // الف) هیچ‌جای مسیرِ تسویه ردیفِ تراکنش ساخته نمی‌شود.
+    if (preg_match('/function\s+applySettlements\s*\(.*?\n    \}/s', $ssSrc, $mSet)) {
+        if (stripos($mSet[0], 'INSERT INTO transactions') !== false) {
+            $badSS[] = '⛔ store_share — تسویه ردیفِ transactions می‌سازد؛ درآمدِ ماه دو بار شمرده می‌شود';
+        }
+        // ب) `resolveWalletId()` تنها مسیرِ انتخابِ حساب است — وگرنه
+        //    «حسابِ پیش‌فرض» (صفر) یعنی «هیچ‌جا» و پول گم می‌شود.
+        if (!preg_match('/resolveWalletId\(\s*\$userId\s*,\s*\$walletId\s*\)/', $mSet[0])) {
+            $badSS[] = '⛔ store_share — تسویه از resolveWalletId() رد نمی‌شود؛ پول در هیچ حسابی نمی‌نشیند';
+        }
+        // ج) نصبِ عقب‌مانده‌ی فروشگاه کلیدِ `settlements` را نمی‌دهد؛
+        //    خواندنش به‌عنوانِ «فهرستِ خالی» کیف پول را بی‌صدا صفر
+        //    می‌کند — همان «آینه‌ی سالم با پاسخِ خراب پاک نمی‌شود».
+        if (!preg_match("/array_key_exists\(\s*[\x27\"]settlements[\x27\"]\s*,\s*\\\$sh\s*\)/", $mSet[0])) {
+            $badSS[] = '⛔ store_share — نبودِ کلیدِ settlements از «خالی بودن» جدا نمی‌شود';
+        }
+        // د) هم‌گام است نه افزودن: سندِ کنسل‌شده باید از کیف پول هم برود.
+        if (stripos($mSet[0], 'DELETE FROM store_settlements') === false) {
+            $badSS[] = '⛔ store_share — سطرِ بی‌مرجعِ تسویه پاک نمی‌شود؛ پولِ پرداخت‌نشده می‌ماند';
+        }
+        // هـ) و مبلغ/حسابِ اصلاح‌شده باید بنشیند، نه ردیفِ دوم بسازد.
+        if (stripos($mSet[0], 'ON DUPLICATE KEY UPDATE') === false
+            || stripos($mSet[0], 'wallet_id = VALUES(wallet_id)') === false) {
+            $badSS[] = '⛔ store_share — تسویه ON DUPLICATE KEY با wallet_id ندارد؛ عوض کردنِ حساب بی‌اثر می‌ماند';
+        }
+    } else {
+        $badSS[] = '⛔ store_share — applySettlements() پیدا نشد';
+    }
+
+    // و) انتخابِ حساب فقط حسابِ **همان** کاربر را می‌پذیرد.
+    if (preg_match('/function\s+setWallet\s*\(.*?\n    \}/s', $ssSrc, $mSw)) {
+        if (!preg_match('/FROM\s+wallets\s+WHERE\s+id\s*=\s*:w\s+AND\s+user_id\s*=\s*:u/i', $mSw[0])) {
+            $badSS[] = '⛔ store_share — setWallet() مالکیتِ حساب را نمی‌سنجد';
+        }
+    } else {
+        $badSS[] = '⛔ store_share — setWallet() پیدا نشد';
+    }
+}
+
+// ز) و هفتمین منبعِ پول واقعاً در `walletBalances()` هست.
+//    ⚠ بدونِ آن، ردیفِ تسویه ثبت می‌شود و موجودی تکان نمی‌خورد — یعنی
+//      قابلیت «کار می‌کند» ولی هیچ اثری ندارد.
+// ⚠ الگو با مرزِ واژه است، نه `strpos`: جهشِ اول `store_settlements_x`
+//   گذاشت و همه‌ی این بررسی‌ها **زنده ماندند**، چون نامِ اصلی زیررشته‌ی
+//   نامِ خراب است. همان «بررسیِ پوچ» که این پروژه بارها گرفته.
+$fnSrc = $stripComments($root . '/includes/functions.php');
+if (preg_match('/function\s+walletBalances\s*\(.*?\n(?=function )/s', $fnSrc, $mWb)) {
+    if (!preg_match('/FROM\s+store_settlements\b/', $mWb[0])) {
+        $badSS[] = '⛔ walletBalances() — تسویه‌ی فروشگاه منبعِ پول نیست؛ موجودی تکان نمی‌خورد';
+    }
+} else {
+    $badSS[] = 'walletBalances() پیدا نشد';
+}
+
+// ح) migration در هر دو فهرستِ `migrate.sh` ثبت شده باشد — وگرنه
+//    اسکریپت متوقف می‌شود یا `--verify` دروغ می‌گوید.
+//    ⛔ و شاهدش از نوعِ **داده** است، نه «جدول هست»: فایلی که وسطِ
+//       ساختِ کلیدِ خارجی مرده باشد هم جدول را دارد.
+$mgSrc = (string)@file_get_contents($root . '/deploy/migrate.sh');
+if (!preg_match('/^\s*migration_store_settlement\.sql\s*$/m', $mgSrc)) {
+    $badSS[] = '⛔ migrate.sh — migration_store_settlement.sql در MIGRATIONS نیست';
+}
+if (!preg_match('/\[migration_store_settlement\.sql\]="app_settings~setting_key=store_settlement_seeded"/', $mgSrc)) {
+    $badSS[] = '⛔ migrate.sh — شاهدِ داده‌ایِ migration تسویه در SENTINEL نیست';
+}
+
+// ط) فهرست‌های بسته: آینه‌ی تسویه نه فعالیتِ کاربر است، نه واردشدنی.
+//    ⛔ دومی از جنسِ **پول** است: یک فایلِ دست‌ساز با یک `amount`
+//       دلخواه، موجودیِ حساب را از هوا بالا می‌برد.
+if (!preg_match("/'store_settlements'\s*=>/", $stripComments($root . '/includes/admin_insights.php'))) {
+    $badSS[] = '⛔ NON_ACTIVITY_TABLES — store_settlements نیست؛ قیفِ شروع باد می‌کند';
+}
+if (!preg_match("/'store_settlements'\s*,/", $stripComments($root . '/includes/user_import.php'))) {
+    $badSS[] = '⛔ USER_IMPORT_SKIP — store_settlements نیست؛ فایلِ دست‌ساز پول می‌سازد';
+}
+
+T::bulk(13, $badSS, '⛔ سهم سهامدار: خواندنی، بی‌حساب، ایدمپوتنت، و پشتِ تأییدِ مدیر');
 
 // ═══════════════════════════════════════════════════════════════
 // قاعده ۴۷ — معرفیِ اولیه: «حالت رد شدن» باید واقعاً رد کند

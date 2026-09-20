@@ -117,6 +117,7 @@ MIGRATIONS=(
     migration_error_triage.sql
     migration_store_share.sql
     migration_store_owed.sql
+    migration_store_settlement.sql
     migration_support.sql
     migration_user_roles.sql
     migration_trades_default.sql
@@ -282,6 +283,11 @@ declare -A SENTINEL=(
     #   وسطِ کار مرده باشد هم «اجراشده» ثبت می‌شد.
     [migration_store_share.sql]="app_settings~setting_key=store_share_seeded"
     [migration_store_owed.sql]="net_worth_snapshots.store_owed"
+    # ⚠ شاهدش **داده** است نه ساختار، و عمداً: آن `INSERT` آخرین کارِ
+    #   فایل است (بعد از یک ستون، یک کلیدِ خارجی و یک جدول)، پس وجودش
+    #   یعنی کلِ فایل اجرا شده. با شاهدِ «جدول هست»، فایلی که وسطِ
+    #   ساختنِ کلیدِ خارجی مرده باشد هم «اجراشده» ثبت می‌شد.
+    [migration_store_settlement.sql]="app_settings~setting_key=store_settlement_seeded"
     # ⚠ شاهدش **داده** است نه ساختار، و عمداً: آن `INSERT` آخرین کارِ
     #   فایل است (بعد از پنج جدول و متنِ اولیه‌ی راهنما)، پس وجودش یعنی
     #   کلِ فایل اجرا شده. با شاهدِ «جدول هست»، فایلی که وسطِ ساختِ

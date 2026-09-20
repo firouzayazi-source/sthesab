@@ -58,6 +58,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             //    وصل کردن کار نکرده.
             StoreShare::sync();
         }
+    } elseif ($act === 'wallet') {
+        // ⛔ مالکیتِ حساب را خودِ `setWallet()` می‌سنجد، نه این صفحه:
+        //    مدیر دارد حسابِ کاربرِ دیگری را انتخاب می‌کند و یک شناسه‌ی
+        //    دست‌کاری‌شده پولِ تسویه را در حسابِ شخصِ سومی می‌نشاند.
+        $res  = StoreShare::setWallet((int)postParam('id', '0'), (int)postParam('wallet_id', '0'));
+        $done = $res['ok'] ? 'wallet' : 'err:' . $res['message'];
+        // ⛔ بلافاصله همگام می‌شود، وگرنه پولِ تسویه تا TTL بعدی در حسابِ
+        //    قبلی می‌ماند و مدیر فکر می‌کند انتخابش کار نکرده.
+        if ($res['ok']) { StoreShare::sync(); }
     } elseif ($act === 'unlink') {
         $id = (int)postParam('id', '0');
         if (StoreShare::unlink($id)) {
@@ -103,6 +112,13 @@ try {
 
 $activeLinks = count($taken);
 
+// حساب‌های فعالِ کاربرانِ وصل‌شده، برای منوی «حساب تسویه» — یک کوئری
+// برای همه، نه یکی به‌ازای هر ردیف.
+$settleOn = $ready && StoreShare::settlementsAvailable();
+$walletsOf = $settleOn
+    ? StoreShare::walletChoices(array_map(static fn($l) => (int)$l['user_id'], $links))
+    : [];
+
 $pageWide  = true;
 $pageTitle = 'سهامداران فروشگاه';
 include __DIR__ . '/../includes/header.php';
@@ -115,6 +131,8 @@ include __DIR__ . '/../includes/header.php';
         <p style="margin:0;">
             <?php if ($done === 'linked'): ?>
                 سهامدار وصل شد و داده‌اش همگام شد.
+            <?php elseif ($done === 'wallet'): ?>
+                حسابِ تسویه ذخیره شد و داده‌اش همگام شد.
             <?php elseif ($done === 'unlinked'): ?>
                 پیوند غیرفعال شد. تراکنش‌های سودِ ثبت‌شده دست‌نخورده ماندند.
             <?php elseif (str_starts_with($done, 'synced:')): ?>
@@ -209,6 +227,7 @@ include __DIR__ . '/../includes/header.php';
                 <tr>
                     <th>کاربر</th>
                     <th>سهامدار</th>
+                    <?php if ($settleOn): ?><th>حساب تسویه</th><?php endif; ?>
                     <th>وضعیت</th>
                     <th class="actions-cell">عملیات</th>
                 </tr>
@@ -220,6 +239,30 @@ include __DIR__ . '/../includes/header.php';
                             <small class="ltr-num">(<?= h($l['username']) ?>)</small></td>
                         <td><?= h($l['display_name'] ?: '—') ?>
                             <small class="ltr-num">#<?= h(toPersianDigits((string)$l['store_contact_id'])) ?></small></td>
+                        <?php if ($settleOn): ?>
+                            <td>
+                                <?php if ((int)$l['is_active'] !== 1): ?>
+                                    <span class="hint">—</span>
+                                <?php else: ?>
+                                    <?php $opts = $walletsOf[(int)$l['user_id']] ?? []; ?>
+                                    <form method="POST" class="table-actions">
+                                        <?= Csrf::field() ?>
+                                        <input type="hidden" name="action" value="wallet">
+                                        <input type="hidden" name="id" value="<?= (int)$l['id'] ?>">
+                                        <select name="wallet_id" class="input">
+                                            <option value="0">حساب پیش‌فرض</option>
+                                            <?php foreach ($opts as $w): ?>
+                                                <option value="<?= (int)$w['id'] ?>"
+                                                    <?= (int)$l['wallet_id'] === (int)$w['id'] ? 'selected' : '' ?>>
+                                                    <?= h($w['name']) ?>
+                                                </option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                        <button type="submit" class="btn btn-secondary btn-sm">ذخیره</button>
+                                    </form>
+                                <?php endif; ?>
+                            </td>
+                        <?php endif; ?>
                         <td>
                             <span class="status-badge <?= (int)$l['is_active'] === 1 ? 'status-active' : 'status-inactive' ?>">
                                 <?= (int)$l['is_active'] === 1 ? 'فعال' : 'غیرفعال' ?>

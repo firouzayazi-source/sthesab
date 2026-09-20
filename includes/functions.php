@@ -1312,6 +1312,29 @@ function walletBalances(int $userId): array
         $linkParams['u8'] = $userId;
     }
 
+    // ⛔ هفتمین منبعِ پول: تسویه‌ی نقدیِ سهامدارِ فروشگاه.
+    //
+    //    مثل چکِ پاس‌شده و پرداختِ طلب، عمداً هیچ ردیفِ `transactions`
+    //    نمی‌سازد: سهمِ سود **از قبل** به‌عنوان درآمد ثبت شده و ثبتِ
+    //    دوباره‌اش گزارشِ درآمدِ ماه را به اندازه‌ی کلِ پرداخت باد
+    //    می‌کرد — بی‌هیچ خطایی، چون هر دو عدد جداگانه درست‌اند.
+    //
+    //    و خالص دارایی هم تکان نمی‌خورد: با همان تسویه، «مانده»ی دفترِ
+    //    فروشگاه به همان اندازه کم می‌شود و قلمِ «دارایی من در
+    //    فروشگاه» پایین می‌آید. پول از یک سطل به سطلِ دیگر می‌رود.
+    if (tableExists('store_settlements')) {
+        $linkSelect .= '
+              + COALESCE(sst.total, 0)';
+        $linkJoins .= '
+        LEFT JOIN (
+            SELECT wallet_id AS wid, SUM(amount) AS total
+            FROM store_settlements
+            WHERE user_id = :u9 AND wallet_id IS NOT NULL
+            GROUP BY wallet_id
+        ) sst ON sst.wid = w.id';
+        $linkParams['u9'] = $userId;
+    }
+
     $stmt = $pdo->prepare('
         SELECT
             w.id, w.name, w.kind, w.bank_name, w.card_last4,' . $cardCols . '

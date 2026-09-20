@@ -107,6 +107,24 @@ final class StoreShare
         }
     }
 
+    /**
+     * جدولِ تسویه و ستونِ حسابِ پیوند با `migration_store_settlement`
+     * می‌آیند.
+     *
+     * ⛔ نصبی که آن را اجرا نکرده باید **دقیقاً مثل قبل** کار کند: سهمِ
+     *    سود ثبت می‌شود و فقط پولِ تسویه در کیف پول نمی‌نشیند. سکوت،
+     *    نه شکستن — همان قاعده‌ی `LoginThrottle::available()`.
+     */
+    public static function settlementsAvailable(): bool
+    {
+        try {
+            return tableExists('store_settlements')
+                && tableHasColumn('store_shareholders', 'wallet_id');
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
     private static function endpoint(): string
     {
         return defined('STORE_API_URL') ? trim((string)STORE_API_URL) : '';
@@ -124,9 +142,12 @@ final class StoreShare
     {
         if (!self::available()) { return []; }
         try {
+            // ⚠ `wallet_id` با `migration_store_settlement` می‌آید؛ روی
+            //   نصبی که هنوز اجرا نشده، کوئری نباید بشکند.
+            $wcol = self::settlementsAvailable() ? 's.wallet_id,' : 'NULL AS wallet_id,';
             $st = Database::getConnection()->query(
                 'SELECT s.id, s.user_id, s.store_contact_id, s.display_name, s.is_active,
-                        s.approved_at, u.username, u.full_name
+                        ' . $wcol . ' s.approved_at, u.username, u.full_name
                  FROM store_shareholders s
                  JOIN users u ON u.id = s.user_id
                  ORDER BY s.is_active DESC, s.id ASC'
@@ -143,8 +164,9 @@ final class StoreShare
     {
         if (!self::available() || $userId <= 0) { return null; }
         try {
+            $wcol = self::settlementsAvailable() ? 'wallet_id,' : 'NULL AS wallet_id,';
             $st = Database::getConnection()->prepare(
-                'SELECT id, user_id, store_contact_id, display_name
+                'SELECT id, user_id, store_contact_id, ' . $wcol . ' display_name
                  FROM store_shareholders
                  WHERE user_id = :u AND is_active = 1
                  LIMIT 1'
@@ -254,6 +276,104 @@ final class StoreShare
             Log::error('store_share.unlink_failed', $e);
             return false;
         }
+    }
+
+    /**
+     * حسابی که پولِ تسویه‌ی این سهامدار در آن می‌نشیند.
+     *
+     * ⛔ **مالکیت از خودِ ردیفِ پیوند سنجیده می‌شود، نه از ورودی.** مدیر
+     *    دارد حسابِ **کاربرِ دیگری** را انتخاب می‌کند، پس شناسه‌ی حساب
+     *    باید با `user_id`ِ همان پیوند بخواند — وگرنه یک شناسه‌ی
+     *    دست‌کاری‌شده پولِ تسویه را در حسابِ شخصِ سومی می‌نشاند و
+     *    موجودیِ او بی‌صدا بالا می‌رفت.
+     *
+     * ⛔ و `0` یعنی «حسابِ پیش‌فرض»، نه «هیچ‌جا»: `resolveWalletId()`
+     *    هنگامِ همگام‌سازی جایش را پیدا می‌کند. «هیچ‌جا» یعنی پولی که
+     *    کاربر گرفته در هیچ حسابی دیده نمی‌شود — همان قاعده‌ی «هیچ پولی
+     *    بی‌حساب نمی‌ماند».
+     *
+     * @return array{ok:bool,message:string}
+     */
+    public static function setWallet(int $linkId, int $walletId): array
+    {
+        if (!self::settlementsAvailable()) {
+            return ['ok' => false, 'message' => 'برای این کار باید migration تسویه اجرا شود.'];
+        }
+        if ($linkId <= 0) {
+            return ['ok' => false, 'message' => 'پیوند پیدا نشد.'];
+        }
+
+        try {
+            $pdo = Database::getConnection();
+            $st  = $pdo->prepare('SELECT user_id FROM store_shareholders WHERE id = :id LIMIT 1');
+            $st->execute(['id' => $linkId]);
+            $owner = (int)$st->fetchColumn();
+            if ($owner <= 0) {
+                return ['ok' => false, 'message' => 'پیوند پیدا نشد.'];
+            }
+
+            $wallet = null;
+            if ($walletId > 0) {
+                $w = $pdo->prepare('SELECT id FROM wallets WHERE id = :w AND user_id = :u LIMIT 1');
+                $w->execute(['w' => $walletId, 'u' => $owner]);
+                if (!$w->fetchColumn()) {
+                    return ['ok' => false, 'message' => 'این حساب مالِ همان کاربر نیست.'];
+                }
+                $wallet = $walletId;
+            }
+
+            $pdo->prepare('UPDATE store_shareholders SET wallet_id = :w WHERE id = :id')
+                ->execute(['w' => $wallet, 'id' => $linkId]);
+        } catch (PDOException $e) {
+            Log::error('store_share.set_wallet_failed', $e);
+            return ['ok' => false, 'message' => 'ذخیره‌ی حساب انجام نشد.'];
+        }
+
+        return ['ok' => true, 'message' => 'حسابِ تسویه ذخیره شد.'];
+    }
+
+    /**
+     * حساب‌های فعالِ کاربرانِ وصل‌شده — برای منوی صفحه‌ی مدیر.
+     *
+     * ⚠ یک کوئری برای همه، نه یکی به‌ازای هر پیوند: سقف پنج نفر است ولی
+     *   N+1 همان چیزی است که در «سرعت» بارها گرفته شده.
+     *
+     * @param list<int> $userIds
+     * @return array<int,list<array{id:int,name:string}>>
+     */
+    public static function walletChoices(array $userIds): array
+    {
+        $ids = [];
+        foreach ($userIds as $id) {
+            $id = (int)$id;
+            if ($id > 0) { $ids[$id] = true; }
+        }
+        if (!$ids) { return []; }
+
+        $keys   = [];
+        $params = [];
+        foreach (array_keys($ids) as $i => $id) {
+            $keys[] = ':w' . $i;
+            $params['w' . $i] = $id;
+        }
+
+        try {
+            $st = Database::getConnection()->prepare(
+                'SELECT id, user_id, name FROM wallets
+                 WHERE user_id IN (' . implode(',', $keys) . ') AND is_active = 1
+                 ORDER BY sort_order, name'
+            );
+            $st->execute($params);
+        } catch (PDOException $e) {
+            Log::error('store_share.wallet_choices_failed', $e);
+            return [];
+        }
+
+        $out = [];
+        foreach ($st->fetchAll() as $row) {
+            $out[(int)$row['user_id']][] = ['id' => (int)$row['id'], 'name' => (string)$row['name']];
+        }
+        return $out;
     }
 
     /* ═══════════════════ آینه ═══════════════════ */
@@ -366,6 +486,14 @@ final class StoreShare
         foreach (self::links() as $link) {
             if ((int)$link['is_active'] !== 1) { continue; }
             $res = self::applyShares((int)$link['user_id'], (int)$link['store_contact_id']);
+            $written += $res['written'];
+            $removed += $res['removed'];
+
+            $res = self::applySettlements(
+                (int)$link['user_id'],
+                (int)$link['store_contact_id'],
+                isset($link['wallet_id']) ? (int)$link['wallet_id'] : 0
+            );
             $written += $res['written'];
             $removed += $res['removed'];
         }
@@ -735,6 +863,133 @@ final class StoreShare
         }
 
         return $out;
+    }
+
+    /**
+     * تسویه‌های نقدیِ این سهامدار را با کیف پولِ خودش هم‌گام می‌کند.
+     *
+     * **خواسته‌ی مالکِ نصب:** «دارایی یا کالاست، یا پولِ تسویه‌نشده، یا
+     * پولِ تسویه‌شده» — و حالتِ سوم تا امروز هیچ‌جا دیده نمی‌شد.
+     *
+     * ⛔ **انتقال است، نه درآمد.** هیچ ردیفِ `transactions` ساخته
+     *    نمی‌شود: سهمِ سود از قبل در `applyShares()` درآمد ثبت شده و
+     *    ثبتِ دوباره‌اش گزارشِ درآمدِ ماه را به اندازه‌ی کلِ پرداخت باد
+     *    می‌کرد. این ردیف فقط هفتمین منبعِ پولِ `walletBalances()` است.
+     *
+     * ⛔ **و خالص دارایی دست‌نخورده می‌ماند**، که همان چیزِ درست است: با
+     *    همان تسویه `paid` در دفترِ فروشگاه بالا می‌رود، پس «مانده» —
+     *    یعنی قلمِ «دارایی من در فروشگاه» — دقیقاً به همان اندازه پایین
+     *    می‌آید. پول از یک سطل به سطلِ دیگر می‌رود، نه اینکه از هوا
+     *    ساخته شود.
+     *
+     * ⛔ **حساب یک تصمیمِ جاری است، نه ویژگیِ هر ردیف.** هر دور
+     *    همگام‌سازی `wallet_id` همه‌ی ردیف‌ها را از نو می‌نویسد، پس اگر
+     *    مدیر حسابِ اشتباهی انتخاب کرده باشد، عوض کردنش **همه‌ی** پولِ
+     *    این سهامدار را جابه‌جا می‌کند. جایگزینش این بود که ردیف‌های
+     *    قدیمی در حسابِ غلط بمانند و هیچ راهی برای درست کردنشان نباشد.
+     *
+     * ⛔ و `resolveWalletId()` تنها مسیرِ انتخابِ حساب است (`0` یعنی
+     *    حسابِ پیش‌فرض) — همان قاعده‌ی «هر جا پولی جابه‌جا می‌شود از
+     *    همین رد شوید»، وگرنه پول در هیچ حسابی نمی‌نشست و کاربر بعداً
+     *    نمی‌فهمید کجا رفت.
+     *
+     * @return array{written:int,removed:int}
+     */
+    private static function applySettlements(int $userId, int $contactId, int $walletId): array
+    {
+        $out = ['written' => 0, 'removed' => 0];
+        if (!self::settlementsAvailable()) { return $out; }
+
+        $sh = self::forUser($userId);
+        if ($sh === null || (int)($sh['id'] ?? 0) !== $contactId) { return $out; }
+
+        /*
+         * ⚠ کلیدِ `settlements` **افزوده** است: نصبِ عقب‌مانده‌ی فروشگاه
+         *   آن را نمی‌دهد. آن‌وقت این تابع هیچ ردیفی نمی‌نویسد — ولی
+         *   ردیف‌های قبلی را هم **پاک نمی‌کند**، وگرنه یک انتشارِ
+         *   نیمه‌کاره‌ی آن سیستم موجودیِ کیف پولِ کاربر را بی‌صدا صفر
+         *   می‌کرد. همان استدلالِ «آینه‌ی سالم با پاسخِ خراب پاک
+         *   نمی‌شود».
+         */
+        if (!array_key_exists('settlements', $sh)) { return $out; }
+        $rows = is_array($sh['settlements']) ? $sh['settlements'] : [];
+
+        $pdo    = Database::getConnection();
+        $wallet = resolveWalletId($userId, $walletId);
+        $seen   = [];
+
+        foreach ($rows as $row) {
+            if (!is_array($row)) { continue; }
+            $ref = trim((string)($row['ref'] ?? ''));
+            if ($ref === '') { continue; }
+
+            $amount = (int)round((float)($row['amount'] ?? 0));
+            $date   = (string)($row['date'] ?? '');
+            if ($amount === 0 || !isValidDate($date)) { continue; }
+
+            $key = 'store:' . $contactId . ':' . $ref;
+            if (mb_strlen($key) > 64) { continue; }
+            $seen[] = $key;
+
+            try {
+                $st = $pdo->prepare(
+                    'INSERT INTO store_settlements
+                        (user_id, wallet_id, ref, amount, settled_on, description)
+                     VALUES (:u, :w, :ref, :a, :d, :de)
+                     ON DUPLICATE KEY UPDATE
+                        wallet_id = VALUES(wallet_id), amount = VALUES(amount),
+                        settled_on = VALUES(settled_on), description = VALUES(description)'
+                );
+                $st->execute([
+                    'u' => $userId, 'w' => $wallet, 'ref' => $key, 'a' => $amount,
+                    'd' => $date, 'de' => mb_substr(trim((string)($row['description'] ?? '')), 0, 255),
+                ]);
+                if ($st->rowCount() > 0) { $out['written']++; }
+            } catch (PDOException $e) {
+                Log::error('store_share.settlement_write_failed', $e, ['uid' => $userId]);
+            }
+        }
+
+        // ⛔ همان قاعده‌ی `applyShares()`: تسویه‌ای که در سمتِ فروشگاه
+        //    حذف یا از نو ثبت شده باید از اینجا هم برود، وگرنه پولی که
+        //    هرگز پرداخت نشده تا ابد در کیف پولِ کاربر می‌ماند.
+        try {
+            $sql = 'DELETE FROM store_settlements
+                    WHERE user_id = :u AND ref LIKE :pre';
+            $params = ['u' => $userId, 'pre' => 'store:' . $contactId . ':%'];
+            if ($seen !== []) {
+                $keep = [];
+                foreach ($seen as $i => $k) {
+                    $keep[] = ':k' . $i;
+                    $params['k' . $i] = $k;
+                }
+                $sql .= ' AND ref NOT IN (' . implode(',', $keep) . ')';
+            }
+            $del = $pdo->prepare($sql);
+            $del->execute($params);
+            $out['removed'] = $del->rowCount();
+        } catch (PDOException $e) {
+            Log::error('store_share.settlement_prune_failed', $e, ['uid' => $userId]);
+        }
+
+        return $out;
+    }
+
+    /**
+     * جمعِ تسویه‌های نقدیِ همین کاربر — برای نمایش، نه برای محاسبه‌ی
+     * موجودی (آن کارِ `walletBalances()` است).
+     */
+    public static function settledFor(int $userId): int
+    {
+        if (!self::settlementsAvailable()) { return 0; }
+        try {
+            $st = Database::getConnection()
+                ->prepare('SELECT COALESCE(SUM(amount), 0) FROM store_settlements WHERE user_id = :u');
+            $st->execute(['u' => $userId]);
+            return (int)$st->fetchColumn();
+        } catch (PDOException $e) {
+            return 0;
+        }
     }
 
     /**

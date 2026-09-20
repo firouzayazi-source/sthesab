@@ -565,6 +565,193 @@ T::ok(count($oldAdmin) === 1, 'بدونِ `house` فقط سهامدارها می
 T::ok($oldAdmin[0]['rows'] !== [] && $oldAdmin[0]['rows'][0]['cat_label'] === '',
     '⛔ برچسبِ نبوده خالی می‌ماند، نه حدسِ محلی');
 
+/* ─────────────── ۱۲. تسویه‌ی نقدی ─────────────── */
+
+/*
+ * ⛔ خواسته‌ی مالکِ نصب: «دارایی یا کالاست، یا پولِ تسویه‌نشده، یا پولِ
+ *    تسویه‌شده». حالتِ سوم تا امروز هیچ‌جا دیده نمی‌شد.
+ *
+ * مهم‌ترین چیزی که اینجا سنجیده می‌شود این است که تسویه **انتقال** است
+ * نه درآمد: موجودیِ حساب بالا می‌رود و **هیچ ردیفِ `transactions`**
+ * ساخته نمی‌شود. با ثبتِ درآمد، گزارشِ درآمدِ همان ماه به اندازه‌ی کلِ
+ * پرداخت باد می‌کرد — بی‌هیچ خطایی، چون سهمِ سود از قبل درآمد ثبت شده.
+ */
+
+if (!StoreShare::settlementsAvailable()) {
+    T::group('۱۲ — تسویه‌ی نقدی');
+    T::blocked('تسویه‌ی نقدی', 'migration_store_settlement.sql اجرا نشده است');
+} else {
+
+T::group('۱۲ — تسویه‌ی نقدی در کیف پول می‌نشیند، نه در درآمد');
+
+// پیلودِ تازه: یک سهمِ سود و یک تسویه‌ی نقدی. `paid` بالا رفته و
+// `balance` دقیقاً به همان اندازه پایین آمده — یعنی سمتِ فروشگاه هم
+// همان انتقال را دیده.
+$pSet = $payload4;
+$pSet['shareholders'][0]['shares'] = [
+    ['ref' => 'jl:5101', 'date' => '2026-09-10', 'amount' => 4000000,
+     'description' => 'سهم سهامدار از سود فاکتور ۲۰'],
+];
+$pSet['shareholders'][0]['paid']        = 30000000;
+$pSet['shareholders'][0]['balance']     = 428000000;
+$pSet['shareholders'][0]['settlements'] = [
+    ['ref' => 'jl:6001', 'date' => '2026-09-11', 'amount' => 30000000,
+     'description' => 'تسویه با سهامدار'],
+];
+$setState($pSet);
+
+$txBefore  = count($txOf($A));
+$balBefore = totalBalance($A);
+
+$sSet = StoreShare::sync();
+T::ok(!empty($sSet['ok']), 'همگام‌سازیِ تسویه موفق بود', (string)$sSet['message']);
+
+$settleRows = function (int $u) use ($pdo): array {
+    $st = $pdo->prepare('SELECT ref, amount, wallet_id, settled_on
+                         FROM store_settlements WHERE user_id = :u ORDER BY ref');
+    $st->execute(['u' => $u]);
+    return $st->fetchAll();
+};
+
+$sr = $settleRows($A);
+T::ok(count($sr) === 1, 'یک ردیفِ تسویه ثبت شد', 'n=' . count($sr));
+T::ok(($sr[0]['ref'] ?? '') === 'store:900001:jl:6001',
+    '⛔ کلیدِ ایدمپوتنسی پیشوندِ سهامدار را دارد', (string)($sr[0]['ref'] ?? ''));
+T::ok((int)($sr[0]['amount'] ?? 0) === 30000000, 'مبلغ همان مبلغِ سندِ فروشگاه است');
+T::ok(($sr[0]['settled_on'] ?? '') === '2026-09-11',
+    '⛔ تاریخ، تاریخِ سندِ فروشگاه است نه روزِ همگام‌سازی');
+
+// ⛔ هسته‌ی این بخش: پول در حساب نشست، ولی هیچ تراکنشی ساخته نشد.
+T::ok(totalBalance($A) === $balBefore + 30000000,
+    '⛔ موجودیِ حساب دقیقاً به اندازه‌ی تسویه بالا رفت',
+    'before=' . $balBefore . ' after=' . totalBalance($A));
+
+$txAfter = $txOf($A);
+$hasSettlementTx = false;
+foreach ($txAfter as $r) {
+    if (strpos((string)$r['store_share_ref'], 'jl:6001') !== false) { $hasSettlementTx = true; }
+}
+T::ok(!$hasSettlementTx, '⛔ هیچ ردیفِ `transactions` برای تسویه ساخته نشد');
+/*
+ * ⚠ و شمارش را با **تعدادِ `shares`ِ همین پیلود** می‌سنجیم، نه با عددِ
+ *   پیش از همگام‌سازی: پیلودِ قبلی دو سهم داشت و این یکی یک سهم، پس
+ *   مقایسه با `$txBefore` درباره‌ی چیزِ دیگری حرف می‌زد. چیزی که اینجا
+ *   اهمیت دارد این است که **تسویه** به آن عدد اضافه نمی‌کند.
+ */
+T::ok(count($txAfter) === count($pSet['shareholders'][0]['shares']),
+    '⛔ تعدادِ تراکنش‌ها دقیقاً تعدادِ سهمِ سود است — تسویه چیزی اضافه نمی‌کند',
+    'shares=' . count($pSet['shareholders'][0]['shares']) . ' tx=' . count($txAfter));
+
+T::ok(StoreShare::settledFor($A) === 30000000, 'جمعِ تسویه‌ها برای نمایش درست است',
+    'sum=' . StoreShare::settledFor($A));
+
+/*
+ * ⛔ و خالص دارایی تکان نمی‌خورد — همان چیزی که «انتقال» یعنی:
+ *    هرچه به حساب اضافه شد، از «دارایی من در فروشگاه» کم شده.
+ */
+T::ok(StoreShare::valueFor($A) === 428000000, 'مانده‌ی دفترِ فروشگاه به همان اندازه کم شده',
+    'value=' . var_export(StoreShare::valueFor($A), true));
+
+T::group('۱۲/ب — ایدمپوتنسی و حذفِ سطرِ بی‌مرجع');
+
+$balOnce = totalBalance($A);
+StoreShare::sync();
+T::ok(count($settleRows($A)) === 1, '⛔ همگام‌سازیِ دوم ردیفِ دوم نمی‌سازد',
+    'n=' . count($settleRows($A)));
+T::ok(totalBalance($A) === $balOnce, '⛔ و موجودی هر دقیقه باد نمی‌کند',
+    'bal=' . totalBalance($A));
+
+// فاکتور کنسل شد → سندِ تسویه از سمتِ فروشگاه رفت.
+$pCancel = $pSet;
+$pCancel['shareholders'][0]['settlements'] = [];
+$pCancel['shareholders'][0]['paid']        = 0;
+$pCancel['shareholders'][0]['balance']     = 458000000;
+$setState($pCancel);
+
+StoreShare::sync();
+T::ok($settleRows($A) === [], '⛔ تسویه‌ی کنسل‌شده از اینجا هم می‌رود');
+T::ok(totalBalance($A) === $balOnce - 30000000,
+    '⛔ و پول از کیف پول برمی‌گردد، نه اینکه تا ابد بماند',
+    'bal=' . totalBalance($A));
+
+T::group('۱۲/ج — پاسخِ بی‌کلیدِ `settlements` چیزی را پاک نمی‌کند');
+
+// اول دوباره یک تسویه بنشان
+$setState($pSet);
+StoreShare::sync();
+T::ok(count($settleRows($A)) === 1, 'تسویه دوباره نشست');
+
+/*
+ * ⛔ نصبِ عقب‌مانده‌ی فروشگاه کلیدِ `settlements` را اصلاً نمی‌دهد. اگر
+ *    آن را «فهرستِ خالی» می‌خواندیم، یک انتشارِ نیمه‌کاره‌ی آن سیستم
+ *    موجودیِ کیف پولِ کاربر را **بی‌صدا** صفر می‌کرد — همان استدلالِ
+ *    «آینه‌ی سالم با پاسخِ خراب پاک نمی‌شود».
+ */
+$pNoKey = $pSet;
+unset($pNoKey['shareholders'][0]['settlements']);
+$setState($pNoKey);
+StoreShare::sync();
+T::ok(count($settleRows($A)) === 1,
+    '⛔ بدونِ کلیدِ `settlements` ردیفِ قبلی دست‌نخورده می‌ماند',
+    'n=' . count($settleRows($A)));
+
+T::group('۱۲/د — حسابِ تسویه: مالکیت، پیش‌فرض، و جابه‌جاییِ کامل');
+
+$link = StoreShare::linkFor($A);
+T::ok(is_array($link), 'پیوندِ کاربر خوانده می‌شود');
+$linkId = (int)($link['id'] ?? 0);
+
+// حسابِ دومِ خودِ کاربر A، و یک حسابِ متعلق به B.
+$pdo->prepare("INSERT INTO wallets (user_id, name, kind, initial_balance, color, is_active, sort_order, created_at)
+               VALUES (:u, 'حساب دوم', 'bank', 0, '#123456', 1, 5, NOW())")->execute(['u' => $A]);
+$walletA2 = (int)$pdo->lastInsertId();
+$walletB  = (int)defaultWalletId($B);
+
+$bad = StoreShare::setWallet($linkId, $walletB);
+T::ok(empty($bad['ok']), '⛔ حسابِ کاربرِ دیگری پذیرفته نمی‌شود', (string)$bad['message']);
+
+$good = StoreShare::setWallet($linkId, $walletA2);
+T::ok(!empty($good['ok']), 'حسابِ خودِ کاربر پذیرفته می‌شود', (string)$good['message']);
+
+$setState($pSet);
+StoreShare::sync();
+$sr2 = $settleRows($A);
+T::ok(count($sr2) === 1 && (int)$sr2[0]['wallet_id'] === $walletA2,
+    '⛔ حساب یک تصمیمِ جاری است: همگام‌سازی همه‌ی ردیف‌ها را جابه‌جا می‌کند',
+    'wallet=' . var_export($sr2[0]['wallet_id'] ?? null, true));
+
+$zero = StoreShare::setWallet($linkId, 0);
+T::ok(!empty($zero['ok']), '«حساب پیش‌فرض» یک انتخابِ معتبر است');
+StoreShare::sync();
+$sr3 = $settleRows($A);
+T::ok(count($sr3) === 1 && (int)$sr3[0]['wallet_id'] === (int)defaultWalletId($A),
+    '⛔ صفر یعنی حسابِ پیش‌فرض، نه «هیچ‌جا» — پول گم نمی‌شود',
+    'wallet=' . var_export($sr3[0]['wallet_id'] ?? null, true));
+
+/*
+ * و فهرستِ انتخابِ حساب فقط حساب‌های کاربرانِ **خواسته‌شده** را می‌دهد.
+ *
+ * ⚠ بررسیِ اول این بود که «حسابِ B در فهرستِ A نیست» — و آن **پوچ**
+ *   بود: خروجی به‌هر‌حال بر اساسِ `user_id` گروه می‌شود، پس حتی با
+ *   `WHERE 1 = 1` هم سبز می‌ماند (جهش زنده ماند و نشانش داد). چیزی که
+ *   واقعاً می‌تواند بشکند، دامنه‌ی خودِ کوئری است: کاربری که اصلاً
+ *   خواسته نشده نباید در نتیجه باشد.
+ */
+$onlyA = StoreShare::walletChoices([$A]);
+$idsA  = array_map(static fn($w) => (int)$w['id'], $onlyA[$A] ?? []);
+T::ok(in_array($walletA2, $idsA, true), 'حسابِ دومِ کاربر در فهرستش هست');
+T::ok(!array_key_exists($B, $onlyA),
+    '⛔ کاربری که خواسته نشده اصلاً در نتیجه نیست (کوئری دامنه دارد)',
+    'keys=' . implode(',', array_keys($onlyA)));
+
+$both = StoreShare::walletChoices([$A, $B]);
+T::ok(array_key_exists($A, $both) && array_key_exists($B, $both),
+    'و با خواستنِ هر دو، هر دو می‌آیند');
+T::ok(!in_array($walletB, array_map(static fn($w) => (int)$w['id'], $both[$A] ?? []), true),
+    'حسابِ کاربرِ دیگر زیرِ نامِ این کاربر نمی‌نشیند');
+
+}   // پایانِ شرطِ settlementsAvailable()
+
 /* ─────────────── پاک‌سازی ─────────────── */
 
 foreach ($names as $n) { $purge($n); }
