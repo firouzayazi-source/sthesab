@@ -140,7 +140,7 @@ $rowCount = count($cheques) + count($debts) + count($trades) + count($sales);
                 </span>
                 <span class="cat-breakdown-amount"><?= formatMoney((int)$c['amount']) ?></span>
             </div>
-            <div class="asset-item-qty">سررسید <?= toJalali($c['due_date']) ?></div>
+            <div class="asset-item-qty"><?= !empty($c['due_date']) ? 'سررسید ' . toJalali($c['due_date']) : 'بدون سررسید' ?></div>
         </div>
     <?php endforeach; ?>
     <a class="ribbon-link" href="<?= APP_BASE_PATH ?>/cheques.php">رفتن به بخش چک‌ها ←</a>
@@ -161,7 +161,7 @@ $rowCount = count($cheques) + count($debts) + count($trades) + count($sales);
                 <span class="cat-breakdown-amount"><?= formatMoney((int)$d['amount']) ?></span>
             </div>
             <div class="asset-item-qty">
-                باقیمانده <?= formatMoney($rem) ?> — سررسید <?= toJalali($d['due_date']) ?>
+                باقیمانده <?= formatMoney($rem) ?> — <?= !empty($d['due_date']) ? 'سررسید ' . toJalali($d['due_date']) : 'بدون سررسید' ?>
             </div>
         </div>
     <?php endforeach; ?>

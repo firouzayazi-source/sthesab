@@ -65,12 +65,35 @@ if ($amount > 999999999999) {
 if (!isValidDate($entryDate)) {
     $errors[] = 'تاریخ ثبت نامعتبر است.';
 }
-if (!isValidDate($dueDate)) {
+// ⛔ سررسید اختیاری است (`migration_debt_optional_due`): خالی یعنی
+//    «سررسید ندارد» و `NULL` ذخیره می‌شود — نه امروز، نه یک تاریخِ
+//    ساختگی که بعد در «پول قابل خرج» به‌عنوان تعهدِ واقعی بنشیند.
+//    ⚠ روی نصبی که migration نخورده ستون هنوز `NOT NULL` است، پس
+//    آنجا همان رفتارِ قبلی (الزامی) می‌ماند و خطای روشن می‌دهد.
+$dueDate = trim((string)$dueDate);
+if ($dueDate === '') {
+    $dueDate = null;
+    if (!debtDueOptional()) {
+        $errors[] = 'تاریخ سررسید الزامی است.';
+    }
+} elseif (!isValidDate($dueDate)) {
     $errors[] = 'تاریخ سررسید نامعتبر است.';
 }
 
 if (mb_strlen($note) > 1000) {
     $errors[] = 'توضیحات نباید بیشتر از ۱۰۰۰ کاراکتر باشد.';
+}
+
+// ⛔ وامِ قسطی بدونِ تاریخِ اولین قسط، لنگرش همان سررسید است؛ برداشتنِ
+//    سررسید برنامه‌ی اقساط را به «از امروز به عقب» می‌برد (همه عقب‌افتاده).
+if (empty($errors) && $dueDate === null && tableHasColumn('debts', 'installment_count')) {
+    $iq = $pdo->prepare('SELECT installment_count, first_installment_date FROM debts
+                         WHERE id = :id AND user_id = :u');
+    $iq->execute(['id' => $debtId, 'u' => Auth::userId()]);
+    $inst = $iq->fetch();
+    if ($inst && (int)$inst['installment_count'] > 1 && empty($inst['first_installment_date'])) {
+        $errors[] = 'این وام قسطی است و بدونِ سررسید برنامه‌ی اقساطش لنگر ندارد.';
+    }
 }
 
 if (!empty($errors)) {

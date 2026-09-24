@@ -50,7 +50,18 @@ if ($amount > 999999999999) {
 if (!isValidDate($entryDate)) {
     $errors[] = 'تاریخ ثبت نامعتبر است.';
 }
-if (!isValidDate($dueDate)) {
+// ⛔ سررسید اختیاری است (`migration_debt_optional_due`): خالی یعنی
+//    «سررسید ندارد» و `NULL` ذخیره می‌شود — نه امروز، نه یک تاریخِ
+//    ساختگی که بعد در «پول قابل خرج» به‌عنوان تعهدِ واقعی بنشیند.
+//    ⚠ روی نصبی که migration نخورده ستون هنوز `NOT NULL` است، پس
+//    آنجا همان رفتارِ قبلی (الزامی) می‌ماند و خطای روشن می‌دهد.
+$dueDate = trim((string)$dueDate);
+if ($dueDate === '') {
+    $dueDate = null;
+    if (!debtDueOptional()) {
+        $errors[] = 'تاریخ سررسید الزامی است.';
+    }
+} elseif (!isValidDate($dueDate)) {
     $errors[] = 'تاریخ سررسید نامعتبر است.';
 }
 
@@ -78,6 +89,13 @@ if (postParam('is_installment') === '1' && tableHasColumn('debts', 'installment_
     $instEvery = postParam('installment_every') === 'weekly' ? 'weekly' : 'monthly';
     $firstInst = (string)postParam('first_installment_date');
     if ($firstInst === '' || !isValidDate($firstInst)) { $firstInst = null; }
+    // ⛔ برنامه‌ی اقساط یک لنگر لازم دارد: یا تاریخِ اولین قسط یا سررسید.
+    //    بدونِ هر دو، `debtInstallments()` از «امروز» عقب می‌رفت و
+    //    اقساطی می‌ساخت که همه در **گذشته** و «عقب‌افتاده» بودند.
+    if ($firstInst === null && $dueDate === null) {
+        jsonResponse(['success' => false,
+            'message' => 'برای وامِ قسطی تاریخِ اولین قسط یا سررسید را وارد کنید.'], 422);
+    }
 }
 
 try {

@@ -18,9 +18,7 @@ try {
 }
 
 $today      = today();
-$weekStart  = startOfWeek();
 $monthStart = startOfJalaliMonth();
-$yearStart  = startOfJalaliYear();
 
 // جمعِ روزانه‌ی کل تاریخچه — یک بار خوانده می‌شود و همه‌ی بازه‌های این
 // صفحه از رویش ساخته می‌شوند. قبلاً برای امروز/هفته/ماه/سال/بازه‌ی دلخواه
@@ -56,10 +54,24 @@ function getPeriodStats(array $dailyRows, string $fromDate, string $toDate): arr
     return ['income' => $income, 'expense' => $expense, 'net' => $income - $expense];
 }
 
-$todayStats = getPeriodStats($dailyRows, $today, $today);
-$weekStats  = getPeriodStats($dailyRows, $weekStart, $today);
 $monthStats = getPeriodStats($dailyRows, $monthStart, $today);
-$yearStats  = getPeriodStats($dailyRows, $yearStart, $today);
+
+// ---------- کارتِ سالانه‌ی چهارفصل ----------
+// ⛔ جای چهار کارتِ «امروز / این هفته / این ماه / امسال» را گرفت و از همان
+//    `$dailyRows` ساخته می‌شود — هیچ کوئریِ تازه‌ای ندارد.
+[$__ty, , ] = gregorianToJalali((int)date('Y', strtotime($today)), (int)date('m', strtotime($today)), (int)date('d', strtotime($today)));
+$__firstYear = $__ty;
+if ($dailyRows) {
+    [$__fy, $__fm, $__fd] = array_map('intval', explode('-', $dailyRows[0]['transaction_date']));
+    [$__firstYear, , ] = gregorianToJalali($__fy, $__fm, $__fd);
+}
+// سالِ انتخاب‌شده فقط در بازه‌ی «اولین سالِ دارای تراکنش تا امسال» پذیرفته
+// می‌شود؛ هر `?y=` دیگری به امسال برمی‌گردد، نه به صفحه‌ی خالی.
+$reportYear = (int)toLatinDigits((string)getParam('y', (string)$__ty));
+if ($reportYear < min($__firstYear, $__ty) || $reportYear > $__ty) { $reportYear = $__ty; }
+$yearReport = seasonalYearReport($dailyRows, $reportYear, $today);
+$prevYear   = $reportYear > min($__firstYear, $__ty) ? $reportYear - 1 : null;
+$nextYear   = $reportYear < $__ty ? $reportYear + 1 : null;
 
 // ---------- بخش گزارش با بازه دلخواه ----------
 $customRangeSubmitted = isset($_GET['from_date']) || isset($_GET['to_date']);
@@ -238,31 +250,48 @@ include __DIR__ . '/includes/header.php';
 
 
 
-<div class="stats-grid">
-    <div class="stats-card">
-        <div class="stats-card-title">امروز</div>
-        <div class="stats-row"><span class="stats-label">درآمد</span><span class="stats-value stats-income"><?= formatMoney($todayStats['income']) ?> <small>تومان</small></span></div>
-        <div class="stats-row"><span class="stats-label">هزینه</span><span class="stats-value stats-expense"><?= formatMoney($todayStats['expense']) ?> <small>تومان</small></span></div>
-        <div class="stats-row stats-net-row"><span class="stats-label">سود خالص</span><span class="stats-value <?= $todayStats['net'] >= 0 ? 'stats-net-positive' : 'stats-net-negative' ?>"><?= formatMoney($todayStats['net']) ?> <small>تومان</small></span></div>
+<?php /* ⛔ کارتِ سالانه‌ی چهارفصل. هر عدد یک لینک است (سال، فصل، ماه) و
+         مقصدش فهرستِ همان تراکنش‌هایی است که عدد را ساخته‌اند — عددی که
+         نشود دنبالش کرد، کاربر به آن اعتماد نمی‌کند. لینک است نه جاوااسکریپت:
+         با نرسیدنِ app.js هم کار می‌کند. */ ?>
+<div class="card year-report">
+    <div class="year-report-head">
+        <?php if ($prevYear !== null): ?>
+            <a class="year-nav" href="?y=<?= (int)$prevYear ?>" aria-label="سال قبل">‹ <?= toPersianDigits($prevYear) ?></a>
+        <?php else: ?><span class="year-nav is-off"></span><?php endif; ?>
+        <a class="year-title" href="<?= h(txRangeUrl($yearReport['from'], $yearReport['to'])) ?>">
+            سال <?= toPersianDigits($reportYear) ?>
+        </a>
+        <?php if ($nextYear !== null): ?>
+            <a class="year-nav" href="?y=<?= (int)$nextYear ?>" aria-label="سال بعد"><?= toPersianDigits($nextYear) ?> ›</a>
+        <?php else: ?><span class="year-nav is-off"></span><?php endif; ?>
     </div>
-    <div class="stats-card">
-        <div class="stats-card-title">این هفته</div>
-        <div class="stats-row"><span class="stats-label">درآمد</span><span class="stats-value stats-income"><?= formatMoney($weekStats['income']) ?> <small>تومان</small></span></div>
-        <div class="stats-row"><span class="stats-label">هزینه</span><span class="stats-value stats-expense"><?= formatMoney($weekStats['expense']) ?> <small>تومان</small></span></div>
-        <div class="stats-row stats-net-row"><span class="stats-label">سود خالص</span><span class="stats-value <?= $weekStats['net'] >= 0 ? 'stats-net-positive' : 'stats-net-negative' ?>"><?= formatMoney($weekStats['net']) ?> <small>تومان</small></span></div>
+    <div class="year-totals">
+        <div><span class="stats-label">درآمد</span><span class="stats-value stats-income ltr-num"><?= formatMoney($yearReport['income']) ?></span></div>
+        <div><span class="stats-label">هزینه</span><span class="stats-value stats-expense ltr-num"><?= formatMoney($yearReport['expense']) ?></span></div>
+        <div><span class="stats-label">خالص</span><span class="stats-value ltr-num <?= $yearReport['net'] >= 0 ? 'stats-net-positive' : 'stats-net-negative' ?>"><?= formatMoney($yearReport['net']) ?></span></div>
     </div>
-    <div class="stats-card">
-        <div class="stats-card-title">این ماه</div>
-        <div class="stats-row"><span class="stats-label">درآمد</span><span class="stats-value stats-income"><?= formatMoney($monthStats['income']) ?> <small>تومان</small></span></div>
-        <div class="stats-row"><span class="stats-label">هزینه</span><span class="stats-value stats-expense"><?= formatMoney($monthStats['expense']) ?> <small>تومان</small></span></div>
-        <div class="stats-row stats-net-row"><span class="stats-label">سود خالص</span><span class="stats-value <?= $monthStats['net'] >= 0 ? 'stats-net-positive' : 'stats-net-negative' ?>"><?= formatMoney($monthStats['net']) ?> <small>تومان</small></span></div>
+    <div class="season-grid">
+        <?php foreach ($yearReport['seasons'] as $__s): ?>
+        <div class="season-card season-<?= h($__s['key']) ?><?= $__s['current'] ? ' is-current' : '' ?><?= $__s['future'] ? ' is-future' : '' ?>">
+            <a class="season-head" href="<?= h(txRangeUrl($__s['from'], $__s['to'])) ?>">
+                <span class="season-name"><?= h($__s['name']) ?></span>
+                <span class="season-net ltr-num <?= $__s['net'] >= 0 ? 'stats-net-positive' : 'stats-net-negative' ?>"><?= formatMoney($__s['net']) ?></span>
+            </a>
+            <div class="season-sub">
+                <span>درآمد <b class="ltr-num stats-income"><?= formatMoney($__s['income']) ?></b></span>
+                <span>هزینه <b class="ltr-num stats-expense"><?= formatMoney($__s['expense']) ?></b></span>
+            </div>
+            <?php foreach ($__s['months'] as $__m): ?>
+            <a class="season-month<?= $__m['current'] ? ' is-current' : '' ?><?= $__m['future'] ? ' is-future' : '' ?>" href="<?= h(txRangeUrl($__m['from'], $__m['to'])) ?>">
+                <span class="season-month-name"><?= h($__m['name']) ?></span>
+                <span class="season-month-val ltr-num <?= $__m['net'] >= 0 ? 'stats-net-positive' : 'stats-net-negative' ?>"><?= formatMoney($__m['net']) ?></span>
+            </a>
+            <?php endforeach; ?>
+        </div>
+        <?php endforeach; ?>
     </div>
-    <div class="stats-card">
-        <div class="stats-card-title">امسال</div>
-        <div class="stats-row"><span class="stats-label">درآمد</span><span class="stats-value stats-income"><?= formatMoney($yearStats['income']) ?> <small>تومان</small></span></div>
-        <div class="stats-row"><span class="stats-label">هزینه</span><span class="stats-value stats-expense"><?= formatMoney($yearStats['expense']) ?> <small>تومان</small></span></div>
-        <div class="stats-row stats-net-row"><span class="stats-label">سود خالص</span><span class="stats-value <?= $yearStats['net'] >= 0 ? 'stats-net-positive' : 'stats-net-negative' ?>"><?= formatMoney($yearStats['net']) ?> <small>تومان</small></span></div>
-    </div>
+    <p class="hint year-hint">مبالغ به تومان · روی سال، فصل یا ماه بزنید تا تراکنش‌های همان بازه را ببینید.</p>
 </div>
 
 <!-- ---------- راه ورود به گزارش دسته‌بندی ----------

@@ -1681,6 +1681,10 @@ button.status-badge:active { transform: scale(.96); }
 .debt-info { flex: 1; min-width: 0; }
 .debt-name { font-weight: 700; font-size: 14.5px; margin-bottom: 3px; }
 .debt-dates { font-size: 11.5px; color: var(--muted); }
+/* کلیدِ «بدون سررسید» زیرِ تاریخ‌گزینِ طلب/بدهی */
+.debt-no-due { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.debt-no-due input { width: auto; margin: 0; }
+.jdp-display:disabled { opacity: .5; cursor: not-allowed; }
 .debt-note { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
 .debt-amount { font-weight: 700; font-size: 14.5px; white-space: nowrap; }
 .debt-amount small { font-size: 10.5px; font-weight: 400; color: var(--muted); }
@@ -4769,3 +4773,88 @@ html[data-theme="dark"] .start-card {
     margin-top: 10px;
 }
 .store-asset-search .input { flex: 1; min-width: 0; }
+
+/* ============================================================
+   کارتِ سالانه‌ی چهارفصل (dashboard.php)
+
+   ⛔ رنگِ فصل «نشانه» است نه پس‌زمینه‌ی پُررنگ: یک wash کم‌رنگ و یک
+      نوارِ باریکِ کنار. عددها رنگِ خودشان (--in/--out) را نگه می‌دارند،
+      وگرنه سبزِ بهار با سبزِ «درآمد» یکی خوانده می‌شد.
+   ⚠ `.season-card` عمداً `.card` نیست: `html[data-theme="dark"] .card`
+     با وزنِ بیشتر `background` را بازنویسی می‌کند (درسِ `.start-card`).
+   ============================================================ */
+:root {
+    --season-spring: #2f9e62; --season-spring-wash: #eef8f1;
+    --season-summer: #2f7fd6; --season-summer-wash: #edf4fc;
+    --season-autumn: #d9822b; --season-autumn-wash: #fcf3ea;
+    --season-winter: #8a94ad; --season-winter-wash: #ffffff;
+}
+html[data-theme="dark"] {
+    --season-spring-wash: rgba(47,158,98,.10);
+    --season-summer-wash: rgba(47,127,214,.10);
+    --season-autumn-wash: rgba(217,130,43,.10);
+    --season-winter-wash: rgba(255,255,255,.04);
+}
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --season-spring-wash: rgba(47,158,98,.10);
+        --season-summer-wash: rgba(47,127,214,.10);
+        --season-autumn-wash: rgba(217,130,43,.10);
+        --season-winter-wash: rgba(255,255,255,.04);
+    }
+}
+.year-report-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    margin-bottom: 10px;
+}
+.year-title { font-size: 17px; font-weight: 800; color: var(--ink); text-decoration: none; }
+.year-nav {
+    min-width: 64px; font-size: 13px; color: var(--muted); text-decoration: none;
+    white-space: nowrap;
+}
+.year-nav:last-child { text-align: left; }
+.year-nav.is-off { visibility: hidden; }
+.year-totals {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+    padding: 10px 0 12px; border-bottom: 1px dashed var(--line); margin-bottom: 12px;
+}
+.year-totals > div { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.year-totals .stats-value { font-size: 14.5px; overflow-wrap: anywhere; }
+/* ⛔ ۱ یا ۲ ستون، نه auto-fit: با auto-fit روی عرضِ ۷۲۰ سه فصل در یک ردیف
+      و زمستان تنها در ردیفِ دوم می‌نشست — سال شبیهِ «۳+۱» خوانده می‌شد. */
+.season-grid { display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 600px) {
+    .season-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.season-card {
+    border: 1px solid var(--line); border-radius: var(--r-lg, 14px);
+    border-inline-start: 4px solid var(--season-c);
+    background: var(--season-w); padding: 10px 12px; min-width: 0;
+}
+.season-spring { --season-c: var(--season-spring); --season-w: var(--season-spring-wash); }
+.season-summer { --season-c: var(--season-summer); --season-w: var(--season-summer-wash); }
+.season-autumn { --season-c: var(--season-autumn); --season-w: var(--season-autumn-wash); }
+.season-winter { --season-c: var(--season-winter); --season-w: var(--season-winter-wash); }
+.season-card.is-current { box-shadow: 0 0 0 2px var(--season-c); }
+.season-card.is-future { opacity: .55; }
+.season-head {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+    text-decoration: none; color: inherit;
+}
+.season-name { font-weight: 800; font-size: 14.5px; color: var(--season-c); }
+.season-net { font-weight: 800; font-size: 14px; }
+.season-sub {
+    display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px;
+    font-size: 11.5px; color: var(--muted); margin: 4px 0 8px;
+}
+.season-sub b { font-weight: 700; }
+.season-month {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 6px 4px; border-top: 1px solid var(--line);
+    text-decoration: none; color: var(--ink); font-size: 13px;
+}
+.season-month.is-current .season-month-name { font-weight: 800; }
+.season-month.is-current .season-month-name::after { content: " •"; color: var(--season-c); }
+.season-month.is-future { opacity: .55; }
+.season-month-val { font-size: 12.5px; font-weight: 700; }
+.year-hint { margin: 10px 0 0; }

@@ -604,11 +604,14 @@ function schemaMap(): array
     $map = [];
     try {
         $rows = Database::getConnection()->query(
-            'SELECT table_name, column_name FROM information_schema.columns
+            'SELECT table_name, column_name, is_nullable FROM information_schema.columns
              WHERE table_schema = DATABASE()'
         )->fetchAll(PDO::FETCH_NUM);
-        foreach ($rows as [$table, $column]) {
-            $map[strtolower($table)][strtolower($column)] = true;
+        // ⚠ مقدارِ هر ستون «NULL می‌پذیرد؟» است (bool، نه null)، پس همه‌ی
+        //   مصرف‌کننده‌های `isset()` دست‌نخورده کار می‌کنند و
+        //   `tableColumnNullable()` هم بدونِ کوئریِ دوم جواب می‌گیرد.
+        foreach ($rows as [$table, $column, $nullable]) {
+            $map[strtolower($table)][strtolower($column)] = strtoupper((string)$nullable) === 'YES';
         }
     } catch (PDOException $e) {
         $map = [];
@@ -627,6 +630,25 @@ function tableExists(string $table): bool
 function tableHasColumn(string $table, string $column): bool
 {
     return isset(schemaMap()[strtolower($table)][strtolower($column)]);
+}
+
+/** آیا این ستون NULL می‌پذیرد؟ ستونِ ناموجود = نه. */
+function tableColumnNullable(string $table, string $column): bool
+{
+    return (schemaMap()[strtolower($table)][strtolower($column)] ?? false) === true;
+}
+
+/**
+ * ⛔ آیا سررسیدِ طلب/بدهی اختیاری است؟ (`migration_debt_optional_due`)
+ *
+ * تنها جای این تصمیم: فرم (برچسبِ «اختیاری»)، `api/add_debt` و
+ * `api/update_debt` همه از همین می‌پرسند. روی نصبی که migration نخورده
+ * ستون `NOT NULL` است و درجِ `NULL` با خطای ۵۰۰ می‌مرد — پس آنجا
+ * همان رفتارِ قبلی (الزامی) می‌ماند.
+ */
+function debtDueOptional(): bool
+{
+    return tableColumnNullable('debts', 'due_date');
 }
 
 /**
@@ -1634,6 +1656,113 @@ function jalaliMonthLength(int $jy, int $jm): int
     $end = new DateTime(sprintf('%04d-%02d-%02d', $endG[0], $endG[1], $endG[2]));
 
     return (int)$start->diff($end)->days;
+}
+
+/* ============================================================
+   گزارشِ سالانه‌ی چهارفصل (داشبورد)
+   ============================================================ */
+
+/**
+ * ⛔ تنها مرجعِ فصل‌ها. کلید همان کلاسِ رنگِ کارت است (`.season-spring`…)
+ * و ماه‌ها شمسی‌اند — فصل در تقویمِ شمسی دقیقاً سه ماه است.
+ */
+const SEASONS = [
+    'spring' => ['بهار',   [1, 2, 3]],
+    'summer' => ['تابستان', [4, 5, 6]],
+    'autumn' => ['پاییز',  [7, 8, 9]],
+    'winter' => ['زمستان', [10, 11, 12]],
+];
+
+/** تاریخِ میلادیِ «Y-m-d» برای یک روزِ شمسی. */
+function jalaliDateToGregorianStr(int $jy, int $jm, int $jd): string
+{
+    [$gy, $gm, $gd] = jalaliToGregorian($jy, $jm, $jd);
+    return sprintf('%04d-%02d-%02d', $gy, $gm, $gd);
+}
+
+/**
+ * ⛔ گزارشِ یک سالِ شمسی به تفکیکِ فصل و ماه — تابعِ خالص، بی‌کوئری.
+ *
+ * ورودی همان جمعِ روزانه‌ای است که داشبورد از قبل **یک بار** می‌خواند
+ * (`transaction_date`, `daily_income`, `daily_expense`)، پس این کارت هیچ
+ * کوئریِ تازه‌ای به صفحه اضافه نمی‌کند. و چون از ردیف‌های `transactions`
+ * ساخته می‌شود نه از عددِ دیگری، جمعِ ۱۲ ماه **دقیقاً** جمعِ سال است —
+ * تست همین را می‌سنجد.
+ *
+ * ⚠ هر ماه مرزِ میلادیِ خودش را دارد (`from`/`to`) تا لینکِ «تراکنش‌های
+ *   این ماه» دقیقاً همان ردیف‌هایی را نشان بدهد که عددش را ساخته‌اند.
+ *
+ * @param array  $dailyRows ردیف‌های جمعِ روزانه
+ * @param int    $jy        سالِ شمسی
+ * @param string $today     امروز (میلادی) — برای «ماهِ جاری» و «آینده»
+ */
+function seasonalYearReport(array $dailyRows, int $jy, string $today): array
+{
+    $monthNames = ['', 'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
+                   'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
+
+    $months = [];
+    for ($jm = 1; $jm <= 12; $jm++) {
+        $from = jalaliDateToGregorianStr($jy, $jm, 1);
+        $to   = jalaliDateToGregorianStr($jy, $jm, jalaliMonthLength($jy, $jm));
+        $months[$jm] = [
+            'jm' => $jm, 'name' => $monthNames[$jm], 'from' => $from, 'to' => $to,
+            'income' => 0, 'expense' => 0, 'net' => 0,
+            'current' => $today >= $from && $today <= $to,
+            'future'  => $from > $today,
+        ];
+    }
+    $yearFrom = $months[1]['from'];
+    $yearTo   = $months[12]['to'];
+
+    foreach ($dailyRows as $row) {
+        $d = (string)$row['transaction_date'];
+        if ($d < $yearFrom || $d > $yearTo) { continue; }
+        // جست‌وجوی خطیِ ۱۲تایی؛ ارزان‌تر و مطمئن‌تر از تبدیلِ تقویم برای هر روز.
+        foreach ($months as $jm => $m) {
+            if ($d >= $m['from'] && $d <= $m['to']) {
+                $months[$jm]['income']  += (int)$row['daily_income'];
+                $months[$jm]['expense'] += (int)$row['daily_expense'];
+                break;
+            }
+        }
+    }
+
+    $seasons = [];
+    $yIn = 0; $yOut = 0;
+    foreach (SEASONS as $key => [$name, $jms]) {
+        $in = 0; $out = 0; $list = [];
+        foreach ($jms as $jm) {
+            $months[$jm]['net'] = $months[$jm]['income'] - $months[$jm]['expense'];
+            $in  += $months[$jm]['income'];
+            $out += $months[$jm]['expense'];
+            $list[] = $months[$jm];
+        }
+        $first = $months[$jms[0]]; $last = $months[$jms[2]];
+        $seasons[] = [
+            'key' => $key, 'name' => $name,
+            'from' => $first['from'], 'to' => $last['to'],
+            'income' => $in, 'expense' => $out, 'net' => $in - $out,
+            'current' => $today >= $first['from'] && $today <= $last['to'],
+            'future'  => $first['from'] > $today,
+            'months' => $list,
+        ];
+        $yIn += $in; $yOut += $out;
+    }
+
+    return [
+        'year' => $jy, 'from' => $yearFrom, 'to' => $yearTo,
+        'income' => $yIn, 'expense' => $yOut, 'net' => $yIn - $yOut,
+        'seasons' => $seasons,
+    ];
+}
+
+/** آدرسِ فهرستِ تراکنش‌های یک بازه — مقصدِ هر کلیکِ کارتِ سالانه. */
+function txRangeUrl(string $from, string $to): string
+{
+    return APP_BASE_PATH . '/transactions.php?' . http_build_query([
+        'period' => 'custom', 'from_date' => $from, 'to_date' => $to,
+    ]);
 }
 
 /**
@@ -4170,6 +4299,10 @@ function bankPresets(): array
         'karafarin'  => ['بانک کارآفرین',       '#1565c0', '#0e4585'],
         'gardeshgari'=> ['بانک گردشگری',        '#00897b', '#005f55'],
         'resalat'    => ['بانک قرض‌الحسنه رسالت','#2e7d5b', '#1d5340'],
+        // بانکِ دیجیتالِ بانک سامان. کدِ جدا دارد چون کاربر آن را «بلو»
+        // می‌شناسد نه «سامان»، و کارتش هم رنگِ خودش را دارد. ⚠ فقط رنگ —
+        // لوگوی هیچ بانکی در مخزن نیست (علامتِ تجاری است).
+        'blu'        => ['بلوبانک',              '#1f5bff', '#133a9e'],
         'other'      => ['سایر / بانک دیگر',    '#475569', '#2f3b4a'],
     ];
 }

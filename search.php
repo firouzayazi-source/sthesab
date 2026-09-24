@@ -148,7 +148,7 @@ include __DIR__ . '/includes/header.php';
             <span class="event-body">
                 <span class="event-title"><?= $d['direction'] === 'receivable' ? 'طلب از ' : 'بدهی به ' ?><?= h($d['counterparty_name']) ?></span>
                 <span class="event-meta">
-                    سررسید <?= toJalali($d['due_date']) ?>
+                    <?= !empty($d['due_date']) ? 'سررسید ' . toJalali($d['due_date']) : 'بدون سررسید' ?>
                     <?= (int)$d['is_settled'] ? ' · تسویه شد' : '' ?>
                 </span>
             </span>

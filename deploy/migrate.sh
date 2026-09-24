@@ -121,6 +121,7 @@ MIGRATIONS=(
     migration_support.sql
     migration_user_roles.sql
     migration_trades_default.sql
+    migration_debt_optional_due.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -301,6 +302,9 @@ declare -A SENTINEL=(
     #   همان دروغی را می‌گفت که برای گرفتنش ساخته شده. آن `INSERT`
     #   آخرین کارِ فایل است، پس وجودش یعنی کلِ فایل اجرا شده.
     [migration_trades_default.sql]="app_settings~setting_key=trades_default_on"
+    # ⛔ شاهدش «ستون NULL می‌پذیرد» است نه «ستون هست» — ستون از روزِ اول
+    #    بوده و شاهدِ وجود همیشه درست می‌بود (همان درسِ phone_signup).
+    [migration_debt_optional_due.sql]="debts.due_date:null"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

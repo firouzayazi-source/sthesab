@@ -177,7 +177,7 @@ CREATE TABLE IF NOT EXISTS `debts` (
     `amount` BIGINT UNSIGNED NOT NULL,
     `note` TEXT NULL,
     `entry_date` DATE NOT NULL,
-    `due_date` DATE NOT NULL,
+    `due_date` DATE NULL DEFAULT NULL COMMENT 'NULL = سررسید ندارد',
     `is_settled` TINYINT(1) NOT NULL DEFAULT 0,
     `settled_at` DATETIME NULL,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

@@ -40,7 +40,7 @@ try {
         SELECT id, direction, counterparty_name, amount, paid_amount, note, entry_date, due_date, is_settled, settled_at
         FROM debts
         $whereClause
-        ORDER BY due_date ASC
+        ORDER BY (due_date IS NULL), due_date ASC
     ");
     $stmt->execute($params);
     $allDebts = $stmt->fetchAll();
@@ -68,7 +68,7 @@ try {
         SELECT id, direction, counterparty_name, amount, note, entry_date, due_date, is_settled, settled_at
         FROM debts
         $whereClause
-        ORDER BY due_date ASC
+        ORDER BY (due_date IS NULL), due_date ASC
     ");
     $stmt->execute($params);
     $allDebts = $stmt->fetchAll();
@@ -162,6 +162,7 @@ $walletList = activeWallets($userId);
 $defaultWallet = defaultWalletId($userId);
 
 $pageTitle = 'طلب و بدهی';
+$dueOptional = debtDueOptional();
 include __DIR__ . '/includes/header.php';
 
 // ⛔ نوار «فقط خواندنی» بالای همه چیز است، نه پایین صفحه: حرفش این
@@ -171,7 +172,10 @@ if ($planRO) { echo planReadOnlyNotice('debts'); }
 function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [], array $paymentsByDebt = []): void
 {
     $settleWallet = $settleWalletNames[(int)$d['id']] ?? '';
-    $isOverdue = !(int)$d['is_settled'] && $d['due_date'] < $todayStr;
+    // ⛔ بی‌سررسید هرگز «عقب‌افتاده» نیست: `null < '2026-…'` در PHP درست
+    //    است (null با رشته‌ی خالی مقایسه می‌شود)، پس بدونِ این شرط هر
+    //    بدهیِ بی‌سررسید قرمز می‌شد.
+    $isOverdue = !(int)$d['is_settled'] && !empty($d['due_date']) && $d['due_date'] < $todayStr;
     $cardClass = 'debt-card';
     if ((int)$d['is_settled']) {
         $cardClass .= ' debt-settled';
@@ -192,7 +196,7 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
                         <span class="type-tag type-tag-<?= $d['direction'] === 'receivable' ? 'income' : 'expense' ?>" style="font-size:10.5px;"><?= $d['direction'] === 'receivable' ? 'طلب' : 'بدهی' ?></span>
                     <?php endif; ?>
                 </div>
-                <div class="debt-dates">ثبت: <?= toJalali($d['entry_date']) ?> &nbsp;·&nbsp; سررسید: <?= toJalali($d['due_date']) ?></div>
+                <div class="debt-dates">ثبت: <?= toJalali($d['entry_date']) ?> &nbsp;·&nbsp; <?= !empty($d['due_date']) ? 'سررسید: ' . toJalali($d['due_date']) : 'بدون سررسید' ?></div>
                 <?php if (!empty($d['note'])): ?><div class="debt-note"><?= h($d['note']) ?></div><?php endif; ?>
             </div>
             <div class="debt-amount"><?= formatMoney($d['amount']) ?><small> تومان</small></div>
@@ -210,6 +214,7 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
                 <div class="budget-bar budget-bar-good" style="width:<?= $pct ?>%;"></div>
             </div>
             <div class="debt-partial-note">
+                <span class="asset-tag">تسویه‌ی جزئی</span>
                 <?= formatMoney($paid) ?> پرداخت شده — <?= formatMoney(debtRemaining($d)) ?> باقیمانده (<?= toPersianDigits($pct) ?>٪)
             </div>
         <?php endif; ?>
@@ -387,6 +392,12 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
                         <input type="text" class="jdp-display" readonly placeholder="انتخاب کنید">
                         <input type="hidden" class="jdp-hidden" id="add_due_date" name="due_date" value="">
                     </div>
+                    <?php if ($dueOptional): ?>
+                    <?php /* ⛔ «بدون سررسید» یک کلیدِ صریح است، نه «خالی بگذار»: تاریخ‌گزین
+                             راهی برای پاک کردن ندارد، و فیلدِ خالیِ بی‌توضیح شبیهِ فراموشی
+                             دیده می‌شد. خالی → NULL روی سرور (`debtDueOptional()`). */ ?>
+                    <label class="debt-no-due"><input type="checkbox" class="js-no-due" data-target="add_due_date"> بدون سررسید</label>
+                    <?php endif; ?>
                 </div>
             </div>
 
@@ -479,6 +490,12 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
                         <input type="text" class="jdp-display" id="edit_due_date_display" readonly>
                         <input type="hidden" class="jdp-hidden" id="edit_due_date" name="due_date">
                     </div>
+                    <?php if ($dueOptional): ?>
+                    <?php /* ⛔ «بدون سررسید» یک کلیدِ صریح است، نه «خالی بگذار»: تاریخ‌گزین
+                             راهی برای پاک کردن ندارد، و فیلدِ خالیِ بی‌توضیح شبیهِ فراموشی
+                             دیده می‌شد. خالی → NULL روی سرور (`debtDueOptional()`). */ ?>
+                    <label class="debt-no-due"><input type="checkbox" class="js-no-due" data-target="edit_due_date"> بدون سررسید</label>
+                    <?php endif; ?>
                 </div>
             </div>
 

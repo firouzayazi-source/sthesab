@@ -1914,6 +1914,24 @@ document.addEventListener('DOMContentLoaded', function () {
         document.getElementById(hiddenId).value = gDateStr;
     }
 
+    // ---------- «بدون سررسید» روی طلب/بدهی ----------
+    // کلید مقدارِ پنهان را خالی می‌کند و تاریخ‌گزین را غیرفعال؛ سرور خالی
+    // را `NULL` ذخیره می‌کند (`debtDueOptional()`).
+    function setNoDue(hiddenId, on) {
+        var box = document.querySelector('.js-no-due[data-target="' + hiddenId + '"]');
+        var hidden = document.getElementById(hiddenId);
+        if (!box || !hidden) return;
+        box.checked = !!on;
+        var display = hidden.closest('.jdp-field').querySelector('.jdp-display');
+        if (on) { hidden.value = ''; display.value = ''; }
+        display.disabled = !!on;
+    }
+    document.querySelectorAll('.js-no-due').forEach(function (box) {
+        box.addEventListener('change', function () {
+            setNoDue(this.getAttribute('data-target'), this.checked);
+        });
+    });
+
     document.querySelectorAll('.js-add-debt').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var direction = this.getAttribute('data-direction');
@@ -1926,6 +1944,7 @@ document.addEventListener('DOMContentLoaded', function () {
             var dueHidden = document.getElementById('add_due_date');
             dueHidden.value = '';
             dueHidden.closest('.jdp-field').querySelector('.jdp-display').value = '';
+            setNoDue('add_due_date', false);
 
             var msgEl = document.getElementById('addDebtMessage');
             if (msgEl) { msgEl.hidden = true; msgEl.classList.remove('show', 'success', 'error'); }
@@ -1942,11 +1961,16 @@ document.addEventListener('DOMContentLoaded', function () {
             var msgEl = document.getElementById('addDebtMessage');
             var amountInput = document.getElementById('add_debt_amount');
 
-            if (!document.getElementById('add_due_date').value) {
+            // ⛔ خالی فقط وقتی مجاز است که «بدون سررسید» صریح زده شده باشد؛
+            //    فیلدِ خالیِ بی‌کلید معمولاً یعنی فراموشی، نه تصمیم.
+            var noDueBox = addDebtForm.querySelector('.js-no-due');
+            if (!document.getElementById('add_due_date').value && !(noDueBox && noDueBox.checked)) {
                 msgEl.hidden = false;
                 msgEl.classList.remove('success');
                 msgEl.classList.add('show', 'error');
-                msgEl.textContent = 'تاریخ سررسید را انتخاب کنید.';
+                msgEl.textContent = noDueBox
+                    ? 'تاریخ سررسید را انتخاب کنید یا «بدون سررسید» را بزنید.'
+                    : 'تاریخ سررسید را انتخاب کنید.';
                 return;
             }
 
@@ -1993,7 +2017,14 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('edit_debt_note').value = this.getAttribute('data-note') || '';
 
             setJdpValue('edit_entry_date_display', 'edit_entry_date', this.getAttribute('data-entry-date'));
-            setJdpValue('edit_due_date_display', 'edit_due_date', this.getAttribute('data-due-date'));
+            var editDue = this.getAttribute('data-due-date') || '';
+            if (editDue) {
+                setJdpValue('edit_due_date_display', 'edit_due_date', editDue);
+            } else {
+                document.getElementById('edit_due_date').value = '';
+                document.getElementById('edit_due_date_display').value = '';
+            }
+            setNoDue('edit_due_date', editDue === '');
 
             var msgEl = document.getElementById('editDebtMessage');
             if (msgEl) { msgEl.hidden = true; msgEl.classList.remove('show', 'success', 'error'); }
