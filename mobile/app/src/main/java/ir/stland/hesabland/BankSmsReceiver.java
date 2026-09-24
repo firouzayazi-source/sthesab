@@ -48,6 +48,25 @@ public class BankSmsReceiver extends BroadcastReceiver {
     public  static final String PREF_ON    = "sms_capture_on";
 
     /**
+     * ⛔ پیش‌فرضِ کلید — **روشن**، به خواستِ صریحِ مالکِ نصب: «پیش‌فرض نوتیف
+     *    و اطلاع‌رسانی و تمام قابلیت‌ها باید فعال باشد».
+     *
+     *    تا دیروز خاموش بود و آن تصمیم یک خرابیِ بی‌صدا می‌ساخت: کسی که فقط
+     *    اپ را نصب و باز می‌کرد هرگز پیامکی نمی‌گرفت، و هیچ‌جا هم دیده
+     *    نمی‌شد چرا. حالا «کلید را دست نزده» یعنی روشن، و فقط «خاموش
+     *    کردنِ» صریح در صفحه‌ی تنظیم آن را می‌بندد.
+     *
+     * ⛔ **تنها مرجع** است: گیرنده، صفحه‌ی تنظیم و `HesabLauncherActivity`
+     *    هر سه از همین می‌خوانند. با `false`ِ سخت‌کد در یکی، صفحه‌ی تنظیم
+     *    «روشن است» می‌گفت و گیرنده بی‌صدا هیچ کاری نمی‌کرد.
+     *
+     * ⚠ روشن بودنِ کلید به‌تنهایی چیزی نمی‌خواند: بدونِ مجوزِ `RECEIVE_SMS`
+     *   اندروید اصلاً پیامکی به این گیرنده نمی‌دهد. مجوز در اولین اجرا
+     *   پرسیده می‌شود (`HesabLauncherActivity`).
+     */
+    public  static final boolean DEFAULT_ON = true;
+
+    /**
      * ⛔ ردِ آخرین پیامک — چون بدونش این قابلیت **سه** خرابیِ کاملاً
      *    متفاوت دارد که از بیرون دقیقاً یک شکل‌اند: «هیچ اعلانی نیامد».
      *
@@ -109,10 +128,11 @@ public class BankSmsReceiver extends BroadcastReceiver {
     public void onReceive(Context ctx, Intent intent) {
         if (!Telephony.Sms.Intents.SMS_RECEIVED_ACTION.equals(intent.getAction())) { return; }
 
-        // ⚠ کلید خاموش باشد یعنی هیچ کاری — حتی خواندنِ متن. کاربری که
-        //   این را نمی‌خواهد نباید فقط به لطفِ نبودِ اعلان در امان باشد.
+        // ⚠ کلیدِ **عمداً** خاموش یعنی هیچ کاری — حتی خواندنِ متن. کاربری
+        //   که این را نمی‌خواهد نباید فقط به لطفِ نبودِ اعلان در امان باشد.
+        //   (کلیدِ دست‌نخورده روشن است — `DEFAULT_ON`.)
         SharedPreferences sp = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        if (!sp.getBoolean(PREF_ON, false)) { return; }
+        if (!sp.getBoolean(PREF_ON, DEFAULT_ON)) { return; }
 
         SmsMessage[] parts = Telephony.Sms.Intents.getMessagesFromIntent(intent);
         if (parts == null || parts.length == 0) { return; }

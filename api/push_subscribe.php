@@ -25,6 +25,17 @@ if (!Push::available()) {
     jsonResponse(['success' => false, 'message' => 'اعلان روی گوشی روی این سرور هنوز راه نیفتاده (migration_push).'], 503);
 }
 
+// ⛔ کلیدِ عمومیِ VAPID برای اشتراکِ خودکار (پیش‌فرض روشن) در `app.js`.
+//    اینجا می‌آید نه در یک `<meta>` روی هر صفحه: فقط دستگاهی که هنوز
+//    اشتراک ندارد یک بار می‌پرسد، و هیچ صفحه‌ای خواندنِ فایلِ تازه نمی‌گیرد.
+//    کلیدِ **عمومی** است و لو رفتنش چیزی را باز نمی‌کند (سرویسِ پوش آن را
+//    به هر حال از مرورگر می‌گیرد).
+if (postParam('action') === 'key') {
+    $key = Push::publicKey();
+    jsonResponse(['success' => $key !== '', 'key' => $key,
+                  'message' => $key !== '' ? '' : 'کلیدِ اعلان ساخته نشد.'], $key !== '' ? 200 : 503);
+}
+
 $endpoint = trim((string)($_POST['endpoint'] ?? ''));
 if ($endpoint === '') {
     jsonResponse(['success' => false, 'message' => 'اشتراکی فرستاده نشد.'], 422);

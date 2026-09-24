@@ -611,25 +611,58 @@ if ('serviceWorker' in navigator) {
      *   localStorage همان دستگاه می‌ماند.
      */
     /**
-     * ⛔ کلیدِ ثبتِ خودکار — **پیش‌فرض خاموش**، و این قابل مذاکره نیست.
+     * ⛔ کلیدِ ثبتِ خودکار — **پیش‌فرض روشن**، و این یک بار برعکس بود.
      *
-     *    هر نصبی که تا امروز کار می‌کند، آخرین تپ را از کاربر می‌گیرد.
-     *    روشن شدنِ خودکارِ این کلید با یک به‌روزرسانی یعنی اپ بی‌آنکه
-     *    کسی خواسته باشد شروع کند به **نوشتن در دفترِ مالیِ** کاربر —
-     *    ساکت‌ترین و بدترین شکلِ تغییرِ رفتار.
+     *    تا دیروز «خاموش، و قابل مذاکره نیست» نوشته شده بود؛ خواستِ صریحِ
+     *    مالکِ نصب آن را کنار گذاشت: «پیش‌فرض نوتیف و اطلاع‌رسانی و تمام
+     *    قابلیت‌ها باید فعال باشد». خطرِ اصلی‌اش سرِ جایش است و سه سد
+     *    دارد که هیچ‌کدام با این تغییر عوض نشد: `smsAutoOk()` فقط خواندنِ
+     *    **قطعی** را می‌پذیرد (واحدِ پولِ نوشته‌شده + مقصدِ روشن)، نگهبانِ
+     *    تکراری (`smsFingerprint`)، و نوارِ «لغو» بعد از هر ثبت.
+     *
+     * ⛔ حالا **فقط `'0'`** یعنی خاموش — «کاربر عمداً خاموشش کرده».
+     *    `'1'`ِ قدیمی (کسی که دستی روشنش کرده بود) و «هیچ‌چیز» هر دو روشن‌اند.
      *
      * ⚠ اینجا (نه داخلِ `DOMContentLoaded`) تعریف شده تا در node
-     *   آزمودنی باشد: آنجا `localStorage` همیشه خالی است، یعنی دقیقاً
-     *   همان حالتِ «کاربر هیچ‌وقت روشنش نکرده» — و جواب باید `false`
-     *   باشد. بدونِ این، «پیش‌فرض خاموش است» فقط یک ادعای خواندنی بود.
+     *   آزمودنی باشد: آنجا `localStorage` خالی است، یعنی دقیقاً همان
+     *   حالتِ «کاربر هیچ‌وقت دست نزده» — و جواب باید `true` باشد.
      *
      * ⚠ و `try/catch` لازم است: در پنجره‌ی ناشناس یا با بستنِ داده‌ی
-     *   سایت، خودِ **خواندن** استثنا پرتاب می‌کند. شکستش هم عمداً به
-     *   سمتِ «خاموش» است.
+     *   سایت، خودِ **خواندن** استثنا پرتاب می‌کند. شکستش عمداً هنوز به
+     *   سمتِ «خاموش» است — جایی که حتی انتخابِ کاربر خوانده نمی‌شود،
+     *   نوشتنِ خودکار در دفترِ او حدس است نه تصمیم.
      */
+    /**
+     * ⛔ اعلان روی گوشی (Web Push) — **پیش‌فرض روشن**، به همان خواستِ مالکِ
+     *    نصب. تا امروز فقط با تپ روی «روشن کردن» در پروفایل ساخته می‌شد،
+     *    یعنی کسی که آن کارت را پیدا نمی‌کرد هیچ اعلانی روی گوشی نمی‌گرفت.
+     *
+     *    حالا هر صفحه‌ی داخلیِ اپ، اگر مرورگر اجازه‌ی اعلان را **از قبل**
+     *    داده باشد (در اپِ اندروید همان مجوزی که در اولین اجرا پرسیده
+     *    می‌شود)، بی‌صدا اشتراک می‌سازد. فقط «خاموش کردن»ِ صریح در پروفایل
+     *    (`PUSH_OFF_KEY = '1'`) جلویش را می‌گیرد.
+     *
+     * ⛔ تنها جای این تصمیم، و خالص — تا در node آزمودنی باشد (مثل
+     *    `smsAutoEnabled`):
+     *    - `'granted'` + خاموش‌نکرده → «بساز».
+     *    - `'default'` → «بپرس» ولی **فقط** در اپِ نصب‌شده (standalone) و
+     *      فقط یک بار در عمرِ دستگاه، آن هم با اولین تپِ کاربر: مرورگر
+     *      درخواستِ بی‌حرکت را بی‌صدا رد می‌کند، و پرسیدن در هر تبِ
+     *      مرورگرِ معمولی همان مزاحمتی است که آدم را وادار می‌کند «هرگز» بزند.
+     *    - `'denied'` یا خاموشِ صریح → هیچ.
+     */
+    window.PUSH_OFF_KEY   = 'daftar_push_off';
+    window.PUSH_ASKED_KEY = 'daftar_push_asked';
+    window.pushAutoAction = function (perm, off, asked, standalone) {
+        if (off === '1') { return 'none'; }
+        if (perm === 'granted') { return 'subscribe'; }
+        if (perm === 'default' && standalone && asked !== '1') { return 'ask'; }
+        return 'none';
+    };
+
     window.SMS_AUTO_KEY = 'daftar_sms_auto_on';
     window.smsAutoEnabled = function () {
-        try { return localStorage.getItem(window.SMS_AUTO_KEY) === '1'; }
+        try { return localStorage.getItem(window.SMS_AUTO_KEY) !== '0'; }
         catch (e) { return false; }
     };
 
@@ -1495,8 +1528,9 @@ document.addEventListener('DOMContentLoaded', function () {
         auto.checked = smsAutoEnabled();
         auto.addEventListener('change', function () {
             try {
-                if (auto.checked) { localStorage.setItem(SMS_AUTO_KEY, '1'); }
-                else { localStorage.removeItem(SMS_AUTO_KEY); }
+                // ⚠ روشن = پاک کردنِ کلید (پیش‌فرض روشن است)؛ خاموش = `'0'`.
+                if (auto.checked) { localStorage.removeItem(SMS_AUTO_KEY); }
+                else { localStorage.setItem(SMS_AUTO_KEY, '0'); }
             } catch (e) { /* حالت ناشناس یا داده‌ی سایت بسته */ }
         });
     })();
@@ -4770,6 +4804,72 @@ document.addEventListener('DOMContentLoaded', function () {
         } catch (e) {}
     })();
 
+    // ---------- اعلان روی گوشی: اشتراکِ خودکار (پیش‌فرض روشن) ----------
+    // ⛔ تصمیم از `window.pushAutoAction()` می‌آید؛ اینجا فقط اجرا می‌شود.
+    //    کلیدِ عمومیِ VAPID از `push_subscribe.php` (action=key) گرفته
+    //    می‌شود تا هیچ صفحه‌ای کوئری یا خواندنِ فایلِ تازه نگیرد — فقط
+    //    دستگاهی که هنوز اشتراک ندارد، یک بار.
+    (function () {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) { return; }
+        if (!document.querySelector('meta[name="csrf-token"]')) { return; }   // فقط صفحه‌های داخلی
+        var off = null, asked = null;
+        try { off = localStorage.getItem(PUSH_OFF_KEY); asked = localStorage.getItem(PUSH_ASKED_KEY); }
+        catch (e) { return; }
+        var standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches
+            || window.navigator.standalone === true;
+        // ⚠ یک تلاش در هر نشستِ مرورگر: اگر شبکه نبود، بارگذاریِ بعدیِ
+        //   همین نشست دوباره امتحان نمی‌کند (هر صفحه یک درخواستِ بی‌حاصل).
+        try { if (sessionStorage.getItem('daftar_push_try') === '1') { return; } } catch (e) { /* ادامه */ }
+
+        var post = function (fields) {
+            var fd = new FormData();
+            fd.append('csrf_token', csrf());
+            Object.keys(fields).forEach(function (k) { fd.append(k, fields[k]); });
+            return fetch(apiUrl('push_subscribe.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); });
+        };
+        var keyBytes = function (b64) {
+            var pad = '='.repeat((4 - b64.length % 4) % 4);
+            var raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+            var out = new Uint8Array(raw.length);
+            for (var i = 0; i < raw.length; i++) { out[i] = raw.charCodeAt(i); }
+            return out;
+        };
+        var b64 = function (buf) {
+            var str = '', a = new Uint8Array(buf);
+            for (var i = 0; i < a.length; i++) { str += String.fromCharCode(a[i]); }
+            return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        };
+        var subscribe = function () {
+            try { sessionStorage.setItem('daftar_push_try', '1'); } catch (e) { /* ناشناس */ }
+            var reg;
+            return navigator.serviceWorker.ready.then(function (r) {
+                reg = r;
+                return reg.pushManager.getSubscription();
+            }).then(function (sub) {
+                if (sub) { return null; }   // از قبل روشن است
+                return post({ action: 'key' }).then(function (d) {
+                    if (!d || !d.success || !d.key) { return null; }
+                    return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(d.key) })
+                        .then(function (s) {
+                            return post({ endpoint: s.endpoint, p256dh: b64(s.getKey('p256dh')), auth: b64(s.getKey('auth')) });
+                        });
+                });
+            }).catch(function () { /* بی‌صدا: کارتِ پروفایل وضعیتِ واقعی را می‌گوید */ });
+        };
+
+        var act = window.pushAutoAction(Notification.permission, off, asked, standalone);
+        if (act === 'subscribe') { subscribe(); return; }
+        if (act !== 'ask') { return; }
+        // ⚠ با اولین تپ، نه در بارگذاری: درخواستِ بی‌حرکتِ کاربر رد می‌شود.
+        document.addEventListener('click', function () {
+            try { localStorage.setItem(PUSH_ASKED_KEY, '1'); } catch (e) { /* ناشناس */ }
+            Promise.resolve(Notification.requestPermission()).then(function (p) {
+                if (p === 'granted') { subscribe(); }
+            }).catch(function () {});
+        }, { once: true, capture: true });
+    })();
+
     // ---------- اعلان روی گوشی (Web Push) ----------
     var pushCard = document.getElementById('pushCard');
     if (pushCard) {
@@ -4844,6 +4944,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
         pOn.addEventListener('click', function () {
             pOn.disabled = true;
+            try { localStorage.removeItem(PUSH_OFF_KEY); } catch (e) { /* ناشناس */ }
             // ⛔ اجازه باید **مستقیم** از همین تپ خواسته شود؛ مرورگرها درخواستِ
             //    بی‌حرکتِ کاربر را بی‌صدا رد می‌کنند.
             Promise.resolve(Notification.requestPermission()).then(function (perm) {
@@ -4867,6 +4968,9 @@ document.addEventListener('DOMContentLoaded', function () {
         });
 
         pOff.addEventListener('click', function () {
+            // ⛔ خاموشِ **صریح** ثبت می‌شود، وگرنه اشتراکِ خودکار در صفحه‌ی
+            //    بعد دوباره روشنش می‌کرد — یعنی دکمه‌ای که کار نمی‌کند.
+            try { localStorage.setItem(PUSH_OFF_KEY, '1'); } catch (e) { /* ناشناس */ }
             navigator.serviceWorker.ready.then(function (reg) {
                 return reg.pushManager.getSubscription();
             }).then(function (sub) {

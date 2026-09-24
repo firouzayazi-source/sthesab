@@ -225,7 +225,7 @@ jobs:
             #    روی اندروید ۱۳ به بالا بدونش پیامک خوانده می‌شود و هیچ
             #    اعلانی دیده نمی‌شود — یعنی همان خرابیِ بی‌صدا، این بار یک
             #    قدم جلوتر.
-            for NEEDLE in "RECEIVE_SMS" "READ_SMS" "POST_NOTIFICATIONS" "BankSmsReceiver" "SmsSetupActivity"; do
+            for NEEDLE in "RECEIVE_SMS" "READ_SMS" "POST_NOTIFICATIONS" "BankSmsReceiver" "SmsSetupActivity" "HesabLauncherActivity"; do
               if ! printf '%s' "$DUMP" | grep -q "$NEEDLE"; then
                 echo "::error::«$NEEDLE» در manifestِ خودِ APK نیست."
                 echo "::error::اپ ساخته و نصب می‌شود ولی ثبت خودکار از پیامک کار نمی‌کند."

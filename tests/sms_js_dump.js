@@ -46,6 +46,12 @@ const sandbox = {
 };
 sandbox.window.document = sandbox.document;
 sandbox.window.localStorage = sandbox.localStorage;
+// مقدارِ موقتِ یک کلید در localStorageِ sandbox، فقط برای یک فراخوانی.
+const withStored = (val, fn) => {
+    const g = sandbox.localStorage.getItem;
+    sandbox.localStorage.getItem = () => val;
+    try { return fn(); } finally { sandbox.localStorage.getItem = g; }
+};
 sandbox.window.navigator = sandbox.navigator;
 sandbox.window.location = sandbox.location;
 sandbox.window.matchMedia = sandbox.matchMedia;
@@ -97,6 +103,20 @@ process.stdin.on('end', () => {
                     // ⛔ localStorage در این sandbox همیشه خالی است، یعنی
                     //    دقیقاً حالتِ «کاربر هیچ‌وقت روشنش نکرده».
                     autoDefault: sandbox.window.smsAutoEnabled(),
+                    // ⚠ دو حالتِ دیگرِ کلید: خاموشِ صریح (`'0'`) و روشنِ
+                    //   قدیمی (`'1'`، کسی که پیش از این دستی روشنش کرده بود).
+                    autoOff:    withStored('0', () => sandbox.window.smsAutoEnabled()),
+                    autoLegacy: withStored('1', () => sandbox.window.smsAutoEnabled()),
+                    // ⛔ اعلانِ گوشی (Web Push): همان جدولِ تصمیم، خالص.
+                    //    [اجازه، خاموشِ صریح، قبلاً پرسیده، اپِ نصب‌شده]
+                    pushAuto: [
+                        ['granted', null, null, false],
+                        ['granted', '1',  null, true],
+                        ['default', null, null, true],
+                        ['default', null, null, false],
+                        ['default', null, '1',  true],
+                        ['denied',  null, null, true],
+                    ].map(a => sandbox.window.pushAutoAction(...a)),
                 };
             }
             const r = sandbox.window.parseBankSms(t);

@@ -787,13 +787,15 @@ if (!file_exists($gradlePath)) {
     //    کردنِ اپ می‌داد — یک پنجره‌ی اضافه پیش از کروم، و کاربر «چند
     //    بار رفرش شدن و صفحه‌ی سفید» می‌دید. مجوز یک بار پرسیده می‌شود،
     //    اپ هزار بار باز می‌شود.
-    if (preg_match('~<activity\b[^>]*LauncherActivity.*?</activity>~s', $mf, $mLau)) {
+    // ⚠ و آن `LauncherActivity` حالا زیرکلاسِ خودمان است
+    //   (`.HesabLauncherActivity`)، نه کلاسِ خامِ کتابخانه — پایین‌تر.
+    if (preg_match('~<activity\b[^>]*\.HesabLauncherActivity".*?</activity>~s', $mf, $mLau)) {
         if (!str_contains($mLau[0], 'android.intent.category.LAUNCHER')) {
             $permBad[] = 'AndroidManifest — LauncherActivity دیگر LAUNCHER نیست؛'
                        . ' اپ یک پنجره‌ی اضافه پیش از کروم باز می‌کند';
         }
     } else {
-        $permBad[] = 'AndroidManifest — بلوکِ LauncherActivity پیدا نشد';
+        $permBad[] = 'AndroidManifest — بلوکِ HesabLauncherActivity پیدا نشد';
     }
     if (preg_match('~<activity\b[^>]*\.SmsSetupActivity.*?</activity>~s', $mf, $mAct)) {
         if (str_contains($mAct[0], 'android.intent.category.LAUNCHER')) {
@@ -913,6 +915,84 @@ if (!file_exists($gradlePath)) {
     }
     T::bulk(13, $permBad, 'مجوزهای پیامک و اعلان اعلام و در زمانِ اجرا خواسته می‌شوند');
 
+    // ⛔ پرسیدنِ مجوز در **اولین اجرا** — بدونِ پنجره‌ی اضافه.
+    //
+    //    گزارشِ مالکِ نصب: «اپ هنگام راه‌اندازی تأییدِ دسترسی نمی‌گیره،
+    //    پیامِ برداشت یا واریز هم گوشی نمی‌گیره». هر دو یک علت داشتند:
+    //    مجوز فقط از صفحه‌ی تنظیم خواسته می‌شد و کلید پیش‌فرض خاموش بود.
+    //    رفعش زیرکلاسِ `LauncherActivity` است که با `shouldLaunchImmediately()`
+    //    تا جوابِ دیالوگ صبر می‌کند — همان اکتیویتی، نه یکی دیگر پیش از
+    //    کروم (آن نسخه یک بار پس گرفته شد). شش بند، و هر کدام بی‌صدا
+    //    شکستنی:
+    $lauBad = [];
+    $lauSrc = (string)@file_get_contents($mobile . 'java/'
+                    . str_replace('.', '/', $appId) . '/HesabLauncherActivity.java');
+    $lauNC  = preg_replace('~/\*.*?\*/|(?<!:)//[^\n]*~s', '', $lauSrc) ?? $lauSrc;
+    $recvNC = preg_replace('~/\*.*?\*/|(?<!:)//[^\n]*~s', '',
+                (string)@file_get_contents($mobile . 'java/' . str_replace('.', '/', $appId)
+                    . '/BankSmsReceiver.java')) ?? '';
+    $setNC  = preg_replace('~/\*.*?\*/|(?<!:)//[^\n]*~s', '', $setup) ?? $setup;
+    if ($lauSrc === '') {
+        $lauBad[] = 'HesabLauncherActivity.java پیدا نشد — مجوز در اولین اجرا پرسیده نمی‌شود';
+    } else {
+        // ۱) زیرکلاسِ خودِ کتابخانه، نه یک اکتیویتیِ جدا.
+        if (!preg_match('~extends\s+LauncherActivity\b~', $lauNC)) {
+            $lauBad[] = 'HesabLauncherActivity — باید زیرکلاسِ LauncherActivity باشد، نه اکتیویتیِ جدا';
+        }
+        // ۲) مکث با قلابِ خودِ کتابخانه، و ادامه با `launchTwa()` **داخلِ
+        //    جوابِ دیالوگ** — بدونش اپ روی صفحه‌ی تیره می‌ماند.
+        if (!str_contains($lauNC, 'protected boolean shouldLaunchImmediately()')) {
+            $lauBad[] = 'HesabLauncherActivity — shouldLaunchImmediately() بازنویسی نشده';
+        }
+        $orp = strpos($lauNC, 'onRequestPermissionsResult');
+        if ($orp === false || !str_contains(substr($lauNC, $orp, 500), 'launchTwa();')) {
+            $lauBad[] = 'HesabLauncherActivity — بعد از جوابِ دیالوگ launchTwa() صدا زده نمی‌شود؛ اپ باز نمی‌شود';
+        }
+        // ۳) هر خطا → باز کن، نه کرش.
+        if (!preg_match('~catch\s*\(\s*Throwable[^)]*\)\s*\{[^}]*return true;~', $lauNC)) {
+            $lauBad[] = 'HesabLauncherActivity — خطا در مسیرِ مجوز به «باز کن» نمی‌رسد';
+        }
+        // ۴) سقفِ پرسیدن — نه در هر اجرا.
+        if (!preg_match('~MAX_ASKS\s*=\s*[12];~', $lauNC) || !str_contains($lauNC, '>= MAX_ASKS')) {
+            $lauBad[] = 'HesabLauncherActivity — سقفِ پرسیدن (MAX_ASKS ≤ ۲) نیست؛ هر اجرا دیالوگ می‌دهد';
+        }
+        // ۵) هر سه مجوز — در **فهرستِ درخواست** (`out.add`)، نه هر جای
+        //    فایل: همان نام در `has(...)` هم هست و جهشِ «از فهرست بینداز»
+        //    با `str_contains` ساده زنده ماند.
+        foreach (['RECEIVE_SMS', 'READ_SMS', 'POST_NOTIFICATIONS'] as $p) {
+            if (!str_contains($lauNC, 'out.add(Manifest.permission.' . $p . ')')) {
+                $lauBad[] = "HesabLauncherActivity — «{$p}» در اولین اجرا پرسیده نمی‌شود";
+            }
+        }
+        // ۶) و هیچ خواندنِ پیامکی — فقط مجوز.
+        foreach (['content://sms', 'getContentResolver', 'scanInbox'] as $x) {
+            if (str_contains($lauNC, $x)) {
+                $lauBad[] = "HesabLauncherActivity — «{$x}»؛ درِ ورودی فقط مجوز می‌گیرد، صندوق را نمی‌خواند";
+            }
+        }
+    }
+    // ⛔ کلاسِ خامِ کتابخانه دیگر نباید به‌عنوان اکتیویتی اعلام شود، وگرنه
+    //    دو درِ ورودی هست و یکی‌شان هرگز مجوز نمی‌پرسد.
+    if (str_contains($mf, 'android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"')) {
+        $lauBad[] = 'AndroidManifest — LauncherActivityِ خامِ کتابخانه هنوز اعلام شده';
+    }
+    // ⛔ پیش‌فرضِ کلیدِ ثبتِ خودکار **روشن** و تنها مرجع `DEFAULT_ON`.
+    if (!preg_match('~boolean\s+DEFAULT_ON\s*=\s*true\s*;~', $recvNC)) {
+        $lauBad[] = 'BankSmsReceiver — DEFAULT_ON = true نیست؛ کسی که فقط اپ را نصب کند پیامکی نمی‌گیرد';
+    }
+    foreach (['BankSmsReceiver' => $recvNC, 'SmsSetupActivity' => $setNC, 'HesabLauncherActivity' => $lauNC] as $who => $src) {
+        if (preg_match('~getBoolean\(\s*(?:BankSmsReceiver\.)?PREF_ON\s*,(?!\s*(?:BankSmsReceiver\.)?DEFAULT_ON\b)~', $src)) {
+            $lauBad[] = "{$who} — پیش‌فرضِ PREF_ON سخت‌کد است؛ باید از DEFAULT_ON بیاید";
+        }
+    }
+    // ⚠ «مجوز نداد» کلید را خاموش نمی‌کند، وگرنه دیالوگِ اولین اجرا دیگر
+    //   درباره‌ی پیامک نمی‌پرسید.
+    //   تنها `false` مجاز همان دکمه‌ی «خاموش کردن» در `onToggle()` است.
+    if (preg_match_all('~putBoolean\(\s*BankSmsReceiver\.PREF_ON\s*,\s*false\s*\)~', $setNC) > 1) {
+        $lauBad[] = 'SmsSetupActivity — ردِ مجوز کلید را خاموش می‌کند';
+    }
+    T::bulk(14, $lauBad, 'مجوز در اولین اجرا پرسیده می‌شود و ثبتِ خودکار پیش‌فرض روشن است');
+
     // آدرسِ باز شونده باید روی همان دامنه‌ای باشد که intent-filter
     // تأییدش می‌کند؛ وگرنه اپ صفحه‌ای را باز می‌کند که برایش تأیید ندارد.
     T::ok(($mHost[1] ?? '') !== '' && str_contains($mUrl[1] ?? '', $mHost[1] ?? "\0"),
@@ -952,7 +1032,11 @@ if (!file_exists($gradlePath)) {
     //
     // ⛔ فهرست بسته است تا فایلِ سومی بی‌سروصدا اضافه نشود. اگر روزی
     //    لازم شد، باید همین‌جا و آگاهانه باز شود.
-    $allowedNative = ['BankSmsReceiver.java', 'SmsSetupActivity.java'];
+    // ⚠ و `HesabLauncherActivity.java` سومی است، آگاهانه و همین‌جا: زیرکلاسِ
+    //   `LauncherActivity` که مجوزِ پیامک و اعلان را در اولین اجرا می‌پرسد
+    //   (مجوزِ زمانِ اجرا فقط از اکتیویتیِ خودمان خواسته می‌شود). آن هم هیچ
+    //   منطقِ دامنه‌ای ندارد و هیچ پیامکی نمی‌خواند.
+    $allowedNative = ['BankSmsReceiver.java', 'SmsSetupActivity.java', 'HesabLauncherActivity.java'];
 
     $code = [];
     $it = new RecursiveIteratorIterator(
@@ -5725,6 +5809,34 @@ if (strpos($man, 'android.support.customtabs.trusted.SMALL_ICON') === false || !
     $badPush[] = 'AndroidManifest — آیکونِ کوچکِ اعلان (SMALL_ICON) نیست';
 }
 T::bulk(13, $badPush, '⛔ اعلان روی گوشی: فهرستِ مجاز، سرویس‌ورکر، badge، cron، migration، var/ بسته، و مجوزِ اندروید');
+
+// ⛔ و **پیش‌فرض روشن** (خواستِ مالکِ نصب). رفتار را `test_sms_parse`
+//    با node روی `pushAutoAction()` می‌سنجد؛ اینجا شکلِ اتصال:
+//    ۱) اشتراکِ خودکار از همان تابع تصمیم می‌گیرد (نه شرطِ محلیِ دوم)؛
+//    ۲) «خاموش کردن» در پروفایل نشانه‌ی صریح می‌زند، وگرنه صفحه‌ی بعد
+//       دوباره روشنش می‌کرد — دکمه‌ای که کار نمی‌کند؛
+//    ۳) «روشن کردن» آن نشانه را برمی‌دارد؛
+//    ۴) کلید از `push_subscribe.php` می‌آید، نه یک `<meta>` روی هر صفحه
+//       (هیچ صفحه‌ای خواندنِ فایل یا کوئریِ تازه نگیرد)؛
+//    ۵) درخواستِ اجازه فقط با تپ است (`once`) — نه در بارگذاری.
+$badAuto = [];
+$js = (string)@file_get_contents(__DIR__ . '/../assets/js/app.js');
+if (!preg_match("/var act = window\.pushAutoAction\(Notification\.permission/", $js)) {
+    $badAuto[] = 'app.js — اشتراکِ خودکار از pushAutoAction() تصمیم نمی‌گیرد';
+}
+if (!preg_match("/pOff\.addEventListener\('click'[\s\S]{0,600}setItem\(PUSH_OFF_KEY, '1'\)/", $js)) {
+    $badAuto[] = 'app.js — «خاموش کردن» نشانه‌ی صریح نمی‌زند؛ اشتراکِ خودکار دوباره روشنش می‌کند';
+}
+if (!preg_match("/pOn\.addEventListener\('click'[\s\S]{0,300}removeItem\(PUSH_OFF_KEY\)/", $js)) {
+    $badAuto[] = 'app.js — «روشن کردن» نشانه‌ی خاموش را برنمی‌دارد';
+}
+if (!preg_match("/postParam\('action'\) === 'key'/", (string)@file_get_contents(__DIR__ . '/../api/push_subscribe.php'))) {
+    $badAuto[] = 'push_subscribe.php — action=key نیست؛ اشتراکِ خودکار کلید ندارد';
+}
+if (!preg_match("/Notification\.requestPermission\(\)[\s\S]{0,200}\}, \{ once: true, capture: true \}\)/", $js)) {
+    $badAuto[] = 'app.js — درخواستِ اجازه‌ی خودکار به اولین تپ بسته نیست';
+}
+T::bulk(5, $badAuto, '⛔ اعلان روی گوشی پیش‌فرض روشن: اشتراکِ خودکار، و «خاموش» محترم');
 
 // ---------------------------------------------------------------
 // ⛔ قاعده ۶۲ — nginx-var.sh جای درج را از ساختارِ فایل پیدا کند.
