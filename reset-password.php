@@ -75,7 +75,7 @@ if (!$check['ok']) {
     <?php endforeach; ?>
     <link rel="apple-touch-icon" href="<?= iconUrl('icon-180.png') ?>">
     <link rel="icon" type="image/png" sizes="32x32" href="<?= iconUrl('icon-32.png') ?>">
-    <meta name="theme-color" content="#0b0b0b">
+    <meta name="theme-color" content="#0b5d41">
     <meta name="referrer" content="no-referrer">
 </head>
 <body class="auth-body">

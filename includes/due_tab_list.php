@@ -56,7 +56,7 @@ $sts = safeToSpend($userId, 30);
             <div class="bs-label">موجودی کل</div>
             <div class="bs-value"><?= formatMoney($sts['balance']) ?></div>
         </div>
-        <div>
+        <div class="bs-out-row">
             <div class="bs-label">تعهدات ۳۰ روز آینده</div>
             <div class="bs-value bs-out"><?= formatMoney($sts['commitments']) ?></div>
         </div>

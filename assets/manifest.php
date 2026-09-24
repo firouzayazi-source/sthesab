@@ -21,8 +21,8 @@ $manifest = [
     'start_url'        => APP_BASE_PATH . '/index.php',
     'scope'            => APP_BASE_PATH . '/',
     'display'          => 'standalone',
-    'background_color' => '#0b0b0b',
-    'theme_color'      => '#0b0b0b',
+    'background_color' => '#0b5d41',
+    'theme_color'      => '#0b5d41',
     'orientation'      => 'portrait',
     'icons' => [
         ['src' => iconUrl('icon-192.png'), 'sizes' => '192x192', 'type' => 'image/png'],

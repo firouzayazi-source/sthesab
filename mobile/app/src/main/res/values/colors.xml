@@ -2,5 +2,5 @@
 <resources>
     <!-- همان theme_color در assets/manifest.php. اگر آنجا عوض شد،
          اینجا هم باید عوض شود، وگرنه نوار وضعیت با خودِ صفحه نمی‌خواند. -->
-    <color name="colorPrimary">#0b0b0b</color>
+    <color name="colorPrimary">#0b5d41</color>
 </resources>

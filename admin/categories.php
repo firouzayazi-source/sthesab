@@ -199,7 +199,7 @@ include __DIR__ . '/../includes/header.php';
                         <tr>
                             <td data-label="نام">
                                 <span style="display:inline-flex; align-items:center; gap:8px;">
-                                    <span class="cat-icon cat-icon-sm" style="background: <?= h($cat['color'] ?: '#64748b') ?>22; color: <?= h($cat['color'] ?: '#64748b') ?>;"><?= categoryIconSvg($cat['icon'], 15) ?></span>
+                                    <span class="cat-icon cat-icon-sm" style="--cat-bg: <?= h($cat['color'] ?: '#64748b') ?>22; color: <?= h($cat['color'] ?: '#64748b') ?>;"><?= categoryIconSvg($cat['icon'], 15) ?></span>
                                     <?= h($cat['name']) ?>
                                 </span>
                             </td>

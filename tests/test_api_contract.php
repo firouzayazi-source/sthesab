@@ -5460,6 +5460,124 @@ if (mb_strpos($delMsg, 'انتقال تراکنش‌ها به حساب دیگر'
 
 T::bulk(22, $badWm, '⛔ انتقالِ حساب از یک تابع، با موجودیِ اولیه، سد، و مالکیت');
 
+// ---------------------------------------------------------------
+// قاعده ۵۷ — برندِ سبز، یک رنگ در چهار جا، و ظاهرِ تازه برنگردد
+// ---------------------------------------------------------------
+//
+// ⛔ رنگِ برند در **چهار** جا نوشته می‌شود و هر کدام که جا بماند خرابی‌اش
+//    فقط روی گوشی دیده می‌شود: نوارِ وضعیتِ اندروید (`colorPrimary`)،
+//    رنگِ نوارِ مرورگر (`<meta name="theme-color">`)، صفحه‌ی راه‌اندازیِ
+//    PWA (`theme_color` در مانیفست)، و خودِ `--brand` در CSS.
+// ⛔ `var(--brand)` به‌عنوان **متن یا خط** ممنوع است: در شب سطحِ تیره است
+//    و زبانه‌ی فعالِ «سررسیدها» عملاً نامرئی بود. `--brand-fg` جایش است.
+// ⛔ و سه چیزِ ظاهری که هر کدام یک خرابیِ بی‌صدا را بسته‌اند:
+//    رنگِ دسته با `--cat-bg` (سفیدیِ `!important`ِ Finmori رنگِ inline را
+//    می‌کشت)، نوارِ ماه `direction: ltr` (مثل هر میله‌ی پیشرفت)، و کارتِ
+//    خانه که مقایسه را **یک** بار می‌خواند و جمله‌ی تکراری نمی‌سازد.
+T::group('قاعده ۵۷ — برندِ سبز و ظاهرِ تازه');
+
+$badBr = [];
+$brCss  = (string)preg_replace('#/\*.*?\*/#s', '', (string)@file_get_contents(__DIR__ . '/../assets/css/style.css'));
+
+// ۱) آخرین `--brand`ِ سطحِ :root (نه شب) همان رنگِ برند است.
+$brand = '';
+if (preg_match_all('/(?:^|\})\s*:root\s*\{([^{}]*)\}/s', $brCss, $rm)) {
+    foreach ($rm[1] as $body) {
+        if (preg_match('/--brand:\s*(#[0-9a-fA-F]{6})/', $body, $bm)) { $brand = strtolower($bm[1]); }
+    }
+}
+if ($brand === '') { $badBr[] = '--brand در :root پیدا نشد'; }
+
+$mani = (string)@file_get_contents(__DIR__ . '/../assets/manifest.php');
+if (!preg_match("/'theme_color'\s*=>\s*'(#[0-9a-fA-F]{6})'/", $mani, $tm)) {
+    $badBr[] = 'theme_color در مانیفست پیدا نشد';
+} elseif (strtolower($tm[1]) !== $brand) {
+    $badBr[] = "theme_color مانیفست ({$tm[1]}) با --brand ({$brand}) یکی نیست";
+}
+$xml = (string)@file_get_contents(__DIR__ . '/../mobile/app/src/main/res/values/colors.xml');
+if (!preg_match('#<color name="colorPrimary">(\#[0-9a-fA-F]{6})</color>#', $xml, $xm)) {
+    $badBr[] = 'colorPrimary پیدا نشد';
+} elseif (strtolower($xm[1]) !== $brand) {
+    $badBr[] = "colorPrimary ({$xm[1]}) با --brand ({$brand}) یکی نیست — نوارِ وضعیتِ اندروید با اپ نمی‌خواند";
+}
+$metaFiles = array_merge(glob(__DIR__ . '/../*.php'), [__DIR__ . '/../includes/header.php']);
+$metaSeen = 0;
+foreach ($metaFiles as $f) {
+    $src = (string)@file_get_contents($f);
+    if (preg_match_all('/<meta name="theme-color" content="(#[0-9a-fA-F]{6})"/', $src, $mm)) {
+        foreach ($mm[1] as $c) {
+            $metaSeen++;
+            if (strtolower($c) !== $brand) { $badBr[] = basename($f) . " — theme-color {$c} با --brand یکی نیست"; }
+        }
+    }
+}
+if ($metaSeen < 5) { $badBr[] = "فقط {$metaSeen} متای theme-color پیدا شد — کشف کور شده"; }
+
+// ۲) `--brand-fg` در هر دو تم.
+$lastRoot = ''; $lastDark = '';
+foreach ($rm[1] ?? [] as $body) { if (strpos($body, '--brand:') !== false) { $lastRoot = $body; } }
+if (preg_match_all('/(?:^|\})\s*html\[data-theme="dark"\]\s*\{([^{}]*)\}/s', $brCss, $dm)) {
+    foreach ($dm[1] as $body) { if (strpos($body, '--brand:') !== false) { $lastDark = $body; } }
+}
+if (strpos($lastRoot, '--brand-fg:') === false) { $badBr[] = '--brand-fg در تمِ روز تعریف نشده'; }
+if (strpos($lastDark, '--brand-fg:') === false) { $badBr[] = '--brand-fg در تمِ شب تعریف نشده — متنِ برند در شب نامرئی می‌شود'; }
+
+// ۳) برند به‌عنوان متن/خط فقط از `--brand-fg`؛ دکمه‌ی + استثناست (متن
+//    روی زمینه‌ی نعنایی، که در شب جدا بازنویسی می‌شود).
+if (preg_match_all('/([^{}]+)\{([^{}]*)\}/s', $brCss, $rules, PREG_SET_ORDER)) {
+    foreach ($rules as $r) {
+        if (!preg_match('/(?<![\w-])(color|border-color|border-bottom-color|outline)\s*:[^;]*var\(--brand\)/', $r[2])) { continue; }
+        if (strpos($r[1], 'bottom-nav-fab') !== false) { continue; }
+        // خطِ هم‌رنگِ زمینه‌ی خودش (چیپِ فعالِ پُر) متن نیست.
+        if (preg_match('/(?<![\w-])background\s*:\s*var\(--brand\)/', $r[2])) { continue; }
+        $badBr[] = trim(preg_replace('/\s+/', ' ', $r[1])) . ' — var(--brand) به‌عنوان متن/خط؛ --brand-fg بنویسید';
+    }
+}
+
+// ۴) آیکونِ دسته: رنگ از `--cat-bg`، نه `background:` inline.
+foreach (array_merge(glob(__DIR__ . '/../*.php'), glob(__DIR__ . '/../admin/*.php'),
+                     glob(__DIR__ . '/../includes/*.php'), glob(__DIR__ . '/../api/*.php')) as $f) {
+    if (preg_match('/class="cat-icon[^"]*"\s+style="background\s*:/', (string)@file_get_contents($f))) {
+        $badBr[] = basename($f) . ' — cat-icon با background inline (زیرِ !important سفید می‌شود؛ --cat-bg بنویسید)';
+    }
+}
+if (!preg_match('/\.cat-icon\[style\*="--cat-bg"\]\s*\{[^}]*var\(--cat-bg\)\s*!important/', $brCss)) {
+    $badBr[] = 'قاعده‌ی .cat-icon[style*="--cat-bg"] رفته';
+}
+
+// ۵) نوارِ ماه از چپ پر می‌شود، و دریافتی/پرداختی ردیفِ کلید/مقدارند.
+if (!preg_match('/\.month-meter-track\s*\{[^}]*direction:\s*ltr/', $brCss)) {
+    $badBr[] = '.month-meter-track — direction: ltr ندارد (در RTL از راست پر می‌شد)';
+}
+if (!preg_match('/\.balance-split\s*\{[^}]*flex-direction:\s*column/', $brCss)) {
+    $badBr[] = '.balance-split دوباره دوستونه شده — برچسب و عددش دور از هم می‌افتند';
+}
+
+// ۶) کارتِ خانه: یک مقایسه، بدونِ جمله‌ی تکراری.
+$ix = '';
+foreach (token_get_all((string)@file_get_contents(__DIR__ . '/../index.php')) as $tk) {
+    if (is_array($tk) && in_array($tk[0], [T_COMMENT, T_DOC_COMMENT], true)) { continue; }
+    $ix .= is_array($tk) ? $tk[1] : $tk;
+}
+if (substr_count($ix, 'monthComparison(') !== 1) { $badBr[] = 'index.php باید monthComparison را دقیقاً یک بار صدا بزند'; }
+if (preg_match('/SUM\(CASE WHEN type\s*=\s*"income"/', $ix)) { $badBr[] = 'index.php جمعِ ماه را دوباره خودش می‌خواند'; }
+if (!preg_match('/financialHighlights\(\$userId,\s*\$walletRows,\s*\$monthCmp,\s*true\)/', $ix)) {
+    $badBr[] = 'financialHighlights روی خانه همان مقایسه را دوباره می‌گوید';
+}
+if (strpos($ix, 'monthMeter($monthCmp)') === false) { $badBr[] = 'نوارِ ماه از monthMeter() نمی‌آید'; }
+
+// ۷) جای‌نگهدارِ بارگذاری فقط از `skeletonHtml`.
+$brJs = (string)@file_get_contents(__DIR__ . '/../assets/js/app.js');
+if (preg_match_all("/innerHTML\s*=\s*'[^']*در حال بارگذاری/u", $brJs, $jm)) {
+    $badBr[] = 'app.js — ' . count($jm[0]) . ' جای‌نگهدارِ متنی به‌جای window.skeletonHtml()';
+}
+if (preg_match('/document\.addEventListener\(\'DOMContentLoaded\'/', $brJs, $dcl, PREG_OFFSET_CAPTURE)
+    && (($sk = strpos($brJs, 'window.skeletonHtml = function')) === false || $sk > $dcl[0][1])) {
+    $badBr[] = 'window.skeletonHtml باید بیرون (پیش) از DOMContentLoaded باشد';
+}
+
+T::bulk(16, $badBr, '⛔ رنگِ برند یکی، متنِ برند در شب دیده می‌شود، و ظاهرِ تازه سرِ جایش است');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

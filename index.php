@@ -34,18 +34,14 @@ $recentStmt = $pdo->prepare('
 $recentStmt->execute(['user_id' => $userId]);
 $recentTransactions = $recentStmt->fetchAll();
 
-// آمار ماه جاری برای نوار مانده بالای صفحه
-$monthStmt = $pdo->prepare('
-    SELECT
-        COALESCE(SUM(CASE WHEN type = "income" THEN amount ELSE 0 END), 0) AS income,
-        COALESCE(SUM(CASE WHEN type = "expense" THEN amount ELSE 0 END), 0) AS expense
-    FROM transactions
-    WHERE user_id = :user_id AND transaction_date BETWEEN :from_date AND :to_date
-');
-$monthStmt->execute(['user_id' => $userId, 'from_date' => startOfJalaliMonth(), 'to_date' => $today]);
-$monthRow = $monthStmt->fetch();
-$monthIncome  = (int)$monthRow['income'];
-$monthExpense = (int)$monthRow['expense'];
+// آمار ماه جاری برای نوار مانده بالای صفحه.
+// ⛔ از `monthComparison()` می‌آید، نه یک کوئریِ جدا: همان تابع جمعِ
+//    «از اولِ ماه تا امروز» را دارد و مقایسه با همین روزِ ماهِ قبل را هم،
+//    و `financialHighlights()` هم پیش از این همان را **دوباره** صدا
+//    می‌زد. حالا یک بار خوانده و به هر دو داده می‌شود.
+$monthCmp     = monthComparison($userId);
+$monthIncome  = (int)$monthCmp['current_income'];
+$monthExpense = (int)$monthCmp['current_expense'];
 $monthNet     = $monthIncome - $monthExpense;
 
 // ⛔ جمله‌ها **بعد از** جمع‌های بالا ساخته می‌شوند و خودشان هیچ استثنایی
@@ -64,7 +60,14 @@ $monthNet     = $monthIncome - $monthExpense;
 //   تضمین می‌کند، پس چیزی نمی‌تواند کهنه بماند.
 $walletRows = walletBalances($userId);
 
-$highlights = financialHighlights($userId, $walletRows);
+// ⛔ جمله‌ی «حالِ کلیِ ماه» اینجا حذف می‌شود چون همان مقایسه **روی خودِ
+//    کارتِ ماه** نوشته شده؛ دو بار گفتنِ یک جمله در یک صفحه فقط جای
+//    یک خبرِ دیگر را می‌گرفت.
+$highlights = financialHighlights($userId, $walletRows, $monthCmp, true);
+
+// نوارِ «چقدر از دریافتی خرج شد» و خطِ مقایسه — تصمیمش در
+// `monthMeter()` است تا تست بدونِ رندرِ صفحه بسنجدش.
+$meter = monthMeter($monthCmp);
 
 // ⛔ «دقیقه‌ی اول». تصمیمش تنها در `openingBalanceHint()` است.
 $openingHint = openingBalanceHint($userId);
@@ -154,16 +157,34 @@ include __DIR__ . '/includes/header.php';
         <div class="balance-ribbon">
             <div class="balance-label">مانده این ماه</div>
             <div class="balance-value"><span class="bv-num"><?= $monthNet < 0 ? '−' : '' ?><?= formatMoney(abs($monthNet)) ?></span><span class="bv-unit">تومان</span></div>
+            <?php if ($meter['pct'] !== null): ?>
+            <div class="month-meter<?= $meter['tone'] !== '' ? ' is-' . h($meter['tone']) : '' ?>">
+                <div class="month-meter-track"><div class="month-meter-fill" style="width: <?= (int)$meter['fill'] ?>%"></div></div>
+                <div class="month-meter-caption"><?= h($meter['caption']) ?></div>
+            </div>
+            <?php endif; ?>
             <div class="balance-split">
-                <div>
+                <div class="bs-in-row">
                     <div class="bs-label">دریافتی</div>
                     <div class="bs-value bs-in"><?= formatMoney($monthIncome) ?></div>
                 </div>
-                <div>
+                <div class="bs-out-row">
                     <div class="bs-label">پرداختی</div>
                     <div class="bs-value bs-out"><?= formatMoney($monthExpense) ?></div>
                 </div>
             </div>
+            <?php if ($meter['compare'] !== null): ?>
+            <div class="month-compare is-<?= h($meter['compare']['dir']) ?>">
+                <?php if ($meter['compare']['dir'] === 'up'): ?>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+                <?php elseif ($meter['compare']['dir'] === 'down'): ?>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+                <?php else: ?>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg>
+                <?php endif; ?>
+                <span><?= h($meter['compare']['text']) ?></span>
+            </div>
+            <?php endif; ?>
         </div>
 
         <?php foreach ($pinned as $pw): ?>

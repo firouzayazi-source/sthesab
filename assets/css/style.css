@@ -952,10 +952,10 @@ textarea { resize: vertical; }
     display: inline-flex; align-items: center; justify-content: center;
     min-height: 32px; padding: 0 12px; border-radius: 9px;
     border: 1px solid var(--line); background: transparent;
-    color: var(--brand); font-size: 12.5px; font-weight: 600;
+    color: var(--brand-fg); font-size: 12.5px; font-weight: 600;
     text-decoration: none; white-space: nowrap; cursor: pointer;
 }
-.pager-link:hover { border-color: var(--brand); }
+.pager-link:hover { border-color: var(--brand-fg); }
 .pager-link.is-off { color: var(--muted); opacity: .55; cursor: default; }
 .pager-link.is-off:hover { border-color: var(--line); }
 .pager-info { font-size: 12px; color: var(--muted); white-space: nowrap; }
@@ -972,10 +972,10 @@ textarea { resize: vertical; }
     display: inline-flex; align-items: center; justify-content: center;
     min-width: 32px; min-height: 32px; padding: 0 7px; border-radius: 9px;
     border: 1px solid var(--line); background: transparent;
-    color: var(--brand); font-size: 12.5px; font-weight: 600;
+    color: var(--brand-fg); font-size: 12.5px; font-weight: 600;
     text-decoration: none; white-space: nowrap; flex: 0 0 auto;
 }
-.pager-num:hover { border-color: var(--brand); }
+.pager-num:hover { border-color: var(--brand-fg); }
 .pager-num.is-current {
     background: var(--brand); border-color: var(--brand); color: #fff; cursor: default;
 }
@@ -998,8 +998,8 @@ textarea { resize: vertical; }
     padding: 10px 6px; border-radius: 12px; border: 1px solid var(--line);
     text-decoration: none; color: inherit; min-width: 0;
 }
-.user-stat:hover { border-color: var(--brand); }
-.user-stat.is-current { border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
+.user-stat:hover { border-color: var(--brand-fg); }
+.user-stat.is-current { border-color: var(--brand-fg); box-shadow: inset 0 0 0 1px var(--brand-fg); }
 .user-stat-num { font-size: 18px; font-weight: 800; }
 .user-stat-label { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
 .user-stat.is-warn .user-stat-num { color: var(--warn-ink); }
@@ -1059,7 +1059,7 @@ textarea { resize: vertical; }
     display: block; padding: 13px 14px; border: 1px solid var(--line);
     border-radius: 12px; font-size: .93rem; color: inherit; text-decoration: none;
 }
-.sup-pick-item:hover { border-color: var(--brand); }
+.sup-pick-item:hover { border-color: var(--brand-fg); }
 
 .sup-gate { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .sup-still { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
@@ -1084,7 +1084,7 @@ textarea { resize: vertical; }
 /* ⚠ «پاسخ داده شد» عمداً رنگِ هشدار نمی‌گیرد: چیزی خراب نشده. و
    `--gold` هم به کار نمی‌رود — پالتِ دومِ همین فایل آن را به آبی
    بازتعریف می‌کند و نشان با نشانِ «اطلاع» یکی دیده می‌شد. */
-.sup-status-answered { background: var(--chip-bg); color: var(--brand); }
+.sup-status-answered { background: var(--chip-bg); color: var(--brand-fg); }
 .sup-status-closed   { background: var(--chip-bg);   color: var(--ink-soft); }
 .sup-prio-low    { background: var(--chip-bg);   color: var(--ink-soft); }
 .sup-prio-normal { background: var(--chip-bg);   color: var(--ink-soft); }
@@ -1092,7 +1092,7 @@ textarea { resize: vertical; }
 
 .sup-thread { display: flex; flex-direction: column; gap: 12px; }
 .sup-msg { border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; }
-.sup-msg-admin { border-color: var(--brand); }
+.sup-msg-admin { border-color: var(--brand-fg); }
 .sup-msg-who {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     font-size: .82rem; font-weight: 600; color: var(--ink-soft); margin-bottom: 6px;
@@ -1101,7 +1101,7 @@ textarea { resize: vertical; }
 .sup-msg-body { line-height: 2; font-size: .93rem; white-space: pre-wrap; }
 .sup-file {
     display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
-    font-size: .84rem; color: var(--brand); text-decoration: none;
+    font-size: .84rem; color: var(--brand-fg); text-decoration: none;
 }
 
 .sup-row {
@@ -1242,7 +1242,7 @@ textarea { resize: vertical; }
     transition: color .15s, border-color .15s, background .15s;
 }
 .sms-paste-btn:hover,
-.sms-paste-btn.active { color: var(--brand); border-color: var(--brand); }
+.sms-paste-btn.active { color: var(--brand-fg); border-color: var(--brand-fg); }
 .sms-paste-btn.active { background: var(--line-soft); }
 
 .sms-paste {
@@ -1843,13 +1843,13 @@ button.status-badge:active { transform: scale(.96); }
     -webkit-tap-highlight-color: transparent;
 }
 .ref-chip-pin svg { display: block; }
-.ref-chip-pin.is-on { color: var(--brand); }
+.ref-chip-pin.is-on { color: var(--brand-fg); }
 /* ⚠ چیپِ پین‌شده باید در **یک نگاه** از بقیه جدا باشد، وگرنه کاربر در
    فهرستی با ۲۰ دسته نمی‌فهمد کدام‌ها را انتخاب کرده و آیکونِ کوچک را
    تک‌تک نگاه می‌کند. */
 .ref-chip:has(.ref-chip-pin.is-on) {
     background: color-mix(in srgb, var(--brand) 12%, var(--surface));
-    border-color: var(--brand);
+    border-color: var(--brand-fg);
 }
 .ref-empty { font-size: 12.5px; color: var(--muted-2); }
 .ref-unit-input { max-width: 110px; }
@@ -1935,7 +1935,7 @@ button.status-badge:active { transform: scale(.96); }
 }
 .page-tab svg { flex: none; opacity: .8; }
 .page-tab:hover { color: var(--ink-soft); }
-.page-tab.is-active { color: var(--brand); border-bottom-color: var(--brand); }
+.page-tab.is-active { color: var(--brand-fg); border-bottom-color: var(--brand-fg); }
 .page-tab.is-active svg { opacity: 1; }
 /* شمارنده‌ی کنارِ زبانه — فقط وقتی چیزی هست. */
 .page-tab-n {
@@ -2322,7 +2322,7 @@ html.is-locked, html.is-locked body {
 /* حالت شب: کارت‌ها با کنتراست ملایم‌تر از هم جدا شوند */
 html[data-theme="dark"] .card,
 html[data-theme="dark"] .stats-card,
-html[data-theme="dark"] .summary-box { background: #1b1e24; }
+html[data-theme="dark"] .summary-box { background: var(--surface); }
 html[data-theme="dark"] .balance-ribbon { box-shadow: none; }
 
 /* اسکرول روان‌تر و بدون کشسانی مزاحم داخل شیت‌ها */
@@ -2350,7 +2350,7 @@ html[data-theme="dark"] {
 }
 html[data-theme="dark"] .card,
 html[data-theme="dark"] .stats-card,
-html[data-theme="dark"] .summary-box { background: #16191e; border-color: #22262c; }
+html[data-theme="dark"] .summary-box { background: var(--surface); border-color: var(--line); }
 html[data-theme="dark"] .balance-ribbon { background: #0a0b0d; }
 
 /* حالت روز: کارت مانده کمی نرم‌تر از سیاه مطلق */
@@ -2549,7 +2549,7 @@ html[data-theme="dark"] .seg-item.active { background: #2b3037; color: var(--ink
 /* راست‌به‌چپ: حالت روشن یعنی دستگیره به سمت چپ می‌رود */
 .switch input:checked + .switch-track .switch-knob { transform: translateX(-18px); }
 .switch input:focus-visible + .switch-track {
-    outline: 2px solid var(--brand); outline-offset: 2px;
+    outline: 2px solid var(--brand-fg); outline-offset: 2px;
 }
 .switch input:disabled + .switch-track { opacity: .5; }
 .switch-text { flex: 1; min-width: 0; }
@@ -3984,7 +3984,7 @@ html.kb-open .bottom-nav { display: none; }
 .stay-chip:active { transform: scale(.96); }
 .stay-chip.active {
     background: var(--brand);
-    border-color: var(--brand);
+    border-color: var(--brand-fg);
     color: var(--brand-on);
 }
 html[data-theme="dark"] .stay-chip.active { box-shadow: none; }
@@ -4905,3 +4905,249 @@ html[data-theme="dark"] {
 }
 .bank-pick-logo img { width: 30px; height: 30px; object-fit: contain; display: block; }
 .bank-pick-logo[hidden] { display: none; }
+
+/* ============================================================
+   ۴۰. برندِ سبزِ «حساب لند» — هم‌خانواده با آیکون
+
+   ⛔ این بخش **آخرین** بخشِ فایل است و باید بماند: توکن‌ها چند بار در
+      این فایل بازتعریف شده‌اند (زغالی، Finmori سرمه‌ای، …) و آخرینِ هم‌وزن
+      برنده است. رنگِ برند فقط **اینجا** تعریف می‌شود.
+   ⛔ سه جای دیگر همین رنگ را دارند و باید با هم عوض شوند (قاعده ۵۷):
+      `theme_color` در `assets/manifest.php`، هر `<meta name="theme-color">`،
+      و `colorPrimary` در `mobile/…/values/colors.xml`. با یکی، نوارِ
+      وضعیتِ گوشی با خودِ صفحه نمی‌خواند.
+   ⚠ `--in`/`--out` عمداً دست نخوردند: آن‌ها **معنا** دارند (درآمد و
+     هزینه)، نه برند. سبزِ برند روی **سطح** می‌نشیند (نوار، دکمه، کارتِ
+     ماه) و سبزِ درآمد روی **عدد** — پس با هم اشتباه خوانده نمی‌شوند.
+   ⚠ نامِ `--gold*` جا ماند و دیگر نه طلایی است نه آبی: «رنگِ تعامل»
+     است (لینک، چیپِ فعال). عوض کردنِ نامش صدها مصرف‌کننده را می‌شکست.
+   ============================================================ */
+:root {
+    --ink:        #13211a;
+    --ink-soft:   #26372e;
+    --muted:      #637168;
+    --muted-2:    #97a49c;
+    --line:       #e2eae5;
+    --line-soft:  #eff4f1;
+    --surface:    #ffffff;
+    --paper:      #f4f7f5;
+
+    --brand:      #0b5d41;   /* نوار پایین، منوی کناری، دکمه‌ی اصلی */
+    --brand-deep: #073f2c;
+    --brand-on:   #ffffff;
+    /* برند به‌عنوان **متن یا خط** (زبانه‌ی فعال، حاشیه‌ی انتخاب). در شب
+       خودِ --brand سطحِ تیره است و متنِ هم‌رنگش روی زمینه‌ی تیره گم
+       می‌شد — زبانه‌ی فعالِ «سررسیدها» عملاً نامرئی بود. */
+    --brand-fg:   #0b5d41;
+
+    --gold:       #0a8154;   /* تعامل */
+    --gold-lift:  #11a36b;
+    --gold-wash:  #e5f5ed;
+
+    --sh:    0 1px 2px rgba(10,48,33,.04);
+    --sh-lg: 0 14px 34px -10px rgba(10,48,33,.28);
+    --sh-card: 0 1px 2px rgba(10,48,33,.04), 0 4px 14px -8px rgba(10,48,33,.10);
+}
+html[data-theme="dark"] {
+    --ink:        #e7efea;
+    --ink-soft:   #cbd7d0;
+    --muted:      #8b9c93;
+    --muted-2:    #677870;
+    --line:       #22302a;
+    --line-soft:  #1a2520;
+    --surface:    #131b17;
+    --paper:      #0b100e;
+
+    --brand:      #17583f;
+    --brand-deep: #0c2e22;
+    --brand-on:   #ffffff;
+    --brand-fg:   #4fd1a0;
+
+    --gold:       #4fd1a0;
+    --gold-lift:  #7fe2bd;
+    --gold-wash:  #12291f;
+
+    --sh:    none;
+    --sh-lg: 0 14px 34px -10px rgba(0,0,0,.6);
+    --sh-card: none;
+}
+
+/* ---------- کارت‌ها: یک شعاع، یک سایه، یک خط ---------- */
+.card, .stats-card, .summary-box {
+    border-radius: var(--r-lg);
+    border: 1px solid var(--line);
+    box-shadow: var(--sh-card);
+}
+
+/* ---------- منوی کناری ---------- */
+.sidebar { background: linear-gradient(180deg, var(--brand) 0%, var(--brand-deep) 100%); }
+.sidebar-nav a.active { background: rgba(255,255,255,.94); color: var(--brand-fg); font-weight: 700; }
+html[data-theme="dark"] .sidebar-nav a.active { background: rgba(79,209,160,.16); color: var(--gold-lift); }
+
+/* ---------- کارتِ «مانده این ماه» ---------- */
+.balance-ribbon {
+    background: linear-gradient(135deg, #0f7550 0%, #0b5d41 46%, #073f2c 100%);
+    box-shadow: 0 16px 32px -16px rgba(7,63,44,.75);
+}
+html[data-theme="dark"] .balance-ribbon {
+    background: linear-gradient(135deg, #145a41 0%, #0f4130 50%, #0a2c20 100%);
+    box-shadow: none;
+}
+.balance-ribbon .bs-value.bs-in,  .balance-ribbon .bs-in  { color: #b7f4d2; }
+.balance-ribbon .bs-value.bs-out, .balance-ribbon .bs-out { color: #ffc0c2; }
+.ribbon-link { color: #c8f5de; }
+
+/* ⛔ دریافتی/پرداختی: برچسب راست، عدد چپ، **روی یک خط**. نسخه‌ی قبلی
+   دو ستون بود و در هر ستون برچسب راست‌چین و عدد چپ‌چین می‌نشست، پس
+   «پرداختی» وسطِ کارت بود و عددش لبه‌ی چپ — دو چیزی که به هم تعلق
+   دارند دورترین فاصله را داشتند. ردیفِ کلید/مقدار همان قاعده‌ی «عدد
+   چپ‌چین» را نگه می‌دارد و جفت را کنارِ هم می‌گذارد. هر سه مصرف‌کننده
+   (خانه، حساب‌ها، پول قابل خرج) با همین یک قاعده عوض می‌شوند. */
+.balance-split { flex-direction: column; gap: 7px; }
+.balance-split > div {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+}
+.balance-split .bs-label { margin-bottom: 0; font-size: 12px; display: inline-flex; align-items: center; gap: 7px; }
+.balance-split .bs-label::before {
+    content: ''; width: 7px; height: 7px; border-radius: 50%;
+    background: currentColor; opacity: .55; flex: none;
+}
+.balance-split .bs-in-row .bs-label::before  { background: #b7f4d2; opacity: 1; }
+.balance-split .bs-out-row .bs-label::before { background: #ffc0c2; opacity: 1; }
+
+/* نوارِ «چقدر از دریافتی خرج شد» — ⛔ `direction: ltr` روی ترک، مثل هر
+   میله‌ی پیشرفتِ دیگرِ اپ: از چپ پر می‌شود. */
+.month-meter { margin-top: 14px; }
+.month-meter-track {
+    direction: ltr;
+    height: 6px; border-radius: var(--r-pill);
+    background: rgba(255,255,255,.16);
+    overflow: hidden;
+}
+.month-meter-fill {
+    height: 100%; border-radius: var(--r-pill);
+    background: #d9fbe9;
+    transition: width .5s ease;
+}
+.month-meter.is-warn .month-meter-fill { background: #fcd679; }
+.month-meter.is-over .month-meter-fill { background: #ff9b9e; }
+.month-meter-caption {
+    margin-top: 6px;
+    font-size: 11.5px; color: rgba(255,255,255,.72);
+}
+.month-compare {
+    margin-top: 11px;
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11.5px; color: rgba(255,255,255,.72);
+}
+.month-compare svg { flex: none; }
+.month-compare.is-up   svg { color: #ffc0c2; }
+.month-compare.is-down svg { color: #b7f4d2; }
+
+/* ---------- نوار پایین ---------- */
+.bottom-nav {
+    background: var(--brand);
+    box-shadow: 0 12px 30px -10px rgba(7,63,44,.55);
+}
+html[data-theme="dark"] .bottom-nav { box-shadow: 0 0 0 1px var(--line), 0 12px 30px -10px rgba(0,0,0,.7); }
+.bottom-nav-item { color: rgba(255,255,255,.58); position: relative; }
+.bottom-nav-item.active { color: #fff; }
+.bottom-nav-item svg { transition: transform .2s ease; }
+.bottom-nav-item.active svg { transform: translateY(-1px); }
+/* ⛔ نشانگرِ فعال یک خطِ کوتاه زیرِ برچسب است، نه فقط رنگ: روی نوارِ
+   تیره تفاوتِ «سفید» و «سفیدِ کم‌رنگ» در آفتاب دیده نمی‌شود. */
+.bottom-nav-item.active::after {
+    content: '';
+    position: absolute; bottom: 7px; left: 50%;
+    width: 16px; height: 3px; margin-left: -8px;
+    border-radius: var(--r-pill);
+    background: #7fe2bd;
+}
+.bottom-nav-fab {
+    background: linear-gradient(150deg, #e4f8ee, #aeeacd);
+    color: var(--brand);
+    box-shadow: 0 5px 14px -4px rgba(7,63,44,.55);
+}
+html[data-theme="dark"] .bottom-nav-fab {
+    background: linear-gradient(150deg, #7fe2bd, #3fbf8c);
+    color: #06251a;
+    box-shadow: 0 5px 14px -4px rgba(0,0,0,.6);
+}
+
+/* ---------- سرِ پروفایل ---------- */
+.profile-head { background: linear-gradient(170deg, #dcf5e8 0%, #eef8f3 45%, var(--surface) 100%); }
+html[data-theme="dark"] .profile-head { background: linear-gradient(170deg, #143a2b 0%, #12251d 48%, var(--surface) 100%); }
+.profile-avatar {
+    background: linear-gradient(150deg, #11a36b, #0b5d41);
+    box-shadow: 0 6px 16px -6px rgba(11,93,65,.55);
+}
+
+/* ---------- کنترلِ بخش‌بندی‌شده و چیپِ فعال ---------- */
+.seg-item.active { box-shadow: 0 1px 3px rgba(10,48,33,.12); }
+html[data-theme="dark"] .seg-item.active { background: var(--brand); color: #fff; }
+
+/* ---------- آیکونِ دسته: دایره‌ی رنگیِ کم‌جان ----------
+   ⛔ رنگ از خودِ دسته می‌آید (`--cat-bg`، که `renderTransactionRow()`
+   می‌گذارد)، نه یک پالتِ دوم. Finmori آن را با `!important` سفید کرده
+   بود و فهرستِ ده تراکنش ده دایره‌ی سفیدِ یکسان می‌شد؛ چشم باید از
+   روی رنگ دسته را بشناسد، نه با خواندنِ زیرعنوان. */
+.cat-icon[style*="--cat-bg"] {
+    background: var(--cat-bg) !important;
+    box-shadow: none;
+}
+
+/* ---------- سرِ روز در فهرستِ تراکنش‌ها ---------- */
+.tx-day-header { padding-top: 14px; }
+.tx-day-date { color: var(--ink-soft); font-size: 12px; letter-spacing: 0; }
+.tx-day-date .tx-day-rel { color: var(--gold); font-weight: 800; margin-left: 6px; }
+.tx-day-total { font-size: 12px; font-weight: 700; opacity: .9; }
+
+/* ---------- شیت‌ها: باز شدنِ نرم‌تر ----------
+   فقط منحنی و مدت عوض شد، نه خودِ حرکت: همان `sheetUp` با شتابِ
+   «ease-out» تند، که شیت را سریع می‌آورد و آرام می‌نشاند. پرده هم محو
+   می‌شود، نه اینکه یک‌باره سیاه شود. */
+.sheet, .more-sheet { animation: sheetUp .28s cubic-bezier(.2,.8,.25,1); }
+.sheet-overlay.show, .more-sheet-overlay.show { animation: overlayIn .2s ease-out; }
+@keyframes overlayIn { from { background-color: rgba(0,0,0,0); } }
+@media (prefers-reduced-motion: reduce) {
+    .sheet, .more-sheet, .sheet-overlay.show, .more-sheet-overlay.show { animation: none; }
+}
+
+/* ---------- حالتِ خالی: یک نشانِ آرام بالای جمله ----------
+   ⛔ فقط روی `p.empty-row`، نه `td.empty-row`: داخلِ جدول، نشانِ ۵۶
+   پیکسلی ردیف را بی‌تناسب بلند می‌کرد. کارتِ خالی بدونِ نشان شبیهِ
+   «صفحه درست بار نشد» دیده می‌شود؛ با نشان، شبیهِ «هنوز چیزی نیست».
+   ⚠ آیکن یک data URI است (CSP: `img-src 'self' data:`)، و رنگِ خطش
+   در شب جدا نوشته شده چون داخلِ data URI متغیرِ CSS کار نمی‌کند. */
+p.empty-row::before {
+    content: '';
+    display: block;
+    width: 54px; height: 54px;
+    margin: 0 auto 12px;
+    border-radius: 18px;
+    background: var(--gold-wash) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230a8154' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-6l-2 3h-4l-2-3H2'/%3E%3Cpath d='M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'/%3E%3C/svg%3E") center / 26px no-repeat;
+}
+html[data-theme="dark"] p.empty-row::before {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234fd1a0' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-6l-2 3h-4l-2-3H2'/%3E%3Cpath d='M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'/%3E%3C/svg%3E");
+}
+p.empty-row { color: var(--muted); line-height: 1.9; }
+
+/* ---------- اسکلتِ بارگذاری (`window.skeletonHtml`) ---------- */
+.sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.skel { padding: 6px 0; }
+.skel-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; }
+.skel-dot, .skel-line, .skel-amt {
+    background: linear-gradient(90deg, var(--line-soft) 0%, var(--line) 50%, var(--line-soft) 100%);
+    background-size: 200% 100%;
+    animation: skelShine 1.2s ease-in-out infinite;
+}
+.skel-dot { width: 36px; height: 36px; border-radius: 50%; flex: none; }
+.skel-lines { flex: 1; display: flex; flex-direction: column; gap: 7px; }
+.skel-line { height: 10px; border-radius: 6px; width: 62%; }
+.skel-line.is-short { width: 34%; }
+.skel-amt { width: 70px; height: 12px; border-radius: 6px; flex: none; }
+@keyframes skelShine { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .skel-dot, .skel-line, .skel-amt { animation: none; } }

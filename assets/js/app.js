@@ -675,6 +675,28 @@ if ('serviceWorker' in navigator) {
     };
 })();
 
+/**
+ * جای‌نگهدارِ «در حال بارگذاری» به شکلِ ردیف‌های کم‌رنگ، نه یک جمله.
+ *
+ * ⛔ فقط برای محتوایی است که با `fetch` می‌آید (جزئیاتِ روز، تاریخچه‌ی
+ *    پس‌انداز، پیوست‌ها). صفحه‌ها سمتِ سرور رندر می‌شوند و اسکلت روی آن‌ها
+ *    یعنی پنهان کردنِ چیزی که **از قبل رسیده** — بدتر از هیچ.
+ * ⚠ متنِ «در حال بارگذاری…» برای صفحه‌خوان سرِ جایش می‌ماند
+ *   (`.sr-only`)؛ ردیف‌های خاکستری برای چشم‌اند، نه برای گوش.
+ * ⚠ بیرون از `DOMContentLoaded` است تا در node آزمودنی باشد — همان
+ *   قاعده‌ی `parseBankSms()` و `kbNeedsKeyboard()`.
+ */
+window.skeletonHtml = function (rows) {
+    var n = Math.max(1, Math.min(6, parseInt(rows, 10) || 1));
+    var out = '<div class="skel" role="status" aria-busy="true"><span class="sr-only">در حال بارگذاری…</span>';
+    for (var i = 0; i < n; i++) {
+        out += '<div class="skel-row" aria-hidden="true"><span class="skel-dot"></span>'
+             + '<span class="skel-lines"><span class="skel-line"></span><span class="skel-line is-short"></span></span>'
+             + '<span class="skel-amt"></span></div>';
+    }
+    return out + '</div>';
+};
+
 document.addEventListener('DOMContentLoaded', function () {
 
     // اول از همه: حالا که این فایل واقعاً اجرا شد، صفحه دیگر «در حال
@@ -2233,7 +2255,7 @@ document.addEventListener('DOMContentLoaded', function () {
             var toEl = document.getElementById('reportToDate');
             if (!typeEl || !fromEl || !toEl) return;
 
-            detailEl.innerHTML = '<p style="text-align:center; color:var(--color-gray-500); padding:8px 0;">در حال بارگذاری...</p>';
+            detailEl.innerHTML = window.skeletonHtml(3);
             detailEl.hidden = false;
 
             var url = apiUrl('category_transactions.php') + '?category_id=' + encodeURIComponent(catId)
@@ -3149,7 +3171,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
             if (!box.hidden) { box.hidden = true; return; }
 
-            box.innerHTML = '<p style="text-align:center; color:var(--muted); padding:10px 0;">در حال بارگذاری...</p>';
+            box.innerHTML = window.skeletonHtml(2);
             box.hidden = false;
 
             fetch(apiUrl('savings_history.php') + '?goal_id=' + encodeURIComponent(goalId))
@@ -3435,7 +3457,7 @@ document.addEventListener('DOMContentLoaded', function () {
             this.classList.add('cal-selected');
 
             card.hidden = false;
-            body.innerHTML = '<p style="text-align:center; color:var(--muted); padding:12px 0;">در حال بارگذاری…</p>';
+            body.innerHTML = window.skeletonHtml(3);
 
             fetch(apiUrl('day_detail.php') + '?date=' + encodeURIComponent(date))
                 .then(function (r) { return r.text(); })
@@ -3667,7 +3689,7 @@ document.addEventListener('DOMContentLoaded', function () {
         var list = box.querySelector('.attach-list');
         if (!list) return;
 
-        list.innerHTML = '<p class="hint">در حال بارگذاری…</p>';
+        list.innerHTML = window.skeletonHtml(1);
         fetch(apiUrl('transaction_attachments.php') + '?transaction_id=' + encodeURIComponent(txId))
             .then(function (r) { return r.text(); })
             .then(function (html) { list.innerHTML = html; })

@@ -65,11 +65,11 @@ include __DIR__ . '/includes/header.php';
         <span class="bv-unit"><?= h(APP_CURRENCY) ?></span>
     </div>
     <div class="balance-split">
-        <div>
+        <div class="bs-in-row">
             <div class="bs-label">دریافتی این ماه</div>
             <div class="bs-value bs-in"><?= formatMoney($monthStats['income']) ?></div>
         </div>
-        <div>
+        <div class="bs-out-row">
             <div class="bs-label">پرداختی این ماه</div>
             <div class="bs-value bs-out"><?= formatMoney($monthStats['expense']) ?></div>
         </div>

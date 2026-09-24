@@ -37,7 +37,7 @@ include __DIR__ . '/includes/header.php';
         <?php foreach ($budgets as $b): ?>
             <div class="budget-item">
                 <div class="budget-head">
-                    <span class="cat-icon cat-icon-sm" style="background: <?= h($b['cat_color']) ?>1f; color: <?= h($b['cat_color']) ?>;">
+                    <span class="cat-icon cat-icon-sm" style="--cat-bg: <?= h($b['cat_color']) ?>1f; color: <?= h($b['cat_color']) ?>;">
                         <?= categoryIconSvg($b['cat_icon'], 15) ?>
                     </span>
                     <div class="budget-meta">

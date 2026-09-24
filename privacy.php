@@ -60,7 +60,7 @@ if ($__loggedIn):
     <link rel="stylesheet" href="<?= h($__u) ?>">
     <?php endforeach; ?>
     <link rel="icon" type="image/png" sizes="32x32" href="<?= iconUrl('icon-32.png') ?>">
-    <meta name="theme-color" content="#0b0b0b">
+    <meta name="theme-color" content="#0b5d41">
 </head>
 <body>
 <div class="privacy-shell">

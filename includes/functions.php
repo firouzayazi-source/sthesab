@@ -2448,7 +2448,7 @@ function reminderEmailBody(string $name, array $overdue, array $soon, int $days)
 
     $html = '<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;background:#f6f7fb;padding:20px;">'
         . '<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;padding:22px;">'
-        . '<h2 style="margin:0 0 4px;font-size:17px;color:#1b2559;">سلام ' . h($name) . '</h2>'
+        . '<h2 style="margin:0 0 4px;font-size:17px;color:#0b5d41;">سلام ' . h($name) . '</h2>'
         . '<p style="margin:0 0 18px;font-size:13.5px;color:#6b7280;line-height:1.9;">'
         . 'این خلاصه‌ی سررسیدهای مالیِ شماست.</p>';
 
@@ -2465,9 +2465,9 @@ function reminderEmailBody(string $name, array $overdue, array $soon, int $days)
     }
 
     if ($soon) {
-        $html .= '<h3 style="margin:18px 0 6px;font-size:14px;color:#1b2559;">تا '
+        $html .= '<h3 style="margin:18px 0 6px;font-size:14px;color:#0b5d41;">تا '
             . h(toPersianDigits((string)$days)) . ' روز آینده</h3>'
-            . '<table style="width:100%;border-collapse:collapse;">' . $htmlRows($soon, '#1b2559') . '</table>';
+            . '<table style="width:100%;border-collapse:collapse;">' . $htmlRows($soon, '#0b5d41') . '</table>';
         $text .= "\n— تا {$days} روز آینده —\n";
         foreach ($soon as $e) {
             [$when, $title, $dir, $amount] = $line($e);
@@ -2480,7 +2480,7 @@ function reminderEmailBody(string $name, array $overdue, array $soon, int $days)
     // به سایتِ مهاجم برد.
     $url = appBaseUrl() . '/due.php?t=list';
     $html .= '<p style="margin:22px 0 0;"><a href="' . h($url) . '" '
-        . 'style="display:inline-block;background:#1b2559;color:#fff;text-decoration:none;'
+        . 'style="display:inline-block;background:#0b5d41;color:#fff;text-decoration:none;'
         . 'padding:10px 18px;border-radius:10px;font-size:14px;">دیدن آینده مالی</a></p>'
         . '<p style="margin:16px 0 0;font-size:11.5px;color:#9aa1ad;line-height:1.9;">'
         . 'اگر این یادآوری را نمی‌خواهید، از «حساب کاربری من» در برنامه خاموشش کنید.</p>'
@@ -2557,6 +2557,54 @@ function monthComparisonWindow(int $jy, int $jm, int $jd): array
         'prev_day'   => $prevDay,
         'prev_len'   => $prevLen,
     ];
+}
+
+/**
+ * نوارِ کارتِ «مانده این ماه»: چند درصد از دریافتیِ ماه خرج شده، و خطِ
+ * مقایسه با همین روزِ ماهِ قبل.
+ *
+ * ⛔ تابعِ خالص است و هیچ کوئری‌ای ندارد — ورودی همان `monthComparison()`
+ *    است که صفحه یک بار خوانده.
+ * ⛔ بدونِ دریافتی، درصد بی‌معناست (تقسیم بر صفر، یا «۰٪» که دروغ است)،
+ *    پس `pct = null` و نوار اصلاً رندر نمی‌شود.
+ * ⛔ خطِ مقایسه همان نگهبانِ «داده‌ی نازک» جمله‌های بینش را دارد: بدونِ
+ *    خرجِ واقعی در **هر دو** ماه هیچ درصدی گفته نمی‌شود.
+ * ⚠ `fill` به ۱۰۰ بریده می‌شود ولی `pct` نه — «۱۳۰٪ خرج شده» حرفِ
+ *   درستی است که نوار نمی‌تواند نشانش بدهد.
+ *
+ * @return array{pct:?int, fill:int, tone:string, caption:string, compare:?array{dir:string, text:string}}
+ */
+function monthMeter(array $mc): array
+{
+    $in  = (int)($mc['current_income'] ?? 0);
+    $out = (int)($mc['current_expense'] ?? 0);
+
+    $pct = null; $fill = 0; $tone = ''; $caption = '';
+    if ($in > 0) {
+        $pct  = (int)round($out / $in * 100);
+        $fill = max(0, min(100, $pct));
+        $tone = $pct > 100 ? 'over' : ($pct >= 80 ? 'warn' : '');
+        $caption = $pct > 100
+            ? 'خرجِ این ماه ' . toPersianDigits((string)($pct - 100)) . '٪ بیشتر از دریافتی است'
+            : toPersianDigits((string)$pct) . '٪ از دریافتیِ این ماه خرج شده';
+    }
+
+    $compare = null;
+    if ((int)($mc['prev_expense'] ?? 0) > 0 && $out > 0) {
+        $ch   = (int)($mc['expense_change'] ?? 0);
+        $prev = (string)($mc['prev_label'] ?? '');
+        if (abs($ch) >= 10) {
+            $compare = [
+                'dir'  => $ch > 0 ? 'up' : 'down',
+                'text' => toPersianDigits((string)abs($ch)) . '٪ ' . ($ch > 0 ? 'بیشتر' : 'کمتر')
+                          . ' از همین روزِ ' . $prev . ' خرج کرده‌اید',
+            ];
+        } else {
+            $compare = ['dir' => 'flat', 'text' => 'خرجِ این ماه تقریباً هم‌اندازه‌ی ' . $prev . ' است'];
+        }
+    }
+
+    return ['pct' => $pct, 'fill' => $fill, 'tone' => $tone, 'caption' => $caption, 'compare' => $compare];
 }
 
 function monthComparison(int $userId): array
@@ -2642,7 +2690,8 @@ function monthComparison(int $userId): array
  *   `pinnedWallets()` را، و بدونِ پاس دادن، سنگین‌ترین کوئریِ اپ **دو
  *   بار** در یک بارگذاری اجرا می‌شد.
  */
-function financialHighlights(int $userId, ?array $walletRows = null): array
+function financialHighlights(int $userId, ?array $walletRows = null,
+                             ?array $monthCmp = null, bool $monthShownElsewhere = false): array
 {
     $out = [];
 
@@ -2695,9 +2744,12 @@ function financialHighlights(int $userId, ?array $walletRows = null): array
     } catch (Throwable $e) { /* ignore */ }
 
     // ---------- ۴. حالِ کلیِ ماه، فقط اگر جای دیگری پر نشده ----------
-    if (count($out) < 3) {
+    // ⛔ `$monthShownElsewhere`: صفحه‌ی خانه همین مقایسه را روی کارتِ ماه
+    //    نوشته، پس اینجا تکرار نمی‌شود. `$monthCmp` هم همان نتیجه‌ای است
+    //    که فراخواننده خوانده — دو بار خواندنِ یک جمع بی‌فایده بود.
+    if (count($out) < 3 && !$monthShownElsewhere) {
         try {
-            $mc = monthComparison($userId);
+            $mc = $monthCmp ?? monthComparison($userId);
             // ⛔ نگهبانِ داده‌ی نازک: بدونِ ماهِ قبلِ واقعی، درصد دروغ است.
             if ((int)$mc['prev_expense'] > 0 && (int)$mc['current_expense'] > 0) {
                 $ch = (int)$mc['expense_change'];
@@ -3646,7 +3698,7 @@ function renderTransactionRow(array $tx): void
     <div class="tx-row" data-id="<?= (int)$tx['id'] ?>">
         <div class="tx-row-summary">
             <span class="tx-row-icon-wrap">
-                <span class="cat-icon" style="background: <?= h($color) ?>22; color: <?= h($color) ?>;"><?= $icon ?></span>
+                <span class="cat-icon" style="--cat-bg: <?= h($color) ?>22; color: <?= h($color) ?>;"><?= $icon ?></span>
                 <span class="tx-row-texts">
                     <span class="tx-row-title"><?= h($tx['title']) ?></span>
                     <span class="tx-row-cat"><?= $tx['category_name'] ? h($tx['category_name']) : 'بدون دسته‌بندی' ?></span>
@@ -3707,7 +3759,8 @@ function renderTransactionsGrouped(array $transactions): void
         ?>
         <div class="tx-day-group">
             <div class="tx-day-header">
-                <span class="tx-day-date"><?= jalaliWithWeekday($date) ?></span>
+                <?php $__dl = txDayLabel($date); ?>
+                <span class="tx-day-date"><?php if ($__dl['rel'] !== null): ?><span class="tx-day-rel"><?= $__dl['rel'] ?></span><?php endif; ?><?= $__dl['date'] ?></span>
                 <span class="tx-day-total <?= $dayNet >= 0 ? 'amount-income' : 'amount-expense' ?>">
                     <?= $dayNet >= 0 ? '+' : '−' ?><?= formatMoney(abs($dayNet)) ?>
                 </span>
@@ -3716,6 +3769,37 @@ function renderTransactionsGrouped(array $transactions): void
         </div>
         <?php
     }
+}
+
+/**
+ * برچسبِ سرِ روز در فهرستِ تراکنش‌ها: «امروز · پنج‌شنبه ۲ مهر»،
+ * «دیروز · …»، و برای بقیه «دوشنبه ۳۰ شهریور».
+ *
+ * ⚠ سال فقط وقتی می‌آید که با سالِ جاری فرق کند — «۱۴۰۵» روی هر ردیفِ
+ *   امسال فقط عرض می‌گرفت. ⚠ «امروز» از `today()` می‌آید (منطقه‌ی زمانیِ
+ *   اپ)، نه `date()` خام؛ همان درسِ پنجره‌ی بامدادی.
+ * ⛔ هر دو قطعه متنِ ثابتِ خودمان‌اند (نامِ روز و ماه و رقم)، پس بی‌فرار
+ *    چاپ می‌شوند — ولی هیچ ورودیِ کاربری به این تابع نمی‌رسد.
+ *
+ * @return array{rel:?string, date:string}
+ */
+function txDayLabel(string $gregorianDate): array
+{
+    $d     = substr($gregorianDate, 0, 10);
+    $today = today();
+    $rel   = null;
+    if ($d === $today) {
+        $rel = 'امروز';
+    } elseif ($d === date('Y-m-d', strtotime($today . ' -1 day'))) {
+        $rel = 'دیروز';
+    }
+    $long = jalaliLongDate($d);                       // «دوشنبه ۳۰ شهریور ۱۴۰۵»
+    [$ty] = gregorianToJalali(...array_map('intval', explode('-', $today)));
+    $year = ' ' . toPersianDigits((string)$ty);
+    if (substr($long, -strlen($year)) === $year) {
+        $long = substr($long, 0, -strlen($year));
+    }
+    return ['rel' => $rel, 'date' => $long];
 }
 
 function jalaliWithWeekday(string $gregorianDate): string

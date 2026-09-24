@@ -60,7 +60,7 @@ if (!isset($pageWide)) {
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="<?= h(APP_NAME) ?>">
-    <meta name="theme-color" content="#0b0b0b">
+    <meta name="theme-color" content="#0b5d41">
 </head>
 <body>
 <div class="app-shell">
