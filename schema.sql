@@ -234,10 +234,31 @@ CREATE TABLE IF NOT EXISTS `notifications` (
     --    و کاربر بعد از دو روز دیگر نگاهش نمی‌کرد.
     `dedup_key`  VARCHAR(190) NULL,
     `read_at`    DATETIME NULL,
+    -- «به گوشی فرستاده شد» (migration_push.sql)
+    `pushed_at`  DATETIME NULL,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY `uq_notif_dedup` (`user_id`, `dedup_key`),
     KEY `idx_notif_user` (`user_id`, `id`),
+    KEY `idx_notif_push` (`pushed_at`, `created_at`),
     CONSTRAINT `fk_notifications_user` FOREIGN KEY (`user_id`)
+        REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_persian_ci;
+
+-- اعلان روی گوشی (migration_push.sql)
+CREATE TABLE IF NOT EXISTS `push_subscriptions` (
+    `id`            INT AUTO_INCREMENT PRIMARY KEY,
+    `user_id`       INT UNSIGNED NOT NULL,
+    `endpoint`      VARCHAR(700) NOT NULL,
+    `endpoint_hash` CHAR(64)     NOT NULL,
+    `p256dh`        VARCHAR(120) NOT NULL,
+    `auth`          VARCHAR(60)  NOT NULL,
+    `device_label`  VARCHAR(120) NULL,
+    `created_at`    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `last_ok_at`    DATETIME NULL,
+    `fail_count`    INT NOT NULL DEFAULT 0,
+    UNIQUE KEY `uq_push_endpoint` (`endpoint_hash`),
+    KEY `idx_push_user` (`user_id`),
+    CONSTRAINT `fk_push_user` FOREIGN KEY (`user_id`)
         REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_persian_ci;
 

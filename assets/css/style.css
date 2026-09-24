@@ -4907,11 +4907,17 @@ html[data-theme="dark"] {
 .bank-pick-logo[hidden] { display: none; }
 
 /* ============================================================
-   ۴۰. برندِ سبزِ «حساب لند» — هم‌خانواده با آیکون
+   ۴۰. برندِ «حساب لند» — پیش‌فرضِ همه: نیلی
+
+   ⛔ خواسته‌ی مالکِ نصب: «پیش‌فرض رنگ و تم نیلی باشه برای همه». پس نیلی
+      خودِ `:root` است نه یک `data-palette` — تا صفحه‌های پیش از ورود
+      (`login.php` و …، که سرآیندِ خودشان را دارند)، مانیفست، نوارِ وضعیتِ
+      اپِ اندروید و مرورگرِ بی‌جاوااسکریپت هم همان رنگ را داشته باشند.
+      زمرد (سبزِ آیکون) حالا یک پالتِ عادی در بخشِ ۴۱ است.
 
    ⛔ این بخش **آخرین** بخشِ فایل است و باید بماند: توکن‌ها چند بار در
       این فایل بازتعریف شده‌اند (زغالی، Finmori سرمه‌ای، …) و آخرینِ هم‌وزن
-      برنده است. رنگِ برند فقط **اینجا** تعریف می‌شود — این «زمرد»ِ
+      برنده است. رنگِ برند فقط **اینجا** تعریف می‌شود — این «نیلی»ِ
       پیش‌فرض است؛ پالت‌های دیگر فقط همین توکن‌ها را در بخشِ ۴۱
       بازتعریف می‌کنند.
    ⛔ سه جای دیگر همین رنگ را دارند و باید با هم عوض شوند (قاعده ۵۷):
@@ -4925,65 +4931,67 @@ html[data-theme="dark"] {
      است (لینک، چیپِ فعال). عوض کردنِ نامش صدها مصرف‌کننده را می‌شکست.
    ============================================================ */
 :root {
-    --ink:        #13211a;
-    --ink-soft:   #26372e;
-    --muted:      #637168;
-    --muted-2:    #97a49c;
-    --line:       #e2eae5;
-    --line-soft:  #eff4f1;
+    /* پیش‌فرضِ همه: نیلی. نشانِ ثابت برای تست‌ها (رنگ ندارد). */
+    --palette-default: indigo;
+    --ink:        #1b2559;
+    --ink-soft:   #2a3563;
+    --muted:      #6e7ba0;
+    --muted-2:    #9aa3c0;
+    --line:       #e8ebf5;
+    --line-soft:  #f2f4fa;
     --surface:    #ffffff;
-    --paper:      #f4f7f5;
+    --paper:      #f6f7fb;
 
-    --brand:      #0b5d41;   /* نوار پایین، منوی کناری، دکمه‌ی اصلی */
-    --brand-deep: #073f2c;
+    --brand:      #2a3563;   /* نوار پایین، منوی کناری، دکمه‌ی اصلی */
+    --brand-deep: #1b2044;
     --brand-on:   #ffffff;
     /* برند به‌عنوان **متن یا خط** (زبانه‌ی فعال، حاشیه‌ی انتخاب). در شب
        خودِ --brand سطحِ تیره است و متنِ هم‌رنگش روی زمینه‌ی تیره گم
        می‌شد — زبانه‌ی فعالِ «سررسیدها» عملاً نامرئی بود. */
-    --brand-fg:   #0b5d41;
+    --brand-fg:   #2a3563;
 
-    --gold:       #0a8154;   /* تعامل */
-    --gold-lift:  #11a36b;
-    --gold-wash:  #e5f5ed;
+    --gold:       #2563eb;   /* تعامل */
+    --gold-lift:  #3b82f6;
+    --gold-wash:  #eaf1fe;
 
-    --sh:    0 1px 2px rgba(10,48,33,.04);
-    --sh-lg: 0 14px 34px -10px rgba(10,48,33,.28);
-    --sh-card: 0 1px 2px rgba(10,48,33,.04), 0 4px 14px -8px rgba(10,48,33,.10);
+    --sh:    0 1px 2px rgba(27,37,89,.04);
+    --sh-lg: 0 14px 34px -10px rgba(27,37,89,.28);
+    --sh-card: 0 1px 2px rgba(27,37,89,.04), 0 4px 14px -8px rgba(27,37,89,.10);
     /* طیفِ رنگیِ پالت (بخشِ ۴۱): کارتِ ماه، دکمه‌ی +، سرِ پروفایل */
-    --tint:     10,48,33;
-    --rb1: #0f7550; --rb2: #0b5d41; --rb3: #073f2c;
-    --rb-in: #b7f4d2; --rb-out: #ffc0c2; --rb-link: #c8f5de; --rb-fill: #d9fbe9;
-    --nav-mark: #7fe2bd;
-    --fab1: #e4f8ee; --fab2: #aeeacd; --fab-ink: #0b5d41;
-    --ph1: #dcf5e8; --ph2: #eef8f3;
-    --av1: #11a36b; --av2: #0b5d41;
+    --tint:     42,36,120;
+    --rb1: #3b2f8f; --rb2: #4a3fb5; --rb3: #2f2a6b;
+    --rb-in: #6ee7a8; --rb-out: #ff9b9e; --rb-link: #c9c2ff; --rb-fill: #e3dcff;
+    --nav-mark: #a5b4fc;
+    --fab1: #eef0ff; --fab2: #c7c9ff; --fab-ink: #2a3563;
+    --ph1: #ffd9e8; --ph2: #e3dcff;
+    --av1: #6d5ce7; --av2: #3b2f8f;
 }
 html[data-theme="dark"] {
-    --ink:        #e7efea;
-    --ink-soft:   #cbd7d0;
-    --muted:      #8b9c93;
-    --muted-2:    #677870;
-    --line:       #22302a;
-    --line-soft:  #1a2520;
-    --surface:    #131b17;
-    --paper:      #0b100e;
+    --ink:        #eef1fa;
+    --ink-soft:   #d5dbec;
+    --muted:      #8e98bb;
+    --muted-2:    #6c7699;
+    --line:       #262c47;
+    --line-soft:  #1e2338;
+    --surface:    #161a2c;
+    --paper:      #0e101b;
 
-    --brand:      #17583f;
-    --brand-deep: #0c2e22;
+    --brand:      #232a47;
+    --brand-deep: #141830;
     --brand-on:   #ffffff;
-    --brand-fg:   #4fd1a0;
+    --brand-fg:   #8db2ff;
 
-    --gold:       #4fd1a0;
-    --gold-lift:  #7fe2bd;
-    --gold-wash:  #12291f;
+    --gold:       #6f9bff;
+    --gold-lift:  #8db2ff;
+    --gold-wash:  #1b2540;
 
     --sh:    none;
     --sh-lg: 0 14px 34px -10px rgba(0,0,0,.6);
     --sh-card: none;
 
-    --rb1: #145a41; --rb2: #0f4130; --rb3: #0a2c20;
-    --fab1: #7fe2bd; --fab2: #3fbf8c; --fab-ink: #06251a;
-    --ph1: #143a2b; --ph2: #12251d;
+    --rb1: #2b2270; --rb2: #3a318f; --rb3: #1e1a4d;
+    --fab1: #8db2ff; --fab2: #6f7cf0; --fab-ink: #0b1030;
+    --ph1: #3a2140; --ph2: #262452;
 }
 
 /* ---------- کارت‌ها: یک شعاع، یک سایه، یک خط ---------- */
@@ -5186,13 +5194,12 @@ p.empty-row { color: var(--muted); line-height: 1.9; }
 /* ============================================================
    ۴۱. پالت‌های رنگ (انتخابِ کاربر در پروفایل → «نمایش»)
 
-   ⛔ «زمرد» پیش‌فرض است و **هیچ ویژگی‌ای** نمی‌گیرد: توکن‌هایش همان
-      `:root` بخشِ ۴۰ است. پس نصبی که کسی دست به پالت نزده، بایت‌به‌بایت
-      همان ظاهرِ قبلی را دارد، و رنگِ `theme-color`ِ ایستا (قاعده ۵۷)
-      همچنان همان برند است.
+   ⛔ «نیلی» پیش‌فرض است و **هیچ ویژگی‌ای** نمی‌گیرد: توکن‌هایش همان
+      `:root` بخشِ ۴۰ است (اولین کلیدِ `UI_PALETTES`). پس رنگِ
+      `theme-color`ِ ایستا (قاعده ۵۷) همان برندِ پیش‌فرض است.
    ⛔ هر پالت **کلِ** مجموعه را بازتعریف می‌کند — روز و شب جدا — نه فقط
       برند. پالتی که فقط `--brand` را عوض کند، کنارِ خاکستری‌های
-      ته‌رنگ‌سبزِ زمرد و چیپِ فعالِ سبز می‌نشست و «دو برنامه‌ی
+      ته‌رنگِ پالتِ پیش‌فرض می‌نشست و «دو برنامه‌ی
       چسبیده به هم» دیده می‌شد.
    ⛔ وزن‌ها عمدی‌اند: `html[data-palette]` (۰،۱،۱) بر `:root` می‌برد و
       `html[data-theme="dark"][data-palette]` (۰،۲،۱) بر هر دو. پالت
@@ -5202,31 +5209,68 @@ p.empty-row { color: var(--muted); line-height: 1.9; }
    ⚠ `--in`/`--out`/`--warn-*` در هیچ پالتی نیستند: معنا دارند نه سلیقه.
    ============================================================ */
 
-/* ---------- نیلی — همان طرحِ قبلی (Finmori) ---------- */
-html[data-palette="indigo"] {
-    --ink: #1b2559; --ink-soft: #2a3563; --muted: #6e7ba0; --muted-2: #9aa3c0;
-    --line: #e8ebf5; --line-soft: #f2f4fa; --surface: #ffffff; --paper: #f6f7fb;
-    --brand: #2a3563; --brand-deep: #1b2044; --brand-fg: #2a3563;
-    --gold: #2563eb; --gold-lift: #3b82f6; --gold-wash: #eaf1fe;
-    --sh: 0 1px 2px rgba(27,37,89,.04); --sh-lg: 0 14px 34px -10px rgba(27,37,89,.28);
-    --sh-card: 0 1px 2px rgba(27,37,89,.04), 0 4px 14px -8px rgba(27,37,89,.10);
-    --tint: 42,36,120;
-    --rb1: #3b2f8f; --rb2: #4a3fb5; --rb3: #2f2a6b;
-    --rb-in: #6ee7a8; --rb-out: #ff9b9e; --rb-link: #c9c2ff; --rb-fill: #e3dcff;
-    --nav-mark: #a5b4fc;
-    --fab1: #eef0ff; --fab2: #c7c9ff; --fab-ink: #2a3563;
-    --ph1: #ffd9e8; --ph2: #e3dcff;
-    --av1: #6d5ce7; --av2: #3b2f8f;
+/* ---------- زمرد — سبزِ هم‌خانواده با آیکون (پیش‌فرضِ قبلی) ---------- */
+html[data-palette="emerald"] {
+    --ink: #13211a;
+    --ink-soft: #26372e;
+    --muted: #637168;
+    --muted-2: #97a49c;
+    --line: #e2eae5;
+    --line-soft: #eff4f1;
+    --surface: #ffffff;
+    --paper: #f4f7f5;
+    --brand: #0b5d41;
+    --brand-deep: #073f2c;
+    --brand-fg: #0b5d41;
+    --gold: #0a8154;
+    --gold-lift: #11a36b;
+    --gold-wash: #e5f5ed;
+    --sh: 0 1px 2px rgba(10,48,33,.04);
+    --sh-lg: 0 14px 34px -10px rgba(10,48,33,.28);
+    --sh-card: 0 1px 2px rgba(10,48,33,.04), 0 4px 14px -8px rgba(10,48,33,.10);
+    --tint: 10,48,33;
+    --rb1: #0f7550;
+    --rb2: #0b5d41;
+    --rb3: #073f2c;
+    --rb-in: #b7f4d2;
+    --rb-out: #ffc0c2;
+    --rb-link: #c8f5de;
+    --rb-fill: #d9fbe9;
+    --nav-mark: #7fe2bd;
+    --fab1: #e4f8ee;
+    --fab2: #aeeacd;
+    --fab-ink: #0b5d41;
+    --ph1: #dcf5e8;
+    --ph2: #eef8f3;
+    --av1: #11a36b;
+    --av2: #0b5d41;
 }
-html[data-theme="dark"][data-palette="indigo"] {
-    --ink: #eef1fa; --ink-soft: #d5dbec; --muted: #8e98bb; --muted-2: #6c7699;
-    --line: #262c47; --line-soft: #1e2338; --surface: #161a2c; --paper: #0e101b;
-    --brand: #232a47; --brand-deep: #141830; --brand-fg: #8db2ff;
-    --gold: #6f9bff; --gold-lift: #8db2ff; --gold-wash: #1b2540;
-    --sh: none; --sh-lg: 0 14px 34px -10px rgba(0,0,0,.6); --sh-card: none;
-    --rb1: #2b2270; --rb2: #3a318f; --rb3: #1e1a4d;
-    --fab1: #8db2ff; --fab2: #6f7cf0; --fab-ink: #0b1030;
-    --ph1: #3a2140; --ph2: #262452;
+html[data-theme="dark"][data-palette="emerald"] {
+    --ink: #e7efea;
+    --ink-soft: #cbd7d0;
+    --muted: #8b9c93;
+    --muted-2: #677870;
+    --line: #22302a;
+    --line-soft: #1a2520;
+    --surface: #131b17;
+    --paper: #0b100e;
+    --brand: #17583f;
+    --brand-deep: #0c2e22;
+    --brand-fg: #4fd1a0;
+    --gold: #4fd1a0;
+    --gold-lift: #7fe2bd;
+    --gold-wash: #12291f;
+    --sh: none;
+    --sh-lg: 0 14px 34px -10px rgba(0,0,0,.6);
+    --sh-card: none;
+    --rb1: #145a41;
+    --rb2: #0f4130;
+    --rb3: #0a2c20;
+    --fab1: #7fe2bd;
+    --fab2: #3fbf8c;
+    --fab-ink: #06251a;
+    --ph1: #143a2b;
+    --ph2: #12251d;
 }
 
 /* ---------- اقیانوس — فیروزه‌ای به آبیِ عمیق ---------- */
@@ -5389,3 +5433,8 @@ html[data-theme="dark"][data-palette="lilac"] {
 .palette-swatch[data-pal="sunset"]   { background: linear-gradient(135deg, #f97316, #e2445c 50%, #9d174d); }
 .palette-swatch[data-pal="lilac"]    { background: linear-gradient(135deg, #d946ef, #9333ea 50%, #4c1d95); }
 .palette-swatch[data-pal="graphite"] { background: linear-gradient(135deg, #3a3f4a, #22262d 50%, #0e1013); }
+
+/* ---------- اعلان روی گوشی (پروفایل) ---------- */
+.push-state { margin: 0 0 12px; font-size: 13px; line-height: 1.8; color: var(--ink-soft); }
+.push-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+.push-actions:empty { display: none; }

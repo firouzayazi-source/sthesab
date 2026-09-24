@@ -11,6 +11,7 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/sms.php';
+require_once __DIR__ . '/includes/push.php';
 require_once __DIR__ . '/includes/user_data.php';
 require_once __DIR__ . '/includes/store_share.php';
 
@@ -60,7 +61,7 @@ if ($__loggedIn):
     <link rel="stylesheet" href="<?= h($__u) ?>">
     <?php endforeach; ?>
     <link rel="icon" type="image/png" sizes="32x32" href="<?= iconUrl('icon-32.png') ?>">
-    <meta name="theme-color" content="#0b5d41">
+    <meta name="theme-color" content="#2a3563">
 </head>
 <body>
 <div class="privacy-shell">

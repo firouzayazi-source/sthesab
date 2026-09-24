@@ -83,7 +83,7 @@ include __DIR__ . '/includes/header.php';
             <?php endif; ?>
 
             <label class="avatar-camera" title="تغییر تصویر">
-                <input type="file" id="avatarInput" accept="image/jpeg,image/png,image/webp" hidden>
+                <input type="file" id="avatarInput" accept="image/*" hidden>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
             </label>
         </div>
@@ -91,7 +91,7 @@ include __DIR__ . '/includes/header.php';
         <div class="profile-name"><?= h($me['full_name'] ?? '') ?></div>
         <div class="profile-sub">
             <?= h($me['username'] ?? '') ?>
-            · <?= ($me['role'] ?? '') === 'admin' ? 'مدیر' : 'کاربر' ?>
+            · <?= h(Auth::roleLabel((string)($me['role'] ?? 'user'))) ?>
         </div>
 
         <div id="avatarMessage" class="form-message" hidden></div>
@@ -302,6 +302,32 @@ include __DIR__ . '/includes/header.php';
 </div>
 
 <?php
+// ⛔ اعلان روی گوشی — «نوتیف داخل اپ روی آیکون و گوشی بیاد مثل سایر اپ‌ها».
+//    فقط وقتی رندر می‌شود که سرور واقعاً بتواند بفرستد (جدول + openssl +
+//    کلید). وضعیتِ همین دستگاه را `app.js` از خودِ مرورگر می‌خواند، چون
+//    اشتراک مالِ مرورگر است نه کاربر.
+require_once __DIR__ . '/includes/push.php';
+$__pushKey = Push::available() ? Push::publicKey() : '';
+?>
+<?php if ($__pushKey !== ''): ?>
+<div class="card" id="pushCard" data-key="<?= h($__pushKey) ?>">
+    <h2 class="card-title">اعلان روی گوشی</h2>
+    <p class="push-state" id="pushState">در حال بررسیِ این دستگاه…</p>
+    <div class="push-actions">
+        <button type="button" class="btn btn-primary" id="pushOn" hidden>روشن کردنِ اعلان</button>
+        <button type="button" class="btn btn-secondary" id="pushTest" hidden>آزمایش اعلان</button>
+        <button type="button" class="btn btn-secondary" id="pushOff" hidden>خاموش کردن</button>
+    </div>
+    <p class="hint">
+        سررسیدِ چک و قسط، یادآورها و پاسخِ پشتیبانی — حتی وقتی اپ بسته است — روی
+        صفحه‌ی گوشی می‌آید و تعدادِ اعلان‌های نخوانده روی آیکونِ اپ دیده می‌شود.
+        روی آیفون اول اپ را به صفحه‌ی اصلی اضافه کنید و از همان آیکون باز کنید.
+    </p>
+    <div id="pushMsg" class="form-message" hidden></div>
+</div>
+<?php endif; ?>
+
+<?php
 // یادآوریِ سررسید — فقط وقتی نشان داده می‌شود که هم جدولش آمده باشد و
 // هم سرور واقعاً بتواند ایمیل بفرستد. کلیدی که کار نمی‌کند بدتر از
 // نبودنش است: کاربر روشنش می‌کند و بعد چکش برگشت می‌خورد.
@@ -360,10 +386,11 @@ $remind      = $remindReady ? reminderPrefs($userId) : ['email_on' => true, 'day
              می‌شود. مقدارِ اولیه را `app.js` از `data-palette` می‌گذارد،
              چون انتخاب در همین مرورگر ذخیره است و PHP آن را نمی‌داند. */ ?>
     <div class="palette-title">رنگِ برنامه</div>
-    <div class="palette-picker" id="palettePicker" role="radiogroup" aria-label="رنگِ برنامه">
+    <?php $__palDefault = (string)array_key_first(UI_PALETTES); ?>
+    <div class="palette-picker" id="palettePicker" role="radiogroup" aria-label="رنگِ برنامه" data-default="<?= h($__palDefault) ?>">
         <?php foreach (UI_PALETTES as $__pal => $__palName): ?>
             <label class="palette-opt">
-                <input type="radio" name="ui_palette" value="<?= h($__pal) ?>"<?= $__pal === 'emerald' ? ' checked' : '' ?>>
+                <input type="radio" name="ui_palette" value="<?= h($__pal) ?>"<?= $__pal === $__palDefault ? ' checked' : '' ?>>
                 <span class="palette-swatch" data-pal="<?= h($__pal) ?>">
                     <span class="palette-check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
                 </span>

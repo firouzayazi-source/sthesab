@@ -68,7 +68,9 @@ function palContrast(string $a, string $b): float
 T::group('فهرستِ پالت‌ها و کاملیِ هر پالت');
 // ---------------------------------------------------------------
 $keys = array_keys(UI_PALETTES);
-T::same('emerald', $keys[0] ?? null, 'زمرد اولین (پیش‌فرض) است');
+// ⛔ خواسته‌ی مالکِ نصب: «پیش‌فرض رنگ و تم نیلی باشه برای همه».
+T::same('indigo', $keys[0] ?? null, 'نیلی اولین (پیش‌فرض) است');
+$def = $keys[0] ?? '';
 T::ok(count($keys) >= 5, 'دست‌کم پنج پالت', (string)count($keys));
 $bad = [];
 foreach (UI_PALETTES as $k => $label) {
@@ -77,18 +79,20 @@ foreach (UI_PALETTES as $k => $label) {
 }
 T::bulk(count($keys), $bad, 'کلیدها فقط حرفِ کوچکِ لاتین‌اند (همان الگوی سرآیند) و برچسب دارند');
 
-// کشفِ توکن‌های لازم از بخشِ ۴۰ — همان دو بلوکی که زمرد را می‌سازند.
-$s40 = strpos($cssNc, '--brand-fg:   #0b5d41');
+// کشفِ توکن‌های لازم از بخشِ ۴۰ — همان دو بلوکی که پیش‌فرض را می‌سازند.
+// ⛔ لنگر `--palette-default:` است، نه یک رنگ: پیش‌فرض یک بار عوض شد و
+//    لنگرِ رنگی همان روز بی‌صدا بخشِ اشتباهی را می‌گرفت.
+$s40 = strpos($cssNc, '--palette-default:');
 $s40 = $s40 === false ? -1 : strrpos(substr($cssNc, 0, $s40), ':root');
 $emerL = $s40 >= 0 ? palTokens(palBlock($cssNc, ':root', $s40)) : [];
 $emerD = $s40 >= 0 ? palTokens(palBlock($cssNc, 'html[data-theme="dark"]', $s40)) : [];
-T::ok(count($emerL) >= 30, 'توکن‌های روزِ زمرد از بخشِ ۴۰ کشف شد', (string)count($emerL));
-T::ok(count($emerD) >= 15, 'توکن‌های شبِ زمرد از بخشِ ۴۰ کشف شد', (string)count($emerD));
+T::ok(count($emerL) >= 30, 'توکن‌های روزِ پیش‌فرض از بخشِ ۴۰ کشف شد', (string)count($emerL));
+T::ok(count($emerD) >= 15, 'توکن‌های شبِ پیش‌فرض از بخشِ ۴۰ کشف شد', (string)count($emerD));
 foreach (['rb1', 'rb2', 'rb3', 'fab1', 'fab-ink', 'ph1', 'tint', 'rb-in'] as $must) {
-    T::ok(isset($emerL[$must]), "زمرد توکنِ --{$must} را تعریف می‌کند");
+    T::ok(isset($emerL[$must]), "پیش‌فرض توکنِ --{$must} را تعریف می‌کند");
 }
 // ⚠ `--brand-on` و `--r*` مشترک‌اند و عمداً در پالت‌ها تکرار نمی‌شوند.
-$shared = ['brand-on'];
+$shared = ['brand-on', 'palette-default'];
 
 $badL = []; $badD = []; $badS = [];
 $pal = [];
@@ -100,9 +104,13 @@ foreach (array_slice($keys, 1) as $k) {
     foreach (array_diff(array_keys($emerD), array_keys($D), $shared) as $miss) { $badD[] = "{$k} (شب): --{$miss}"; }
     if (!preg_match('/\.palette-swatch\[data-pal="' . $k . '"\]\s*\{[^}]*linear-gradient/', $cssNc)) { $badS[] = $k; }
 }
-if (!preg_match('/\.palette-swatch\[data-pal="emerald"\]\s*\{[^}]*linear-gradient/', $cssNc)) { $badS[] = 'emerald'; }
-T::bulk(count($keys) - 1, $badL, 'هر پالت هر توکنِ روزِ زمرد را بازتعریف می‌کند');
-T::bulk(count($keys) - 1, $badD, 'هر پالت هر توکنِ شبِ زمرد را بازتعریف می‌کند');
+if (!preg_match('/\.palette-swatch\[data-pal="' . $def . '"\]\s*\{[^}]*linear-gradient/', $cssNc)) { $badS[] = $def; }
+// ⛔ و پیش‌فرض خودش بلوکِ ویژگی ندارد: `:root` است. بلوکی برایش یعنی
+//    دو مرجع، که دیر یا زود از هم دور می‌افتند.
+T::ok(strpos($cssNc, 'html[data-palette="' . $def . '"]') === false, 'پالتِ پیش‌فرض بلوکِ data-palette ندارد (خودِ :root است)');
+T::same($def, trim((string)(palTokens(palBlock($cssNc, ':root', $s40))['palette-default'] ?? '')), 'نشانِ --palette-default بخشِ ۴۰ همان اولین کلیدِ UI_PALETTES است');
+T::bulk(count($keys) - 1, $badL, 'هر پالت هر توکنِ روزِ پیش‌فرض را بازتعریف می‌کند');
+T::bulk(count($keys) - 1, $badD, 'هر پالت هر توکنِ شبِ پیش‌فرض را بازتعریف می‌کند');
 T::bulk(count($keys), $badS, 'هر پالت نمونه‌ی طیف‌دارِ خودش را در انتخابگر دارد');
 
 // ⛔ و برعکس: پالتی که در CSS هست ولی در فهرست نه، یتیم است — کسی که
@@ -115,7 +123,7 @@ T::bulk(count(array_unique($cm[1])), array_map(fn($x) => "«{$x}» در CSS هس
 // ---------------------------------------------------------------
 T::group('خوانایی — اندازه‌گیری، نه سلیقه');
 // ---------------------------------------------------------------
-$pal = ['emerald' => [$emerL, $emerD]] + $pal;
+$pal = [$def => [$emerL, $emerD]] + $pal;
 $badC = [];
 $n = 0;
 foreach ($pal as $k => [$L, $D]) {
@@ -279,7 +287,7 @@ try {
     // ⚠ `??` مقدارِ null را پنهان می‌کند (`null ?? 'x'` همان 'x' است)، پس
     //    کلید مستقیم خوانده می‌شود — همان درسِ test_phone_signup.
     $pv = static fn(string $k) => array_key_exists($k, $pk) ? $pk[$k] : '__missing__';
-    T::same('emerald', $pv('initialChecked'), 'بی‌انتخاب: «زمرد» علامت خورده');
+    T::same($def, $pv('initialChecked'), 'بی‌انتخاب: پیش‌فرض (نیلی) علامت خورده');
     T::same(null, $pv('initialAttr'), 'بی‌انتخاب: هیچ data-palette ای روی html نیست');
     T::same('ocean', $pv('afterAttr'), 'زدنِ «اقیانوس» همان لحظه اعمال می‌شود');
     T::same('ocean', $pv('afterLS'), '… و در این مرورگر می‌ماند');
@@ -287,7 +295,8 @@ try {
     T::same('ocean', $pv('persistAttr'), '… و صفحه‌ی بعد هم همان است');
     T::same(null, $pv('bogusAttr'), 'نامِ ناشناخته در localStorage به پیش‌فرض برمی‌گردد');
     T::same(null, $pv('bogusLS'), '… و با باز کردنِ پروفایل پاک می‌شود');
-    T::same(null, $pv('emeraldAttr'), 'برگشت به «زمرد» ویژگی را برمی‌دارد');
+    T::same(null, $pv('emeraldAttr'), 'برگشت به پیش‌فرض ویژگی را برمی‌دارد');
+    T::same('emerald', $pv('greenAttr'), 'زدنِ «زمرد» (که دیگر پیش‌فرض نیست) ویژگیِ خودش را می‌نویسد');
     T::same(0, $pv('hscroll'), 'پروفایل روی ۳۹۰ اسکرولِ افقی ندارد');
     T::same([], $out['errors'] ?? ['?'], 'هیچ خطای جاوااسکریپتی در مسیر نبود');
 } finally {

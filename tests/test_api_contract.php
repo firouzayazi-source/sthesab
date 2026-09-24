@@ -5594,8 +5594,8 @@ $plTx   = (string)@file_get_contents(__DIR__ . '/../transactions.php');
 $plCss  = (string)preg_replace('#/\*.*?\*/#s', '', (string)@file_get_contents(__DIR__ . '/../assets/css/style.css'));
 
 // ۱) فهرست فقط UI_PALETTES — سرآیند و انتخابگر هر دو از همان.
-if (!preg_match("/const UI_PALETTES = \[\s*'emerald'\s*=>/", (string)@file_get_contents(__DIR__ . '/../includes/functions.php'))) {
-    $badPl[] = 'UI_PALETTES در functions.php نیست یا زمرد اولینش نیست';
+if (!preg_match("/const UI_PALETTES = \[\s*'indigo'\s*=>/", (string)@file_get_contents(__DIR__ . '/../includes/functions.php'))) {
+    $badPl[] = 'UI_PALETTES در functions.php نیست یا نیلی (پیش‌فرضِ همه) اولینش نیست';
 }
 if (strpos($plHead, 'array_keys(UI_PALETTES)') === false) { $badPl[] = 'header.php فهرستِ پالت را از UI_PALETTES نمی‌سازد'; }
 if (strpos($plHead, "localStorage.getItem('daftar_palette')") === false) { $badPl[] = 'header.php پالت را پیش از رندر نمی‌خواند'; }
@@ -5607,14 +5607,19 @@ if (!preg_match("/function syncThemeColorMeta\(\)[\s\S]{0,400}getComputedStyle\(
     $badPl[] = 'app.js — syncThemeColorMeta رنگ را از --brand ِ محاسبه‌شده نمی‌خواند';
 }
 if (substr_count($plJs, 'syncThemeColorMeta();') < 3) { $badPl[] = 'app.js — syncThemeColorMeta در حالت شب، تغییرِ پالت و بارگذاری صدا زده نمی‌شود'; }
-if (!preg_match("/value === 'emerald'\)\s*\{\s*document\.documentElement\.removeAttribute\('data-palette'\)/", $plJs)) {
-    $badPl[] = 'app.js — زمرد ویژگیِ data-palette را برنمی‌دارد';
+if (!preg_match("/value === defPal\)\s*\{\s*document\.documentElement\.removeAttribute\('data-palette'\)/", $plJs)) {
+    $badPl[] = 'app.js — پیش‌فرض ویژگیِ data-palette را برنمی‌دارد';
+}
+if (!preg_match("/defPal = palettePicker\.getAttribute\('data-default'\)/", $plJs)) { $badPl[] = 'app.js — نامِ پیش‌فرض از data-default ِ صفحه خوانده نمی‌شود'; }
+if (preg_match("/value === '[a-z]+'\)\s*\{\s*document\.documentElement\.removeAttribute\('data-palette'\)/", $plJs)) { $badPl[] = 'app.js — نامِ پیش‌فرض سخت‌کد شده'; }
+if (!preg_match('/data-default="<\?= h\(\$__palDefault\) \?>"/', $plProf) || strpos($plProf, 'array_key_first(UI_PALETTES)') === false) {
+    $badPl[] = 'profile.php — پیش‌فرضِ انتخابگر از اولین کلیدِ UI_PALETTES نمی‌آید';
 }
 
 // ۳) طیفِ کارتِ ماه، دکمه‌ی + و سرِ پروفایل از توکن — در بخشِ ۴۰ هیچ
 //    رنگِ سخت‌کدی روی این چهار نیست، و شب پس‌زمینه را **تکرار** می‌کند
 //    (وگرنه قاعده‌ی بنفشِ بخشِ ۳۴ برنده است).
-$pl40 = strpos($plCss, '--brand-fg:   #0b5d41');
+$pl40 = strpos($plCss, '--palette-default:');
 $pl40 = $pl40 === false ? '' : substr($plCss, $pl40);
 foreach (['.balance-ribbon', '.bottom-nav-fab', '.profile-head', '.profile-avatar',
           'html[data-theme="dark"] .balance-ribbon', 'html[data-theme="dark"] .bottom-nav-fab'] as $sel) {
@@ -5634,7 +5639,92 @@ if (strpos($plIdx, 'renderTransactionsGrouped(') !== false) { $badPl[] = 'index.
 if (!preg_match('/foreach\s*\(\s*\$recentTransactions\s+as\s+\$\w+\)\s*\{\s*renderTransactionRow\(/', $plIdx)) { $badPl[] = 'index.php — ردیف‌ها از renderTransactionRow() رندر نمی‌شوند'; }
 if (strpos($plTx, 'renderTransactionsGrouped(') === false) { $badPl[] = 'transactions.php گروه‌بندیِ روزانه را از دست داده'; }
 
-T::bulk(19, $badPl, '⛔ پالت از یک فهرست، طیف از توکن، theme-color از --brand، و خانه بی‌سرِ روز');
+T::bulk(22, $badPl, '⛔ پالت از یک فهرست، طیف از توکن، theme-color از --brand، و خانه بی‌سرِ روز');
+
+// ---------------------------------------------------------------
+// ⛔ قاعده ۵۹ — هیچ آدرسِ blob: ای برای تصویر، وقتی CSP آن را نمی‌پذیرد.
+//    آپلودِ عکسِ پروفایل روی سرور برای **هر** عکسی «تصویر معتبری نیست»
+//    می‌داد: `URL.createObjectURL` آدرسِ blob: می‌ساخت و
+//    `img-src 'self' data:` آن را بی‌صدا می‌بست. روی ماشینِ توسعه (بی‌CSP)
+//    سالم بود. رفتارش را `test_avatar_upload.php` زیرِ همان CSP می‌سنجد.
+T::group('قاعده ۵۹ — تصویرِ blob: زیرِ CSP');
+$badBlob = [];
+$cspSrc = (string)@file_get_contents(__DIR__ . '/../deploy/nginx-csp.sh');
+$imgSrc = preg_match('/^CSP="[^"]*img-src ([^;"]+)/m', $cspSrc, $im) ? $im[1] : '';
+if ($imgSrc === '') { $badBlob[] = 'سیاستِ img-src در nginx-csp.sh پیدا نشد'; }
+if ($imgSrc !== '' && strpos($imgSrc, 'blob:') === false) {
+    foreach (glob(__DIR__ . '/../assets/js/*.js') ?: [] as $jf) {
+        if (basename($jf) === 'chart.umd.js') { continue; }
+        $js = (string)preg_replace(['#/\*.*?\*/#s', '#(?<![:"\'])//[^\n]*#'], '', (string)file_get_contents($jf));
+        if (strpos($js, 'createObjectURL(') !== false) { $badBlob[] = basename($jf) . ' — URL.createObjectURL با CSPی که blob: ندارد'; }
+    }
+}
+if (!preg_match('/id="avatarInput" accept="image\/\*"/', (string)@file_get_contents(__DIR__ . '/../profile.php'))) {
+    $badBlob[] = 'profile.php — ورودیِ تصویرِ پروفایل «هر عکسی» (image/*) را نمی‌پذیرد';
+}
+if (strpos((string)@file_get_contents(__DIR__ . '/../assets/js/app.js'), 'reader.readAsDataURL(file)') === false) {
+    $badBlob[] = 'app.js — قابِ برش تصویر را با FileReader (data:) نمی‌خواند';
+}
+T::bulk(3, $badBlob, '⛔ تصویرِ پروفایل از راهِ data: خوانده می‌شود، نه blob: ِ بسته در CSP');
+
+// ---------------------------------------------------------------
+// ⛔ قاعده ۶۰ — «بعد از ورود دیگه کاربر از اپ خارج نشه مگه خودش بخواد».
+//    رفتارش را `test_stay_logged_in.php` با شبیه‌سازیِ بستنِ اپ می‌سنجد؛
+//    اینجا شکل: هر ورود دستگاه را به خاطر می‌سپارد (بی‌کلید)، و خودابطالی
+//    اعتمادِ همین دستگاه را دوباره می‌سازد.
+T::group('قاعده ۶۰ — ماندن در حساب');
+$badStay = [];
+foreach (['login.php', 'sms-login.php'] as $lf) {
+    $src = (string)@file_get_contents(__DIR__ . '/../' . $lf);
+    if (strpos($src, "postParam('trust_device')") !== false) { $badStay[] = "{$lf} — «به خاطر سپردن» دوباره به یک کلید بند شده"; }
+    if (strpos($src, 'name="trust_device"') !== false) { $badStay[] = "{$lf} — کلیدِ «این دستگاه را به خاطر بسپار» برگشته"; }
+    if (strpos($src, 'Auth::trustThisDevice(') === false) { $badStay[] = "{$lf} — ورود دستگاه را به خاطر نمی‌سپارد"; }
+}
+$authSrc = (string)@file_get_contents(__DIR__ . '/../includes/auth.php');
+if (!preg_match('/function renewCurrentSession\(\)([\s\S]*?)\n    \}/', $authSrc, $rcs) || strpos($rcs[1], 'self::trustThisDevice(') === false) {
+    $badStay[] = 'auth.php — renewCurrentSession() اعتمادِ همین دستگاه را دوباره نمی‌سازد';
+}
+if (!preg_match('/if \(\$hasPassword\) \{\s*revokeAllAccessFor\(\$userId\);/', (string)@file_get_contents(__DIR__ . '/../api/change_password.php'))) {
+    $badStay[] = 'change_password.php — تنظیمِ **اولین** رمز همه‌ی دستگاه‌ها را بیرون می‌اندازد';
+}
+T::bulk(8, $badStay, '⛔ هر ورود دستگاه را نگه می‌دارد و تغییرِ رمز همین دستگاه را بیرون نمی‌اندازد');
+
+// ---------------------------------------------------------------
+// ⛔ قاعده ۶۱ — اعلان روی گوشی (Web Push) و بستنِ var/ از وب.
+//    رفتار در `test_push.php` (بردارِ RFC، سرویسِ پوشِ ساختگی، کرومیوم).
+T::group('قاعده ۶۱ — اعلان روی گوشی');
+$badPush = [];
+$pushSrc = (string)@file_get_contents(__DIR__ . '/../includes/push.php');
+$swSrc   = (string)@file_get_contents(__DIR__ . '/../sw.js');
+if (!preg_match('/function subscribe\([^)]*\)[^{]*\{[\s\S]{0,400}self::endpointAllowed\(\$endpoint\)/', $pushSrc)) {
+    $badPush[] = 'push.php — subscribe() آدرسِ اشتراک را با فهرستِ مجازِ سرویس‌های پوش نمی‌سنجد (SSRF)';
+}
+if (strpos($pushSrc, "'fcm.googleapis.com'") === false) { $badPush[] = 'push.php — فهرستِ HOSTS سرویسِ پوشِ کروم/اندروید را ندارد'; }
+if (!preg_match("/addEventListener\('push'[\s\S]{0,1500}showNotification\(/", $swSrc)) { $badPush[] = 'sw.js — رویدادِ push اعلان نشان نمی‌دهد'; }
+if (!preg_match("/addEventListener\('notificationclick'/", $swSrc)) { $badPush[] = 'sw.js — تپ روی اعلان هیچ‌جا نمی‌رود'; }
+if (strpos($swSrc, 'setAppBadge') === false) { $badPush[] = 'sw.js — عدد روی آیکونِ اپ نمی‌نشیند'; }
+if (strpos((string)@file_get_contents(__DIR__ . '/../assets/js/app.js'), 'navigator.setAppBadge(') === false) { $badPush[] = 'app.js — عددِ نخوانده روی آیکون نمی‌نشیند'; }
+$cronPush = (string)@file_get_contents(__DIR__ . '/../deploy/push-send.php');
+if (preg_match('/vapid\(true\)|publicKey\(\)/', (string)preg_replace('#/\*.*?\*/#s', '', $cronPush))) {
+    $badPush[] = 'push-send.php — cron (root) کلیدِ VAPID را می‌سازد؛ فایل مالِ root می‌شد و FPM نمی‌خواندش';
+}
+if (!preg_match("/'push'\s*=>\s*\[[^\]]*'deploy\/push-send\.php'\]/", (string)@file_get_contents(__DIR__ . '/../includes/cron_health.php'))) {
+    $badPush[] = 'cron_health.php — cronِ push در JOBS ثبت نشده';
+}
+$mig = (string)@file_get_contents(__DIR__ . '/../deploy/migrate.sh');
+if (!preg_match('/^\s+migration_push\.sql$/m', $mig) || strpos($mig, '[migration_push.sql]=') === false) {
+    $badPush[] = 'migrate.sh — migration_push در MIGRATIONS/SENTINEL نیست';
+}
+if (!preg_match('#location \^~ /var/\s+\{ deny all; return 404; \}#', (string)@file_get_contents(__DIR__ . '/../deploy/vps-setup.sh'))) {
+    $badPush[] = 'vps-setup.sh — var/ (لاگ، نشست، کلیدِ VAPID) از وب بسته نیست';
+}
+if (!is_file(__DIR__ . '/../deploy/nginx-var.sh')) { $badPush[] = 'deploy/nginx-var.sh نیست (بستنِ var/ روی نصبِ موجود)'; }
+$man = (string)@file_get_contents(__DIR__ . '/../mobile/app/src/main/AndroidManifest.xml');
+if (strpos($man, 'trusted.NotificationPermissionRequestActivity') === false) { $badPush[] = 'AndroidManifest — اندروید ۱۳ مجوزِ اعلانِ اپ را نمی‌پرسد'; }
+if (strpos($man, 'android.support.customtabs.trusted.SMALL_ICON') === false || !is_file(__DIR__ . '/../mobile/app/src/main/res/drawable/ic_notification_icon.xml')) {
+    $badPush[] = 'AndroidManifest — آیکونِ کوچکِ اعلان (SMALL_ICON) نیست';
+}
+T::bulk(13, $badPush, '⛔ اعلان روی گوشی: فهرستِ مجاز، سرویس‌ورکر، badge، cron، migration، var/ بسته، و مجوزِ اندروید');
 
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {

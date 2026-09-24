@@ -2448,7 +2448,7 @@ function reminderEmailBody(string $name, array $overdue, array $soon, int $days)
 
     $html = '<div dir="rtl" style="font-family:Tahoma,Arial,sans-serif;background:#f6f7fb;padding:20px;">'
         . '<div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;padding:22px;">'
-        . '<h2 style="margin:0 0 4px;font-size:17px;color:#0b5d41;">سلام ' . h($name) . '</h2>'
+        . '<h2 style="margin:0 0 4px;font-size:17px;color:#2a3563;">سلام ' . h($name) . '</h2>'
         . '<p style="margin:0 0 18px;font-size:13.5px;color:#6b7280;line-height:1.9;">'
         . 'این خلاصه‌ی سررسیدهای مالیِ شماست.</p>';
 
@@ -2465,9 +2465,9 @@ function reminderEmailBody(string $name, array $overdue, array $soon, int $days)
     }
 
     if ($soon) {
-        $html .= '<h3 style="margin:18px 0 6px;font-size:14px;color:#0b5d41;">تا '
+        $html .= '<h3 style="margin:18px 0 6px;font-size:14px;color:#2a3563;">تا '
             . h(toPersianDigits((string)$days)) . ' روز آینده</h3>'
-            . '<table style="width:100%;border-collapse:collapse;">' . $htmlRows($soon, '#0b5d41') . '</table>';
+            . '<table style="width:100%;border-collapse:collapse;">' . $htmlRows($soon, '#2a3563') . '</table>';
         $text .= "\n— تا {$days} روز آینده —\n";
         foreach ($soon as $e) {
             [$when, $title, $dir, $amount] = $line($e);
@@ -2480,7 +2480,7 @@ function reminderEmailBody(string $name, array $overdue, array $soon, int $days)
     // به سایتِ مهاجم برد.
     $url = appBaseUrl() . '/due.php?t=list';
     $html .= '<p style="margin:22px 0 0;"><a href="' . h($url) . '" '
-        . 'style="display:inline-block;background:#0b5d41;color:#fff;text-decoration:none;'
+        . 'style="display:inline-block;background:#2a3563;color:#fff;text-decoration:none;'
         . 'padding:10px 18px;border-radius:10px;font-size:14px;">دیدن آینده مالی</a></p>'
         . '<p style="margin:16px 0 0;font-size:11.5px;color:#9aa1ad;line-height:1.9;">'
         . 'اگر این یادآوری را نمی‌خواهید، از «حساب کاربری من» در برنامه خاموشش کنید.</p>'
@@ -3705,8 +3705,8 @@ function categoryIconSvg(?string $key, int $size = 20): string
  *   پیش از رندرِ صفحه اعمال می‌شود — پس هیچ چشمکِ رنگِ پیش‌فرض نیست.
  */
 const UI_PALETTES = [
-    'emerald'  => 'زمرد',
     'indigo'   => 'نیلی',
+    'emerald'  => 'زمرد',
     'ocean'    => 'اقیانوس',
     'sunset'   => 'غروب',
     'lilac'    => 'یاس',
@@ -4071,6 +4071,17 @@ function outboundDataFlows(): array
             'text' => 'اگر با کد پیامکی وارد شوید، شماره‌ی موبایل و همان کد '
                     . 'به پنلِ پیامکی می‌رود که مدیرِ این نصب انتخاب کرده. '
                     . 'هیچ چیزِ دیگری از دفترِ شما آنجا نمی‌رود.',
+        ];
+    }
+
+    // ⚠ مصرف‌کننده باید `includes/push.php` را لود کند (همان قاعده‌ی Sms).
+    if (class_exists('Push') && Push::available()) {
+        $out[] = [
+            'key'  => 'push',
+            'text' => 'اگر «اعلان روی گوشی» را روشن کنید، متنِ اعلان از راهِ سرویسِ '
+                    . 'اعلانِ خودِ مرورگر یا گوشی‌تان (گوگل، اپل یا موزیلا) به گوشی '
+                    . 'می‌رسد. متن پیش از رفتن رمزنگاری می‌شود و آن سرویس آن را '
+                    . 'نمی‌بیند؛ فقط می‌داند یک اعلان به این دستگاه رفته.',
         ];
     }
 

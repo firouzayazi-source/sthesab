@@ -70,12 +70,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$requireFullLogin) {
                 Auth::rememberUsername($username);
             }
-            // «این دستگاه را به خاطر بسپار». مدتش دیگر ثابت نیست: از تنظیم
-            // «بعد از چقدر بی‌فعالیتی دوباره رمز بپرسد» در پروفایل می‌آید
-            // و با هر استفاده از نو شروع می‌شود (کشویی).
-            if (postParam('trust_device') === '1') {
-                Auth::trustThisDevice((int)Auth::userId());
-            }
+            // ⛔ هر ورود این دستگاه را به خاطر می‌سپارد — کلیدی برای خاموش
+            //    کردنش نیست. خواسته‌ی مالکِ نصب: «بعد از ورود دیگه کاربر از اپ
+            //    خارج نشه مگه اینکه خودش بخواد». با کلید، کافی بود یک بار
+            //    خاموش بماند تا کوکیِ نشست (که با بستنِ اپ می‌میرد) تنها
+            //    چیزِ نگه‌دارنده باشد و کاربر با هر بستن بیرون بیفتد. راهِ
+            //    «خودش بخواد» دکمه‌ی خروج و مهلتِ پروفایل است.
+            Auth::trustThisDevice((int)Auth::userId());
             header('Location: index.php');
             exit;
         }
@@ -102,7 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="<?= h(APP_NAME) ?>">
-    <meta name="theme-color" content="#0b5d41">
+    <meta name="theme-color" content="#2a3563">
 </head>
 <body class="auth-body">
     <div class="auth-box">
@@ -142,11 +143,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <input type="password" autocomplete="current-password" id="password" name="password" required autofocus placeholder="رمز عبور خود را وارد کنید">
                 </div>
 
-                <label class="switch" style="margin:4px 0 16px;">
-                    <input type="checkbox" name="trust_device" value="1" checked>
-                    <span class="switch-track"><span class="switch-knob"></span></span>
-                    <span class="switch-text">این دستگاه را به خاطر بسپار — دفعه‌ی بعد رمز نمی‌خواهد</span>
-                </label>
+                <p class="stay-note" style="margin:4px 0 14px;">روی همین دستگاه وارد می‌مانید تا وقتی خودتان «خروج» را بزنید.</p>
                 <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ورود…">ورود</button>
                 <a href="forgot-password.php" class="link-back" style="display:block;text-align:center;margin-top:14px">رمز عبور را فراموش کرده‌ام</a>
                 <?php /* فقط وقتی مدیر ثبت‌نام را روشن کرده باشد. اگر
@@ -176,11 +173,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <label for="password">رمز عبور</label>
                     <input type="password" autocomplete="current-password" id="password" name="password" required placeholder="رمز عبور خود را وارد کنید">
                 </div>
-                <label class="switch" style="margin:4px 0 16px;">
-                    <input type="checkbox" name="trust_device" value="1" checked>
-                    <span class="switch-track"><span class="switch-knob"></span></span>
-                    <span class="switch-text">این دستگاه را به خاطر بسپار — دفعه‌ی بعد رمز نمی‌خواهد</span>
-                </label>
+                <p class="stay-note" style="margin:4px 0 14px;">روی همین دستگاه وارد می‌مانید تا وقتی خودتان «خروج» را بزنید.</p>
                 <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ورود…">ورود</button>
                 <a href="forgot-password.php" class="link-back" style="display:block;text-align:center;margin-top:14px">رمز عبور را فراموش کرده‌ام</a>
                 <?php /* فقط وقتی مدیر ثبت‌نام را روشن کرده باشد. اگر

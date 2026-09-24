@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $mailReady) {
     <?php endforeach; ?>
     <link rel="apple-touch-icon" href="<?= iconUrl('icon-180.png') ?>">
     <link rel="icon" type="image/png" sizes="32x32" href="<?= iconUrl('icon-32.png') ?>">
-    <meta name="theme-color" content="#0b5d41">
+    <meta name="theme-color" content="#2a3563">
 </head>
 <body class="auth-body">
     <div class="auth-box">

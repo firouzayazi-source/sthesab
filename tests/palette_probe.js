@@ -79,7 +79,7 @@ if (!bin) { process.stdout.write(JSON.stringify({ ok: false, why: 'no_chromium' 
         pages[p] = {};
         for (const mode of ['light', 'dark']) {
             await ev(`localStorage.setItem('daftar_theme','${mode}');localStorage.setItem('daftar_intro_seen','1');`
-                + (p === 'emerald' ? "localStorage.removeItem('daftar_palette')" : `localStorage.setItem('daftar_palette','${p}')`));
+                + (p === palettes[0] ? "localStorage.removeItem('daftar_palette')" : `localStorage.setItem('daftar_palette','${p}')`));
             await load('index.php');
             pages[p][mode] = JSON.parse(await ev(`JSON.stringify({
                 brand: getComputedStyle(document.documentElement).getPropertyValue('--brand').trim(),
@@ -110,6 +110,9 @@ if (!bin) { process.stdout.write(JSON.stringify({ ok: false, why: 'no_chromium' 
     await ev("document.querySelector('#palettePicker input[value=sunset]').click()");
     await sleep(100);
     await ev("document.querySelector('#palettePicker input[value=emerald]').click()");
+    await sleep(100);
+    picker.greenAttr = await ev("document.documentElement.getAttribute('data-palette')");
+    await ev(`document.querySelector('#palettePicker input[value=${palettes[0]}]').click()`);
     await sleep(100);
     picker.emeraldAttr = await ev("document.documentElement.getAttribute('data-palette')");
     picker.hscroll = await ev('document.documentElement.scrollWidth - innerWidth');

@@ -74,9 +74,9 @@ function finishPhoneLogin(array $user, bool $created, string $warning = ''): voi
     // ⛔ «این دستگاه را به خاطر بسپار» تیک‌خورده می‌آید و همان چیزی است
     //    که «دفعه‌ی بعد بدون رمز و بدون پیامک» را می‌سازد. بدونش کاربر
     //    هر بار یک پیامکِ دیگر می‌گرفت — با هزینه‌اش، و پشتِ گیتِ Pro.
-    if (postParam('trust_device') === '1') {
-        Auth::trustThisDevice((int)$user['id']);
-    }
+    //    ⛔ و بی‌قید است (قاعده ۶۰): خواسته این است که کاربر هرگز بیرون
+    //    نیفتد مگر خودش بخواهد.
+    Auth::trustThisDevice((int)$user['id']);
     Auth::rememberUsername((string)$user['username']);
 
     // ⛔ **کاربرِ تازه هم به خانه می‌رود، نه به پروفایل** — و این عوض
@@ -156,7 +156,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="manifest" href="<?= APP_BASE_PATH ?>/assets/manifest.php">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#0b5d41">
+    <meta name="theme-color" content="#2a3563">
 </head>
 <body class="auth-body">
     <div class="auth-box">
@@ -215,11 +215,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </p>
                 </div>
 
-                <label class="switch" style="margin:4px 0 16px;">
-                    <input type="checkbox" name="trust_device" value="1" checked>
-                    <span class="switch-track"><span class="switch-knob"></span></span>
-                    <span class="switch-text">این دستگاه را به خاطر بسپار — دفعه‌ی بعد بدون رمز و بدون پیامک وارد شوید</span>
-                </label>
+                <p class="stay-note" style="margin:4px 0 14px;">روی همین دستگاه وارد می‌مانید — دفعه‌ی بعد نه رمز لازم است نه پیامک — تا وقتی خودتان «خروج» را بزنید.</p>
 
                 <button type="submit" class="btn btn-primary btn-block" data-busy="در حال ورود…">ورود</button>
             </form>

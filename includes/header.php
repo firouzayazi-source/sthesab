@@ -32,7 +32,7 @@ if (!isset($pageWide)) {
                 if (dark) { document.documentElement.setAttribute('data-theme', 'dark'); }
                 document.documentElement.setAttribute('data-theme-mode', mode);
                 /* پالتِ رنگ (UI_PALETTES). ⛔ فقط نام‌های همان فهرست پذیرفته
-                   می‌شوند و زمرد (پیش‌فرض) ویژگی نمی‌گیرد؛ مقدارِ دیگری در
+                   می‌شوند و پیش‌فرض (اولین کلید، نیلی) ویژگی نمی‌گیرد؛ مقدارِ دیگری در
                    localStorage (دست‌کاری یا پالتی که حذف شده) بی‌صدا به
                    پیش‌فرض برمی‌گردد، نه به صفحه‌ی بی‌رنگ. */
                 var pal = localStorage.getItem('daftar_palette') || '';
@@ -68,7 +68,7 @@ if (!isset($pageWide)) {
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="<?= h(APP_NAME) ?>">
-    <meta name="theme-color" content="#0b5d41">
+    <meta name="theme-color" content="#2a3563">
 </head>
 <body>
 <div class="app-shell">
@@ -96,7 +96,9 @@ if (!isset($pageWide)) {
                     }
                 ?>
                 <?php if ($__notifOn): ?>
-                <a href="<?= APP_BASE_PATH ?>/notifications.php" class="theme-toggle notif-bell" aria-label="اعلان‌ها">
+                <?php /* ⛔ `data-unread` همان عدد را به `app.js` می‌دهد تا روی **آیکونِ اپ**
+                         هم بنشیند (`navigator.setAppBadge`) — هیچ کوئریِ تازه‌ای نیست. */ ?>
+                <a href="<?= APP_BASE_PATH ?>/notifications.php" class="theme-toggle notif-bell" aria-label="اعلان‌ها" data-unread="<?= (int)$__unread ?>">
                     <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>
                     <?php if ($__unread > 0): ?>
                         <span class="notif-badge"><?= toPersianDigits((string)min($__unread, 99)) ?></span>

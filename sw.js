@@ -192,3 +192,59 @@ async function dropOtherVersions(cache, req) {
         return (u.pathname === path && key.url !== req.url) ? cache.delete(key) : null;
     }));
 }
+
+/* ============================================================
+ * اعلان روی گوشی (Web Push) — «نوتیف روی آیکون و گوشی مثل سایر اپ‌ها»
+ *
+ * ⛔ پیام از `includes/push.php` می‌آید و رمزگشایی‌اش کارِ خودِ مرورگر
+ *    است؛ اینجا فقط JSONِ باز شده (`title`, `body`, `url`, `tag`, `badge`)
+ *    نشان داده می‌شود.
+ * ⛔ هر `push` **باید** یک اعلان نشان بدهد (`userVisibleOnly`)، وگرنه کروم
+ *    خودش یک اعلانِ عمومیِ «این سایت در پس‌زمینه به‌روز شد» می‌گذارد. پس
+ *    پیامِ خراب هم یک اعلانِ عادی می‌گیرد، نه سکوت.
+ * ⚠ عددِ روی آیکون (`setAppBadge`) روی آیفون (PWAِ نصب‌شده) و دسکتاپ کار
+ *   می‌کند؛ اندروید خودش از روی اعلان یک نقطه روی آیکون می‌گذارد.
+ * ⚠ منطقِ این فایل عوض شد نه فهرستِ پیش‌کش، پس VERSION بالا نرفت.
+ * ============================================================ */
+self.addEventListener('push', (event) => {
+    let d = {};
+    try { d = event.data ? event.data.json() : {}; } catch (e) { d = {}; }
+    const title = String(d.title || 'حساب لند');
+    const url   = rel(String(d.url || 'notifications.php').replace(/^\/+/, ''));
+    const count = Number(d.badge || 0);
+    event.waitUntil((async () => {
+        try {
+            if (self.navigator && 'setAppBadge' in self.navigator) {
+                if (count > 0) { await self.navigator.setAppBadge(count); }
+                else { await self.navigator.clearAppBadge(); }
+            }
+        } catch (e) { /* نبودِ badge نباید جلوی خودِ اعلان را بگیرد */ }
+        await self.registration.showNotification(title, {
+            body: String(d.body || ''),
+            tag: String(d.tag || 'hesab'),
+            renotify: true,
+            dir: 'rtl',
+            lang: 'fa',
+            icon: rel('assets/icons/icon-192.png'),
+            badge: rel('assets/icons/badge-96.png'),
+            data: { url },
+        });
+    })());
+});
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const url = (event.notification.data && event.notification.data.url) || rel('notifications.php');
+    event.waitUntil((async () => {
+        const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        // ⛔ اگر اپ از قبل باز است همان پنجره جلو می‌آید، نه یک پنجره‌ی دوم.
+        for (const w of wins) {
+            if (w.url.startsWith(self.registration.scope)) {
+                try { await w.focus(); } catch (e) {}
+                try { await w.navigate(url); } catch (e) {}
+                return;
+            }
+        }
+        await self.clients.openWindow(url);
+    })());
+});

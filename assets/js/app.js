@@ -4449,18 +4449,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
     var palettePicker = document.getElementById('palettePicker');
     if (palettePicker) {
-        var curPal = document.documentElement.getAttribute('data-palette') || 'emerald';
+        // ⛔ نامِ پیش‌فرض از خودِ صفحه می‌آید (اولین کلیدِ UI_PALETTES)، نه
+        //    یک رشته‌ی سخت‌کد — پیش‌فرض یک بار از زمرد به نیلی رفت و با نامِ
+        //    سخت‌کد، زدنِ «نیلی» ویژگی می‌نوشت و زدنِ «زمرد» پاکش می‌کرد.
+        var defPal = palettePicker.getAttribute('data-default') || '';
+        var curPal = document.documentElement.getAttribute('data-palette') || defPal;
         // مقدارِ ذخیره‌شده‌ای که سرآیند نپذیرفت (پالتِ حذف‌شده، دست‌کاری) همین‌جا
-        // پاک می‌شود؛ وگرنه زدنِ «زمرد» — که از قبل انتخاب است — `change` نمی‌دهد
+        // پاک می‌شود؛ وگرنه زدنِ پیش‌فرض — که از قبل انتخاب است — `change` نمی‌دهد
         // و آن مقدار تا ابد در مرورگر می‌ماند.
-        if (curPal === 'emerald') { try { localStorage.removeItem('daftar_palette'); } catch (e) {} }
+        if (curPal === defPal) { try { localStorage.removeItem('daftar_palette'); } catch (e) {} }
         palettePicker.querySelectorAll('input[name="ui_palette"]').forEach(function (r) {
             r.checked = (r.value === curPal);
             r.addEventListener('change', function () {
                 if (!this.checked) return;
-                // ⛔ زمرد پیش‌فرض است: ویژگی برداشته می‌شود و کلید هم پاک، نه
-                //    نوشتنِ 'emerald' — تا پیش‌فرضِ فردا (اگر عوض شد) به همه برسد.
-                if (this.value === 'emerald') {
+                // ⛔ پیش‌فرض ویژگی نمی‌گیرد و کلید هم پاک می‌شود، نه نوشتنِ نامش
+                //    — تا پیش‌فرضِ فردا (اگر عوض شد) به همه برسد.
+                if (this.value === defPal) {
                     document.documentElement.removeAttribute('data-palette');
                     try { localStorage.removeItem('daftar_palette'); } catch (e) {}
                 } else {
@@ -4529,7 +4533,6 @@ document.addEventListener('DOMContentLoaded', function () {
         var OUT = 512;              // اندازه‌ی تصویر ذخیره‌شده (مربع)
         var img = null;             // تصویر بارگذاری‌شده
         var minScale = 1, scale = 1, offX = 0, offY = 0;
-        var objectUrl = null;
 
         function stageSize() {
             // بوم را با اندازه‌ی واقعی پیکسلی صحنه هماهنگ می‌کنیم تا روی
@@ -4601,30 +4604,49 @@ document.addEventListener('DOMContentLoaded', function () {
 
         function closeCrop() {
             cropModal.classList.remove('show');
-            if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = null; }
             img = null;
             avatarInput.value = '';   // تا انتخاب دوباره‌ی همان فایل هم change بدهد
         }
 
+        // ⛔ تصویر با FileReader و آدرسِ data: خوانده می‌شود، نه با
+        // URL.createObjectURL. سیاستِ CSP سایت فقط `img-src 'self' data:` را
+        // اجازه می‌دهد و آدرسِ blob: را می‌بندد؛ با createObjectURL مرورگر
+        // تصویر را **بی‌صدا** بار نمی‌کرد و هر عکسی — از هر گوشی‌ای — پیامِ
+        // «تصویر معتبری نیست» می‌گرفت. قاعده ۵۹ برگشتش را می‌بندد.
+        //
+        // هر نوعی که مرورگر بتواند باز کند پذیرفته است (HEIC روی آیفون هم)،
+        // چون سرور هرگز فایلِ خام را نمی‌بیند: همین‌جا روی بوم کشیده و
+        // JPEG می‌شود.
         avatarInput.addEventListener('change', function () {
             if (!this.files || !this.files[0]) return;
             var file = this.files[0];
 
-            if (objectUrl) URL.revokeObjectURL(objectUrl);
-            objectUrl = URL.createObjectURL(file);
+            if (file.type && file.type.indexOf('image/') !== 0) {
+                showMsg('فایلِ انتخاب‌شده عکس نیست.', 'error');
+                closeCrop();
+                return;
+            }
 
-            var probe = new Image();
-            probe.onload = function () {
-                img = probe;
-                cropModal.classList.add('show');
-                // صحنه باید اول در DOM دیده شود تا اندازه‌اش را بدانیم
-                requestAnimationFrame(fit);
+            var reader = new FileReader();
+            reader.onload = function () {
+                var probe = new Image();
+                probe.onload = function () {
+                    img = probe;
+                    cropModal.classList.add('show');
+                    // صحنه باید اول در DOM دیده شود تا اندازه‌اش را بدانیم
+                    requestAnimationFrame(fit);
+                };
+                probe.onerror = function () {
+                    showMsg('مرورگرِ شما این نوع عکس را باز نمی‌کند (مثلاً HEIC روی بعضی اندرویدها). یک عکسِ JPG یا PNG انتخاب کنید یا از دوربین عکس بگیرید.', 'error');
+                    closeCrop();
+                };
+                probe.src = String(reader.result || '');
             };
-            probe.onerror = function () {
-                showMsg('این فایل تصویر معتبری نیست.', 'error');
+            reader.onerror = function () {
+                showMsg('خواندنِ فایل ممکن نشد. دوباره انتخاب کنید.', 'error');
                 closeCrop();
             };
-            probe.src = objectUrl;
+            reader.readAsDataURL(file);
         });
 
         // ---- کشیدن با انگشت یا ماوس ----
@@ -4731,6 +4753,140 @@ document.addEventListener('DOMContentLoaded', function () {
                     });
             }, 'image/jpeg', 0.9);
         });
+    }
+
+    // ---------- عددِ اعلان روی آیکونِ اپ ----------
+    // ⛔ «نوتیف روی آیکون مثل سایر اپ‌ها». عدد همان `data-unread`ِ زنگِ سرآیند
+    //    است (هیچ کوئریِ تازه‌ای نیست). ⚠ روی آیفون (PWAِ نصب‌شده، iOS 16.4+
+    //    و با اجازه‌ی اعلان) و دسکتاپ کار می‌کند؛ روی اندروید خودِ سیستم از
+    //    روی اعلان‌ها یک نقطه روی آیکون می‌گذارد.
+    (function syncAppBadge() {
+        var bell = document.querySelector('[data-unread]');
+        if (!bell || !('setAppBadge' in navigator)) return;
+        var n = parseInt(bell.getAttribute('data-unread'), 10) || 0;
+        try {
+            var p = n > 0 ? navigator.setAppBadge(n) : navigator.clearAppBadge();
+            if (p && p.catch) p.catch(function () {});
+        } catch (e) {}
+    })();
+
+    // ---------- اعلان روی گوشی (Web Push) ----------
+    var pushCard = document.getElementById('pushCard');
+    if (pushCard) {
+        var pState = document.getElementById('pushState');
+        var pOn    = document.getElementById('pushOn');
+        var pOff   = document.getElementById('pushOff');
+        var pTest  = document.getElementById('pushTest');
+        var pMsg   = document.getElementById('pushMsg');
+        var standalone = window.matchMedia && window.matchMedia('(display-mode: standalone)').matches
+            || window.navigator.standalone === true;
+        var isIOS = /iP(hone|ad|od)/.test(navigator.userAgent)
+            || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+        var pSay = function (text, kind) {
+            pMsg.hidden = false;
+            pMsg.classList.remove('success', 'error');
+            pMsg.classList.add('show');
+            if (kind) pMsg.classList.add(kind);
+            pMsg.textContent = text;
+        };
+        var pShow = function (on, off, test) { pOn.hidden = !on; pOff.hidden = !off; pTest.hidden = !test; };
+        var keyBytes = function (b64) {
+            var pad = '='.repeat((4 - b64.length % 4) % 4);
+            var raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+            var out = new Uint8Array(raw.length);
+            for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+            return out;
+        };
+        var b64 = function (buf) {
+            var s = '', a = new Uint8Array(buf);
+            for (var i = 0; i < a.length; i++) s += String.fromCharCode(a[i]);
+            return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        };
+        var post = function (name, fields) {
+            var fd = new FormData();
+            fd.append('csrf_token', csrf());
+            Object.keys(fields).forEach(function (k) { fd.append(k, fields[k]); });
+            return fetch(apiUrl(name), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); });
+        };
+
+        var supported = ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+        var refresh = function () {
+            if (!supported) {
+                // ⛔ دکمه‌ای که کار نمی‌کند رندر نمی‌شود؛ به‌جایش علت گفته می‌شود.
+                pState.textContent = (isIOS && !standalone)
+                    ? 'روی آیفون، اعلان فقط وقتی کار می‌کند که اپ از آیکونِ صفحه‌ی اصلی باز شده باشد: در سافاری «اشتراک‌گذاری» ← «افزودن به صفحه‌ی اصلی».'
+                    : 'این مرورگر اعلانِ وب را پشتیبانی نمی‌کند. با کروم یا اپِ اندرویدِ حساب لند باز کنید.';
+                pShow(false, false, false);
+                return;
+            }
+            if (Notification.permission === 'denied') {
+                pState.textContent = 'اجازه‌ی اعلان برای این برنامه بسته است. از تنظیماتِ گوشی ← برنامه‌ها ← حساب لند (یا کروم) ← اعلان‌ها بازش کنید.';
+                pShow(false, false, false);
+                return;
+            }
+            navigator.serviceWorker.ready.then(function (reg) {
+                return reg.pushManager.getSubscription();
+            }).then(function (sub) {
+                if (sub) {
+                    pState.textContent = '✓ اعلان روی این دستگاه روشن است.';
+                    pShow(false, true, true);
+                } else {
+                    pState.textContent = 'اعلان روی این دستگاه خاموش است.';
+                    pShow(true, false, false);
+                }
+            }).catch(function () {
+                pState.textContent = 'اعلان روی این دستگاه خاموش است.';
+                pShow(true, false, false);
+            });
+        };
+
+        pOn.addEventListener('click', function () {
+            pOn.disabled = true;
+            // ⛔ اجازه باید **مستقیم** از همین تپ خواسته شود؛ مرورگرها درخواستِ
+            //    بی‌حرکتِ کاربر را بی‌صدا رد می‌کنند.
+            Promise.resolve(Notification.requestPermission()).then(function (perm) {
+                if (perm !== 'granted') { throw new Error('perm'); }
+                return navigator.serviceWorker.ready;
+            }).then(function (reg) {
+                return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(pushCard.getAttribute('data-key')) });
+            }).then(function (sub) {
+                return post('push_subscribe.php', {
+                    endpoint: sub.endpoint,
+                    p256dh: b64(sub.getKey('p256dh')),
+                    auth: b64(sub.getKey('auth'))
+                });
+            }).then(function (d) {
+                pSay(d.message || (d.success ? 'روشن شد.' : 'روشن نشد.'), d.success ? 'success' : 'error');
+            }).catch(function (e) {
+                pSay(e && e.message === 'perm'
+                    ? 'اجازه داده نشد. هر وقت خواستید دوباره همین دکمه را بزنید.'
+                    : 'روشن کردن ممکن نشد — اینترنتِ گوشی را بررسی کنید و دوباره امتحان کنید.', 'error');
+            }).then(function () { pOn.disabled = false; refresh(); });
+        });
+
+        pOff.addEventListener('click', function () {
+            navigator.serviceWorker.ready.then(function (reg) {
+                return reg.pushManager.getSubscription();
+            }).then(function (sub) {
+                if (!sub) return null;
+                var ep = sub.endpoint;
+                return sub.unsubscribe().then(function () { return post('push_subscribe.php', { action: 'unsubscribe', endpoint: ep }); });
+            }).then(function () { pSay('اعلان روی این دستگاه خاموش شد.', 'success'); })
+              .catch(function () { pSay(netErr(), 'error'); })
+              .then(refresh);
+        });
+
+        pTest.addEventListener('click', function () {
+            pTest.disabled = true;
+            post('push_test.php', {}).then(function (d) {
+                pSay(d.message || '', d.success ? 'success' : 'error');
+            }).catch(function () { pSay(netErr(), 'error'); })
+              .then(function () { pTest.disabled = false; });
+        });
+
+        refresh();
     }
 
     var avatarDeleteBtn = document.getElementById('avatarDeleteBtn');

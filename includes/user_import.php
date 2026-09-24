@@ -81,6 +81,12 @@ const USER_IMPORT_SKIP = [
     'api_tokens', 'password_resets', 'trusted_devices', 'sms_codes',
     'payments',
     /*
+     * ⛔ `push_subscriptions` — نوشتنش از فایلِ دستِ کاربر یعنی سرور را
+     *    وادار کردن به POST به هر آدرسی: همان SSRF که `Push::subscribe()`
+     *    با فهرستِ مجازِ میزبان‌ها می‌بندد، از درِ پشتی.
+     */
+    'push_subscriptions',
+    /*
      * ⛔ `store_shareholders` یک **اجازه**ی مدیر است، نه دفترِ کاربر —
      *    دقیقاً از جنسِ `payments`. با نوشتنش، یک فایلِ دست‌ساز به
      *    خودش پیوندِ یک سهامدار می‌داد و دفترِ مالیِ یک سیستمِ دیگر را

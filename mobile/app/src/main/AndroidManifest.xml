@@ -174,14 +174,28 @@
             </intent-filter>
         </activity>
 
-        <!-- سرویسی که کروم برای نگه داشتن اتصال TWA لازم دارد -->
+        <!-- سرویسی که کروم برای نگه داشتن اتصال TWA لازم دارد.
+             ⛔ و همان است که اعلانِ سایت (Web Push) را **به نامِ خودِ اپ**
+             نشان می‌دهد، نه به نامِ کروم: «مثل سایر اپ‌ها». SMALL_ICON
+             آیکونِ سفیدِ نوارِ وضعیت است. -->
         <service
             android:name="com.google.androidbrowserhelper.trusted.DelegationService"
             android:exported="true">
+            <meta-data
+                android:name="android.support.customtabs.trusted.SMALL_ICON"
+                android:resource="@drawable/ic_notification_icon"/>
             <intent-filter>
                 <action android:name="android.support.customtabs.trusted.TRUSTED_WEB_ACTIVITY_SERVICE"/>
                 <category android:name="android.intent.category.DEFAULT"/>
             </intent-filter>
         </service>
+
+        <!-- ⛔ اندروید ۱۳ به بالا: وقتی سایت داخلِ اپ «اجازه‌ی اعلان» می‌خواهد
+             (دکمه‌ی «روشن کردنِ اعلان روی گوشی» در پروفایل)، کتابخانه همین
+             صفحه را باز می‌کند تا **مجوزِ خودِ اپ** (POST_NOTIFICATIONS)
+             پرسیده شود. بدونِ آن، سایت «denied» می‌گرفت و هیچ پرسشی دیده
+             نمی‌شد. (در androidbrowserhelper 2.5.0 هست؛ در الگوی bubblewrap
+             هم دقیقاً همین خط است.) -->
+        <activity android:name="com.google.androidbrowserhelper.trusted.NotificationPermissionRequestActivity"/>
     </application>
 </manifest>

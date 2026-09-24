@@ -57,7 +57,8 @@ function backupFileName(?string $gregorianDate = null): string
     return str_replace('/', '-', toLatinDigits(toJalali($d))) . '.' . BACKUP_EXT;
 }
 
-const USER_EXPORT_SKIP = ['api_tokens', 'password_resets', 'trusted_devices'];
+// ⛔ `push_subscriptions` اعتبارنامه‌ی دستگاه است (کلیدِ رمزنگاریِ اعلانِ مرورگر)، نه دفتر.
+const USER_EXPORT_SKIP = ['api_tokens', 'password_resets', 'trusted_devices', 'push_subscriptions'];
 
 /** ستون‌هایی که هرگز نباید از `users` بیرون بروند. */
 const USER_SECRET_COLUMNS = ['password_hash'];
