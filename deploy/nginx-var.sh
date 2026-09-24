@@ -17,6 +17,10 @@
 #    فایل‌های نشست، کلیدِ خصوصیِ VAPIDِ اعلانِ گوشی، و در حالتِ توسعه
 #    حتی `var/sms.log` (کدهای ورود). پسوندِ `.log` در هیچ قاعده‌ای نبود.
 #
+# ⛔ و نصب‌هایی که با vps-setup.shِ قدیمی ساخته شده‌اند /deploy/،
+#    /tests/ و /mobile/ را هم نمی‌بندند (آن‌جا فقط نگهبانِ CLIِ خودِ
+#    فایل‌های PHP جلو را می‌گرفت). هر پیشوندی که جا مانده اضافه می‌شود.
+#
 # اجرا:
 #     sudo bash deploy/nginx-var.sh            # فقط نشان می‌دهد چه می‌شود
 #     sudo bash deploy/nginx-var.sh --apply    # واقعاً اعمال می‌کند
@@ -47,16 +51,77 @@ if [[ ! -f "$SITE_FILE" ]]; then
 fi
 
 step "وضعیت فعلی"
-if grep -qE 'location[[:space:]]+\^~[[:space:]]+/var/' "$SITE_FILE"; then
-    green "✓ پوشه‌ی var از قبل بسته است — کاری لازم نیست."
+# ⛔ نصب‌هایی که با نسخه‌ی قدیمیِ vps-setup.sh ساخته شده‌اند قاعده‌ی
+#    `^~ /tests/` را اصلاً ندارند — روی سرورِ واقعی همین شد و نسخه‌ی
+#    اولِ این اسکریپت با «قاعده‌ی /tests/ پیدا نشد» ایستاد. پس هم
+#    /var/ و هم هر پیشوندِ بسته‌ی دیگری که جا مانده (همان‌هایی که نصبِ
+#    تازه دارد) اضافه می‌شوند، و جای درج از **ساختارِ خودِ فایل** پیدا
+#    می‌شود، نه از یک خطِ خاص.
+PREFIXES=(var deploy tests mobile)
+MISSING=()
+for p in "${PREFIXES[@]}"; do
+    if grep -qE "location[[:space:]]+\^~[[:space:]]+/${p}/" "$SITE_FILE"; then
+        info "✓ /${p}/ از قبل بسته است."
+    else
+        MISSING+=("$p")
+        info "✗ /${p}/ بسته نیست."
+    fi
+done
+if [[ ${#MISSING[@]} -eq 0 ]]; then
+    green "✓ همه از قبل بسته‌اند — کاری لازم نیست."
     exit 0
 fi
-info "پوشه‌ی var/ از وب بسته نیست."
 
-LINE='    location ^~ /var/    { deny all; return 404; }'
-step "چیزی که اضافه می‌شود"
-info "$LINE"
-info "درست بعد از قاعده‌ی /tests/ قرار می‌گیرد."
+TMP_BLOCK="$(mktemp)"
+TMP_SITE="$(mktemp)"
+TMP_COUNT="$(mktemp)"
+trap 'rm -f "$TMP_BLOCK" "$TMP_SITE" "$TMP_COUNT"' EXIT
+: > "$TMP_BLOCK"
+for p in "${MISSING[@]}"; do
+    printf 'location ^~ /%s/ { deny all; return 404; }\n' "$p" >> "$TMP_BLOCK"
+done
+
+# جای درج: پیش از اولین `location ~ \.php` که **مستقیم** داخلِ یک
+# بلوکِ server است (عمقِ آکولاد = ۱). نسخه‌ی تودرتوی همان الگو داخلِ
+# `location ^~ /uploads/` هم هست و درج آنجا nginx -t را می‌شکست.
+# هر بلوکِ server که چنین قاعده‌ای دارد یک بار می‌گیرد (certbot بلوکِ
+# :80 را فقط با return 301 می‌سازد و آن را نمی‌گیرد).
+# ⛔ با فایلِ موقت و getline، نه awk -v (همان درسِ nginx-realip.sh).
+awk -v blockfile="$TMP_BLOCK" -v countfile="$TMP_COUNT" '
+    BEGIN { depth = 0; blk = 0; n = 0 }
+    {
+        code = $0
+        sub(/#.*/, "", code)
+        if (depth == 1 && !(blk in done) && code ~ /^[ \t]*location[ \t]+~\*?[ \t]+\\\.php/) {
+            match($0, /^[ \t]*/)
+            ind = substr($0, 1, RLENGTH)
+            while ((getline l < blockfile) > 0) { print ind l }
+            close(blockfile)
+            done[blk] = 1
+            n++
+        }
+        print
+        o = gsub(/\{/, "{", code)
+        c = gsub(/\}/, "}", code)
+        if (depth == 0 && o > 0 && code ~ /server[ \t]*\{/) { blk++ }
+        depth += o - c
+    }
+    END { print n > countfile }
+' "$SITE_FILE" > "$TMP_SITE"
+INSERTED="$(cat "$TMP_COUNT")"
+
+if [[ "$INSERTED" == "0" ]]; then
+    red "⛔ جای درج پیدا نشد (هیچ «location ~ \.php» ای مستقیم داخلِ server نیست) — هیچ حدسی زده نمی‌شود."
+    info "فایل دست‌نخورده ماند. خروجیِ این دستور را بفرستید:"
+    info "    sudo grep -n -e server -e location $SITE_FILE"
+    exit 1
+fi
+
+step "چیزی که اضافه می‌شود (در ${INSERTED} بلوکِ server)"
+# ⚠ نه با diff: فایلی که خطِ آخرش newline ندارد، در diff یک «+ }»ِ
+#   الکی می‌گیرد (awk آن newline را اضافه می‌کند) و آدم فکر می‌کند
+#   آکولادی اضافه شده. خطوطِ درج‌شده مستقیم از خروجی خوانده می‌شوند.
+grep -E 'location[[:space:]]+\^~[[:space:]]+/('"$(IFS='|'; echo "${MISSING[*]}")"')/' "$TMP_SITE" | sed 's/^/  + /' || true
 
 if [[ $APPLY -eq 0 ]]; then
     step "نمایشی بود"
@@ -69,26 +134,6 @@ BACKUP="${SITE_FILE}.bak.$(date +%Y%m%d%H%M%S)"
 cp -a "$SITE_FILE" "$BACKUP"
 chmod 600 "$BACKUP"
 info "نسخه‌ی پشتیبان: $BACKUP"
-
-# ⛔ با فایلِ موقت و getline، نه awk -v (همان درسِ nginx-realip.sh).
-TMP_BLOCK="$(mktemp)"
-TMP_SITE="$(mktemp)"
-trap 'rm -f "$TMP_BLOCK" "$TMP_SITE"' EXIT
-printf '%s\n' "$LINE" > "$TMP_BLOCK"
-awk -v blockfile="$TMP_BLOCK" '
-    { print }
-    !done && /location[ \t]+\^~[ \t]+\/tests\// {
-        while ((getline line < blockfile) > 0) { print line }
-        close(blockfile)
-        done = 1
-    }
-' "$SITE_FILE" > "$TMP_SITE"
-
-if ! grep -qE 'location[[:space:]]+\^~[[:space:]]+/var/' "$TMP_SITE"; then
-    red "⛔ قاعده‌ی /tests/ در فایل سایت پیدا نشد — هیچ حدسی زده نمی‌شود."
-    info "فایل دست‌نخورده ماند."
-    exit 1
-fi
 cat "$TMP_SITE" > "$SITE_FILE"
 
 if ! nginx -t; then
@@ -128,3 +173,4 @@ if [[ $ok -ne 1 ]]; then
     exit 1
 fi
 green "✅ انجام شد — var/ حالا ۴۰۴ می‌دهد و صفحه‌ی ورود همچنان ۲۰۰."
+info "پیشوندهای بسته‌شده: ${MISSING[*]}"

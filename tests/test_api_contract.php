@@ -5726,6 +5726,46 @@ if (strpos($man, 'android.support.customtabs.trusted.SMALL_ICON') === false || !
 }
 T::bulk(13, $badPush, '⛔ اعلان روی گوشی: فهرستِ مجاز، سرویس‌ورکر، badge، cron، migration، var/ بسته، و مجوزِ اندروید');
 
+// ---------------------------------------------------------------
+// ⛔ قاعده ۶۲ — nginx-var.sh جای درج را از ساختارِ فایل پیدا کند.
+//    نسخه‌ی اول به خطِ `^~ /tests/` لنگر می‌انداخت و فایلِ سایتِ سرورِ
+//    واقعی (ساخته‌شده با vps-setup.shِ قدیمی) آن خط را نداشت، پس var/
+//    باز ماند. رفتار در tests/test_nginx_var.php سنجیده می‌شود ولی آن
+//    تست root می‌خواهد؛ این قاعده شکل را روی هر ماشینی نگه می‌دارد.
+// ---------------------------------------------------------------
+T::group('قاعده ۶۲ — nginx-var.sh روی فایلِ سایتِ قدیمی');
+$badVar = [];
+$nv = (string)@file_get_contents(__DIR__ . '/../deploy/nginx-var.sh');
+$nvCode = (string)preg_replace('/^\s*#.*$/m', '', $nv);
+if (preg_match('#/\\\\/tests\\\\/#', $nvCode) || strpos($nvCode, '/tests\//') !== false) {
+    $badVar[] = 'nginx-var.sh — دوباره به خطِ /tests/ لنگر انداخته (روی نصبِ قدیمی نیست)';
+}
+if (strpos($nvCode, 'depth == 1') === false) {
+    $badVar[] = 'nginx-var.sh — عمقِ آکولاد سنجیده نمی‌شود؛ درج داخلِ location تودرتوی /uploads/ می‌افتاد';
+}
+if (!preg_match('/PREFIXES=\(([^)]*)\)/', $nvCode, $pm)) {
+    $badVar[] = 'nginx-var.sh — فهرستِ PREFIXES نیست';
+} else {
+    $vps = (string)@file_get_contents(__DIR__ . '/../deploy/vps-setup.sh');
+    foreach (preg_split('/\s+/', trim($pm[1])) as $px) {
+        if (!preg_match('#location \^~ /' . preg_quote($px, '#') . '/\s#', $vps)) {
+            $badVar[] = "vps-setup.sh — /{$px}/ در نصبِ تازه بسته نیست ولی nginx-var.sh آن را اضافه می‌کند";
+        }
+    }
+    foreach (['var', 'deploy', 'tests', 'mobile'] as $px) {
+        if (!preg_match('/\b' . $px . '\b/', $pm[1])) { $badVar[] = "nginx-var.sh — /{$px}/ در PREFIXES نیست"; }
+    }
+}
+if (preg_match('/awk\s+-v\s+block=/', $nvCode)) {
+    $badVar[] = 'nginx-var.sh — awk -v block= دنباله‌های escape را بی‌صدا عوض می‌کند (درسِ nginx-realip.sh)';
+}
+$posBak = strpos($nvCode, 'cp -a "$SITE_FILE" "$BACKUP"');
+$posIns = strpos($nvCode, '"$INSERTED" == "0"');
+if ($posBak === false || $posIns === false || $posBak < $posIns) {
+    $badVar[] = 'nginx-var.sh — پشتیبان پیش از یافتنِ جای درج ساخته می‌شود';
+}
+T::bulk(6, $badVar, '⛔ nginx-var.sh: بی‌لنگرِ /tests/، عمقِ آکولاد، پیشوندهای هم‌سان با نصبِ تازه، و پشتیبان بعد از یافتنِ جای درج');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }
