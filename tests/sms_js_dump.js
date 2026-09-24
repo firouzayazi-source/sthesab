@@ -117,6 +117,15 @@ process.stdin.on('end', () => {
                         ['default', null, '1',  true],
                         ['denied',  null, null, true],
                     ].map(a => sandbox.window.pushAutoAction(...a)),
+                    // ⛔ فرگمنتِ اپ اندروید → فهرستِ پیامک‌ها (`smsHashDecode`).
+                    hashDecode: [
+                        '#sms=' + encodeURIComponent('برداشت ۵۰۰٬۰۰۰ ریال'),
+                        '#smsq=' + encodeURIComponent(JSON.stringify(['الف ۱۲۳۴', '  ', 7, 'ب ۵۶۷۸'])),
+                        '#smsq=' + encodeURIComponent('{"a":1}'),
+                        '#smsq=%E0%A4%A',
+                        '#other=1',
+                        '#smsq=' + encodeURIComponent(JSON.stringify(Array.from({ length: 50 }, (_, i) => 'x' + i))),
+                    ].map(h => sandbox.window.smsHashDecode(h)),
                 };
             }
             const r = sandbox.window.parseBankSms(t);

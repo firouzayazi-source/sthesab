@@ -964,11 +964,45 @@ if (!file_exists($gradlePath)) {
                 $lauBad[] = "HesabLauncherActivity — «{$p}» در اولین اجرا پرسیده نمی‌شود";
             }
         }
-        // ۶) و هیچ خواندنِ پیامکی — فقط مجوز.
-        foreach (['content://sms', 'getContentResolver', 'scanInbox'] as $x) {
-            if (str_contains($lauNC, $x)) {
-                $lauBad[] = "HesabLauncherActivity — «{$x}»؛ درِ ورودی فقط مجوز می‌گیرد، صندوق را نمی‌خواند";
+        // ۶) ⛔ آوردنِ صندوق — به خواستِ مالکِ نصب («تمام پیامک‌های حساب
+        //    روی اپ بالا بیاد») جای «درِ ورودی صندوق را نمی‌خواند» را
+        //    گرفت، با همان مرزها: فقط در `takeInbox()`، فقط با صافیِ
+        //    مسیرِ واقعی، فقط با کلیدِ روشن و `READ_SMS`، و نشانه همان‌جا.
+        $ti = strpos($lauNC, 'private ArrayList<String> takeInbox(');
+        if ($ti === false) {
+            $lauBad[] = 'HesabLauncherActivity — takeInbox() نیست؛ پیامکی که اعلانش زده نشده هرگز به دفتر نمی‌رسد';
+        } else {
+            $tiBody = substr($lauNC, $ti, 2600);
+            foreach (['BankSmsReceiver.classify' => 'صافیِ مسیرِ واقعی',
+                      'Manifest.permission.READ_SMS' => 'سنجشِ مجوزِ صندوق',
+                      'BankSmsReceiver.DEFAULT_ON' => 'کلیدِ روشن/خاموش',
+                      'putLong(BankSmsReceiver.PREF_SCAN_AT' => 'جلو بردنِ نشانه'] as $needle => $what) {
+                if (!str_contains($tiBody, $needle)) {
+                    $lauBad[] = "HesabLauncherActivity — takeInbox() {$what} را ندارد";
+                }
             }
+            // ⚠ فقط یک خواننده‌ی صندوق: `content://sms` جز داخلِ همین تابع نه.
+            if (substr_count($lauNC, 'content://sms') !== 1 || strpos($lauNC, 'content://sms') < $ti) {
+                $lauBad[] = 'HesabLauncherActivity — صندوق بیرون از takeInbox() خوانده می‌شود';
+            }
+        }
+        // ⚠ پیش از `super.onCreate` (وگرنه با اپِ باز، آیکون چیزی نمی‌آورد)
+        //   **و** در `getLaunchingUrl` (وگرنه اجرای اول، بعد از «اجازه»).
+        $oc = strpos($lauNC, 'protected void onCreate(');
+        $sp = $oc === false ? false : strpos($lauNC, 'super.onCreate(saved)', $oc);
+        if ($oc === false || $sp === false
+            || !str_contains(substr($lauNC, $oc, $sp - $oc), 'withPendingSms(')) {
+            $lauBad[] = 'HesabLauncherActivity — پیامک‌ها پیش از super.onCreate به intent نمی‌نشینند';
+        }
+        if (!preg_match('~Uri\s+getLaunchingUrl\(\)\s*\{[^}]*withPendingSms\(~s', $lauNC)) {
+            $lauBad[] = 'HesabLauncherActivity — getLaunchingUrl() پیامک‌ها را نمی‌آورد؛ اجرای اول خالی می‌ماند';
+        }
+        // ⚠ بدونِ مجوز نشانه‌ی «انجام شد» نخورد — وگرنه اجرای اول (پیش از
+        //   دیالوگ) آوردن را برای همیشه‌ی همان اجرا خاموش می‌کرد.
+        $wp = strpos($lauNC, 'private Uri withPendingSms(');
+        if ($wp === false
+            || !preg_match('~READ_SMS\)\)\s*\{\s*return null;\s*\}\s*pendingApplied\s*=\s*true;~', substr($lauNC, $wp, 900))) {
+            $lauBad[] = 'HesabLauncherActivity — pendingApplied پیش از سنجشِ READ_SMS می‌خورد';
         }
     }
     // ⛔ کلاسِ خامِ کتابخانه دیگر نباید به‌عنوان اکتیویتی اعلام شود، وگرنه
@@ -1428,13 +1462,22 @@ if ($appJs !== '') {
     //   بخش‌های دیگرِ همان فایل هم هست، پس با آن شرط، عوض کردنِ خودِ
     //   خطِ خواندنِ پیامک بی‌صدا از تست رد می‌شد. (آزمونِ جهش نشانش
     //   داد.) پس باید در **همان چند خط** کنارِ `'#sms='` باشد.
-    $pos = strpos($appJs, "'#sms='");
+    // ⚠ حالا دو شکل هست (`#sms=` و `#smsq=`) و رمزگشایی در
+    //   `smsHashDecode()` است؛ پس خودِ `takeSmsFragment()` باید از
+    //   `location.hash` بخواند و به همان بدهد.
+    $pos = strpos($appJs, 'function takeSmsFragment()');
     if ($pos === false) {
-        $smsBad[] = 'app.js — نشانه‌ی `#sms=` پیدا نشد';
-    } elseif (!preg_match('~location\.hash~', substr($appJs, max(0, $pos - 400), 500))) {
-        $smsBad[] = 'app.js — پیامک از `location.hash` خوانده نمی‌شود';
+        $smsBad[] = 'app.js — takeSmsFragment() پیدا نشد';
+    } else {
+        $tf = substr($appJs, $pos, 700);
+        if (!preg_match('~location\.hash~', $tf) || !str_contains($tf, 'smsHashDecode(')) {
+            $smsBad[] = 'app.js — پیامک از `location.hash` و smsHashDecode خوانده نمی‌شود';
+        }
     }
-    if (preg_match('~[?&]sms=~', $appJs)) {
+    if (!str_contains($appJs, "'#smsq='") || !str_contains($appJs, "'#sms='")) {
+        $smsBad[] = 'app.js — یکی از دو شکلِ فرگمنت (`#sms=` / `#smsq=`) شناخته نمی‌شود';
+    }
+    if (preg_match('~[?&]smsq?=~', $appJs)) {
         $smsBad[] = 'app.js — `?sms=` پیدا شد؛ متن به سرور می‌رود';
     }
 }
@@ -1465,8 +1508,8 @@ foreach ($nativeJava as $j) {
     $src  = file_get_contents($j);
     $name = basename($j);
 
-    if (preg_match('~[?&]sms=~', $src)) {
-        $smsBad[] = "$name — `?sms=` پیدا شد؛ متنِ پیامک به سرور می‌رفت";
+    if (preg_match('~[?&]smsq?=~', $src) || str_contains($src, 'appendQueryParameter')) {
+        $smsBad[] = "$name — `?sms=` یا query پیدا شد؛ متنِ پیامک به سرور می‌رفت";
     }
     // ⛔ هیچ کلاسِ شبکه‌ای: اگر روزی کسی وسوسه شود متن را «برای پارسِ
     //    بهتر» به یک اندپوینت بفرستد، همین‌جا می‌ایستد.
@@ -1559,48 +1602,32 @@ foreach ($nativeJava as $j) {
                       . ' روی رامی که این صفحه را ندارد اپ بسته می‌شود';
         }
 
-        // ⛔ بررسیِ صندوقِ پیامک (`READ_SMS`) — و سه چیزی که نبودشان
-        //    بی‌صداست:
-        //
-        //    ۱. **فقط با تپِ کاربر.** کاوشِ خودکارِ صندوق دقیقاً همان
-        //       چیزی است که کاربر از یک دفترِ مالی انتظار ندارد، و از
-        //       بیرون هیچ نشانه‌ای ندارد. پس `scanInbox()` نباید از
-        //       `onCreate`/`onResume` صدا زده شود.
-        //    ۲. **همان صافی و همان اعلانِ مسیرِ واقعی.** با یک صافیِ
-        //       دومِ محلی، بررسیِ دستی و پیامکِ زنده دیر یا زود دو جواب
-        //       می‌دادند — همان دلیلی که کلِ پارس در `parseBankSms()`
-        //       مانده و همان دلیلی که آزمایشِ اعلان از `postNotification`
-        //       می‌رود.
-        //    ۳. **نشانه‌ی «تا اینجا دیده شده».** بدونش هر تپ همان
-        //       پیامک‌ها را دوباره اعلان می‌کرد و کاربر یک تراکنش را دو
-        //       بار ثبت می‌کرد.
+        // ⛔ «بررسی پیامک‌های قبلی» حالا اپ را با پنجره‌ی عمیق باز می‌کند
+        //    (`EXTRA_DEEP`) و خودش صندوق را **نمی‌خواند**: تنها خواننده
+        //    `HesabLauncherActivity.takeInbox()` است. با دو خواننده، پنجره و
+        //    صافی دیر یا زود دو جواب می‌دادند.
         $si = strpos($srcNC, 'private void scanInbox()');
         if ($si === false) {
-            $smsBad[] = "$name — scanInbox() پیدا نشد؛ پیامک‌های پیش از نصب"
-                      . ' برای همیشه از دست می‌روند';
+            $smsBad[] = "$name — scanInbox() پیدا نشد";
         } else {
-            $scanBody = substr($srcNC, $si, 3000);
-            // ⚠ نشانه با جای **نوشتنش** سنجیده می‌شود، نه با خودِ نام:
-            //   همان نام یک خط بالاتر برای **خواندن** هم هست، پس جهشِ
-            //   «ننویس» از زیرِ یک `str_contains`ِ ساده رد می‌شد — همان
-            //   دامی که یک بار سرِ `PREF_LAST_WHY` در همین قاعده افتاد.
-            foreach (['BankSmsReceiver.classify'          => 'صافیِ مسیرِ واقعی',
-                      'BankSmsReceiver.postNotification'  => 'اعلانِ مسیرِ واقعی',
-                      'putLong(BankSmsReceiver.PREF_SCAN_AT' => 'نوشتنِ نشانه‌ی «تا اینجا دیده شده»'] as $needle => $what) {
+            $scanBody = substr($srcNC, $si, 900);
+            foreach (['HesabLauncherActivity.class' => 'باز کردنِ اپ',
+                      'HesabLauncherActivity.EXTRA_DEEP' => 'پنجره‌ی عمیق'] as $needle => $what) {
                 if (!str_contains($scanBody, $needle)) {
                     $smsBad[] = "$name — scanInbox() {$what} را ندارد";
                 }
             }
-            // ⚠ «جایی در فایل کلیک هست» کافی نیست: باید **همین** تابع
-            //   به یک شنونده بسته باشد. و هیچ‌کدام از دو چرخه‌ی عمر
-            //   نباید صدایش بزنند.
+            if (str_contains($srcNC, 'content://sms')) {
+                $smsBad[] = "$name — صفحه‌ی تنظیم خودش صندوق را می‌خواند؛ خواننده فقط takeInbox است";
+            }
             if (!preg_match('~onClick\([^)]*\)\s*\{\s*scanInbox\(\);~', $srcNC)) {
                 $smsBad[] = "$name — scanInbox() به تپِ کاربر بسته نیست";
             }
+            // ⚠ از چرخه‌ی عمر صدا زده نشود: خودش صفحه را می‌بندد و اپ را
+            //   باز می‌کند، پس از `onResume` یعنی حلقه‌ی باز و بسته شدن.
             foreach (['onCreate', 'onResume', 'build'] as $auto) {
                 if (preg_match('~' . $auto . '\b[^{]*\{(?:[^{}]|\{[^{}]*\})*scanInbox\(\)~s', $srcNC)) {
-                    $smsBad[] = "$name — scanInbox() از {$auto}() صدا زده می‌شود؛"
-                              . ' صندوقِ پیامک هرگز نباید خودکار خوانده شود';
+                    $smsBad[] = "$name — scanInbox() از {$auto}() صدا زده می‌شود";
                 }
             }
         }
@@ -1616,6 +1643,18 @@ foreach ($nativeJava as $j) {
     //    رسیده است؛ اگر روزی `content://sms` را باز کند، خواندنِ صندوق
     //    از یک تصمیمِ آگاهانه‌ی کاربر به یک کارِ خودکارِ پس‌زمینه تبدیل
     //    می‌شود — بی‌آنکه هیچ‌جا دیده شود.
+    // ⛔ و گیرنده نشانه را جلو **نمی‌برد**: اعلانی که زده نشده پیامکی نیست
+    //    که به دفتر رسیده، و با جلو بردنش باز کردنِ اپ همان را نمی‌آورد.
+    if ($name === 'BankSmsReceiver.java'
+        && str_contains(preg_replace('~/\*.*?\*/|//[^\n]*~s', '', $src) ?? $src, 'putLong(PREF_SCAN_AT')) {
+        $smsBad[] = "$name — گیرنده PREF_SCAN_AT را جلو می‌برد؛ پیامکِ اعلانِ‌نزده با باز کردنِ اپ نمی‌آید";
+    }
+    // ⛔ متنِ صندوق در درِ ورودی هم ذخیره نمی‌شود.
+    if ($name === 'HesabLauncherActivity.java'
+        && preg_match('~put[A-Za-z]*\([^)]*\b(body|txt|text|items)\b~',
+                      preg_replace('~/\*.*?\*/|//[^\n]*~s', '', $src) ?? $src)) {
+        $smsBad[] = "$name — متنِ پیامک در prefs ذخیره می‌شود";
+    }
     if ($name === 'BankSmsReceiver.java' && str_contains($src, 'content://sms')) {
         $smsBad[] = "$name — گیرنده صندوقِ پیامک را می‌خواند؛"
                   . ' خواندنِ صندوق فقط با تپِ کاربر در صفحه‌ی تنظیم است';

@@ -706,6 +706,42 @@ if ('serviceWorker' in navigator) {
         }
         return ('0000000' + h.toString(16)).slice(-8);
     };
+
+    /**
+     * فرگمنتی که اپ اندروید می‌سازد → فهرستِ متنِ پیامک‌ها.
+     *
+     * ⛔ دو شکل، و هر دو **فرگمنت‌اند نه query** (قاعده ۱۹):
+     *    - `#sms=<متن>` — یک پیامک، از تپ روی اعلان.
+     *    - `#smsq=<JSON آرایه>` — چند پیامک، از صندوقِ پیامک هنگامِ باز
+     *      شدنِ اپ (`HesabLauncherActivity`). **گزارشِ مالکِ نصب:** «پیامک
+     *      برداشت فرستادم هیچ اتفاقی نیفتاد… می‌خوام تمام پیامک‌های حساب
+     *      روی اپ بالا بیاد». با فقط اعلان، پیامکی که کاربر رویش تپ نکرده
+     *      بود (یا اعلانش را رام بلعیده بود) هرگز به دفتر نمی‌رسید.
+     *
+     * ⚠ خالص و بیرون از `DOMContentLoaded` — آزمودنی در node، مثل
+     *   `parseBankSms()`. ورودیِ خراب `[]` می‌دهد نه استثنا: این مسیر در
+     *   هر بارگذاری اجرا می‌شود و استثنایش کلِ ثبتِ تراکنش را می‌خواباند.
+     * ⚠ سقفِ `SMS_HASH_MAX`: فرگمنت از بیرون می‌آید و آرایه‌ی هزارتایی
+     *   یعنی هزار بار باز شدنِ شیت.
+     */
+    window.SMS_HASH_MAX = 20;
+    window.smsHashDecode = function (hash) {
+        var h = String(hash || '');
+        var out = [];
+        try {
+            if (h.indexOf('#smsq=') === 0) {
+                var arr = JSON.parse(decodeURIComponent(h.slice(6)));
+                if (!Array.isArray(arr)) { return []; }
+                for (var i = 0; i < arr.length && out.length < window.SMS_HASH_MAX; i++) {
+                    if (typeof arr[i] === 'string' && arr[i].trim()) { out.push(arr[i]); }
+                }
+            } else if (h.indexOf('#sms=') === 0) {
+                var one = decodeURIComponent(h.slice(5));
+                if (one.trim()) { out.push(one); }
+            }
+        } catch (e) { return []; }
+        return out;
+    };
 })();
 
 /**
@@ -976,6 +1012,10 @@ document.addEventListener('DOMContentLoaded', function () {
                 formMessage.classList.remove('success', 'error');
 
                 if (data.success) {
+                    if (quickAddForm.dataset.smsFp) {
+                        smsMarkAuto(quickAddForm.dataset.smsFp);
+                        delete quickAddForm.dataset.smsFp;
+                    }
                     formMessage.classList.add('show', 'success');
                     formMessage.textContent = data.message || 'تراکنش با موفقیت ثبت شد.';
 
@@ -1377,8 +1417,11 @@ document.addEventListener('DOMContentLoaded', function () {
     //  آزمودنی بماند: `window.smsAutoEnabled`.)
     var SMS_AUTO_KEY  = window.SMS_AUTO_KEY;
     var SMS_SEEN_KEY  = 'daftar_sms_seen';
-    var SMS_SEEN_TTL  = 24 * 60 * 60 * 1000;   // یک شبانه‌روز
-    var SMS_SEEN_MAX  = 40;
+    // ⚠ هشت روز، نه یک شبانه‌روز: اپ اندروید حالا صندوقِ هفت روزِ اخیر را
+    //   هم می‌آورد («بررسی پیامک‌های قبلی»)، و نگهبانی کوتاه‌تر از آن
+    //   پنجره یعنی پیامکی که دیروز ثبت شده دوباره ثبت می‌شد.
+    var SMS_SEEN_TTL  = 8 * 24 * 60 * 60 * 1000;
+    var SMS_SEEN_MAX  = 200;
 
     var smsAutoEnabled = window.smsAutoEnabled;
 
@@ -1627,12 +1670,65 @@ document.addEventListener('DOMContentLoaded', function () {
         //    خرابیِ کاملاً بی‌صدا، و در مرورگر واقعاً دیده شد.
         //    با یک تیک تأخیر، همه‌ی شنونده‌های همین چرخه ثبت شده‌اند و
         //    این بلوک دیگر به **جای خودش در فایل** وابسته نیست.
+        // ---- صفِ پیامک‌ها ----
+        //
+        // ⛔ اپ اندروید ممکن است **چند** پیامک با هم بیاورد (`#smsq=`)، ولی
+        //    ثبت فقط از مسیرِ خودِ فرم می‌رود و هر ثبت صفحه را تازه
+        //    می‌کند. پس بقیه در `sessionStorage` صف می‌مانند و صفحه‌ی بعدی
+        //    یکی را برمی‌دارد — ثبتِ خودکار زنجیروار جلو می‌رود و پیامکی
+        //    که خودکار نمی‌شود، شیتِ پرشده را نشان می‌دهد و صف منتظرِ
+        //    کاربر می‌ماند.
+        // ⚠ متن روی دستگاه می‌ماند (sessionStorage، نه سرور) و مهلتش نیم
+        //   ساعت است: صفِ فراموش‌شده نباید فردا شیتی را باز کند.
+        var SMS_Q_KEY = 'daftar_sms_queue';
+        var SMS_Q_TTL = 30 * 60 * 1000;
+
+        function smsQueueRead() {
+            try {
+                var d = JSON.parse(sessionStorage.getItem(SMS_Q_KEY) || 'null');
+                if (!d || !Array.isArray(d.items) || (Date.now() - (d.at || 0)) > SMS_Q_TTL) {
+                    return [];
+                }
+                return d.items.filter(function (s) { return typeof s === 'string' && s.trim(); });
+            } catch (e) { return []; }
+        }
+        function smsQueueWrite(items) {
+            try {
+                if (!items.length) { sessionStorage.removeItem(SMS_Q_KEY); }
+                else { sessionStorage.setItem(SMS_Q_KEY, JSON.stringify({ items: items, at: Date.now() })); }
+            } catch (e) { /* ناشناس — فقط همین یکی پردازش می‌شود */ }
+        }
+
+        var smsQueueLeft = 0;
+
+        /**
+         * یکی از صف: پیامکی که قبلاً ثبت شده یا اصلاً تراکنش نیست بی‌صدا رد
+         * می‌شود، و اولی که می‌ماند شیت را باز می‌کند. اگر **همه** تراکنش
+         * نبودند، آخری نشان داده می‌شود تا کاربری که روی اعلان تپ کرده
+         * بداند چرا چیزی ثبت نشد — سکوتِ کامل همان «هیچ اتفاقی نیفتاد» است.
+         */
+        function smsQueueNext() {
+            var items = smsQueueRead();
+            var lastBad = '';
+            while (items.length) {
+                var raw = items.shift();
+                if (smsAlreadyAuto(window.smsFingerprint(raw))) { continue; }
+                if (!window.parseBankSms(raw).ok) { lastBad = raw; continue; }
+                smsQueueWrite(items);
+                smsQueueLeft = items.length;
+                openWithSms(raw);
+                return;
+            }
+            smsQueueWrite([]);
+            smsQueueLeft = 0;
+            if (lastBad) { openWithSms(lastBad); }
+        }
+
         function takeSmsFragment() {
             var h = window.location.hash || '';
-            if (h.indexOf('#sms=') !== 0) { return; }
+            if (h.indexOf('#sms=') !== 0 && h.indexOf('#smsq=') !== 0) { return; }
 
-            var raw = '';
-            try { raw = decodeURIComponent(h.slice(5)); } catch (e) { raw = ''; }
+            var got = window.smsHashDecode(h);
 
             // ⚠ فرگمنت **بلافاصله** پاک می‌شود: با تازه‌سازیِ صفحه دوباره
             //   اجرا می‌شد (یعنی تراکنشِ تکراری)، و تا آن موقع هم متنِ
@@ -1641,8 +1737,15 @@ document.addEventListener('DOMContentLoaded', function () {
                 history.replaceState(null, '', window.location.pathname + window.location.search);
             } catch (e) { window.location.hash = ''; }
 
-            if (!raw.trim()) { return; }
+            if (!got.length) { return; }
 
+            var q = smsQueueRead();
+            got.forEach(function (s) { if (q.indexOf(s) === -1) { q.push(s); } });
+            smsQueueWrite(q);
+            smsQueueNext();
+        }
+
+        function openWithSms(raw) {
             // شیتِ ثبت تراکنش را باز کن — از همان کلاسِ مشترک، نه یک
             // شناسه: `.js-add-tx` هم روی نوارِ پایین است هم نوارِ کناری.
             var opener = document.querySelector('.js-add-tx');
@@ -1661,7 +1764,12 @@ document.addEventListener('DOMContentLoaded', function () {
             go.click();
         }
 
-        setTimeout(takeSmsFragment, 0);
+        // ⚠ بدونِ فرگمنت هم صف را ادامه می‌دهد: ثبتِ خودکارِ پیامکِ قبلی
+        //   صفحه را تازه کرده و بقیه منتظرند.
+        setTimeout(function () {
+            if (/^#smsq?=/.test(window.location.hash || '')) { takeSmsFragment(); }
+            else { smsQueueNext(); }
+        }, 0);
 
         // ⛔ `hashchange` هم لازم است، و نبودش یک باگِ واقعی بود:
         //    اگر اپ **همین حالا** روی همان صفحه باز باشد، تپ روی اعلان
@@ -1681,6 +1789,11 @@ document.addEventListener('DOMContentLoaded', function () {
                 msg.textContent = r.reason;
                 return;
             }
+
+            // ⚠ اثرِ انگشت روی فرم می‌نشیند تا ثبتِ **دستیِ** همین پیامک هم
+            //   نگهبانِ تکراری را بزند؛ وگرنه «بررسی پیامک‌های قبلی» همان
+            //   را دوباره پیشنهاد می‌داد.
+            if (quickAddForm) { quickAddForm.dataset.smsFp = window.smsFingerprint(ta.value); }
 
             var done = [];
             setAmount(r.amount);
@@ -1776,9 +1889,12 @@ document.addEventListener('DOMContentLoaded', function () {
             //   نگاه بیندازد. سبزِ الکی یعنی هیچ‌وقت نگاه نمی‌کند.
             var assumed = r.currency === 'rial_assumed';
             msg.classList.add(assumed ? 'warn' : 'ok');
-            msg.textContent = assumed
+            msg.textContent = (assumed
                 ? done.join('، ') + ' پر شد — واحد در پیامک نبود و ریال فرض شد؛ مبلغ را ببینید.'
-                : done.join('، ') + ' پر شد.';
+                : done.join('، ') + ' پر شد.')
+                + (smsQueueLeft > 0
+                    ? ' (' + toPersianDigitsJs(String(smsQueueLeft)) + ' پیامکِ دیگر بعد از ثبتِ این یکی می‌آید.)'
+                    : '');
 
             if (titleEl && !titleEl.value) { titleEl.focus(); }
         });

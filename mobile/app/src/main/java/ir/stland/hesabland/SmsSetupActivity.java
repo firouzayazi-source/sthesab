@@ -6,7 +6,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.database.Cursor;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -22,7 +21,7 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
-import java.util.ArrayList;
+
 
 /**
  * تنها صفحه‌ی «بومی» این اپ — و عمداً همین یکی.
@@ -76,26 +75,6 @@ public class SmsSetupActivity extends AppCompatActivity {
     private static final int REQ_NOTIF = 4022;
     private static final int REQ_READ  = 4023;
 
-    /**
-     * ⛔ بررسیِ صندوقِ پیامک — و سه عددی که مرزش را می‌سازند.
-     *
-     *    `RECEIVE_SMS` فقط پیامکِ **تازه‌رسیده** را می‌دهد، پس هر چیزی
-     *    که پیش از نصبِ اپ یا در مدتِ خاموشیِ کلید یا پشتِ محدودیتِ رام
-     *    آمده باشد برای همیشه از دست می‌رفت. این بررسی همان را برمی‌گرداند.
-     *
-     * ⛔ ولی **فقط با تپِ کاربر**: هیچ‌جا — نه `onCreate`، نه `onResume`،
-     *    نه گیرنده — صندوق خودکار خوانده نمی‌شود. کاوشِ خودکارِ صندوقِ
-     *    پیامک دقیقاً همان چیزی است که کاربر از یک دفترِ مالی انتظار
-     *    ندارد. قاعده ۱۹ همین را می‌سنجد.
-     *
-     * ⚠ `SCAN_MAX` سقفِ اعلان در هر تپ است: با سی اعلانِ یک‌باره، نوارِ
-     *   اعلان غیرقابل استفاده می‌شود و کاربر همه را یک‌جا پاک می‌کند —
-     *   یعنی همان چیزی که قرار بود پیدا شود، گم می‌شود. باقی‌مانده
-     *   **گفته می‌شود** و با تپِ بعدی ادامه پیدا می‌کند؛ سقفِ بی‌صدا نیست.
-     */
-    private static final int  SCAN_MAX       = 5;
-    private static final int  SCAN_ROWS      = 200;
-    private static final long SCAN_WINDOW_MS = 7L * 24 * 60 * 60 * 1000;
 
     private TextView state;
     private TextView diag;
@@ -363,88 +342,31 @@ public class SmsSetupActivity extends AppCompatActivity {
     }
 
     /**
-     * ⛔ بررسیِ صندوقِ پیامک — **فقط از همین‌جا، فقط با تپِ کاربر.**
+     * ⛔ «بررسی پیامک‌های قبلی» — حالا اپ را باز می‌کند و همان مسیرِ
+     *    همیشگی کار را می‌کند.
      *
-     *    هیچ پارسِ تازه‌ای اینجا نیست: صافی همان `BankSmsReceiver.classify()`
-     *    است و اعلان همان `BankSmsReceiver.postNotification()`. با یک
-     *    صافیِ دومِ محلی، بررسیِ دستی و مسیرِ واقعی دیر یا زود دو جواب
-     *    می‌دادند و خرابی‌اش بی‌صدا بود — همان دلیلی که کلِ منطقِ پارس در
-     *    `parseBankSms()` مانده.
+     *    تا دیروز این دکمه برای هر پیامکِ پیدا‌شده یک اعلان می‌ساخت و
+     *    کاربر باید دانه‌دانه رویشان تپ می‌کرد. حالا که
+     *    `HesabLauncherActivity` با هر باز شدن صندوق را به سایت می‌دهد،
+     *    این دکمه فقط همان را با پنجره‌ی **هفت روز** (نه از نشانه) صدا
+     *    می‌زند: پیامکی که قبلاً ثبت شده را نگهبانِ اثرِ انگشتِ `app.js`
+     *    رد می‌کند.
      *
-     * ⛔ و متنِ پیامک **هیچ‌جا ذخیره نمی‌شود**: همان‌طور که گیرنده فقط
-     *    زمان و فرستنده و نتیجه را می‌نویسد، اینجا هم متن فقط از حافظه
-     *    به آدرسِ فرگمنتِ اعلان می‌رود و تمام.
+     * ⛔ خواندنِ صندوق فقط در یک جاست (`HesabLauncherActivity.takeInbox`)،
+     *    نه اینجا و آنجا — با دو نسخه، پنجره و صافی دیر یا زود دو جواب
+     *    می‌دادند.
      */
     private void scanInbox() {
-        long now  = System.currentTimeMillis();
-        long mark = prefs().getLong(BankSmsReceiver.PREF_SCAN_AT, 0L);
-
-        // ⚠ عقب‌گرد محدود است: بدونِ کف، اولین تپ روی گوشیِ چندساله کلِ
-        //   تاریخچه را می‌گشت و پیامک‌های پارسال را به‌عنوان تراکنشِ
-        //   نیامده پیشنهاد می‌داد — چیزی که کاربر از قبل ثبت کرده.
-        long from = Math.max(mark, now - SCAN_WINDOW_MS);
-
-        ArrayList<String> body = new ArrayList<>();
-        ArrayList<String> from_ = new ArrayList<>();
-        ArrayList<Long>   when = new ArrayList<>();
-        long scannedTo = now;
-
-        Cursor c = null;
         try {
-            // ⚠ `date ASC` لازم است: اعلان‌ها به ترتیبِ وقوع ساخته می‌شوند
-            //   و نشانه‌ی ادامه هم از روی همان ترتیب درست درمی‌آید.
-            c = getContentResolver().query(
-                    Uri.parse("content://sms/inbox"),
-                    new String[]{ "address", "body", "date" },
-                    "date > ?",
-                    new String[]{ String.valueOf(from) },
-                    "date ASC");
-            if (c == null) {
-                Toast.makeText(this, R.string.sms_scan_failed, Toast.LENGTH_LONG).show();
-                return;
-            }
-            int rows = 0;
-            while (c.moveToNext()) {
-                long at = c.getLong(2);
-                // ⚠ سقفِ ردیف هم بی‌صدا نیست: با شکستنِ حلقه، نشانه روی
-                //   همین ردیف می‌ماند و تپِ بعدی از همین‌جا ادامه می‌دهد.
-                if (++rows > SCAN_ROWS) { scannedTo = at; break; }
-                String txt = c.getString(1);
-                if (txt == null || txt.isEmpty()) { continue; }
-                if (!BankSmsReceiver.WHY_OK.equals(BankSmsReceiver.classify(txt))) { continue; }
-                String addr = c.getString(0);
-                body.add(txt);
-                from_.add(addr == null ? "" : addr);
-                when.add(at);
-            }
+            Intent open = new Intent(Intent.ACTION_VIEW, Uri.parse(getString(R.string.launch_url)));
+            open.setClass(this, HesabLauncherActivity.class);
+            open.putExtra(HesabLauncherActivity.EXTRA_DEEP, true);
+            open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(open);
+            finish();
         } catch (Throwable t) {
-            // ⚠ مجوز ممکن است بینِ رندر و تپ پس گرفته شده باشد، و بعضی
-            //   رام‌ها اصلاً این provider را ندارند. کرشِ بی‌توضیح بدترین
-            //   جواب است — همان استدلالِ گاردِ `onCreate`.
             Toast.makeText(this, R.string.sms_scan_failed, Toast.LENGTH_LONG).show();
-            render();
-            return;
-        } finally {
-            if (c != null) { c.close(); }
         }
-
-        int n = Math.min(body.size(), SCAN_MAX);
-        for (int i = 0; i < n; i++) {
-            BankSmsReceiver.postNotification(this, from_.get(i), body.get(i));
-        }
-
-        boolean more = body.size() > n;
-        prefs().edit()
-               .putLong(BankSmsReceiver.PREF_SCAN_AT, more ? when.get(n - 1) : scannedTo)
-               .apply();
-
-        String note;
-        if (n == 0)      { note = getString(R.string.sms_scan_none); }
-        else if (more)   { note = getString(R.string.sms_scan_more, n); }
-        else             { note = getString(R.string.sms_scan_done, n); }
-        Toast.makeText(this, note, Toast.LENGTH_LONG).show();
-
-        render();
     }
 
     /**
