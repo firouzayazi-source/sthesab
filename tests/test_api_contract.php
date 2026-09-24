@@ -5561,7 +5561,7 @@ foreach (token_get_all((string)@file_get_contents(__DIR__ . '/../index.php')) as
 }
 if (substr_count($ix, 'monthComparison(') !== 1) { $badBr[] = 'index.php باید monthComparison را دقیقاً یک بار صدا بزند'; }
 if (preg_match('/SUM\(CASE WHEN type\s*=\s*"income"/', $ix)) { $badBr[] = 'index.php جمعِ ماه را دوباره خودش می‌خواند'; }
-if (!preg_match('/financialHighlights\(\$userId,\s*\$walletRows,\s*\$monthCmp,\s*true\)/', $ix)) {
+if (!preg_match('/financialHighlights\(\$userId,\s*\$walletRows,\s*\$monthCmp,\s*true[,)]/', $ix)) {
     $badBr[] = 'financialHighlights روی خانه همان مقایسه را دوباره می‌گوید';
 }
 if (strpos($ix, 'monthMeter($monthCmp)') === false) { $badBr[] = 'نوارِ ماه از monthMeter() نمی‌آید'; }
@@ -5765,6 +5765,87 @@ if ($posBak === false || $posIns === false || $posBak < $posIns) {
     $badVar[] = 'nginx-var.sh — پشتیبان پیش از یافتنِ جای درج ساخته می‌شود';
 }
 T::bulk(6, $badVar, '⛔ nginx-var.sh: بی‌لنگرِ /tests/، عمقِ آکولاد، پیشوندهای هم‌سان با نصبِ تازه، و پشتیبان بعد از یافتنِ جای درج');
+
+// ------------------------------------------------------------------
+// ⛔ قاعده ۶۳ — قلم‌های صفحه‌ی خانه: یک فهرست، روشن به‌طور پیش‌فرض.
+//
+// خرابی‌های این قابلیت همه بی‌صدایند: قلمی که به `HOME_WIDGETS` اضافه
+// شود ولی `index.php` از آن نپرسد، کلیدی می‌سازد که کاری نمی‌کند؛
+// پنهان کردن با CSS به‌جای رندر نکردن، کارتِ ماه را کوچک نمی‌کرد و
+// جمله‌ی خاموش هنوز جای جمله‌ی بعدی را در سقفِ سه‌تایی می‌گرفت؛ و
+// نوشتنِ ستون از مسیرِ دوم، صافیِ کلیدهای ناشناخته را دور می‌زد.
+// تستِ رفتاری (`test_home_widgets`) دیتابیس می‌خواهد (`T::blocked`)،
+// پس روی ماشینِ بی‌دیتابیس فقط همین قاعده می‌ماند.
+// ------------------------------------------------------------------
+T::group('قاعده ۶۳ — قلم‌های صفحه‌ی خانه');
+$badHome = [];
+$hwCode  = static function (string $rel): string {
+    $src = (string)@file_get_contents(__DIR__ . '/../' . $rel);
+    $out = '';
+    foreach (token_get_all($src) as $t) {
+        if (is_array($t) && in_array($t[0], [T_COMMENT, T_DOC_COMMENT], true)) { continue; }
+        $out .= is_array($t) ? $t[1] : $t;
+    }
+    return $out;
+};
+$idxSrc  = $hwCode('index.php');
+$fnSrc   = $hwCode('includes/functions.php');
+$profSrc = $hwCode('profile.php');
+$apiSrc  = $hwCode('api/save_home_widgets.php');
+require_once __DIR__ . '/../includes/functions.php';
+$INSIGHT = ['overdue', 'budget', 'growth'];
+foreach (array_keys(HOME_WIDGETS) as $k) {
+    if (in_array($k, $INSIGHT, true)) {
+        if (!preg_match('/if \(\$on\(\'' . $k . '\'\)\)/', $fnSrc)) {
+            $badHome[] = "financialHighlights — جمله‌ی «{$k}» پشتِ \$on('{$k}') نیست (خاموش‌کردنش کاری نمی‌کند)";
+        }
+    } elseif (!preg_match('/\$hw\(\'' . $k . '\'\)/', $idxSrc)) {
+        $badHome[] = "index.php — قلمِ «{$k}» از \$hw() نمی‌پرسد (کلیدی که کاری نمی‌کند)";
+    }
+}
+if (!preg_match('/financialHighlights\([^;]*\$homeHidden\)/', $idxSrc)) {
+    $badHome[] = 'index.php — financialHighlights() خاموش‌ها را نمی‌گیرد (جمله ساخته و بعد پنهان می‌شد)';
+}
+if (!preg_match('/foreach \(HOME_WIDGETS as/', $profSrc) || !preg_match('/foreach \(HOME_WIDGET_GROUPS as/', $profSrc)) {
+    $badHome[] = 'profile.php — کارتِ «صفحه‌ی خانه» از HOME_WIDGETS/HOME_WIDGET_GROUPS رندر نمی‌شود (فهرستِ دوم)';
+}
+if (preg_match('/value="(date|meter|split|compare|overdue|budget|growth)"/', $profSrc)) {
+    $badHome[] = 'profile.php — کلیدِ قلمِ خانه سخت‌کد شده';
+}
+if (strpos($apiSrc, 'Csrf::verifyOrFail(') === false || strpos($apiSrc, 'saveHomeHidden(') === false
+    || !preg_match('/array_diff\(array_keys\(HOME_WIDGETS\)/', $apiSrc)) {
+    $badHome[] = 'api/save_home_widgets.php — CSRF، saveHomeHidden()، یا حسابِ خاموش‌ها از HOME_WIDGETS نیست';
+}
+if (!preg_match('/function saveHomeHidden[\s\S]*?homeHiddenParse\(/', $fnSrc)) {
+    $badHome[] = 'saveHomeHidden() — ورودی از homeHiddenParse() نمی‌گذرد (کلیدِ ناشناخته ذخیره می‌شد)';
+}
+foreach (array_merge(glob(__DIR__ . '/../*.php'), glob(__DIR__ . '/../api/*.php'), glob(__DIR__ . '/../includes/*.php'),
+                     glob(__DIR__ . '/../admin/*.php'), glob(__DIR__ . '/../deploy/*.php')) as $p) {
+    $rel = substr(realpath($p), strlen(realpath(__DIR__ . '/..')) + 1);
+    if ($rel === 'includes/functions.php') { continue; }
+    if (preg_match('/SET[^;]*\bhome_hidden\s*=/i', $hwCode($rel))) {
+        $badHome[] = "{$rel} — users.home_hidden را خودش می‌نویسد؛ تنها مسیر saveHomeHidden() است";
+    }
+}
+$cssHome = preg_replace('#/\*.*?\*/#s', '', (string)file_get_contents(__DIR__ . '/../assets/css/style.css'));
+if (preg_match_all('/[^{}]*\.balance-ribbon\s*\{([^}]*)\}/', $cssHome, $rm)) {
+    foreach ($rm[1] as $body) {
+        if (preg_match('/(^|[;\s])(min-)?height\s*:/', $body)) {
+            $badHome[] = 'style.css — .balance-ribbon ارتفاعِ ثابت گرفته (کارت با خاموش شدنِ قلم‌ها کوچک نمی‌شد)';
+            break;
+        }
+    }
+}
+$jsHome = (string)file_get_contents(__DIR__ . '/../assets/js/app.js');
+if (!preg_match("/apiUrl\('save_home_widgets\.php'\), \{ method: 'POST', body: new FormData\(hwForm\)/", $jsHome)
+    || substr_count(substr($jsHome, (int)strpos($jsHome, 'var hwSave'), 900), 'undo()') < 2) {
+    $badHome[] = 'app.js — ذخیره‌ی فوری با کلِ فرم نیست، یا در شکست کلید را برنمی‌گرداند';
+}
+$migHome = (string)file_get_contents(__DIR__ . '/../deploy/migrate.sh');
+if (!preg_match('/^\s+migration_home_widgets\.sql$/m', $migHome) || strpos($migHome, '[migration_home_widgets.sql]="users.home_hidden"') === false) {
+    $badHome[] = 'migrate.sh — migration_home_widgets.sql در MIGRATIONS یا SENTINEL نیست';
+}
+T::bulk(count(HOME_WIDGETS) + 10, $badHome, '⛔ قلم‌های خانه: هر کلید واقعاً چیزی را خاموش کند، یک فهرست، یک نویسنده، کارتِ بی‌ارتفاعِ ثابت');
 
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {

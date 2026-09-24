@@ -5438,3 +5438,33 @@ html[data-theme="dark"][data-palette="lilac"] {
 .push-state { margin: 0 0 12px; font-size: 13px; line-height: 1.8; color: var(--ink-soft); }
 .push-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
 .push-actions:empty { display: none; }
+
+/* ---------- صفحه‌ی خانه: روشن/خاموشِ قلم‌ها (پروفایل) ----------
+   فهرستِ گروه‌بندی‌شده مثلِ تنظیماتِ گوشی: متن سمتِ راست، کلید سمتِ
+   چپ. ⚠ `order: -1` روی متن است نه جابه‌جا کردنِ HTML: قاعده‌ی
+   `.switch input:checked + .switch-track` می‌خواهد ترک **درست بعد از**
+   input باشد، وگرنه کلید روشن‌شده رنگ نمی‌گرفت — بی‌هیچ خطایی. */
+.hw-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hw-count {
+    flex: none; font-size: 12px; font-weight: 700;
+    color: var(--muted); background: var(--line-soft);
+    padding: 3px 10px; border-radius: 999px; white-space: nowrap;
+}
+.hw-group-title {
+    margin: 16px 2px 7px; font-size: 12px; font-weight: 700;
+    color: var(--muted); letter-spacing: .2px;
+}
+.hw-list {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    overflow: hidden;
+}
+.hw-row { padding: 11px 14px; gap: 12px; margin: 0; }
+.hw-row + .hw-row { border-top: 1px solid var(--line-soft); }
+.hw-row .switch-text { order: -1; display: flex; flex-direction: column; gap: 2px; }
+.hw-row .switch-track { order: 0; }
+.hw-label { font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.hw-hint  { font-size: 11.5px; color: var(--muted); line-height: 1.6; }
+.hw-row:active { background: var(--line-soft); }
+.hw-foot { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.hw-foot .form-message { align-self: stretch; margin: 0; }

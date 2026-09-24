@@ -401,6 +401,47 @@ $remind      = $remindReady ? reminderPrefs($userId) : ['email_on' => true, 'day
     <p class="hint">رنگ همان لحظه عوض می‌شود و روی همین دستگاه می‌ماند. حالت شب هم با هر رنگی کار می‌کند.</p>
 </div>
 
+<?php /* ⛔ «صفحه‌ی خانه» — کنارِ «نمایش»، چون هر دو درباره‌ی «چه چیزی
+         می‌بینم» است. فهرست فقط از `HOME_WIDGETS` رندر می‌شود و حالتِ
+         هر کلید از همان `$me` ای می‌آید که صفحه با `SELECT *` خوانده —
+         هیچ کوئریِ تازه‌ای نیست. اگر ستون هنوز نیامده باشد کارت رندر
+         نمی‌شود: کلیدی که ذخیره نمی‌شود بدتر از نبودنش است.
+         ⚠ برخلافِ رنگ، این یکی در **حسابِ** کاربر ذخیره می‌شود، پس روی
+           همه‌ی دستگاه‌ها یکی است. */ ?>
+<?php if ($me && array_key_exists('home_hidden', $me)): ?>
+<?php $__homeHidden = homeHiddenParse($me['home_hidden']); ?>
+<div class="card home-widgets-card">
+    <div class="hw-head">
+        <h2 class="card-title" style="margin-bottom:0;">صفحه‌ی خانه</h2>
+        <span class="hw-count" id="hwCount" data-total="<?= count(HOME_WIDGETS) ?>"><?= toPersianDigits((string)(count(HOME_WIDGETS) - count($__homeHidden))) ?> از <?= toPersianDigits((string)count(HOME_WIDGETS)) ?> روشن</span>
+    </div>
+    <p class="hint" style="margin-top:6px;">هر چیزی را که روی خانه لازم ندارید خاموش کنید؛ کارت‌ها خودشان به اندازه‌ی چیزی که می‌ماند کوچک می‌شوند. خاموش کردن هیچ داده‌ای را پاک نمی‌کند.</p>
+
+    <form id="homeWidgetsForm" autocomplete="off">
+        <?= Csrf::field() ?>
+        <?php foreach (HOME_WIDGET_GROUPS as $__g => $__gName): ?>
+            <div class="hw-group-title"><?= h($__gName) ?></div>
+            <div class="hw-list">
+                <?php foreach (HOME_WIDGETS as $__k => $__w): if ($__w['group'] !== $__g) { continue; } ?>
+                    <label class="switch hw-row">
+                        <input type="checkbox" name="on[]" value="<?= h($__k) ?>"<?= homeWidgetOn($__homeHidden, $__k) ? ' checked' : '' ?>>
+                        <span class="switch-track"><span class="switch-knob"></span></span>
+                        <span class="switch-text">
+                            <span class="hw-label"><?= h($__w['label']) ?></span>
+                            <span class="hw-hint"><?= h($__w['hint']) ?></span>
+                        </span>
+                    </label>
+                <?php endforeach; ?>
+            </div>
+        <?php endforeach; ?>
+        <div class="hw-foot">
+            <button type="button" class="btn btn-secondary btn-sm" id="hwAllOn"<?= $__homeHidden === [] ? ' hidden' : '' ?>>همه را روشن کن</button>
+            <div id="homeWidgetsMsg" class="form-message" hidden></div>
+        </div>
+    </form>
+</div>
+<?php endif; ?>
+
 <div class="card">
     <h2 class="card-title">ورود و امنیت</h2>
 

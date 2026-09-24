@@ -5619,6 +5619,59 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    // ---------- پروفایل → «صفحه‌ی خانه»: روشن/خاموشِ هر قلم ----------
+    //
+    // ⛔ هر تغییر **همان لحظه** ذخیره می‌شود، بی‌دکمه‌ی «ذخیره»: کلیدی
+    //    که روشن شده ولی ذخیره نشده همان «تنظیمی که کار نمی‌کند» است.
+    //    کلِ فرم فرستاده می‌شود (نه فقط همان یک کلید) تا سرور همیشه
+    //    حالتِ کامل را بگیرد و دو تپِ سریع ترتیبشان مهم نباشد.
+    // ⚠ صفحه تازه نمی‌شود: هیچ چیزِ همین صفحه به این تنظیم بسته نیست.
+    var hwForm = document.getElementById('homeWidgetsForm');
+    if (hwForm) {
+        var hwMsg = document.getElementById('homeWidgetsMsg');
+        var hwAll = document.getElementById('hwAllOn');
+        var hwCount = document.getElementById('hwCount');
+        var hwTimer = null;
+        var hwBoxes = function () { return hwForm.querySelectorAll('input[name="on[]"]'); };
+        var hwSync = function () {
+            var boxes = hwBoxes(), on = 0;
+            for (var i = 0; i < boxes.length; i++) { if (boxes[i].checked) on++; }
+            if (hwCount) hwCount.textContent = toPersianDigitsJs(String(on)) + ' از ' + toPersianDigitsJs(String(boxes.length)) + ' روشن';
+            if (hwAll) hwAll.hidden = on === boxes.length;
+        };
+        var hwSay = function (ok, text) {
+            if (!hwMsg) return;
+            hwMsg.hidden = false;
+            hwMsg.classList.remove('success', 'error');
+            hwMsg.classList.add('show', ok ? 'success' : 'error');
+            hwMsg.textContent = text;
+            clearTimeout(hwTimer);
+            if (ok) hwTimer = setTimeout(function () { hwMsg.hidden = true; }, 1800);
+        };
+        var hwSave = function (undo) {
+            hwSync();
+            fetch(apiUrl('save_home_widgets.php'), { method: 'POST', body: new FormData(hwForm), headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (!d.success) { undo(); hwSync(); hwSay(false, d.message || 'ذخیره نشد.'); return; }
+                    hwSay(true, d.message || 'ذخیره شد.');
+                })
+                .catch(function () { undo(); hwSync(); hwSay(false, netErr()); });
+        };
+        hwForm.addEventListener('change', function (e) {
+            var box = e.target;
+            if (!box || box.name !== 'on[]') return;
+            hwSave(function () { box.checked = !box.checked; });
+        });
+        if (hwAll) {
+            hwAll.addEventListener('click', function () {
+                var boxes = hwBoxes(), was = [];
+                for (var i = 0; i < boxes.length; i++) { was.push(boxes[i].checked); boxes[i].checked = true; }
+                hwSave(function () { for (var j = 0; j < boxes.length; j++) boxes[j].checked = was[j]; });
+            });
+        }
+    }
+
     // ---------- نمای دارایی‌ها: روشن/خاموش کردن هر قلم ----------
     //
     // هر قلم (دارایی ثبت‌شده، کالای معاملاتی، مجموع حساب‌ها) یک کلید

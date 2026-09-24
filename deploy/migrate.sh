@@ -123,6 +123,7 @@ MIGRATIONS=(
     migration_trades_default.sql
     migration_debt_optional_due.sql
     migration_push.sql
+    migration_home_widgets.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -308,6 +309,7 @@ declare -A SENTINEL=(
     [migration_debt_optional_due.sql]="debts.due_date:null"
     # ستونِ آخرِ فایل؛ جدول پیش از آن ساخته می‌شود.
     [migration_push.sql]="notifications.pushed_at"
+    [migration_home_widgets.sql]="users.home_hidden"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

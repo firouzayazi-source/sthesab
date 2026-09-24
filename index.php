@@ -63,7 +63,14 @@ $walletRows = walletBalances($userId);
 // ⛔ جمله‌ی «حالِ کلیِ ماه» اینجا حذف می‌شود چون همان مقایسه **روی خودِ
 //    کارتِ ماه** نوشته شده؛ دو بار گفتنِ یک جمله در یک صفحه فقط جای
 //    یک خبرِ دیگر را می‌گرفت.
-$highlights = financialHighlights($userId, $walletRows, $monthCmp, true);
+// ⛔ قلم‌هایی که کاربر در پروفایل خاموش کرده (`HOME_WIDGETS`). تصمیمِ
+//    «روشن یا خاموش» فقط از `homeWidgetOn()` می‌آید؛ قلمِ خاموش **رندر
+//    نمی‌شود** (نه پنهان با CSS)، پس کارتِ ماه بی‌هیچ ارتفاعِ ثابتی
+//    خودش به اندازه‌ی محتوای باقی‌مانده کوچک می‌شود.
+$homeHidden = homeHiddenWidgets($userId);
+$hw = fn(string $k): bool => homeWidgetOn($homeHidden, $k);
+
+$highlights = financialHighlights($userId, $walletRows, $monthCmp, true, $homeHidden);
 
 // نوارِ «چقدر از دریافتی خرج شد» و خطِ مقایسه — تصمیمش در
 // `monthMeter()` است تا تست بدونِ رندرِ صفحه بسنجدش.
@@ -85,10 +92,12 @@ include __DIR__ . '/includes/header.php';
          صفحه اصلی هنوز اضافه نشده». لینک به تقویمِ مالی است، چون سؤالِ
          بعد از «امروز چندم است» همان «امروز چه سررسیدی دارم» است.
          ⚠ از `today()` می‌آید (منطقه‌ی زمانیِ اپ)، نه `date()` خام. */ ?>
+<?php if ($hw('date')): ?>
 <a class="home-date" href="<?= APP_BASE_PATH ?>/due.php?t=calendar">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>
     <span><?= h(jalaliLongDate(today())) ?></span>
 </a>
+<?php endif; ?>
 
 <?php /* ⛔ جای این کارت **بالای همه چیز** است، نه پایین‌تر. حرفش این است
          که عددهای زیرش هنوز درست نیستند؛ نشاندنش زیرِ همان عددها یعنی
@@ -157,12 +166,13 @@ include __DIR__ . '/includes/header.php';
         <div class="balance-ribbon">
             <div class="balance-label">مانده این ماه</div>
             <div class="balance-value"><span class="bv-num"><?= $monthNet < 0 ? '−' : '' ?><?= formatMoney(abs($monthNet)) ?></span><span class="bv-unit">تومان</span></div>
-            <?php if ($meter['pct'] !== null): ?>
+            <?php if ($hw('meter') && $meter['pct'] !== null): ?>
             <div class="month-meter<?= $meter['tone'] !== '' ? ' is-' . h($meter['tone']) : '' ?>">
                 <div class="month-meter-track"><div class="month-meter-fill" style="width: <?= (int)$meter['fill'] ?>%"></div></div>
                 <div class="month-meter-caption"><?= h($meter['caption']) ?></div>
             </div>
             <?php endif; ?>
+            <?php if ($hw('split')): ?>
             <div class="balance-split">
                 <div class="bs-in-row">
                     <div class="bs-label">دریافتی</div>
@@ -173,7 +183,8 @@ include __DIR__ . '/includes/header.php';
                     <div class="bs-value bs-out"><?= formatMoney($monthExpense) ?></div>
                 </div>
             </div>
-            <?php if ($meter['compare'] !== null): ?>
+            <?php endif; ?>
+            <?php if ($hw('compare') && $meter['compare'] !== null): ?>
             <div class="month-compare is-<?= h($meter['compare']['dir']) ?>">
                 <?php if ($meter['compare']['dir'] === 'up'): ?>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>

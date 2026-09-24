@@ -44,6 +44,9 @@ CREATE TABLE IF NOT EXISTS `users` (
     -- نشست‌های وبِ ساخته‌شده پیش از این لحظه بی‌اعتبارند (Auth::isLoggedIn
     -- می‌سنجد). تنها نویسنده‌اش revokeAllAccessFor() است. NULL = هرگز.
     `access_revoked_at` DATETIME NULL DEFAULT NULL,
+    -- قلم‌های **خاموشِ** صفحه‌ی خانه (کلیدهای `HOME_WIDGETS`، با ویرگول).
+    -- NULL = همه روشن. جزئیات در migration_home_widgets.sql
+    `home_hidden` VARCHAR(255) NULL DEFAULT NULL,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),

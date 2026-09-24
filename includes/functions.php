@@ -2682,7 +2682,7 @@ function monthComparison(int $userId): array
  *    ماه قبل» به کاربری که ماه قبل تازه ثبت‌نام کرده، دروغ است — و
  *    اولین جمله‌ی دروغ یعنی کاربر بقیه را هم باور نمی‌کند.
  *
- * @return array<int, array{tone:string, text:string, link:?string}>
+ * @return array<int, array{kind:string, tone:string, text:string, link:?string}>
  */
 /**
  * ⚠ `$walletRows` همان نتیجه‌ی `walletBalances()` است، اگر فراخواننده
@@ -2691,18 +2691,25 @@ function monthComparison(int $userId): array
  *   بار** در یک بارگذاری اجرا می‌شد.
  */
 function financialHighlights(int $userId, ?array $walletRows = null,
-                             ?array $monthCmp = null, bool $monthShownElsewhere = false): array
+                             ?array $monthCmp = null, bool $monthShownElsewhere = false,
+                             array $skip = []): array
 {
     $out = [];
+    // ⛔ `$skip` کلیدهای `HOME_WIDGETS`ی است که کاربر خاموش کرده. جمله‌ی
+    //    خاموش **اصلاً ساخته نمی‌شود** (کوئری‌اش هم زده نمی‌شود)، نه اینکه
+    //    ساخته و بعد پنهان شود — پس جمله‌ی بعدی جای آن را در سقفِ سه‌تایی
+    //    می‌گیرد. هر جمله `kind` خودش را هم دارد تا تست بتواند بسنجدش.
+    $on = fn(string $k): bool => !in_array($k, $skip, true);
 
     // ---------- ۱. سررسیدِ عقب‌افتاده، مقدم بر همه ----------
     // ⛔ اول از همه، چون تنها چیزی است که **همین حالا** هزینه دارد:
     //    چکِ برگشتی عارضه‌ی حقوقی دارد و بدهیِ دیرکرد رابطه را خراب
     //    می‌کند. مقایسه‌ی هزینه‌ی ماه در برابرش تزئین است.
-    try {
+    if ($on('overdue')) try {
         $safe = safeToSpend($userId, 30, $walletRows);
         if (!empty($safe['overdue']) && (int)$safe['overdue'] > 0) {
             $out[] = [
+                'kind' => 'overdue',
                 'tone' => 'warn',
                 'text' => 'سررسیدِ گذشته دارید: ' . formatMoney((int)$safe['overdue']) . ' تومان.',
                 'link' => 'due.php?t=list',
@@ -2711,7 +2718,7 @@ function financialHighlights(int $userId, ?array $walletRows = null,
     } catch (Throwable $e) { /* بینش نباید صفحه را بشکند */ }
 
     // ---------- ۲. بودجه‌ای که رد شده ----------
-    try {
+    if ($on('budget')) try {
         $worst = null;
         foreach (budgetStatuses($userId) as $b) {
             $pct = (int)($b['percent'] ?? 0);
@@ -2719,6 +2726,7 @@ function financialHighlights(int $userId, ?array $walletRows = null,
         }
         if ($worst !== null) {
             $out[] = [
+                'kind' => 'budget',
                 'tone' => 'warn',
                 'text' => 'بودجه‌ی «' . $worst['category_name'] . '» رد شده — '
                           . toPersianDigits((string)(int)$worst['percent']) . '٪ مصرف شده.',
@@ -2731,10 +2739,11 @@ function financialHighlights(int $userId, ?array $walletRows = null,
     // ⛔ این جمله «چرا» را جواب می‌دهد، و بقیه فقط «چقدر». دیدنِ
     //    «هزینه‌ات ۴۰٪ بیشتر شده» بدونِ اینکه بدانی **کجا**، هیچ رفتاری
     //    را عوض نمی‌کند.
-    try {
+    if ($on('growth')) try {
         $grew = topGrowingCategory($userId);
         if ($grew !== null) {
             $out[] = [
+                'kind' => 'growth',
                 'tone' => 'up',
                 'text' => 'این ماه ' . toPersianDigits((string)$grew['pct']) . '٪ بیشتر از ماه قبل خرجِ «'
                           . $grew['name'] . '» شده — ' . formatMoney($grew['now']) . ' تومان.',
@@ -2755,6 +2764,7 @@ function financialHighlights(int $userId, ?array $walletRows = null,
                 $ch = (int)$mc['expense_change'];
                 if (abs($ch) >= 10) {
                     $out[] = [
+                        'kind' => 'month',
                         'tone' => $ch > 0 ? 'up' : 'down',
                         'text' => 'تا امروز ' . toPersianDigits((string)abs($ch)) . '٪ '
                                   . ($ch > 0 ? 'بیشتر' : 'کمتر') . ' از همین روزِ ' . $mc['prev_label'] . ' خرج کرده‌اید.',
@@ -2762,6 +2772,7 @@ function financialHighlights(int $userId, ?array $walletRows = null,
                     ];
                 } elseif ($ch === 0 || abs($ch) < 10) {
                     $out[] = [
+                        'kind' => 'month',
                         'tone' => 'good',
                         'text' => 'خرجِ این ماه تقریباً هم‌اندازه‌ی ' . $mc['prev_label'] . ' است.',
                         'link' => 'dashboard.php',
@@ -3712,6 +3723,107 @@ const UI_PALETTES = [
     'lilac'    => 'یاس',
     'graphite' => 'شب',
 ];
+
+/**
+ * ⛔ قلم‌های صفحه‌ی خانه که کاربر می‌تواند خاموش کند — **تنها مرجع**.
+ *
+ * هم کارتِ «صفحه‌ی خانه» در پروفایل از همین رندر می‌شود، هم
+ * `api/save_home_widgets.php` ورودی را با همین می‌سنجد، هم `index.php`
+ * و `financialHighlights()` از همین می‌پرسند. با فهرستِ دوم، کلیدی که
+ * کاربر می‌بیند هنگامِ ذخیره بی‌صدا دور ریخته می‌شد (درسِ
+ * `Auth::SESSION_WINDOWS`).
+ *
+ * ⛔ پیش‌فرضِ همه **روشن** است و ستونِ `users.home_hidden` فقط
+ *    خاموش‌ها را نگه می‌دارد — پس قلمِ تازه‌ی فردا برای همه روشن می‌آید.
+ *
+ * `group` فقط برای چیدمانِ کارتِ تنظیمات است (`HOME_WIDGET_GROUPS`).
+ */
+const HOME_WIDGETS = [
+    'date'    => ['group' => 'top',     'label' => 'تاریخِ امروز',
+                  'hint'  => 'خطِ «پنج‌شنبه ۲ مهر ۱۴۰۵» بالای صفحه'],
+    'meter'   => ['group' => 'month',   'label' => 'درصدِ خرج از دریافتی',
+                  'hint'  => 'نوارِ «۸۱٪ از دریافتیِ این ماه خرج شده»'],
+    'split'   => ['group' => 'month',   'label' => 'دریافتی و پرداختی',
+                  'hint'  => 'دو عددِ زیرِ مانده‌ی ماه'],
+    'compare' => ['group' => 'month',   'label' => 'مقایسه با ماهِ قبل',
+                  'hint'  => '«۵۲٪ کمتر از همین روزِ شهریور خرج کرده‌اید»'],
+    'overdue' => ['group' => 'insight', 'label' => 'سررسیدِ گذشته',
+                  'hint'  => '«سررسیدِ گذشته دارید: … تومان»'],
+    'budget'  => ['group' => 'insight', 'label' => 'بودجه‌ی ردشده',
+                  'hint'  => '«بودجه‌ی خوراکی رد شده — ۱۲۰٪ مصرف شده»'],
+    'growth'  => ['group' => 'insight', 'label' => 'رشدِ خرجِ یک دسته',
+                  'hint'  => '«این ماه ۱۰۰٪ بیشتر از ماه قبل خرجِ … شده»'],
+];
+
+const HOME_WIDGET_GROUPS = [
+    'top'     => 'بالای صفحه',
+    'month'   => 'کارتِ «مانده این ماه»',
+    'insight' => 'جمله‌های زیرِ کارت',
+];
+
+/**
+ * رشته‌ی ذخیره‌شده → فهرستِ کلیدهای خاموش. تابعِ خالص است.
+ *
+ * ⚠ کلیدِ ناشناخته دور ریخته می‌شود و ترتیب همان ترتیبِ `HOME_WIDGETS`
+ *   است — پس یک مقدارِ دست‌کاری‌شده یا کلیدی که روزی حذف شده، هیچ
+ *   چیزی را نمی‌شکند.
+ *
+ * @return string[]
+ */
+function homeHiddenParse(?string $raw): array
+{
+    if ($raw === null || trim($raw) === '') { return []; }
+    $want = array_flip(array_map('trim', explode(',', $raw)));
+    return array_values(array_filter(array_keys(HOME_WIDGETS), fn($k) => isset($want[$k])));
+}
+
+/**
+ * قلم‌های خاموشِ خانه برای این کاربر.
+ *
+ * ⚠ ستون نیامده (migration اجرا نشده) یعنی «همه روشن» — همان رفتارِ
+ *   پیش از این قابلیت، نه یک صفحه‌ی شکسته.
+ * ⚠ در همان درخواست کش می‌شود و `saveHomeHidden()` کش را هم‌زمان
+ *   به‌روز می‌کند، پس مقدارِ کهنه ممکن نیست (برخلافِ درسِ قاعده ۲۹:
+ *   اینجا تنها نویسنده همان تابعِ کنارِ کش است).
+ *
+ * @return string[]
+ */
+function homeHiddenWidgets(int $userId, bool $forget = false): array
+{
+    static $cache = [];
+    if ($forget) { unset($cache[$userId]); return []; }
+    if (isset($cache[$userId])) { return $cache[$userId]; }
+    if ($userId <= 0 || !tableHasColumn('users', 'home_hidden')) { return []; }
+
+    try {
+        $st = Database::getConnection()->prepare('SELECT home_hidden FROM users WHERE id = :u');
+        $st->execute(['u' => $userId]);
+        $raw = $st->fetchColumn();
+    } catch (PDOException $e) {
+        return [];   // ⚠ کارِ جانبی است و هرگز نباید صفحه‌ی خانه را بشکند
+    }
+    return $cache[$userId] = homeHiddenParse($raw === false ? null : $raw);
+}
+
+function homeWidgetOn(array $hidden, string $key): bool
+{
+    return !in_array($key, $hidden, true);
+}
+
+/**
+ * ⛔ تنها مسیرِ نوشتنِ `users.home_hidden`. فهرستِ خالی `NULL` می‌نویسد
+ *    (یعنی «همه روشن»)، نه رشته‌ی خالی — یک معنا، یک شکل.
+ */
+function saveHomeHidden(int $userId, array $hidden): bool
+{
+    if ($userId <= 0 || !tableHasColumn('users', 'home_hidden')) { return false; }
+    $clean = homeHiddenParse(implode(',', array_map('strval', $hidden)));
+    Database::getConnection()
+        ->prepare('UPDATE users SET home_hidden = :h WHERE id = :u')
+        ->execute(['h' => $clean ? implode(',', $clean) : null, 'u' => $userId]);
+    homeHiddenWidgets($userId, true);
+    return true;
+}
 
 function renderTransactionRow(array $tx): void
 {
