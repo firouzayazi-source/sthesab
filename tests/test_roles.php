@@ -312,11 +312,20 @@ $supSheet = $adminSheetOf($supHome);
 T::ok($supSide !== '' , 'نوارِ کناری در HTML پیدا شد', 'وگرنه بررسی‌های زیرش پوچ‌اند');
 T::ok(str_contains($supSide, 'admin/support.php'),
     '⛔ پشتیبان لینکِ پنلِ تیکت را در **نوارِ کناری** دارد');
-T::ok($supSheet !== '' && str_contains($supSheet, 'admin/support.php'),
-    '⛔ و در **شیتِ مدیریتِ موبایل** هم دارد',
+$toolsOf = fn(string $h) => $slice($h, 'id="moreSheet"', 'id="adminSheet"') ?: $slice($h, 'id="moreSheet"', '</body>');
+$supTools = $toolsOf($supHome);
+T::ok($supTools !== '' && str_contains($supTools, 'admin/support.php'),
+    '⛔ و در **شیتِ ابزارهای موبایل** یک کارتِ مستقیم دارد',
     'با گیتِ `isAdmin()` روی شیت، کاربرِ گوشی هیچ راهی نداشت');
-T::ok(str_contains($supHome, 'js-open-admin'),
-    '⛔ دکمه‌ی «مدیریت» در شیتِ ابزارها برایش رندر می‌شود');
+/**
+ * ⛔ **گزارشِ مالکِ نصب (با اسکرین‌شات):** پشتیبان یک درِ «مدیریت» با
+ *    فقط یک قلمِ «پشتیبانی» پشتش می‌دید، کنارِ «پشتیبانی و راهنما».
+ *    «مدیریت» فقط مالِ مدیر است.
+ */
+T::ok(!str_contains($supHome, 'js-open-admin') && $supSheet === '',
+    '⛔ دکمه و شیتِ «مدیریت» برای پشتیبان رندر **نمی‌شود**');
+T::ok(!str_contains($supSide, '>مدیریت<'),
+    '⛔ و سرتیترِ «مدیریت» در نوارِ کناری هم برایش نیست');
 
 T::ok(!str_contains($supHome, 'admin/users.php') && !str_contains($supHome, 'admin/billing.php'),
     '⛔ و لینکِ هیچ صفحه‌ی مدیرِ دیگری را ندارد');

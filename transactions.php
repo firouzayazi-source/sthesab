@@ -60,11 +60,26 @@ $incomeCategories  = array_filter($categories, fn($c) => $c['type'] === 'income'
 $expenseCategories = array_filter($categories, fn($c) => $c['type'] === 'expense');
 
 $pageTitle = 'تراکنش‌های من';
+// ⛔ راهِ برگشت به همان سالِ کارتِ چهارفصل (`txRangeUrl()`)، و فقط وقتی
+//    از آنجا آمده باشد. `txBackYear()` مقدار را می‌سنجد، پس `back`
+//    هرگز خام در `href` نمی‌نشیند.
+$backYear = txBackYear(getParam('back', ''));
 include __DIR__ . '/includes/header.php';
 ?>
 
+<?php if ($backYear !== null): ?>
+<a href="<?= APP_BASE_PATH ?>/dashboard.php?y=<?= $backYear ?>#year" class="page-back js-page-back">
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M11 6l-6 6 6 6"/></svg>
+    <span>بازگشت به گزارش سال <?= toPersianDigits((string)$backYear) ?></span>
+</a>
+<?php endif; ?>
+
 <div class="card">
     <form method="GET" id="filterForm">
+        <?php if ($backYear !== null): ?>
+        <?php /* ⚠ بدونِ این، زدنِ هر صافی (نوع، جست‌وجو) دکمه‌ی برگشت را بی‌صدا می‌برد. */ ?>
+        <input type="hidden" name="back" value="y<?= $backYear ?>">
+        <?php endif; ?>
         <input type="hidden" name="period" value="<?= h($period) ?>">
         <input type="hidden" name="type" value="<?= h($type) ?>">
         <input type="hidden" name="wallet" value="<?= (int)$walletId ?>">

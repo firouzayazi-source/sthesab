@@ -167,7 +167,10 @@ if (Auth::isLoggedIn()) {
            دقیقاً همان باگی که یک بار سرِ «سررسیدها» افتاد. */
         ?>
         <?php if (Auth::hasAnyCap()): ?>
-        <li class="nav-divider">مدیریت</li>
+        <?php /* ⛔ سرتیترِ «مدیریت» فقط برای مدیر؛ پشتیبان همان یک قلمِ
+                 خودش را زیرِ سرتیترِ «پاسخگویی» می‌بیند — همان گزارشِ
+                 شیتِ ابزارها در footer.php. */ ?>
+        <li class="nav-divider"><?= Auth::can('admin') ? 'مدیریت' : 'پاسخگویی' ?></li>
         <?php endif; ?>
         <?php if (Auth::can('admin')): ?>
         <li>
@@ -210,7 +213,7 @@ if (Auth::isLoggedIn()) {
         <li>
             <a href="<?= APP_BASE_PATH ?>/admin/support.php" class="<?= $__currentPage === 'support.php' && $__inAdmin ? 'active' : '' ?>">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-                <span>پشتیبانی</span>
+                <span>پاسخ به تیکت‌ها</span>
             </a>
         </li>
         <?php endif; ?>

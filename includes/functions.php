@@ -1757,12 +1757,30 @@ function seasonalYearReport(array $dailyRows, int $jy, string $today): array
     ];
 }
 
-/** آدرسِ فهرستِ تراکنش‌های یک بازه — مقصدِ هر کلیکِ کارتِ سالانه. */
-function txRangeUrl(string $from, string $to): string
+/**
+ * آدرسِ فهرستِ تراکنش‌های یک بازه — مقصدِ هر کلیکِ کارتِ سالانه.
+ *
+ * ⛔ `$backYear` یک **راهِ برگشت** به همان سالِ کارت است (`back=y1404`).
+ * **گزارشِ مالکِ نصب:** «وقتی وارد ماه خاص میشیم دکمه برگشت نداره».
+ * صفحه‌ی تراکنش‌ها خودش هیچ دکمه‌ی بازگشتی ندارد (از منوی اصلی باز
+ * می‌شود)، پس کسی که از سالِ ۱۴۰۲ یک ماه را باز کرده بود فقط با دکمه‌ی
+ * بازگشتِ مرورگر برمی‌گشت — که در اپِ نصب‌شده اصلاً نیست.
+ * ⚠ فقط سال حمل می‌شود، نه یک آدرسِ دلخواه: `back` هرگز مستقیم در
+ *   `href` نمی‌نشیند (`txBackYear()` آن را می‌سنجد) — وگرنه یک پیوندِ
+ *   ساختگی کاربر را به هر جایی می‌برد.
+ */
+function txRangeUrl(string $from, string $to, ?int $backYear = null): string
 {
-    return APP_BASE_PATH . '/transactions.php?' . http_build_query([
-        'period' => 'custom', 'from_date' => $from, 'to_date' => $to,
-    ]);
+    $q = ['period' => 'custom', 'from_date' => $from, 'to_date' => $to];
+    if ($backYear !== null) { $q['back'] = 'y' . $backYear; }
+    return APP_BASE_PATH . '/transactions.php?' . http_build_query($q);
+}
+
+/** سالِ شمسیِ داخلِ `back=y1404` اگر معتبر باشد، وگرنه `null`. */
+function txBackYear($raw): ?int
+{
+    if (!is_string($raw) || !preg_match('/^y(1[3-4]\d\d)\z/', $raw, $m)) { return null; }
+    return (int)$m[1];
 }
 
 /**
@@ -3537,6 +3555,23 @@ function jalaliWithWeekday(string $gregorianDate): string
     return $weekdays[$idx] . ' ' . toJalali($gregorianDate);
 }
 /**
+ * تاریخِ بلندِ شمسی برای خواندن: «چهارشنبه ۲ مهر ۱۴۰۵».
+ *
+ * **گزارشِ مالکِ نصب:** «تاریخ روز به شمسی در صفحه اصلی هنوز اضافه
+ * نشده». ⚠ روزِ هفته از همان `jalaliWithWeekday()` می‌آید، نه یک
+ * فهرستِ دوم؛ و تبدیل از `gregorianToJalali()` — تقویمِ سومی ساخته نشد.
+ */
+function jalaliLongDate(string $gregorianDate): string
+{
+    $months = ['', 'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
+               'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
+    [$gy, $gm, $gd] = array_map('intval', explode('-', substr($gregorianDate, 0, 10)));
+    [$jy, $jm, $jd] = gregorianToJalali($gy, $gm, $gd);
+    $weekday = explode(' ', jalaliWithWeekday($gregorianDate))[0];
+    return $weekday . ' ' . toPersianDigits((string)$jd) . ' ' . $months[$jm] . ' ' . toPersianDigits((string)$jy);
+}
+
+/**
  * بانک‌های پیش‌فرض ایران — فقط برای لیست «بانک طرف مقابل» (چک‌های دریافتی)
  * لیست «بانک‌های خودم» عمداً خالی می‌ماند تا شلوغ نشود؛ کاربر خودش اضافه می‌کند.
  */
@@ -4271,8 +4306,15 @@ function deleteTradeProfitTransactions(int $userId, int $tradeId): void
  * فهرست بانک‌های رایج با رنگ هویتی‌شان.
  *
  * ⚠️ رنگ‌ها تقریبی‌اند و از روی هویت بصری شناخته‌شده‌ی هر بانک انتخاب
- * شده‌اند، نه از راهنمای رسمی برند. لوگو یا طرح کارت هیچ بانکی اینجا
- * نیست — علامت تجاری‌شان است. کاربر رنگ را می‌تواند دستی هم عوض کند.
+ * شده‌اند. کاربر رنگ را می‌تواند دستی هم عوض کند.
+ *
+ * ⛔ لوگوی رسمیِ هر بانک در `assets/banks/{کد}.svg` است (`bankLogoUrl()`).
+ * **خواسته‌ی مالکِ نصب:** «لوگوی رسمی بانک‌ها منعی نداره، همه رو با
+ * لوگوی رسمی بیار». قاعده‌ی قبلی («لوگو علامتِ تجاری است») به تصمیمِ
+ * صریحِ مالکِ نصب کنار رفت. منبع: بسته‌ی MIT
+ * `@snapp-store/iranian-banks-react-icons` (۱٫۱٫۱)، به SVG تبدیل و با
+ * svgo کوچک شده. هر کدِ تازه‌ای که اینجا اضافه شود **باید** فایلش را هم
+ * داشته باشد — `test_bank_presets` می‌سنجد، جز «سایر».
  *
  * ساختار: کد => [نام، رنگ اصلی، رنگ دوم گرادیان]
  */
@@ -4299,12 +4341,36 @@ function bankPresets(): array
         'karafarin'  => ['بانک کارآفرین',       '#1565c0', '#0e4585'],
         'gardeshgari'=> ['بانک گردشگری',        '#00897b', '#005f55'],
         'resalat'    => ['بانک قرض‌الحسنه رسالت','#2e7d5b', '#1d5340'],
+        'mehriran'   => ['بانک قرض‌الحسنه مهر ایران', '#5e9e2c', '#3f6c1d'],
+        'sanatmadan' => ['بانک صنعت و معدن',   '#8a7142', '#5e4c2c'],
+        'tosee_saderat' => ['بانک توسعه صادرات', '#006d08', '#004a05'],
+        'tosee_taavon'  => ['بانک توسعه تعاون',  '#3a9fbc', '#276e82'],
+        'iranzamin'  => ['بانک ایران زمین',     '#4c2a93', '#331c63'],
+        'sarmayeh'   => ['بانک سرمایه',         '#1f1f48', '#141430'],
+        'khavarmianeh' => ['بانک خاورمیانه',    '#e08600', '#9c5d00'],
+        'melal'      => ['مؤسسه اعتباری ملل',   '#37389a', '#25266a'],
         // بانکِ دیجیتالِ بانک سامان. کدِ جدا دارد چون کاربر آن را «بلو»
-        // می‌شناسد نه «سامان»، و کارتش هم رنگِ خودش را دارد. ⚠ فقط رنگ —
-        // لوگوی هیچ بانکی در مخزن نیست (علامتِ تجاری است).
+        // می‌شناسد نه «سامان»، و کارتش هم رنگِ خودش را دارد.
         'blu'        => ['بلوبانک',              '#1f5bff', '#133a9e'],
         'other'      => ['سایر / بانک دیگر',    '#475569', '#2f3b4a'],
     ];
+}
+
+/**
+ * آدرسِ لوگوی رسمیِ یک بانک، یا `null` اگر کدی نیست یا فایلی ندارد.
+ *
+ * ⚠ `?v=` اجباری است، همان درسِ `iconUrl()`: nginx به هر `.svg` کشِ
+ *   «یک سال، immutable» می‌دهد و بدونِ نسخه، لوگوی عوض‌شده برای کسی که
+ *   یک بار دیده تا یک سال عوض نمی‌شد.
+ * ⚠ کد از `bankPresets()` سنجیده می‌شود پیش از ساختنِ مسیر — `bank_code`
+ *   از دیتابیس می‌آید و نباید هرگز خام در مسیرِ فایل بنشیند.
+ */
+function bankLogoUrl(?string $code): ?string
+{
+    if ($code === null || $code === '' || !isset(bankPresets()[$code])) { return null; }
+    $rel = 'banks/' . $code . '.svg';
+    if (!is_file(__DIR__ . '/../assets/' . $rel)) { return null; }
+    return APP_BASE_PATH . '/assets/' . $rel . '?v=' . assetVersion([$rel]);
 }
 
 /** رنگ و نام یک بانک از روی کدش؛ اگر نبود، مقدار پیش‌فرض. */

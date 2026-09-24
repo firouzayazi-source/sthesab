@@ -110,18 +110,31 @@ $__moreActive = in_array($__bottomPage, $__morePages, true);
                 <span>خروجی و ورودی</span>
             </a>
             <?php if (Auth::hasAnyCap()): ?>
-            <!-- کارهای مدیریتی زیر یک در جمع شده‌اند تا این شیت برای
-                 مدیر و کاربر عادی یک شکل باشد و ابزارهای روزمره میان
-                 گزینه‌های مدیریتی گم نشوند.
+            <?php /* کارهای مدیریتی زیر یک در جمع شده‌اند تا این شیت برای
+                     مدیر و کاربر عادی یک شکل باشد و ابزارهای روزمره میان
+                     گزینه‌های مدیریتی گم نشوند.
 
-                 ⛔ گیتش `hasAnyCap()` است نه `isAdmin()`: نقشِ «پشتیبان»
-                 باید همین در را داشته باشد، ولی پشتش فقط کارتِ خودش را
-                 ببیند. با `isAdmin()` روی این دکمه، آن کاربر **هیچ**
-                 راهی به پنلِ تیکت نداشت. -->
+                     ⛔ گیتِ بیرونی `hasAnyCap()` است نه `isAdmin()`: نقشِ
+                     «پشتیبان» باید راهی به پنلِ تیکت داشته باشد. ولی آن
+                     راه **کارتِ مستقیمِ** خودش است، نه درِ «مدیریت». */ ?>
+            <?php if (Auth::can('admin')): ?>
             <button type="button" class="tool-card js-open-admin" style="--tc1:#64748b; --tc2:#475569;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 100-6 3 3 0 000 6z"/><path d="M19.4 15a1.7 1.7 0 00.34 1.87l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.7 1.7 0 00-1.87-.34 1.7 1.7 0 00-1 1.55V21a2 2 0 11-4 0v-.09a1.7 1.7 0 00-1.11-1.55 1.7 1.7 0 00-1.87.34l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.7 1.7 0 00.34-1.87 1.7 1.7 0 00-1.55-1H3a2 2 0 110-4h.09A1.7 1.7 0 004.6 8.6a1.7 1.7 0 00-.34-1.87l-.06-.06a2 2 0 112.83-2.83l.06.06a1.7 1.7 0 001.87.34H9a1.7 1.7 0 001-1.55V3a2 2 0 114 0v.09a1.7 1.7 0 001 1.55 1.7 1.7 0 001.87-.34l.06-.06a2 2 0 112.83 2.83l-.06.06a1.7 1.7 0 00-.34 1.87V9a1.7 1.7 0 001.55 1H21a2 2 0 110 4h-.09a1.7 1.7 0 00-1.55 1z"/></svg>
                 <span>مدیریت</span>
             </button>
+            <?php else: ?>
+            <?php /* ⛔ نقشِ «پشتیبان» دیگر یک درِ «مدیریت» با **یک** قلمِ
+                     پشتش نمی‌بیند — مستقیم همان کارِ خودش را.
+                     **گزارشِ مالکِ نصب (با اسکرین‌شات):** کاربری که نقشش
+                     پشتیبان بود «مدیریت» را کنارِ «پشتیبانی و راهنما»
+                     می‌دید و پشتش فقط «پشتیبانی» — دو کارتِ هم‌نام که
+                     کسی نمی‌فهمید فرقشان چیست، و یک «مدیریت» که چیزی را
+                     مدیریت نمی‌کند. «مدیریت» فقط مالِ مدیر است. */ ?>
+            <a href="<?= APP_BASE_PATH ?>/admin/support.php" class="tool-card" style="--tc1:#0d9488; --tc2:#0f766e;">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                <span>پاسخ به تیکت‌ها</span>
+            </a>
+            <?php endif; ?>
             <?php endif; ?>
             <?php
             /* پشتیبانی — راهنما و تیکت. نشانِ کنارش فقط وقتی می‌آید که
@@ -149,8 +162,8 @@ $__moreActive = in_array($__bottomPage, $__morePages, true);
     </div>
 </div>
 
-<?php if (Auth::hasAnyCap()): ?>
-<!-- زیرشیت مدیریت -->
+<?php if (Auth::can('admin')): ?>
+<!-- زیرشیت مدیریت — فقط مدیر (پشتیبان کارتِ مستقیمِ خودش را دارد، بالا) -->
 <div class="more-sheet-overlay" id="adminSheet">
     <div class="more-sheet">
         <div class="more-sheet-grab"><div class="more-sheet-handle"></div></div>
@@ -192,7 +205,7 @@ $__moreActive = in_array($__bottomPage, $__morePages, true);
             <?php if (Auth::can('support')): ?>
             <a href="<?= APP_BASE_PATH ?>/admin/support.php" class="tool-card" style="--tc1:#0d9488; --tc2:#0f766e;">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
-                <span>پشتیبانی</span>
+                <span>پاسخ به تیکت‌ها</span>
             </a>
             <?php endif; ?>
         </div>

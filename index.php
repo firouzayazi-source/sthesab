@@ -78,6 +78,15 @@ $pageTitle = 'خانه';
 include __DIR__ . '/includes/header.php';
 ?>
 
+<?php /* تاریخِ امروز به شمسی — **گزارشِ مالکِ نصب:** «تاریخ روز به شمسی در
+         صفحه اصلی هنوز اضافه نشده». لینک به تقویمِ مالی است، چون سؤالِ
+         بعد از «امروز چندم است» همان «امروز چه سررسیدی دارم» است.
+         ⚠ از `today()` می‌آید (منطقه‌ی زمانیِ اپ)، نه `date()` خام. */ ?>
+<a class="home-date" href="<?= APP_BASE_PATH ?>/due.php?t=calendar">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>
+    <span><?= h(jalaliLongDate(today())) ?></span>
+</a>
+
 <?php /* ⛔ جای این کارت **بالای همه چیز** است، نه پایین‌تر. حرفش این است
          که عددهای زیرش هنوز درست نیستند؛ نشاندنش زیرِ همان عددها یعنی
          کاربر اول باور می‌کند و بعد می‌خواند. فقط تا وقتی دیده می‌شود
@@ -164,6 +173,7 @@ include __DIR__ . '/includes/header.php';
                 $__bal  = ((int)$pw['balance'] < 0 ? '−' : '') . formatMoney(abs((int)$pw['balance']));
                 $__kind = walletKindLabel($pw['kind'], $pw['kind_label'] ?? null);
                 $__card = formatCardNumber($pw['card_number'] ?? '');
+                $__logo = bankLogoUrl($pw['bank_code'] ?? null);
             ?>
             <?php /* ⚠ همان `data-*`هایی که ردیفِ `wallets.php` دارد، با همان
                      نام‌ها: `app.js` یک شنونده‌ی مشترک روی `.js-show-card`
@@ -180,7 +190,8 @@ include __DIR__ . '/includes/header.php';
                  data-kind="<?= h($__kind) ?>"
                  data-balance="<?= h($__bal) ?>"
                  data-c1="<?= h($pw['color']) ?>"
-                 data-c2="<?= h(shadeColor($pw['color'])) ?>">
+                 data-c2="<?= h(shadeColor($pw['color'])) ?>"
+                 data-logo="<?= h($__logo ?? '') ?>">
                 <div class="bank-card-shine"></div>
                 <?php /* ⚠ نگاشتِ فیلدها **دقیقاً** همانِ مودال است: بالا
                          نامِ بانک (و اگر نبود نامِ حساب)، پایین نامِ خودِ
@@ -188,7 +199,7 @@ include __DIR__ . '/includes/header.php';
                          چیزِ متفاوت نشان می‌داد، و روی حسابی که نامش با
                          بانکش یکی است هر دو خط یک کلمه می‌شدند. */ ?>
                 <div class="bank-card-top">
-                    <span class="bank-card-bank"><?= h($__bank ?: $pw['name']) ?></span>
+                    <span class="bank-card-bank"><?php if ($__logo !== null): ?><span class="bank-logo"><img src="<?= h($__logo) ?>" alt="" width="22" height="22"></span><?php endif; ?><?= h($__bank ?: $pw['name']) ?></span>
                     <span class="bank-card-kind"><?= h($__kind) ?></span>
                 </div>
                 <div class="bank-card-chip" aria-hidden="true"></div>

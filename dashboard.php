@@ -254,12 +254,12 @@ include __DIR__ . '/includes/header.php';
          مقصدش فهرستِ همان تراکنش‌هایی است که عدد را ساخته‌اند — عددی که
          نشود دنبالش کرد، کاربر به آن اعتماد نمی‌کند. لینک است نه جاوااسکریپت:
          با نرسیدنِ app.js هم کار می‌کند. */ ?>
-<div class="card year-report">
+<div class="card year-report" id="year">
     <div class="year-report-head">
         <?php if ($prevYear !== null): ?>
             <a class="year-nav" href="?y=<?= (int)$prevYear ?>" aria-label="سال قبل">‹ <?= toPersianDigits($prevYear) ?></a>
         <?php else: ?><span class="year-nav is-off"></span><?php endif; ?>
-        <a class="year-title" href="<?= h(txRangeUrl($yearReport['from'], $yearReport['to'])) ?>">
+        <a class="year-title" href="<?= h(txRangeUrl($yearReport['from'], $yearReport['to'], $yearReport['year'])) ?>">
             سال <?= toPersianDigits($reportYear) ?>
         </a>
         <?php if ($nextYear !== null): ?>
@@ -274,7 +274,7 @@ include __DIR__ . '/includes/header.php';
     <div class="season-grid">
         <?php foreach ($yearReport['seasons'] as $__s): ?>
         <div class="season-card season-<?= h($__s['key']) ?><?= $__s['current'] ? ' is-current' : '' ?><?= $__s['future'] ? ' is-future' : '' ?>">
-            <a class="season-head" href="<?= h(txRangeUrl($__s['from'], $__s['to'])) ?>">
+            <a class="season-head" href="<?= h(txRangeUrl($__s['from'], $__s['to'], $yearReport['year'])) ?>">
                 <span class="season-name"><?= h($__s['name']) ?></span>
                 <span class="season-net ltr-num <?= $__s['net'] >= 0 ? 'stats-net-positive' : 'stats-net-negative' ?>"><?= formatMoney($__s['net']) ?></span>
             </a>
@@ -283,7 +283,7 @@ include __DIR__ . '/includes/header.php';
                 <span>هزینه <b class="ltr-num stats-expense"><?= formatMoney($__s['expense']) ?></b></span>
             </div>
             <?php foreach ($__s['months'] as $__m): ?>
-            <a class="season-month<?= $__m['current'] ? ' is-current' : '' ?><?= $__m['future'] ? ' is-future' : '' ?>" href="<?= h(txRangeUrl($__m['from'], $__m['to'])) ?>">
+            <a class="season-month<?= $__m['current'] ? ' is-current' : '' ?><?= $__m['future'] ? ' is-future' : '' ?>" href="<?= h(txRangeUrl($__m['from'], $__m['to'], $yearReport['year'])) ?>">
                 <span class="season-month-name"><?= h($__m['name']) ?></span>
                 <span class="season-month-val ltr-num <?= $__m['net'] >= 0 ? 'stats-net-positive' : 'stats-net-negative' ?>"><?= formatMoney($__m['net']) ?></span>
             </a>

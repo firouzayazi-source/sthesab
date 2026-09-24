@@ -25,8 +25,8 @@ if (!defined('APP_BASE_PATH')) {
 }
 ?>
 <!-- ---------- نمای کارت بانکی ----------
-     طرح و رنگ از روی بانکِ انتخاب‌شده ساخته می‌شود. عمداً از لوگو یا
-     تصویر کارت واقعی بانک‌ها استفاده نشده — علامت تجاری‌شان است. -->
+     طرح و رنگ از روی بانکِ انتخاب‌شده ساخته می‌شود، و لوگوی رسمیِ همان
+     بانک (`bankLogoUrl()`) کنارِ نامش. -->
 <div class="modal-overlay" id="bankCardModal">
     <div class="modal-box bank-card-box">
         <div class="modal-header">
@@ -37,7 +37,7 @@ if (!defined('APP_BASE_PATH')) {
         <div class="bank-card" id="bankCardVisual">
             <div class="bank-card-shine"></div>
             <div class="bank-card-top">
-                <span class="bank-card-bank" id="bcBank"></span>
+                <span class="bank-card-bank"><span class="bank-logo" id="bcLogo" hidden><img src="" alt="" width="22" height="22"></span><span id="bcBank"></span></span>
                 <span class="bank-card-kind" id="bcKind"></span>
             </div>
             <div class="bank-card-chip" aria-hidden="true"></div>

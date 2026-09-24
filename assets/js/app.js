@@ -2358,6 +2358,7 @@ document.addEventListener('DOMContentLoaded', function () {
         if (kind) kind.value = 'cash';
         var bcode = document.getElementById('wallet_bank_code');
         if (bcode) bcode.value = '';
+        if (window.syncBankLogo) window.syncBankLogo();
         var kl = document.getElementById('wallet_kind_label');
         if (kl) resetSelect(kl);
         var color = document.getElementById('wallet_color');
@@ -2400,11 +2401,24 @@ document.addEventListener('DOMContentLoaded', function () {
 
     // انتخاب بانک، رنگ حساب را تنظیم می‌کند (کاربر بعدش می‌تواند عوض کند)
     var bankSel = document.getElementById('wallet_bank_code');
+    /* پیش‌نمایشِ لوگوی بانکِ انتخاب‌شده کنارِ منو. ⚠ هم با `change` و هم
+       پیش از باز شدنِ فرمِ ویرایش صدا زده می‌شود — آنجا مقدار با کد نوشته
+       می‌شود و `change` نمی‌دهد، پس لوگوی بانکِ قبلی سرِ جایش می‌ماند. */
+    function syncBankLogo() {
+        var box = document.getElementById('walletBankLogo');
+        if (!box || !bankSel) return;
+        var opt = bankSel.options[bankSel.selectedIndex];
+        var lu = (opt && opt.getAttribute('data-logo')) || '';
+        box.hidden = !lu;
+        if (lu) { box.querySelector('img').src = lu; }
+    }
+    window.syncBankLogo = syncBankLogo;
     if (bankSel) {
         bankSel.addEventListener('change', function () {
             var opt = this.options[this.selectedIndex];
             var c1 = opt && opt.getAttribute('data-c1');
             if (c1) { document.getElementById('wallet_color').value = c1; }
+            syncBankLogo();
         });
     }
 
@@ -2508,6 +2522,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('bcNumber').textContent = this.getAttribute('data-card') || '';
                 document.getElementById('bcOwner').textContent = this.getAttribute('data-name') || '';
                 document.getElementById('bcBalance').textContent = this.getAttribute('data-balance') || '';
+                // لوگوی رسمیِ بانک — `data-logo` خالی یعنی بانکی انتخاب نشده.
+                var logo = document.getElementById('bcLogo');
+                if (logo) {
+                    var lu = this.getAttribute('data-logo') || '';
+                    logo.hidden = !lu;
+                    if (lu) { logo.querySelector('img').src = lu; }
+                }
 
                 // ردیف‌های زیر کارت فقط برای چیزهایی که واقعاً پر شده‌اند
                 var rows = document.getElementById('bcRows');
@@ -2689,6 +2710,7 @@ document.addEventListener('DOMContentLoaded', function () {
             document.getElementById('wallet_color').value = this.getAttribute('data-color') || '#64748b';
             var bcSel = document.getElementById('wallet_bank_code');
             if (bcSel) bcSel.value = this.getAttribute('data-bank-code') || '';
+            if (window.syncBankLogo) window.syncBankLogo();
             var cardEl = document.getElementById('wallet_card_number');
             if (cardEl) cardEl.value = groupDigits(this.getAttribute('data-card') || '');
             var accEl = document.getElementById('wallet_account_number');

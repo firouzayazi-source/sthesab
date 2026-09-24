@@ -74,6 +74,15 @@ T::ok(str_contains($u, 'period=custom') && str_contains($u, 'from_date=2024-06-2
     && str_contains($u, 'to_date=2024-07-21'),
     'لینکِ تیر دقیقاً بازه‌ی همان ماه است', $u);
 
+/* ⛔ راهِ برگشت به همان سال — «وارد ماه خاص میشیم دکمه برگشت نداره». */
+$ub = txRangeUrl('2024-06-21', '2024-07-21', 1403);
+T::ok(str_contains($ub, 'back=y1403'), 'لینکِ کارتِ سالانه سالِ برگشت را حمل می‌کند', $ub);
+T::ok(!str_contains($u, 'back='), 'بدونِ سال، هیچ `back`ی نمی‌آید');
+T::same(1403, txBackYear('y1403'), 'سالِ معتبر خوانده می‌شود');
+foreach (['', '1403', 'y99', 'y1403x', 'https://evil', "y1403\n", ['y1403']] as $bad) {
+    T::same(null, txBackYear($bad), '⛔ مقدارِ نامعتبرِ back رد می‌شود: ' . json_encode($bad));
+}
+
 $empty = seasonalYearReport([], 1404, '2025-04-01');
 T::same(0, $empty['income'], 'سالِ بی‌تراکنش صفر است، نه خطا');
 

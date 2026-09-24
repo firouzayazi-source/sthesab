@@ -4942,6 +4942,19 @@ foreach (['includes/sidebar.php', 'includes/footer.php'] as $rel) {
     }
 }
 
+// ۱۱-ب) درِ «مدیریت» (دکمه و زیرشیت) فقط برای مدیر — پشتیبان کارتِ
+//       مستقیمِ «پاسخ به تیکت‌ها» را دارد. **گزارشِ مالکِ نصب:** پشتیبان
+//       یک «مدیریت» با فقط یک قلم پشتش می‌دید.
+$ftSrc = $stripComments($root . '/includes/footer.php');
+foreach (['<button type="button" class="tool-card js-open-admin"', 'id="adminSheet"'] as $needle) {
+    $at = strpos($ftSrc, $needle);
+    $gate = $at === false ? false : strrpos(substr($ftSrc, 0, $at), '<?php if (');
+    $gateLine = $gate === false ? '' : substr($ftSrc, $gate, 40);
+    if ($at === false || strpos($gateLine, "Auth::can('admin')") === false) {
+        $badRole[] = "⛔ includes/footer.php — «{$needle}» پشتِ `Auth::can('admin')` نیست";
+    }
+}
+
 // ۱۲) نوارِ `admin/_nav.php` هر بخش را با تواناییِ خودش گیت کند، و
 //     پیش‌فرضِ بخشِ تازه **بسته** بماند.
 $navSrc = $stripComments($root . '/admin/_nav.php');
@@ -4968,7 +4981,7 @@ if (strpos($migSh, '[migration_user_roles.sql]="users.role>=20"') === false) {
     $badRole[] = '⛔ شاهدِ migration_user_roles در SENTINEL نیست (یا روی طولِ ستون نیست)';
 }
 
-T::bulk(13 + count($adminPages), $badRole,
+T::bulk(15 + count($adminPages), $badRole,
     '⛔ نقشِ «پشتیبان» فقط بخشِ پشتیبانی را باز می‌کند و «همکار» فقط یک برچسب است');
 
 // ═══════════════════════════════════════════════════════════════

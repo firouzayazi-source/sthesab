@@ -86,7 +86,7 @@ include __DIR__ . '/includes/header.php';
         <p class="empty-row">هنوز حسابی ندارید.</p>
     <?php else: ?>
         <?php foreach ($wallets as $w): ?>
-            <?php $__bp = bankPreset($w['bank_code'] ?? null); ?>
+            <?php $__bp = bankPreset($w['bank_code'] ?? null); $__logo = bankLogoUrl($w['bank_code'] ?? null); ?>
             <div class="wallet-row js-show-card <?= (int)$w['is_active'] ? '' : 'wallet-off' ?>"
                 data-id="<?= (int)$w['id'] ?>"
                 data-name="<?= h($w['name']) ?>"
@@ -97,7 +97,11 @@ include __DIR__ . '/includes/header.php';
                 data-kind="<?= h(walletKindLabel($w['kind'], $w['kind_label'] ?? null)) ?>"
                 data-balance="<?= ((int)$w['balance'] < 0 ? '−' : '') . formatMoney(abs((int)$w['balance'])) ?>"
                 data-c1="<?= h($w['color']) ?>"
-                data-c2="<?= h(shadeColor($w['color'])) ?>">
+                data-c2="<?= h(shadeColor($w['color'])) ?>"
+                data-logo="<?= h($__logo ?? '') ?>">
+                <?php if ($__logo !== null): ?>
+                <span class="wallet-chip wallet-chip-logo"><img src="<?= h($__logo) ?>" alt="" width="26" height="26" loading="lazy"></span>
+                <?php else: ?>
                 <span class="wallet-chip" style="background: <?= h($w['color']) ?>1f; color: <?= h($w['color']) ?>;">
                     <?php if ($w['kind'] === 'card'): ?>
                         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/></svg>
@@ -109,6 +113,7 @@ include __DIR__ . '/includes/header.php';
                         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7.5h15a2.5 2.5 0 012.5 2.5v7a2.5 2.5 0 01-2.5 2.5H5.5A2.5 2.5 0 013 17V7.5z"/><path d="M3 7.5l12-3v3"/><circle cx="17" cy="13.5" r="1.2"/></svg>
                     <?php endif; ?>
                 </span>
+                <?php endif; ?>
 
                 <div class="wallet-meta">
                     <div class="wallet-name"><?= h($w['name']) ?></div>
@@ -248,12 +253,17 @@ include __DIR__ . '/includes/header.php';
             <div id="walletBankFields">
                 <div class="form-group">
                     <label for="wallet_bank_code">بانک</label>
-                    <select id="wallet_bank_code" name="bank_code">
-                        <option value="">— انتخاب کنید —</option>
-                        <?php foreach (bankPresets() as $code => $b): ?>
-                            <option value="<?= h($code) ?>" data-c1="<?= h($b[1]) ?>"><?= h($b[0]) ?></option>
-                        <?php endforeach; ?>
-                    </select>
+                    <?php /* لوگو کنارِ منو: `<option>` تصویر نمی‌پذیرد، پس پیش‌نمایشِ
+                             بانکِ انتخاب‌شده کنارش می‌نشیند (`data-logo` روی هر گزینه). */ ?>
+                    <div class="bank-pick-row">
+                        <span class="bank-pick-logo" id="walletBankLogo" hidden><img src="" alt="" width="28" height="28"></span>
+                        <select id="wallet_bank_code" name="bank_code">
+                            <option value="">— انتخاب کنید —</option>
+                            <?php foreach (bankPresets() as $code => $b): ?>
+                                <option value="<?= h($code) ?>" data-c1="<?= h($b[1]) ?>" data-logo="<?= h(bankLogoUrl($code) ?? '') ?>"><?= h($b[0]) ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
                     <p class="hint">با انتخاب بانک، رنگ و طرح کارت خودکار تنظیم می‌شود — رنگ را می‌توانید دستی هم عوض کنید.</p>
                 </div>
 

@@ -267,6 +267,22 @@ foreach (['', '?y=99999', '?y=abc', '?y=' . ($ty + 1)] as $q) {
 T::same(4, substr_count($bd, 'class="season-card'), 'چهار کارتِ فصل');
 T::same(12, substr_count($bd, '<a class="season-month'), 'دوازده ماه');
 T::ok(!str_contains($bd, 'class="stats-grid"'), 'چهار کارتِ قدیمیِ امروز/هفته/ماه/سال برداشته شد');
+T::ok(str_contains($bd, 'back=y' . $ty), '⛔ لینکِ ماه‌ها سالِ برگشت را حمل می‌کند');
+
+// ⛔ «وارد ماه خاص میشیم دکمه برگشت نداره» — دکمه، و ماندنش با صافی.
+[$ct, $bt] = $req('transactions.php?period=custom&from_date=2025-03-21&to_date=2025-04-20&back=y1404');
+T::ok($ct === 200 && str_contains($bt, 'dashboard.php?y=1404#year'), '⛔ صفحه‌ی تراکنش دکمه‌ی برگشت به همان سال دارد');
+T::ok(str_contains($bt, 'name="back" value="y1404"'), '⛔ و با زدنِ صافی از دست نمی‌رود');
+[, $bt2] = $req('transactions.php?back=' . rawurlencode('https://evil.example'));
+T::ok(!str_contains($bt2, 'evil.example') && !str_contains($bt2, 'class="page-back'),
+    '⛔ `back` دلخواه هرگز در صفحه نمی‌نشیند');
+[, $bt3] = $req('transactions.php');
+T::ok(!str_contains($bt3, 'class="page-back'), 'بدونِ `back` دکمه‌ای نیست');
+
+// تاریخِ امروز روی خانه — «تاریخ روز به شمسی در صفحه اصلی هنوز اضافه نشده».
+[, $bh] = $req('index.php');
+T::ok(str_contains($bh, 'class="home-date"') && str_contains($bh, jalaliLongDate(date('Y-m-d'))),
+    '⛔ خانه تاریخِ امروز را به شمسی نشان می‌دهد');
 
 $stop();
 exit(T::report());
