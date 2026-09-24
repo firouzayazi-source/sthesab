@@ -4431,7 +4431,48 @@ document.addEventListener('DOMContentLoaded', function () {
 
         // نمودارها رنگشان را در جاوااسکریپت گرفته‌اند و خودشان خبر ندارند
         window.__repaintThemedCharts();
+        syncThemeColorMeta();
     }
+
+    // ---------- پالتِ رنگ (پروفایل → «نمایش») ----------
+    // ⛔ رنگِ نوارِ وضعیتِ گوشی از خودِ `--brand`ِ محاسبه‌شده خوانده
+    //    می‌شود، نه از یک نگاشتِ دومِ جاوااسکریپتی: با نگاشتِ دوم، اولین
+    //    پالتِ تازه‌ی CSS نوار را بی‌صدا روی رنگِ قبلی نگه می‌داشت.
+    //    متای ایستای سرآیند (قاعده ۵۷) همان زمرد می‌ماند؛ این فقط وقتی
+    //    چیزی عوض می‌کند که پالت یا حالت شب عوض شده باشد.
+    function syncThemeColorMeta() {
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (!meta) return;
+        var c = getComputedStyle(document.documentElement).getPropertyValue('--brand').trim();
+        if (c) meta.setAttribute('content', c);
+    }
+
+    var palettePicker = document.getElementById('palettePicker');
+    if (palettePicker) {
+        var curPal = document.documentElement.getAttribute('data-palette') || 'emerald';
+        // مقدارِ ذخیره‌شده‌ای که سرآیند نپذیرفت (پالتِ حذف‌شده، دست‌کاری) همین‌جا
+        // پاک می‌شود؛ وگرنه زدنِ «زمرد» — که از قبل انتخاب است — `change` نمی‌دهد
+        // و آن مقدار تا ابد در مرورگر می‌ماند.
+        if (curPal === 'emerald') { try { localStorage.removeItem('daftar_palette'); } catch (e) {} }
+        palettePicker.querySelectorAll('input[name="ui_palette"]').forEach(function (r) {
+            r.checked = (r.value === curPal);
+            r.addEventListener('change', function () {
+                if (!this.checked) return;
+                // ⛔ زمرد پیش‌فرض است: ویژگی برداشته می‌شود و کلید هم پاک، نه
+                //    نوشتنِ 'emerald' — تا پیش‌فرضِ فردا (اگر عوض شد) به همه برسد.
+                if (this.value === 'emerald') {
+                    document.documentElement.removeAttribute('data-palette');
+                    try { localStorage.removeItem('daftar_palette'); } catch (e) {}
+                } else {
+                    document.documentElement.setAttribute('data-palette', this.value);
+                    try { localStorage.setItem('daftar_palette', this.value); } catch (e) {}
+                }
+                window.__repaintThemedCharts();
+                syncThemeColorMeta();
+            });
+        });
+    }
+    syncThemeColorMeta();
 
     // وقتی گوشی بین حالت شب و روز جابه‌جا می‌شود، اپ هم زنده عوض شود
     if (themeMedia) {

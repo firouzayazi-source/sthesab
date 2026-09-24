@@ -3690,6 +3690,29 @@ function categoryIconSvg(?string $key, int $size = 20): string
          . 'aria-hidden="true">' . $item['path'] . '</svg>';
 }
 
+/**
+ * پالت‌های رنگِ برنامه (پروفایل → «نمایش»). کلید همان مقدارِ
+ * `data-palette` روی `<html>` است و CSSِ هر پالت در بخشِ ۴۱ِ
+ * `style.css` نشسته.
+ *
+ * ⛔ تنها مرجعِ فهرست همین است: انتخابگرِ پروفایل از آن رندر می‌شود،
+ *    و `includes/header.php` الگوی مجاز را از روی همین کلیدها می‌سازد.
+ *    با فهرستِ دوم، پالتی که در یکی هست و در دیگری نه، یا در انتخابگر
+ *    دیده می‌شد و هنگامِ بارگذاری بی‌صدا به زمرد برمی‌گشت، یا برعکس.
+ * ⛔ کلیدِ اول (`emerald`) پیش‌فرض است و **هیچ ویژگی‌ای** نمی‌گیرد.
+ * ⚠ انتخاب در `localStorage` همان دستگاه می‌ماند (`daftar_palette`)، مثل
+ *   حالت شب (`daftar_theme`): یک **نگاه** است نه داده، و بدونِ کوئری
+ *   پیش از رندرِ صفحه اعمال می‌شود — پس هیچ چشمکِ رنگِ پیش‌فرض نیست.
+ */
+const UI_PALETTES = [
+    'emerald'  => 'زمرد',
+    'indigo'   => 'نیلی',
+    'ocean'    => 'اقیانوس',
+    'sunset'   => 'غروب',
+    'lilac'    => 'یاس',
+    'graphite' => 'شب',
+];
+
 function renderTransactionRow(array $tx): void
 {
     $icon  = categoryIconSvg($tx['cat_icon'] ?? null);

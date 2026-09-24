@@ -289,7 +289,14 @@ include __DIR__ . '/includes/header.php';
             <p class="empty-row">هنوز تراکنشی ثبت نکرده‌اید.</p>
             <p class="empty-cta"><button type="button" class="btn btn-primary js-add-tx">ثبت اولین تراکنش</button></p>
         <?php else: ?>
-            <?php renderTransactionsGrouped($recentTransactions); ?>
+            <?php /* ⛔ روی خانه **بی‌سرِ روز** است، عمداً: هشت ردیفِ آخر معمولاً
+                     مالِ یکی دو روزند و خطِ «دیروز · چهارشنبه ۱ مهر» بالای
+                     دو ردیف فقط جا می‌گرفت (خواسته‌ی مالکِ نصب). تاریخِ هر
+                     ردیف با تپ باز می‌شود، و صفحه‌ی تراکنش‌ها — که فهرستِ
+                     بلند دارد — همچنان گروه‌بندیِ روزانه را دارد. */ ?>
+            <div class="tx-day-group tx-flat">
+                <?php foreach ($recentTransactions as $__tx) { renderTransactionRow($__tx); } ?>
+            </div>
         <?php endif; ?>
     </div>
 </div>

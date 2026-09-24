@@ -4911,7 +4911,9 @@ html[data-theme="dark"] {
 
    ⛔ این بخش **آخرین** بخشِ فایل است و باید بماند: توکن‌ها چند بار در
       این فایل بازتعریف شده‌اند (زغالی، Finmori سرمه‌ای، …) و آخرینِ هم‌وزن
-      برنده است. رنگِ برند فقط **اینجا** تعریف می‌شود.
+      برنده است. رنگِ برند فقط **اینجا** تعریف می‌شود — این «زمرد»ِ
+      پیش‌فرض است؛ پالت‌های دیگر فقط همین توکن‌ها را در بخشِ ۴۱
+      بازتعریف می‌کنند.
    ⛔ سه جای دیگر همین رنگ را دارند و باید با هم عوض شوند (قاعده ۵۷):
       `theme_color` در `assets/manifest.php`، هر `<meta name="theme-color">`،
       و `colorPrimary` در `mobile/…/values/colors.xml`. با یکی، نوارِ
@@ -4947,6 +4949,14 @@ html[data-theme="dark"] {
     --sh:    0 1px 2px rgba(10,48,33,.04);
     --sh-lg: 0 14px 34px -10px rgba(10,48,33,.28);
     --sh-card: 0 1px 2px rgba(10,48,33,.04), 0 4px 14px -8px rgba(10,48,33,.10);
+    /* طیفِ رنگیِ پالت (بخشِ ۴۱): کارتِ ماه، دکمه‌ی +، سرِ پروفایل */
+    --tint:     10,48,33;
+    --rb1: #0f7550; --rb2: #0b5d41; --rb3: #073f2c;
+    --rb-in: #b7f4d2; --rb-out: #ffc0c2; --rb-link: #c8f5de; --rb-fill: #d9fbe9;
+    --nav-mark: #7fe2bd;
+    --fab1: #e4f8ee; --fab2: #aeeacd; --fab-ink: #0b5d41;
+    --ph1: #dcf5e8; --ph2: #eef8f3;
+    --av1: #11a36b; --av2: #0b5d41;
 }
 html[data-theme="dark"] {
     --ink:        #e7efea;
@@ -4970,6 +4980,10 @@ html[data-theme="dark"] {
     --sh:    none;
     --sh-lg: 0 14px 34px -10px rgba(0,0,0,.6);
     --sh-card: none;
+
+    --rb1: #145a41; --rb2: #0f4130; --rb3: #0a2c20;
+    --fab1: #7fe2bd; --fab2: #3fbf8c; --fab-ink: #06251a;
+    --ph1: #143a2b; --ph2: #12251d;
 }
 
 /* ---------- کارت‌ها: یک شعاع، یک سایه، یک خط ---------- */
@@ -4982,20 +4996,23 @@ html[data-theme="dark"] {
 /* ---------- منوی کناری ---------- */
 .sidebar { background: linear-gradient(180deg, var(--brand) 0%, var(--brand-deep) 100%); }
 .sidebar-nav a.active { background: rgba(255,255,255,.94); color: var(--brand-fg); font-weight: 700; }
-html[data-theme="dark"] .sidebar-nav a.active { background: rgba(79,209,160,.16); color: var(--gold-lift); }
+html[data-theme="dark"] .sidebar-nav a.active { background: rgba(255,255,255,.1); color: var(--gold-lift); }
 
 /* ---------- کارتِ «مانده این ماه» ---------- */
 .balance-ribbon {
-    background: linear-gradient(135deg, #0f7550 0%, #0b5d41 46%, #073f2c 100%);
-    box-shadow: 0 16px 32px -16px rgba(7,63,44,.75);
+    background: linear-gradient(135deg, var(--rb1) 0%, var(--rb2) 46%, var(--rb3) 100%);
+    box-shadow: 0 16px 32px -16px rgba(var(--tint),.75);
 }
+/* ⛔ پس‌زمینه در شب هم **تکرار** می‌شود: بخشِ ۳۴ یک
+   `html[data-theme="dark"] .balance-ribbon` بنفش دارد (۰،۲،۱) که بر
+   `.balance-ribbon` تنها می‌برد — و در شب هر پنج پالت بنفش می‌شدند. */
 html[data-theme="dark"] .balance-ribbon {
-    background: linear-gradient(135deg, #145a41 0%, #0f4130 50%, #0a2c20 100%);
+    background: linear-gradient(135deg, var(--rb1) 0%, var(--rb2) 46%, var(--rb3) 100%);
     box-shadow: none;
 }
-.balance-ribbon .bs-value.bs-in,  .balance-ribbon .bs-in  { color: #b7f4d2; }
-.balance-ribbon .bs-value.bs-out, .balance-ribbon .bs-out { color: #ffc0c2; }
-.ribbon-link { color: #c8f5de; }
+.balance-ribbon .bs-value.bs-in,  .balance-ribbon .bs-in  { color: var(--rb-in); }
+.balance-ribbon .bs-value.bs-out, .balance-ribbon .bs-out { color: var(--rb-out); }
+.ribbon-link { color: var(--rb-link); }
 
 /* ⛔ دریافتی/پرداختی: برچسب راست، عدد چپ، **روی یک خط**. نسخه‌ی قبلی
    دو ستون بود و در هر ستون برچسب راست‌چین و عدد چپ‌چین می‌نشست، پس
@@ -5012,8 +5029,8 @@ html[data-theme="dark"] .balance-ribbon {
     content: ''; width: 7px; height: 7px; border-radius: 50%;
     background: currentColor; opacity: .55; flex: none;
 }
-.balance-split .bs-in-row .bs-label::before  { background: #b7f4d2; opacity: 1; }
-.balance-split .bs-out-row .bs-label::before { background: #ffc0c2; opacity: 1; }
+.balance-split .bs-in-row .bs-label::before  { background: var(--rb-in); opacity: 1; }
+.balance-split .bs-out-row .bs-label::before { background: var(--rb-out); opacity: 1; }
 
 /* نوارِ «چقدر از دریافتی خرج شد» — ⛔ `direction: ltr` روی ترک، مثل هر
    میله‌ی پیشرفتِ دیگرِ اپ: از چپ پر می‌شود. */
@@ -5026,7 +5043,7 @@ html[data-theme="dark"] .balance-ribbon {
 }
 .month-meter-fill {
     height: 100%; border-radius: var(--r-pill);
-    background: #d9fbe9;
+    background: var(--rb-fill);
     transition: width .5s ease;
 }
 .month-meter.is-warn .month-meter-fill { background: #fcd679; }
@@ -5041,13 +5058,13 @@ html[data-theme="dark"] .balance-ribbon {
     font-size: 11.5px; color: rgba(255,255,255,.72);
 }
 .month-compare svg { flex: none; }
-.month-compare.is-up   svg { color: #ffc0c2; }
-.month-compare.is-down svg { color: #b7f4d2; }
+.month-compare.is-up   svg { color: var(--rb-out); }
+.month-compare.is-down svg { color: var(--rb-in); }
 
 /* ---------- نوار پایین ---------- */
 .bottom-nav {
     background: var(--brand);
-    box-shadow: 0 12px 30px -10px rgba(7,63,44,.55);
+    box-shadow: 0 12px 30px -10px rgba(var(--tint),.55);
 }
 html[data-theme="dark"] .bottom-nav { box-shadow: 0 0 0 1px var(--line), 0 12px 30px -10px rgba(0,0,0,.7); }
 .bottom-nav-item { color: rgba(255,255,255,.58); position: relative; }
@@ -5061,29 +5078,28 @@ html[data-theme="dark"] .bottom-nav { box-shadow: 0 0 0 1px var(--line), 0 12px 
     position: absolute; bottom: 7px; left: 50%;
     width: 16px; height: 3px; margin-left: -8px;
     border-radius: var(--r-pill);
-    background: #7fe2bd;
+    background: var(--nav-mark);
 }
 .bottom-nav-fab {
-    background: linear-gradient(150deg, #e4f8ee, #aeeacd);
-    color: var(--brand);
-    box-shadow: 0 5px 14px -4px rgba(7,63,44,.55);
+    background: linear-gradient(150deg, var(--fab1), var(--fab2));
+    color: var(--fab-ink);
+    box-shadow: 0 5px 14px -4px rgba(var(--tint),.55);
 }
 html[data-theme="dark"] .bottom-nav-fab {
-    background: linear-gradient(150deg, #7fe2bd, #3fbf8c);
-    color: #06251a;
+    background: linear-gradient(150deg, var(--fab1), var(--fab2));
+    color: var(--fab-ink);
     box-shadow: 0 5px 14px -4px rgba(0,0,0,.6);
 }
 
 /* ---------- سرِ پروفایل ---------- */
-.profile-head { background: linear-gradient(170deg, #dcf5e8 0%, #eef8f3 45%, var(--surface) 100%); }
-html[data-theme="dark"] .profile-head { background: linear-gradient(170deg, #143a2b 0%, #12251d 48%, var(--surface) 100%); }
+.profile-head { background: linear-gradient(170deg, var(--ph1) 0%, var(--ph2) 46%, var(--surface) 100%); }
 .profile-avatar {
-    background: linear-gradient(150deg, #11a36b, #0b5d41);
-    box-shadow: 0 6px 16px -6px rgba(11,93,65,.55);
+    background: linear-gradient(150deg, var(--av1), var(--av2));
+    box-shadow: 0 6px 16px -6px rgba(var(--tint),.55);
 }
 
 /* ---------- کنترلِ بخش‌بندی‌شده و چیپِ فعال ---------- */
-.seg-item.active { box-shadow: 0 1px 3px rgba(10,48,33,.12); }
+.seg-item.active { box-shadow: 0 1px 3px rgba(var(--tint),.12); }
 html[data-theme="dark"] .seg-item.active { background: var(--brand); color: #fff; }
 
 /* ---------- آیکونِ دسته: دایره‌ی رنگیِ کم‌جان ----------
@@ -5119,17 +5135,32 @@ html[data-theme="dark"] .seg-item.active { background: var(--brand); color: #fff
    «صفحه درست بار نشد» دیده می‌شود؛ با نشان، شبیهِ «هنوز چیزی نیست».
    ⚠ آیکن یک data URI است (CSP: `img-src 'self' data:`)، و رنگِ خطش
    در شب جدا نوشته شده چون داخلِ data URI متغیرِ CSS کار نمی‌کند. */
+p.empty-row { position: relative; }
 p.empty-row::before {
     content: '';
     display: block;
     width: 54px; height: 54px;
     margin: 0 auto 12px;
     border-radius: 18px;
-    background: var(--gold-wash) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230a8154' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-6l-2 3h-4l-2-3H2'/%3E%3Cpath d='M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'/%3E%3C/svg%3E") center / 26px no-repeat;
+    background: var(--gold-wash);
 }
-html[data-theme="dark"] p.empty-row::before {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234fd1a0' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-6l-2 3h-4l-2-3H2'/%3E%3Cpath d='M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'/%3E%3C/svg%3E");
+/* ⛔ خودِ آیکن یک ماسک است که رنگش را از `--gold` می‌گیرد، نه یک data
+   URI با رنگِ سخت‌کد: داخلِ data URI متغیرِ CSS کار نمی‌کند، پس با هر
+   پالت (بخشِ ۴۱) یک نسخه‌ی تازه لازم می‌شد و اولین پالتِ فراموش‌شده
+   آیکنِ سبز روی زمینه‌ی نارنجی می‌گذاشت. `top` همان padding-top
+   پایه‌ی `.empty-row` به‌علاوه‌ی نصفِ اختلافِ جعبه و آیکن است. */
+p.empty-row::after {
+    content: '';
+    position: absolute;
+    top: calc(28px + 14px); left: 50%;
+    width: 26px; height: 26px; margin-left: -13px;
+    background: var(--gold);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-6l-2 3h-4l-2-3H2'/%3E%3Cpath d='M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'/%3E%3C/svg%3E") center / contain no-repeat;
+            mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-6l-2 3h-4l-2-3H2'/%3E%3Cpath d='M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z'/%3E%3C/svg%3E") center / contain no-repeat;
+    pointer-events: none;
 }
+/* اندپوینتی که padding خودش را درون‌خطی می‌دهد (savings_history) */
+p.empty-row[style*="padding:14px"]::after { top: calc(14px + 14px); }
 p.empty-row { color: var(--muted); line-height: 1.9; }
 
 /* ---------- اسکلتِ بارگذاری (`window.skeletonHtml`) ---------- */
@@ -5151,3 +5182,210 @@ p.empty-row { color: var(--muted); line-height: 1.9; }
 .skel-amt { width: 70px; height: 12px; border-radius: 6px; flex: none; }
 @keyframes skelShine { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) { .skel-dot, .skel-line, .skel-amt { animation: none; } }
+
+/* ============================================================
+   ۴۱. پالت‌های رنگ (انتخابِ کاربر در پروفایل → «نمایش»)
+
+   ⛔ «زمرد» پیش‌فرض است و **هیچ ویژگی‌ای** نمی‌گیرد: توکن‌هایش همان
+      `:root` بخشِ ۴۰ است. پس نصبی که کسی دست به پالت نزده، بایت‌به‌بایت
+      همان ظاهرِ قبلی را دارد، و رنگِ `theme-color`ِ ایستا (قاعده ۵۷)
+      همچنان همان برند است.
+   ⛔ هر پالت **کلِ** مجموعه را بازتعریف می‌کند — روز و شب جدا — نه فقط
+      برند. پالتی که فقط `--brand` را عوض کند، کنارِ خاکستری‌های
+      ته‌رنگ‌سبزِ زمرد و چیپِ فعالِ سبز می‌نشست و «دو برنامه‌ی
+      چسبیده به هم» دیده می‌شد.
+   ⛔ وزن‌ها عمدی‌اند: `html[data-palette]` (۰،۱،۱) بر `:root` می‌برد و
+      `html[data-theme="dark"][data-palette]` (۰،۲،۱) بر هر دو. پالت
+      شب را از زمرد نمی‌گیرد.
+   ⛔ فهرستِ پالت‌ها در PHP فقط `UI_PALETTES` است (functions.php)؛
+      اسکریپتِ سرآیند هم هر نامی را که آنجا نیست نادیده می‌گیرد.
+   ⚠ `--in`/`--out`/`--warn-*` در هیچ پالتی نیستند: معنا دارند نه سلیقه.
+   ============================================================ */
+
+/* ---------- نیلی — همان طرحِ قبلی (Finmori) ---------- */
+html[data-palette="indigo"] {
+    --ink: #1b2559; --ink-soft: #2a3563; --muted: #6e7ba0; --muted-2: #9aa3c0;
+    --line: #e8ebf5; --line-soft: #f2f4fa; --surface: #ffffff; --paper: #f6f7fb;
+    --brand: #2a3563; --brand-deep: #1b2044; --brand-fg: #2a3563;
+    --gold: #2563eb; --gold-lift: #3b82f6; --gold-wash: #eaf1fe;
+    --sh: 0 1px 2px rgba(27,37,89,.04); --sh-lg: 0 14px 34px -10px rgba(27,37,89,.28);
+    --sh-card: 0 1px 2px rgba(27,37,89,.04), 0 4px 14px -8px rgba(27,37,89,.10);
+    --tint: 42,36,120;
+    --rb1: #3b2f8f; --rb2: #4a3fb5; --rb3: #2f2a6b;
+    --rb-in: #6ee7a8; --rb-out: #ff9b9e; --rb-link: #c9c2ff; --rb-fill: #e3dcff;
+    --nav-mark: #a5b4fc;
+    --fab1: #eef0ff; --fab2: #c7c9ff; --fab-ink: #2a3563;
+    --ph1: #ffd9e8; --ph2: #e3dcff;
+    --av1: #6d5ce7; --av2: #3b2f8f;
+}
+html[data-theme="dark"][data-palette="indigo"] {
+    --ink: #eef1fa; --ink-soft: #d5dbec; --muted: #8e98bb; --muted-2: #6c7699;
+    --line: #262c47; --line-soft: #1e2338; --surface: #161a2c; --paper: #0e101b;
+    --brand: #232a47; --brand-deep: #141830; --brand-fg: #8db2ff;
+    --gold: #6f9bff; --gold-lift: #8db2ff; --gold-wash: #1b2540;
+    --sh: none; --sh-lg: 0 14px 34px -10px rgba(0,0,0,.6); --sh-card: none;
+    --rb1: #2b2270; --rb2: #3a318f; --rb3: #1e1a4d;
+    --fab1: #8db2ff; --fab2: #6f7cf0; --fab-ink: #0b1030;
+    --ph1: #3a2140; --ph2: #262452;
+}
+
+/* ---------- اقیانوس — فیروزه‌ای به آبیِ عمیق ---------- */
+html[data-palette="ocean"] {
+    --ink: #10212e; --ink-soft: #223847; --muted: #5f7482; --muted-2: #93a5b1;
+    --line: #e0e9ef; --line-soft: #eef4f7; --surface: #ffffff; --paper: #f3f7fa;
+    --brand: #0c4a6e; --brand-deep: #082f49; --brand-fg: #0c4a6e;
+    --gold: #0369a1; --gold-lift: #0284c7; --gold-wash: #e3f2fb;
+    --sh: 0 1px 2px rgba(8,47,73,.04); --sh-lg: 0 14px 34px -10px rgba(8,47,73,.28);
+    --sh-card: 0 1px 2px rgba(8,47,73,.04), 0 4px 14px -8px rgba(8,47,73,.10);
+    --tint: 8,47,73;
+    --rb1: #0891b2; --rb2: #0369a1; --rb3: #1e3a8a;
+    --rb-in: #a7f3d0; --rb-out: #fecdd3; --rb-link: #bae6fd; --rb-fill: #e0f7ff;
+    --nav-mark: #7dd3fc;
+    --fab1: #e0f7ff; --fab2: #9fdcf5; --fab-ink: #0c4a6e;
+    --ph1: #d3f0fb; --ph2: #e7f4fb;
+    --av1: #0ea5e9; --av2: #0c4a6e;
+}
+html[data-theme="dark"][data-palette="ocean"] {
+    --ink: #e6eef3; --ink-soft: #c9d7e0; --muted: #8a9dab; --muted-2: #667985;
+    --line: #1f2e38; --line-soft: #17232b; --surface: #111a21; --paper: #0a1016;
+    --brand: #0f4a6b; --brand-deep: #0a2a3d; --brand-fg: #5cc8f0;
+    --gold: #5cc8f0; --gold-lift: #8adbf7; --gold-wash: #0f2533;
+    --sh: none; --sh-lg: 0 14px 34px -10px rgba(0,0,0,.6); --sh-card: none;
+    --rb1: #0b6f86; --rb2: #0a4f7a; --rb3: #152a66;
+    --fab1: #8adbf7; --fab2: #38bdf8; --fab-ink: #04202e;
+    --ph1: #0f3346; --ph2: #11222c;
+}
+
+/* ---------- غروب — نارنجی به تمشکی ---------- */
+html[data-palette="sunset"] {
+    --ink: #2a1a17; --ink-soft: #3d2723; --muted: #7c6660; --muted-2: #ad9993;
+    --line: #f0e4df; --line-soft: #f8f1ee; --surface: #ffffff; --paper: #fbf6f3;
+    --brand: #9d2449; --brand-deep: #6b1532; --brand-fg: #9d2449;
+    --gold: #c2410c; --gold-lift: #ea580c; --gold-wash: #fdeee4;
+    --sh: 0 1px 2px rgba(90,30,20,.04); --sh-lg: 0 14px 34px -10px rgba(90,30,20,.28);
+    --sh-card: 0 1px 2px rgba(90,30,20,.04), 0 4px 14px -8px rgba(90,30,20,.10);
+    --tint: 110,30,40;
+    --rb1: #f97316; --rb2: #e2445c; --rb3: #9d174d;
+    --rb-in: #d1fae5; --rb-out: #ffe4e6; --rb-link: #ffe4d6; --rb-fill: #fff1e6;
+    --nav-mark: #ffc8a8;
+    --fab1: #fff1e6; --fab2: #ffc9a8; --fab-ink: #9d2449;
+    --ph1: #ffe1d2; --ph2: #fbe6ee;
+    --av1: #f97316; --av2: #9d174d;
+}
+html[data-theme="dark"][data-palette="sunset"] {
+    --ink: #f5ebe7; --ink-soft: #e0d0ca; --muted: #a8938c; --muted-2: #7f6c66;
+    --line: #33241f; --line-soft: #281c18; --surface: #1c1412; --paper: #120c0b;
+    --brand: #6e1d38; --brand-deep: #3d0f1f; --brand-fg: #ff9e7a;
+    --gold: #ff9e7a; --gold-lift: #ffbd9f; --gold-wash: #33201a;
+    --sh: none; --sh-lg: 0 14px 34px -10px rgba(0,0,0,.6); --sh-card: none;
+    --rb1: #b4520f; --rb2: #a8304a; --rb3: #5e0f33;
+    --fab1: #ffbd9f; --fab2: #ff8a65; --fab-ink: #3a0d05;
+    --ph1: #4a1f18; --ph2: #2a1618;
+}
+
+/* ---------- شب — زغالی با طلایی ---------- */
+html[data-palette="graphite"] {
+    --ink: #16181d; --ink-soft: #2b2f36; --muted: #6b7079; --muted-2: #9da1a8;
+    --line: #e5e6e9; --line-soft: #f1f2f4; --surface: #ffffff; --paper: #f5f5f6;
+    --brand: #1c1f25; --brand-deep: #0e1013; --brand-fg: #1c1f25;
+    --gold: #a16207; --gold-lift: #ca8a04; --gold-wash: #fbf3e2;
+    --sh: 0 1px 2px rgba(20,22,26,.05); --sh-lg: 0 14px 34px -10px rgba(20,22,26,.3);
+    --sh-card: 0 1px 2px rgba(20,22,26,.05), 0 4px 14px -8px rgba(20,22,26,.12);
+    --tint: 20,22,26;
+    --rb1: #3a3f4a; --rb2: #22262d; --rb3: #0e1013;
+    --rb-in: #b7f4d2; --rb-out: #ffc0c2; --rb-link: #f6d58c; --rb-fill: #f6d58c;
+    --nav-mark: #f0c05a;
+    --fab1: #fbeecb; --fab2: #f0c05a; --fab-ink: #1c1f25;
+    --ph1: #ececee; --ph2: #f4f4f5;
+    --av1: #4a4f5a; --av2: #1c1f25;
+}
+html[data-theme="dark"][data-palette="graphite"] {
+    --ink: #eceef1; --ink-soft: #d0d3d8; --muted: #8f949c; --muted-2: #6a6f77;
+    --line: #282b31; --line-soft: #1e2025; --surface: #16181c; --paper: #0c0d0f;
+    --brand: #22252b; --brand-deep: #121417; --brand-fg: #f0c05a;
+    --gold: #f0c05a; --gold-lift: #f6d58c; --gold-wash: #2a2414;
+    --sh: none; --sh-lg: 0 14px 34px -10px rgba(0,0,0,.6); --sh-card: none;
+    --rb1: #2f333b; --rb2: #1c1f24; --rb3: #0a0b0d;
+    --fab1: #f6d58c; --fab2: #f0c05a; --fab-ink: #1c1f25;
+    --ph1: #2a2c31; --ph2: #1c1d21;
+}
+
+/* ---------- یاس — ارغوانی به بنفشِ عمیق ---------- */
+html[data-palette="lilac"] {
+    --ink: #221630; --ink-soft: #35264a; --muted: #72658a; --muted-2: #a598b8;
+    --line: #ebe4f3; --line-soft: #f5f1fa; --surface: #ffffff; --paper: #f8f5fc;
+    --brand: #5b2196; --brand-deep: #3b1466; --brand-fg: #5b2196;
+    --gold: #8b2fd8; --gold-lift: #a855f7; --gold-wash: #f3eafd;
+    --sh: 0 1px 2px rgba(59,20,102,.04); --sh-lg: 0 14px 34px -10px rgba(59,20,102,.28);
+    --sh-card: 0 1px 2px rgba(59,20,102,.04), 0 4px 14px -8px rgba(59,20,102,.10);
+    --tint: 70,24,120;
+    --rb1: #d946ef; --rb2: #9333ea; --rb3: #4c1d95;
+    --rb-in: #bbf7d0; --rb-out: #ffe4e6; --rb-link: #f5d0fe; --rb-fill: #fae8ff;
+    --nav-mark: #e9b5ff;
+    --fab1: #fbeaff; --fab2: #e4c2ff; --fab-ink: #5b2196;
+    --ph1: #fbe0f6; --ph2: #efe4fd;
+    --av1: #c026d3; --av2: #5b2196;
+}
+html[data-theme="dark"][data-palette="lilac"] {
+    --ink: #f1eaf8; --ink-soft: #dacfe8; --muted: #9d90b3; --muted-2: #74688a;
+    --line: #2d2340; --line-soft: #231b32; --surface: #1a1424; --paper: #100c17;
+    --brand: #4a1d7a; --brand-deep: #2a0f47; --brand-fg: #d8a8ff;
+    --gold: #d8a8ff; --gold-lift: #e9c9ff; --gold-wash: #2a1c3d;
+    --sh: none; --sh-lg: 0 14px 34px -10px rgba(0,0,0,.6); --sh-card: none;
+    --rb1: #a21caf; --rb2: #6d28d9; --rb3: #3b0d6e;
+    --fab1: #e9c9ff; --fab2: #c084fc; --fab-ink: #22093d;
+    --ph1: #3d1a45; --ph2: #26193d;
+}
+
+/* ---------- انتخابگرِ پالت در پروفایل ----------
+   هر نمونه طیفِ **روزِ** همان پالت را نشان می‌دهد، مستقل از پالتِ فعلی
+   و از حالت شب — نمونه‌ای که با پالتِ جاری عوض شود، دیگر نمونه نیست. */
+.palette-title { margin-top: 18px; font-size: 13px; font-weight: 700; color: var(--ink-soft); }
+.palette-picker {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(96px, 100%), 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+.palette-opt { position: relative; cursor: pointer; display: block; }
+.palette-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.palette-swatch {
+    display: block;
+    height: 58px;
+    border-radius: 14px;
+    border: 2px solid transparent;
+    box-shadow: 0 6px 14px -8px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.12);
+    position: relative; overflow: hidden;
+    transition: transform .15s ease, border-color .15s ease;
+}
+.palette-swatch::after {   /* همان حلقه‌ی محوِ گوشه‌ی کارتِ ماه */
+    content: ''; position: absolute; top: -18px; left: -18px;
+    width: 64px; height: 64px; border-radius: 50%;
+    background: rgba(255,255,255,.12);
+}
+.palette-opt:active .palette-swatch { transform: scale(.96); }
+.palette-opt input:checked + .palette-swatch {
+    border-color: var(--surface);
+    box-shadow: 0 0 0 2px var(--gold), 0 8px 18px -8px rgba(0,0,0,.5);
+}
+.palette-opt input:focus-visible + .palette-swatch { outline: 2px solid var(--gold); outline-offset: 3px; }
+.palette-check {
+    position: absolute; bottom: 7px; right: 7px;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #fff; color: #111;
+    display: none; align-items: center; justify-content: center;
+    z-index: 1;
+}
+.palette-opt input:checked + .palette-swatch .palette-check { display: flex; }
+.palette-name {
+    display: block; text-align: center;
+    margin-top: 6px;
+    font-size: 12px; font-weight: 700; color: var(--ink-soft);
+    white-space: nowrap;
+}
+.palette-swatch[data-pal="emerald"]  { background: linear-gradient(135deg, #0f7550, #0b5d41 50%, #073f2c); }
+.palette-swatch[data-pal="indigo"]   { background: linear-gradient(135deg, #3b2f8f, #4a3fb5 45%, #2f2a6b); }
+.palette-swatch[data-pal="ocean"]    { background: linear-gradient(135deg, #0891b2, #0369a1 50%, #1e3a8a); }
+.palette-swatch[data-pal="sunset"]   { background: linear-gradient(135deg, #f97316, #e2445c 50%, #9d174d); }
+.palette-swatch[data-pal="lilac"]    { background: linear-gradient(135deg, #d946ef, #9333ea 50%, #4c1d95); }
+.palette-swatch[data-pal="graphite"] { background: linear-gradient(135deg, #3a3f4a, #22262d 50%, #0e1013); }

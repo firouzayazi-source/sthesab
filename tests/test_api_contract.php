@@ -5578,6 +5578,64 @@ if (preg_match('/document\.addEventListener\(\'DOMContentLoaded\'/', $brJs, $dcl
 
 T::bulk(16, $badBr, '⛔ رنگِ برند یکی، متنِ برند در شب دیده می‌شود، و ظاهرِ تازه سرِ جایش است');
 
+// ---------------------------------------------------------------
+// قاعده ۵۸ — پالتِ رنگ: یک فهرست، طیف از توکن، و خانه بی‌سرِ روز
+// ---------------------------------------------------------------
+// ⛔ رفتار (کاملیِ توکن‌ها، تضاد، برنده شدن در شب) را `test_palette.php`
+//    می‌سنجد؛ ولی بخشِ مرورگرش به کرومیوم و دیتابیس بند است، پس *شکل*
+//    اینجا جدا نگه داشته می‌شود — همان استدلالِ قاعده ۴۳ و ۴۷.
+T::group('قاعده ۵۸ — پالتِ رنگ');
+$badPl = [];
+$plHead = (string)@file_get_contents(__DIR__ . '/../includes/header.php');
+$plProf = (string)@file_get_contents(__DIR__ . '/../profile.php');
+$plJs   = (string)@file_get_contents(__DIR__ . '/../assets/js/app.js');
+$plIdx  = (string)@file_get_contents(__DIR__ . '/../index.php');
+$plTx   = (string)@file_get_contents(__DIR__ . '/../transactions.php');
+$plCss  = (string)preg_replace('#/\*.*?\*/#s', '', (string)@file_get_contents(__DIR__ . '/../assets/css/style.css'));
+
+// ۱) فهرست فقط UI_PALETTES — سرآیند و انتخابگر هر دو از همان.
+if (!preg_match("/const UI_PALETTES = \[\s*'emerald'\s*=>/", (string)@file_get_contents(__DIR__ . '/../includes/functions.php'))) {
+    $badPl[] = 'UI_PALETTES در functions.php نیست یا زمرد اولینش نیست';
+}
+if (strpos($plHead, 'array_keys(UI_PALETTES)') === false) { $badPl[] = 'header.php فهرستِ پالت را از UI_PALETTES نمی‌سازد'; }
+if (strpos($plHead, "localStorage.getItem('daftar_palette')") === false) { $badPl[] = 'header.php پالت را پیش از رندر نمی‌خواند'; }
+if (preg_match("/\[\s*'(?:indigo|ocean|sunset|lilac|graphite)'/", $plHead)) { $badPl[] = 'header.php فهرستِ دستیِ پالت دارد'; }
+if (!preg_match('/foreach\s*\(\s*UI_PALETTES\s+as/', $plProf)) { $badPl[] = 'profile.php انتخابگر را از UI_PALETTES رندر نمی‌کند'; }
+
+// ۲) theme-color از --brand ِ محاسبه‌شده، در هر دو مسیر (حالت شب و پالت).
+if (!preg_match("/function syncThemeColorMeta\(\)[\s\S]{0,400}getComputedStyle\(document\.documentElement\)\.getPropertyValue\('--brand'\)/", $plJs)) {
+    $badPl[] = 'app.js — syncThemeColorMeta رنگ را از --brand ِ محاسبه‌شده نمی‌خواند';
+}
+if (substr_count($plJs, 'syncThemeColorMeta();') < 3) { $badPl[] = 'app.js — syncThemeColorMeta در حالت شب، تغییرِ پالت و بارگذاری صدا زده نمی‌شود'; }
+if (!preg_match("/value === 'emerald'\)\s*\{\s*document\.documentElement\.removeAttribute\('data-palette'\)/", $plJs)) {
+    $badPl[] = 'app.js — زمرد ویژگیِ data-palette را برنمی‌دارد';
+}
+
+// ۳) طیفِ کارتِ ماه، دکمه‌ی + و سرِ پروفایل از توکن — در بخشِ ۴۰ هیچ
+//    رنگِ سخت‌کدی روی این چهار نیست، و شب پس‌زمینه را **تکرار** می‌کند
+//    (وگرنه قاعده‌ی بنفشِ بخشِ ۳۴ برنده است).
+$pl40 = strpos($plCss, '--brand-fg:   #0b5d41');
+$pl40 = $pl40 === false ? '' : substr($plCss, $pl40);
+foreach (['.balance-ribbon', '.bottom-nav-fab', '.profile-head', '.profile-avatar',
+          'html[data-theme="dark"] .balance-ribbon', 'html[data-theme="dark"] .bottom-nav-fab'] as $sel) {
+    if (!preg_match('/(?:^|\})\s*' . preg_quote($sel, '/') . '\s*\{([^{}]*)\}/', $pl40, $bm)) { $badPl[] = "بخشِ ۴۰ قاعده‌ی {$sel} ندارد"; continue; }
+    if (preg_match('/#[0-9a-f]{3,6}\b/i', $bm[1])) { $badPl[] = "بخشِ ۴۰ — {$sel} رنگِ سخت‌کد دارد (باید از توکنِ پالت بیاید)"; }
+    if (strpos($sel, '.profile-avatar') === false && !preg_match('/background:\s*linear-gradient\([^;]*var\(--(?:rb|fab|ph)1\)/', $bm[1])) {
+        $badPl[] = "بخشِ ۴۰ — {$sel} پس‌زمینه‌ی طیف‌دار را از توکن نمی‌گیرد";
+    }
+}
+
+// ۴) نشانِ حالتِ خالی رنگ را از --gold می‌گیرد، نه از data URI ِ رنگی.
+if (preg_match("/p\.empty-row[^{]*\{[^}]*stroke='%23(?!000')/", $plCss)) { $badPl[] = 'نشانِ حالتِ خالی رنگِ سخت‌کد در data URI دارد'; }
+if (!preg_match('/p\.empty-row::after\s*\{[^}]*background:\s*var\(--gold\)[^}]*mask:/', $plCss)) { $badPl[] = 'نشانِ حالتِ خالی ماسک با --gold نیست'; }
+
+// ۵) خانه بی‌سرِ روز، صفحه‌ی تراکنش‌ها با سرِ روز.
+if (strpos($plIdx, 'renderTransactionsGrouped(') !== false) { $badPl[] = 'index.php — «آخرین تراکنش‌ها» دوباره سرِ روز گرفته'; }
+if (!preg_match('/foreach\s*\(\s*\$recentTransactions\s+as\s+\$\w+\)\s*\{\s*renderTransactionRow\(/', $plIdx)) { $badPl[] = 'index.php — ردیف‌ها از renderTransactionRow() رندر نمی‌شوند'; }
+if (strpos($plTx, 'renderTransactionsGrouped(') === false) { $badPl[] = 'transactions.php گروه‌بندیِ روزانه را از دست داده'; }
+
+T::bulk(19, $badPl, '⛔ پالت از یک فهرست، طیف از توکن، theme-color از --brand، و خانه بی‌سرِ روز');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

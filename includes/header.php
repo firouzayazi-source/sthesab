@@ -31,6 +31,14 @@ if (!isset($pageWide)) {
                 var dark = (mode === 'dark') || (mode === 'auto' && sysDark);
                 if (dark) { document.documentElement.setAttribute('data-theme', 'dark'); }
                 document.documentElement.setAttribute('data-theme-mode', mode);
+                /* پالتِ رنگ (UI_PALETTES). ⛔ فقط نام‌های همان فهرست پذیرفته
+                   می‌شوند و زمرد (پیش‌فرض) ویژگی نمی‌گیرد؛ مقدارِ دیگری در
+                   localStorage (دست‌کاری یا پالتی که حذف شده) بی‌صدا به
+                   پیش‌فرض برمی‌گردد، نه به صفحه‌ی بی‌رنگ. */
+                var pal = localStorage.getItem('daftar_palette') || '';
+                if (<?= json_encode(array_values(array_slice(array_keys(UI_PALETTES), 1)), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>.indexOf(pal) !== -1) {
+                    document.documentElement.setAttribute('data-palette', pal);
+                }
             } catch (e) {}
         })();
     </script>

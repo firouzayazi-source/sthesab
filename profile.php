@@ -354,6 +354,24 @@ $remind      = $remindReady ? reminderPrefs($userId) : ['email_on' => true, 'day
         <span class="switch-text">پیروی خودکار از حالت شب گوشی</span>
     </label>
     <p class="hint">وقتی روشن باشد، با تغییر حالت شب گوشی اپ هم بلافاصله عوض می‌شود. با زدن دکمه‌ی ماه/خورشید بالای صفحه، این گزینه خاموش می‌شود.</p>
+
+    <?php /* ⛔ رادیو است نه دکمه‌ی جاوااسکریپتی: با صفحه‌کلید و صفحه‌خوان
+             هم کار می‌کند، و «کدام انتخاب است» از خودِ `checked` خوانده
+             می‌شود. مقدارِ اولیه را `app.js` از `data-palette` می‌گذارد،
+             چون انتخاب در همین مرورگر ذخیره است و PHP آن را نمی‌داند. */ ?>
+    <div class="palette-title">رنگِ برنامه</div>
+    <div class="palette-picker" id="palettePicker" role="radiogroup" aria-label="رنگِ برنامه">
+        <?php foreach (UI_PALETTES as $__pal => $__palName): ?>
+            <label class="palette-opt">
+                <input type="radio" name="ui_palette" value="<?= h($__pal) ?>"<?= $__pal === 'emerald' ? ' checked' : '' ?>>
+                <span class="palette-swatch" data-pal="<?= h($__pal) ?>">
+                    <span class="palette-check"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></span>
+                </span>
+                <span class="palette-name"><?= h($__palName) ?></span>
+            </label>
+        <?php endforeach; ?>
+    </div>
+    <p class="hint">رنگ همان لحظه عوض می‌شود و روی همین دستگاه می‌ماند. حالت شب هم با هر رنگی کار می‌کند.</p>
 </div>
 
 <div class="card">
