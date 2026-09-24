@@ -2582,6 +2582,11 @@ document.addEventListener('DOMContentLoaded', function () {
                     adjBtn.setAttribute('data-name', wname);
                     adjBtn.setAttribute('data-balance', wbal);
                 }
+                var mergeBtn = document.getElementById('bcMergeBtn');
+                if (mergeBtn) {
+                    mergeBtn.setAttribute('data-id', wid);
+                    mergeBtn.setAttribute('data-name', wname);
+                }
                 var txLink = document.getElementById('bcTxLink');
                 if (txLink) {
                     txLink.href = (window.APP_BASE || '') + '/transactions.php?wallet=' + encodeURIComponent(wid);
@@ -2695,6 +2700,51 @@ document.addEventListener('DOMContentLoaded', function () {
             submitJson(adjustForm, apiUrl('adjust_wallet.php'),
                 document.getElementById('adjustWalletMessage'),
                 document.getElementById('adjustWalletSubmitBtn'), 'adjust_amount');
+        });
+    }
+
+    // ---------- انتقالِ تراکنش‌ها به حسابِ دیگر ----------
+    /* منطق در `mergeWallet()` است؛ اینجا فقط مقصد انتخاب می‌شود. خودِ
+       حسابِ مبدأ از فهرست پنهان می‌شود (انتقال به خودش معنا ندارد)، و
+       اگر مقصدِ دیگری نماند دکمه غیرفعال می‌شود با توضیح — دکمه‌ای که
+       زده شود و فقط «دو حسابِ متفاوت انتخاب کنید» بگیرد بی‌کار است. */
+    var mergeForm = document.getElementById('mergeWalletForm');
+    var mergeOpen = document.getElementById('bcMergeBtn');
+    if (mergeForm && mergeOpen) {
+        mergeOpen.addEventListener('click', function () {
+            var wid = this.getAttribute('data-id') || '';
+            closeModal('bankCardModal');
+            document.getElementById('merge_wallet_id').value = wid;
+            document.getElementById('mergeWalletTitle').textContent =
+                'انتقال تراکنش‌های «' + (this.getAttribute('data-name') || '') + '»';
+            var sel = document.getElementById('merge_into_id');
+            var first = null;
+            for (var i = 0; i < sel.options.length; i++) {
+                var o = sel.options[i];
+                o.hidden = o.disabled = (o.value === wid);
+                if (!o.disabled && first === null) { first = i; }
+            }
+            if (first !== null) { sel.selectedIndex = first; }
+            document.getElementById('mergeNoTarget').hidden = first !== null;
+            document.getElementById('mergeWalletSubmitBtn').disabled = first === null;
+            document.getElementById('merge_delete').checked = true;
+            var m = document.getElementById('mergeWalletMessage');
+            if (m) { m.hidden = true; m.classList.remove('show', 'success', 'error'); }
+            openModal('mergeWalletModal');
+        });
+
+        mergeForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            var sel = document.getElementById('merge_into_id');
+            var dst = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
+            var del = document.getElementById('merge_delete').checked;
+            // ⚠ confirm عمداً مانده: «لغو» اینجا ممکن نیست (کلِ دفترِ یک
+            //   حساب جابه‌جا می‌شود، نه یک ردیف) — همان دلیلِ حذفِ حساب.
+            if (!confirm('همه‌ی تراکنش‌های این حساب به «' + dst + '» منتقل شود'
+                + (del ? ' و این حساب حذف شود' : '') + '؟ این کار برگشت‌پذیر نیست.')) { return; }
+            submitJson(mergeForm, apiUrl('merge_wallet.php'),
+                document.getElementById('mergeWalletMessage'),
+                document.getElementById('mergeWalletSubmitBtn'));
         });
     }
 

@@ -5362,6 +5362,104 @@ if (strpos((string)$opqCode, 'window.isOpaqueClientError') === false) {
 
 T::bulk(11, $badOpq, '⛔ فقط امضای کورِ مرورگر انداخته می‌شود، و پیش از شمارشِ سهمیه');
 
+// ============================================================
+// قاعده ۵۶ — انتقالِ تراکنش‌های یک حساب به حسابِ دیگر
+// ============================================================
+// ⛔ «هیچ پولی بی‌حساب نمی‌ماند» — و این عملیات دقیقاً جایی است که
+//    پول می‌تواند بی‌صدا گم شود: موجودیِ اولیه‌ای که منتقل نشود، ستونی
+//    که از فهرست جا بماند، یا سدی که برداشته شود. رفتار را
+//    `tests/test_wallet_merge.php` می‌سنجد؛ این قاعده شکل را، چون آن
+//    تست بدونِ دیتابیس `T::blocked` می‌شود.
+T::group('قاعده ۵۶ — انتقالِ تراکنش‌های حساب (mergeWallet)');
+
+$badWm = [];
+$wmCode = function (string $rel): string {
+    $src = @file_get_contents(__DIR__ . '/../' . $rel);
+    if ($src === false) { return ''; }
+    $out = '';
+    foreach (token_get_all($src) as $t) {
+        if (is_array($t) && in_array($t[0], [T_COMMENT, T_DOC_COMMENT], true)) { continue; }
+        $out .= is_array($t) ? $t[1] : $t;
+    }
+    return $out;
+};
+$wmFn = $wmCode('includes/functions.php');
+$wmBody = function (string $name) use ($wmFn): string {
+    $at = strpos($wmFn, 'function ' . $name . '(');
+    if ($at === false) { return ''; }
+    $end = strpos($wmFn, "\nfunction ", $at + 10);
+    return substr($wmFn, $at, $end === false ? 6000 : $end - $at);
+};
+
+$refBody = $wmBody('walletRefColumns');
+if ($refBody === '') {
+    $badWm[] = '⛔ `walletRefColumns()` نیست';
+} else {
+    if (strpos($refBody, 'information_schema.KEY_COLUMN_USAGE') === false) {
+        $badWm[] = '⛔ `walletRefColumns()` کلیدهای خارجی را از دیتابیس کشف نمی‌کند';
+    }
+    if (strpos($refBody, "wallet_id$/") === false) {
+        $badWm[] = '⛔ `walletRefColumns()` ستون‌های `*wallet_id` بی‌کلیدِ خارجی را نمی‌بیند (یادآورها)';
+    }
+}
+
+$mBody = $wmBody('mergeWallet');
+if ($mBody === '') {
+    $badWm[] = '⛔ `mergeWallet()` نیست';
+} else {
+    foreach ([
+        'walletRefColumns()'                      => 'فهرستِ ستون‌ها از `walletRefColumns()` نمی‌آید',
+        "\$from['initial_balance']"               => '⛔ موجودیِ اولیه‌ی حسابِ مبدأ منتقل نمی‌شود',
+        'initial_balance = initial_balance + :add' => '⛔ موجودیِ اولیه روی مقصد نمی‌نشیند',
+        'DELETE FROM transfers WHERE'             => '⛔ انتقال‌های بینِ همین دو حساب حذف نمی‌شوند (خودبه‌خودی می‌شوند)',
+        '(int)$after[$intoId] !== $expect'        => '⛔ سدِ «موجودیِ مقصد = جمعِ هر دو» برداشته شده',
+        '$left !== 0'                             => '⛔ سدِ «هیچ ردیفی روی مبدأ نماند» برداشته شده',
+        "(int)\$into['is_active'] !== 1"          => 'مقصدِ غیرفعال پذیرفته می‌شود — پولش از جمعِ دارایی بیرون می‌افتد',
+    ] as $needle => $why) {
+        if (strpos($mBody, $needle) === false) { $badWm[] = $why; }
+    }
+    // ⛔ مالکیتِ هر دو حساب: همان SELECT با `user_id = :u` برای هر دو.
+    if (!preg_match('/SELECT id, name, is_active, initial_balance FROM wallets WHERE id = :id AND user_id = :u/', $mBody)) {
+        $badWm[] = '⛔ مالکیتِ حساب‌ها در `mergeWallet()` سنجیده نمی‌شود';
+    }
+    if (substr_count($mBody, 'AND user_id = :u") ;') > 0 || !preg_match('/SET `\{\$r\[\'col\'\]\}` = :i WHERE `\{\$r\[\'col\'\]\}` = :f AND user_id = :u/', $mBody)) {
+        $badWm[] = '⛔ `UPDATE` ستون‌های ارجاع شرطِ `user_id` ندارد';
+    }
+}
+
+$ep = $wmCode('api/merge_wallet.php');
+if ($ep === '') {
+    $badWm[] = '⛔ api/merge_wallet.php نیست';
+} else {
+    if (strpos($ep, 'Csrf::verifyOrFail(') === false) { $badWm[] = '⛔ api/merge_wallet.php بدونِ CSRF'; }
+    if (strpos($ep, '$userId = Auth::userId();') === false) { $badWm[] = '⛔ کاربر از نشست نمی‌آید'; }
+    if (strpos($ep, 'mergeWallet($userId,') === false) { $badWm[] = '⛔ اندپوینت از `mergeWallet()` رد نمی‌شود'; }
+    if (preg_match('/\b(UPDATE\s+\S+\s+SET|DELETE\s+FROM|INSERT\s+INTO)\b/', $ep)) { $badWm[] = '⛔ اندپوینت SQLِ خودش را دارد — نسخه‌ی دومِ منطقِ پول'; }
+}
+
+// ⛔ تنها فراخوانِ `mergeWallet(` همان اندپوینت است.
+foreach (array_merge(glob(__DIR__ . '/../*.php'), glob(__DIR__ . '/../api/*.php'),
+                     glob(__DIR__ . '/../admin/*.php'), glob(__DIR__ . '/../includes/*.php')) as $f) {
+    $rel = substr(realpath($f), strlen(realpath(__DIR__ . '/..')) + 1);
+    if (in_array($rel, ['api/merge_wallet.php', 'includes/functions.php'], true)) { continue; }
+    // ⚠ فراخوانیِ واقعی آرگومانِ `$` دارد؛ توضیحِ HTML ای مثل
+    //   «`mergeWallet()`» در مودال فراخوانی نیست (هشدارِ الکی).
+    if (preg_match('/mergeWallet\(\s*\$/', $wmCode($rel))) { $badWm[] = '⛔ ' . $rel . ' خودش `mergeWallet()` را صدا می‌زند'; }
+}
+
+$modals = (string)@file_get_contents(__DIR__ . '/../includes/wallet_card_modals.php');
+if (strpos($modals, 'id="bcMergeBtn"') === false) { $badWm[] = '⛔ دکمه‌ی انتقال از نمای کارت رفته'; }
+if (strpos($modals, 'id="mergeWalletModal"') === false) { $badWm[] = '⛔ مودالِ انتخابِ مقصد نیست'; }
+if (strpos($modals, 'activeWallets(') === false) { $badWm[] = 'فهرستِ مقصد از `activeWallets()` نمی‌آید'; }
+$wmJs = preg_replace('#/\*.*?\*/#s', '', (string)@file_get_contents(__DIR__ . '/../assets/js/app.js'));
+if (strpos((string)$wmJs, "apiUrl('merge_wallet.php')") === false) { $badWm[] = '⛔ app.js اندپوینتِ انتقال را صدا نمی‌زند'; }
+$delMsg = $wmCode('api/delete_wallet.php');
+if (mb_strpos($delMsg, 'انتقال تراکنش‌ها به حساب دیگر') === false) {
+    $badWm[] = 'پیامِ «قابل حذف نیست» راهِ انتقال را نشان نمی‌دهد — کاربر در بن‌بست می‌ماند';
+}
+
+T::bulk(22, $badWm, '⛔ انتقالِ حساب از یک تابع، با موجودیِ اولیه، سد، و مالکیت');
+
 $all = [];
 foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }

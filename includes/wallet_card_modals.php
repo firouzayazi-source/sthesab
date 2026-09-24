@@ -60,6 +60,7 @@ if (!defined('APP_BASE_PATH')) {
             <button type="button" class="btn btn-primary btn-sm" id="bcEditBtn">ویرایش حساب</button>
             <button type="button" class="btn btn-secondary btn-sm" id="bcAdjustBtn">تعدیل موجودی</button>
             <a href="<?= APP_BASE_PATH ?>/transactions.php" class="btn btn-secondary btn-sm bank-card-actions-wide" id="bcTxLink">تراکنش‌های این حساب</a>
+            <button type="button" class="btn btn-secondary btn-sm bank-card-actions-wide" id="bcMergeBtn">انتقال تراکنش‌ها به حساب دیگر</button>
         </div>
     </div>
 </div>
@@ -107,6 +108,53 @@ if (!defined('APP_BASE_PATH')) {
             <div class="modal-actions">
                 <button type="button" class="btn btn-secondary" data-modal-close="adjustWalletModal">انصراف</button>
                 <button type="submit" class="btn btn-primary" id="adjustWalletSubmitBtn">اعمال</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ---------- انتقالِ تراکنش‌ها به حسابِ دیگر ----------
+     حذفِ حسابِ داده‌دار ممنوع است؛ این راهِ خلاص شدن از حسابِ قدیمی است.
+     همه‌ی منطق در `mergeWallet()` است — تراکنش، انتقال، چک، پرداختِ طلب،
+     معامله، هدفِ پس‌انداز و موجودیِ اولیه با هم می‌روند.
+     ⚠ فهرستِ مقصد از `activeWallets()` می‌آید که در همان درخواست کش است
+     (شیتِ ثبت تراکنش هم همان را می‌خواند)، پس کوئریِ تازه‌ای نمی‌زند. -->
+<?php $__mergeTargets = activeWallets((int)Auth::userId()); ?>
+<div class="modal-overlay" id="mergeWalletModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="mergeWalletTitle">انتقال تراکنش‌ها</h3>
+            <button type="button" class="modal-close" data-modal-close="mergeWalletModal" aria-label="بستن">&times;</button>
+        </div>
+        <form id="mergeWalletForm" autocomplete="off">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="wallet_id" id="merge_wallet_id">
+
+            <p class="hint">همه‌ی تراکنش‌ها، انتقال‌ها، چک‌های پاس‌شده، پرداخت‌های طلب و بدهی و موجودیِ اولیه‌ی این حساب به حسابِ مقصد می‌رود. جمعِ موجودیِ شما تغییری نمی‌کند.</p>
+
+            <div class="form-group">
+                <label for="merge_into_id">حساب مقصد</label>
+                <select name="into_id" id="merge_into_id" required>
+                    <?php foreach ($__mergeTargets as $__w): ?>
+                        <option value="<?= (int)$__w['id'] ?>"><?= h($__w['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <p class="hint" id="mergeNoTarget" hidden>حسابِ فعالِ دیگری ندارید؛ اول حسابِ مقصد را بسازید.</p>
+            </div>
+
+            <label class="switch" style="margin:2px 0 4px;">
+                <input type="checkbox" name="delete_source" value="1" id="merge_delete" checked>
+                <span class="switch-track"><span class="switch-knob"></span></span>
+                <span class="switch-text">بعد از انتقال، این حساب حذف شود</span>
+            </label>
+
+            <p class="hint">انتقال‌های بینِ همین دو حساب حذف می‌شوند (دیگر معنایی ندارند) و کارمزدشان از موجودیِ حسابِ مقصد کم می‌ماند.</p>
+
+            <div id="mergeWalletMessage" class="form-message" hidden></div>
+
+            <div class="modal-actions">
+                <button type="button" class="btn btn-secondary" data-modal-close="mergeWalletModal">انصراف</button>
+                <button type="submit" class="btn btn-primary" id="mergeWalletSubmitBtn">انتقال</button>
             </div>
         </form>
     </div>

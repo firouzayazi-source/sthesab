@@ -28,7 +28,7 @@ $used = walletUsageCount($id, $userId);
 if ($used > 0) {
     jsonResponse([
         'success' => false,
-        'message' => 'روی این حساب ' . toPersianDigits($used) . ' تراکنش یا انتقال ثبت شده و قابل حذف نیست. می‌توانید غیرفعالش کنید.',
+        'message' => 'روی این حساب ' . toPersianDigits($used) . ' تراکنش یا انتقال ثبت شده. برای حذف، اول از نمای کارتِ همین حساب «انتقال تراکنش‌ها به حساب دیگر» را بزنید؛ یا غیرفعالش کنید.',
     ], 409);
 }
 

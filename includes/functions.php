@@ -1472,6 +1472,177 @@ function walletUsageCount(int $walletId, int $userId): int
     return $count + (int)$f->fetch()['c'];
 }
 
+/**
+ * هر ستونی که به یک حساب (`wallets.id`) اشاره می‌کند.
+ *
+ * ⛔ از خودِ دیتابیس کشف می‌شود، نه از فهرستِ دستی — همان قاعده‌ی
+ *    `categoryRefTables()`. دو منبع با هم: کلیدهای خارجیِ واقعی، و هر
+ *    ستونی که نامش به `wallet_id` ختم می‌شود (یادآورها ستون دارند ولی
+ *    کلیدِ خارجی ندارند). ستونی که جا بماند یعنی ردیف‌هایی که بعد از
+ *    انتقال هنوز به حسابِ قدیمی اشاره می‌کنند، و حذفِ آن حساب با
+ *    `ON DELETE SET NULL` آن‌ها را **بی‌صدا** بی‌حساب می‌کرد.
+ *
+ * @return array<int, array{table:string, col:string, user:bool}>
+ */
+function walletRefColumns(): array
+{
+    $map = schemaMap();
+    $found = [];
+    foreach ($map as $table => $cols) {
+        if ($table === 'wallets') { continue; }
+        foreach (array_keys($cols) as $col) {
+            if (preg_match('/(^|_)wallet_id$/', $col)) { $found[$table . '.' . $col] = [$table, $col]; }
+        }
+    }
+    try {
+        $st = Database::getConnection()->query(
+            "SELECT TABLE_NAME AS t, COLUMN_NAME AS c FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME = 'wallets'
+               AND REFERENCED_COLUMN_NAME = 'id'"
+        );
+        foreach ($st->fetchAll() as $r) {
+            if ($r['t'] !== 'wallets') { $found[$r['t'] . '.' . $r['c']] = [$r['t'], $r['c']]; }
+        }
+    } catch (PDOException $e) {
+        Log::error('wallet.ref_discovery', $e);
+    }
+    ksort($found);
+    $out = [];
+    foreach ($found as [$t, $c]) {
+        $out[] = ['table' => $t, 'col' => $c, 'user' => isset($map[$t]['user_id'])];
+    }
+    return $out;
+}
+
+/**
+ * همه‌ی پولِ یک حساب را به حسابِ دیگرِ همان کاربر منتقل می‌کند و (به
+ * خواستِ کاربر) حسابِ قدیمی را حذف می‌کند.
+ *
+ * دلیلِ وجودش: حذفِ حسابِ داده‌دار ممنوع است (`walletUsageCount()`)،
+ * پس کاربری که حسابِ دستیِ قدیمی را با یک حسابِ تازه (مثلاً بلوبانک)
+ * جایگزین می‌کند راهی برای خلاص شدن از آن نداشت.
+ *
+ * ⛔ تنها جای این تصمیم است (مثل `mergeCategories()`)، و سه قاعده دارد:
+ *   ۱. **موجودیِ اولیه هم می‌رود.** بدونش «کیف پول» با ۵ میلیون
+ *      موجودیِ اولیه ادغام می‌شد و آن ۵ میلیون **بی‌صدا** از کلِ دارایی
+ *      غیب می‌شد.
+ *   ۲. **انتقال‌های بینِ همین دو حساب حذف می‌شوند**، نه جابه‌جا — وگرنه
+ *      انتقالِ «از خودش به خودش» می‌شدند. کارمزدشان از موجودیِ اولیه‌ی
+ *      مقصد کم می‌شود، چون آن کارمزد واقعاً پرداخت شده. (انتقال در
+ *      گزارشِ درآمد/هزینه نیست، پس حذفش هیچ گزارشی را عوض نمی‌کند.)
+ *   ۳. **سدِ پیش از `commit`:** هیچ ردیفی نباید روی حسابِ قدیمی مانده
+ *      باشد، موجودیِ مقصد باید دقیقاً جمعِ هر دو باشد، و موجودیِ هیچ
+ *      حسابِ دیگری تکان نخورده باشد؛ وگرنه rollback. «پول در هیچ‌کجا
+ *      گم نشود» را خودِ کد تضمین می‌کند، نه یک تست.
+ *
+ * @return array{ok:bool, message:string, moved:int, dropped:int}
+ */
+function mergeWallet(int $userId, int $fromId, int $intoId, bool $deleteSource = true): array
+{
+    $fail = fn(string $m) => ['ok' => false, 'message' => $m, 'moved' => 0, 'dropped' => 0];
+    if ($userId <= 0 || $fromId <= 0 || $intoId <= 0 || $fromId === $intoId) {
+        return $fail('دو حسابِ متفاوت انتخاب کنید.');
+    }
+    $pdo = Database::getConnection();
+
+    $st = $pdo->prepare('SELECT id, name, is_active, initial_balance FROM wallets WHERE id = :id AND user_id = :u');
+    $st->execute(['id' => $fromId, 'u' => $userId]);
+    $from = $st->fetch();
+    $st->execute(['id' => $intoId, 'u' => $userId]);
+    $into = $st->fetch();
+    if (!$from || !$into) { return $fail('حساب یافت نشد.'); }
+    if ((int)$into['is_active'] !== 1) {
+        return $fail('حسابِ مقصد غیرفعال است؛ اول فعالش کنید.');
+    }
+
+    $refs = walletRefColumns();
+    $bal  = fn() => array_column(walletBalances($userId), 'balance', 'id');
+
+    try {
+        $pdo->beginTransaction();
+        $before = $bal();
+        $expect = (int)$before[$fromId] + (int)$before[$intoId];
+
+        // چند ردیف پیش از کار به مبدأ اشاره می‌کردند — زیرِ تراکنش.
+        $count = 0;
+        foreach ($refs as $r) {
+            $q = $pdo->prepare("SELECT COUNT(*) AS n, SUM(" . ($r['user'] ? 'user_id <> :u' : '1') . ") AS alien
+                                FROM `{$r['table']}` WHERE `{$r['col']}` = :f");
+            $q->execute(['f' => $fromId] + ($r['user'] ? ['u' => $userId] : []));
+            $row = $q->fetch();
+            if ((int)$row['n'] > 0 && (!$r['user'] || (int)$row['alien'] > 0)) {
+                $pdo->rollBack();
+                return $fail('ردیف‌هایی در «' . $r['table'] . '» به این حساب اشاره می‌کنند که به شما منتسب نیستند. هیچ تغییری ذخیره نشد.');
+            }
+            $count += (int)$row['n'];
+        }
+
+        // انتقال‌های بینِ همین دو حساب: حذف، و کارمزدشان روی مقصد.
+        $fee = 0;
+        $dropped = 0;
+        if (tableExists('transfers')) {
+            $pairWhere = 'user_id = :u AND ((from_wallet_id = :a AND to_wallet_id = :b)
+                                         OR (from_wallet_id = :c AND to_wallet_id = :d))';
+            $pairArgs = ['u' => $userId, 'a' => $fromId, 'b' => $intoId, 'c' => $intoId, 'd' => $fromId];
+            $q = $pdo->prepare("SELECT COALESCE(SUM(fee), 0) FROM transfers WHERE {$pairWhere}");
+            $q->execute($pairArgs);
+            $fee = (int)$q->fetchColumn();
+            $d = $pdo->prepare("DELETE FROM transfers WHERE {$pairWhere}");
+            $d->execute($pairArgs);
+            $dropped = $d->rowCount();
+        }
+
+        $moved = 0;
+        foreach ($refs as $r) {
+            if (!$r['user']) { continue; }   // بالاتر سنجیده شد: ردیفی ندارد
+            $up = $pdo->prepare("UPDATE `{$r['table']}` SET `{$r['col']}` = :i WHERE `{$r['col']}` = :f AND user_id = :u");
+            $up->execute(['i' => $intoId, 'f' => $fromId, 'u' => $userId]);
+            $moved += $up->rowCount();
+        }
+
+        $pdo->prepare('UPDATE wallets SET initial_balance = initial_balance + :add WHERE id = :id AND user_id = :u')
+            ->execute(['add' => (int)$from['initial_balance'] - $fee, 'id' => $intoId, 'u' => $userId]);
+        $pdo->prepare('UPDATE wallets SET initial_balance = 0 WHERE id = :id AND user_id = :u')
+            ->execute(['id' => $fromId, 'u' => $userId]);
+
+        // ⛔ سدِ پیش از commit.
+        $left = 0;
+        foreach ($refs as $r) {
+            $q = $pdo->prepare("SELECT COUNT(*) FROM `{$r['table']}` WHERE `{$r['col']}` = :f");
+            $q->execute(['f' => $fromId]);
+            $left += (int)$q->fetchColumn();
+        }
+        $after = $bal();
+        $others = true;
+        foreach ($before as $id => $b) {
+            if ($id !== $fromId && $id !== $intoId && (int)$after[$id] !== (int)$b) { $others = false; }
+        }
+        if ($left !== 0 || $moved + $dropped !== $count || (int)$after[$intoId] !== $expect
+            || (int)$after[$fromId] !== 0 || !$others) {
+            $pdo->rollBack();
+            Log::warn('wallet.merge_barrier', ['left' => $left, 'moved' => $moved, 'dropped' => $dropped, 'count' => $count]);
+            return $fail('شمارشِ ردیف‌ها یا موجودی‌ها نخواند؛ هیچ تغییری ذخیره نشد.');
+        }
+
+        if ($deleteSource) {
+            $pdo->prepare('DELETE FROM wallets WHERE id = :id AND user_id = :u')
+                ->execute(['id' => $fromId, 'u' => $userId]);
+        }
+        $pdo->commit();
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) { $pdo->rollBack(); }
+        Log::error('wallet.merge_failed', $e);
+        return $fail('خطایی در انتقال رخ داد؛ هیچ تغییری ذخیره نشد.');
+    }
+
+    $msg = 'همه‌ی تراکنش‌ها و موجودیِ «' . $from['name'] . '» به «' . $into['name'] . '» منتقل شد'
+        . ($deleteSource ? ' و حسابِ قدیمی حذف شد.' : '.');
+    if ($dropped > 0) {
+        $msg .= ' ' . toPersianDigits($dropped) . ' انتقالِ بینِ همین دو حساب حذف شد.';
+    }
+    return ['ok' => true, 'message' => $msg, 'moved' => $moved, 'dropped' => $dropped];
+}
+
 /* ============================================================
    بودجه‌بندی
    ============================================================ */
