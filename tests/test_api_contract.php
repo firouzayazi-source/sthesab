@@ -1070,7 +1070,12 @@ if (!file_exists($gradlePath)) {
     //   `LauncherActivity` که مجوزِ پیامک و اعلان را در اولین اجرا می‌پرسد
     //   (مجوزِ زمانِ اجرا فقط از اکتیویتیِ خودمان خواسته می‌شود). آن هم هیچ
     //   منطقِ دامنه‌ای ندارد و هیچ پیامکی نمی‌خواند.
-    $allowedNative = ['BankSmsReceiver.java', 'SmsSetupActivity.java', 'HesabLauncherActivity.java'];
+    // ⚠ و `UpdateActivity.java` چهارمی است، آگاهانه و همین‌جا: «روش بزنم و
+    //   بلافاصله آپدیت بشه» — فایل را خودِ اپ می‌گیرد و پنجره‌ی نصبِ سیستم را
+    //   باز می‌کند. هیچ پیامکی نمی‌خواند و آدرسش را فقط از دامنه‌ی خودِ اپ
+    //   می‌سازد (قاعده ۶۴).
+    $allowedNative = ['BankSmsReceiver.java', 'SmsSetupActivity.java', 'HesabLauncherActivity.java',
+                      'UpdateActivity.java'];
 
     $code = [];
     $it = new RecursiveIteratorIterator(
@@ -1511,8 +1516,13 @@ foreach ($nativeJava as $j) {
     // ⛔ تنها query مجاز `appv` (نسخه‌ی خودِ اپ، قاعده ۶۴) است، و فقط با
     //    همان یک شکل: کلیدِ ثابت و `String.valueOf(عدد)`. هر
     //    `appendQueryParameter`ِ دیگری یعنی چیزی روی سیم می‌رود.
+    // ⚠ و `UpdateActivity` یک شکلِ دیگر دارد: `v` — شماره‌ی نسخه‌ی تازه،
+    //   فقط رقم — تا کشِ CDN فایلِ کهنه را ندهد. آن هم چیزی از کاربر نیست.
     $qAll  = substr_count($src, 'appendQueryParameter');
     $qAppv = preg_match_all('~appendQueryParameter\(PARAM_APP_VERSION,\s*String\.valueOf\(vc\)\)~', $src);
+    if ($name === 'UpdateActivity.java') {
+        $qAppv += preg_match_all('~appendQueryParameter\("v",\s*v\)~', $src);
+    }
     if (preg_match('~[?&]smsq?=~', $src) || $qAll !== $qAppv) {
         $smsBad[] = "$name — `?sms=` یا query پیدا شد؛ متنِ پیامک به سرور می‌رفت";
     }
@@ -6112,5 +6122,134 @@ if (!str_contains($pub, 'apk-version.php" --expect "$SRC"') || !preg_match('~VER
 }
 
 T::bulk(14, $upBad, 'زنجیره‌ی به‌روزرسانی با هم می‌خواند');
+
+// ⛔ به‌روزرسانی با یک تپ — «روش بزنم و بلافاصله آپدیت بشه».
+//    خرابی‌های این مسیر همه بی‌صدایند: دکمه‌ای که به صفحه‌ی بومیِ
+//    ناموجود می‌رود (اپِ قدیمی) و هیچ اتفاقی نمی‌افتد؛ صفحه‌ای که آدرسِ
+//    فایل را از لینک می‌گیرد و هر سایتی می‌تواند فایلِ دلخواهش را جلوی
+//    پنجره‌ی نصب بگذارد؛ و پنجره‌ی نصبی که بدونِ مجوز اصلاً باز نمی‌شود.
+$oneBad = [];
+$ua = (string)@file_get_contents(__DIR__ . '/../mobile/app/src/main/java/ir/stland/hesabland/UpdateActivity.java');
+$uaCode = preg_replace('~/\*.*?\*/|//[^\n]*~s', '', $ua);
+if ($ua === '') {
+    $oneBad[] = 'UpdateActivity.java نیست';
+} else {
+    if (!str_contains($uaCode, 'R.string.launch_url') || !str_contains($uaCode, 'APK_PATH')) {
+        $oneBad[] = 'UpdateActivity — آدرسِ فایل از دامنه‌ی خودِ اپ ساخته نمی‌شود';
+    }
+    if (preg_match('~Uri\.parse\(\s*(getIntent|data)|getData\(\)\.toString|getStringExtra~', $uaCode)) {
+        $oneBad[] = 'UpdateActivity — آدرس یا بخشی از آن از لینکِ ورودی خوانده می‌شود';
+    }
+    if (!str_contains($uaCode, 'q.matches("[0-9]{1,9}")')) {
+        $oneBad[] = 'UpdateActivity — `v` بی‌سنجش (فقط رقم) پذیرفته می‌شود';
+    }
+    foreach (['getUriForDownloadedFile', 'FLAG_GRANT_READ_URI_PERMISSION', 'canRequestPackageInstalls',
+              'ACTION_MANAGE_UNKNOWN_APP_SOURCES'] as $need) {
+        if (!str_contains($uaCode, $need)) { $oneBad[] = "UpdateActivity — «{$need}» نیست"; }
+    }
+    // ⚠ پنجره تا تعریفِ متدِ بعدی بریده می‌شود؛ بدونِ آن، `.*?` تا خودِ
+    //   تعریفِ `openInBrowser()` پایین‌تر می‌رفت و بررسی پوچ بود (جهش
+    //   نشانش داد).
+    preg_match('~private void failed\(\)\s*\{((?:(?!private void).)*)~s', $uaCode, $fb);
+    if (!$fb || !str_contains($fb[1], 'openInBrowser()')) {
+        $oneBad[] = 'UpdateActivity — شکستِ دریافت راهِ مرورگر را نمی‌دهد (دکمه‌ی بی‌کار)';
+    }
+    if (preg_match('~content://sms|Telephony|SmsMessage~', $uaCode)) {
+        $oneBad[] = 'UpdateActivity — به پیامک دست می‌زند';
+    }
+}
+$mf = (string)@file_get_contents(__DIR__ . '/../mobile/app/src/main/AndroidManifest.xml');
+if (!str_contains($mf, 'android.permission.REQUEST_INSTALL_PACKAGES')) {
+    $oneBad[] = 'manifest — REQUEST_INSTALL_PACKAGES نیست؛ پنجره‌ی نصب بی‌صدا باز نمی‌شود';
+}
+if (!preg_match('~android:name="\.UpdateActivity".*?ir\.stland\.hesabland\.UPDATE.*?android:scheme="hesabland"\s+android:host="update"~s', $mf)) {
+    $oneBad[] = 'manifest — UpdateActivity با action/scheme ای که لینک می‌سازد ثبت نشده';
+}
+$ahp = strpos($js, 'window.appUpdateHref = function');
+if ($ahp === false || $dcl === false || $ahp > $dcl) {
+    $oneBad[] = 'app.js — appUpdateHref بیرون از DOMContentLoaded نیست';
+} else {
+    $ahBody = substr($js, $ahp, 900);
+    if (!str_contains($ahBody, "'.UPDATE;package='") || !str_contains($ahBody, 'S.browser_fallback_url=')) {
+        $oneBad[] = 'app.js — لینکِ intent یا بازگشتِ مرورگر ساخته نمی‌شود';
+    }
+}
+if (!str_contains($barBody, 'window.appUpdateHref(')) {
+    $oneBad[] = 'app.js — نوار از appUpdateHref() آدرس نمی‌گیرد';
+}
+$hdr = (string)@file_get_contents(__DIR__ . '/../includes/header.php');
+if (!str_contains($hdr, 'data-package=')) {
+    $oneBad[] = 'header.php — نامِ بسته به نوار نمی‌رسد';
+}
+// ⛔ کفِ «اپِ بومی‌دار» نباید از نسخه‌ی خودِ همین APK بالاتر باشد، وگرنه
+//    اپِ تازه هم همان دانلودِ مرورگر را می‌گیرد.
+$gr = (string)@file_get_contents(__DIR__ . '/../mobile/app/build.gradle.kts');
+preg_match('~versionCode\s*=\s*(\d+)~', $gr, $gv);
+preg_match('~window\.APP_UPDATE_NATIVE_MIN\s*=\s*(\d+)~', $js, $nm);
+if (!$gv || !$nm || (int)$nm[1] > (int)$gv[1]) {
+    $oneBad[] = 'APP_UPDATE_NATIVE_MIN از versionCodeِ اپ بالاتر است';
+}
+T::bulk(13, $oneBad, 'به‌روزرسانی با یک تپ: اپ خودش می‌گیرد و پنجره‌ی نصب را باز می‌کند');
+
+// ---------------------------------------------------------------
+// ⛔ قاعده ۶۵ — صفِ پیامکِ بانک هیچ چیزی را باز نمی‌کند
+//
+//    **گزارشِ مالکِ نصب:** «خواندن اس ام اس معضل شده، یکسره روی صفحه‌ست،
+//    مخصوصاً وقتی بخش حساب‌ها می‌رم و هیچ کاری نمیشه کرد». صفِ قبلی
+//    (`sessionStorage` + `smsQueueNext`) با هر بارگذاری شیتِ ثبت را باز
+//    می‌کرد. `test_sms_batch.php` رفتار را در کرومیوم می‌سنجد؛ این قاعده
+//    شکل را، چون کرومیوم ابزارِ اختیاری است (`T::skip`).
+T::group('قاعده ۶۵ — صفِ پیامکِ بانک هیچ چیزی را باز نمی‌کند');
+$qBad = [];
+$js65 = (string)@file_get_contents(__DIR__ . '/../assets/js/app.js');
+$dcl65 = strpos($js65, "document.addEventListener('DOMContentLoaded'");
+$bp65 = strpos($js65, 'function smsProcessBatch(');
+$batch65 = $bp65 === false ? '' : substr($js65, $bp65, (int)(strpos($js65, 'function takeSmsFragment(', $bp65) - $bp65));
+if ($batch65 === '') {
+    $qBad[] = 'app.js — smsProcessBatch() نیست';
+} else {
+    if (str_contains($batch65, 'openWithSms(') || str_contains($batch65, "classList.add('show')")) {
+        $qBad[] = 'app.js — صف شیتِ ثبت را خودش باز می‌کند';
+    }
+    // ⛔ مانده فقط وقتی حساب با شماره یا نامِ بانک پیدا شده — نه «تک‌حساب».
+    if (!str_contains($batch65, "(m.how === 'card' || m.how === 'acct' || m.how === 'bank')")) {
+        $qBad[] = 'app.js — مانده‌ی پیامک بدونِ تطبیقِ واقعیِ حساب روی حساب می‌نشیند';
+    }
+    if (!str_contains($batch65, 'window.smsAutoOk(') || !str_contains($batch65, 'window.smsMatchWallet(')) {
+        $qBad[] = 'app.js — صف از smsAutoOk/smsMatchWallet تصمیم نمی‌گیرد';
+    }
+    if (!str_contains($batch65, 'smsAlreadyAuto(fp)')) {
+        $qBad[] = 'app.js — صف نگهبانِ تکراری ندارد';
+    }
+}
+if (preg_match('~function smsQueueNext|sessionStorage\.setItem\(\s*SMS_Q_KEY~', $js65)) {
+    $qBad[] = 'app.js — صفِ شیت‌به‌شیتِ قدیمی برگشته';
+}
+// کارتِ بررسی فقط روی خانه ماندگار است؛ جای دیگر فقط `flash`ِ همان نوبت.
+$rp65 = strpos($js65, 'function renderSmsPending(');
+$rpBody = $rp65 === false ? '' : substr($js65, $rp65, 700);
+if (!str_contains($rpBody, "getElementById('smsPendingSlot')") || !str_contains($rpBody, 'if (!flash) { return; }')) {
+    $qBad[] = 'app.js — کارتِ بررسی بیرون از خانه هم ماندگار است';
+}
+$idx65 = (string)@file_get_contents(__DIR__ . '/../index.php');
+if (!str_contains($idx65, 'id="smsPendingSlot"')) {
+    $qBad[] = 'index.php — جای کارتِ بررسی نیست';
+}
+$mw65 = strpos($js65, 'window.smsMatchWallet = function');
+if ($mw65 === false || $dcl65 === false || $mw65 > $dcl65) {
+    $qBad[] = 'app.js — smsMatchWallet بیرون از DOMContentLoaded نیست (در node آزمودنی نمی‌ماند)';
+}
+$sheet65 = (string)@file_get_contents(__DIR__ . '/../includes/add_tx_sheet.php');
+if (!str_contains($sheet65, 'window.SMS_WALLETS = <?= json_encode($__smsWallets')) {
+    $qBad[] = 'add_tx_sheet.php — نشانه‌های حساب (walletSmsKeys) به صفحه نمی‌رسد';
+}
+// ⛔ شماره‌ی کامل هرگز: فقط چهار رقمِ آخر.
+$fn65 = (string)@file_get_contents(__DIR__ . '/../includes/functions.php');
+$wk65 = strpos($fn65, 'function walletSmsKeys(');
+$wkBody = $wk65 === false ? '' : substr($fn65, $wk65, 3000);
+if ($wkBody === '' || !str_contains($wkBody, 'substr($digits, -4)')) {
+    $qBad[] = 'functions.php — walletSmsKeys بیش از چهار رقمِ آخر بیرون می‌دهد';
+}
+T::bulk(11, $qBad, 'صف بی‌صدا ثبت می‌کند، نامطمئن را فقط روی خانه نگه می‌دارد');
 
 exit(T::report());

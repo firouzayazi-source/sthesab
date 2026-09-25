@@ -5468,3 +5468,17 @@ html[data-theme="dark"][data-palette="lilac"] {
 .hw-row:active { background: var(--line-soft); }
 .hw-foot { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .hw-foot .form-message { align-self: stretch; margin: 0; }
+
+/* ---------- پیامکِ بانکی برای بررسی (خانه) ----------
+   ⚠ کارت است نه مودال: هیچ چیزی را نمی‌پوشاند و کاربر هر وقت خواست
+   تکلیفش را روشن می‌کند. زمینه ندارد (درسِ `.start-card`): حالتِ شبِ
+   `.card` با وزنِ بیشتر بازنویسی می‌کند، پس مرز از `--line` می‌آید. */
+.sms-review {
+    margin-bottom: 14px; padding: 12px 14px;
+    border: 1px solid var(--line); border-inline-start: 3px solid var(--brand-fg);
+    border-radius: var(--r-sm);
+}
+.sms-review-head { font-size: 12.5px; color: var(--muted); }
+.sms-review-body { font-size: 14px; font-weight: 700; margin: 4px 0 10px; }
+.sms-review-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sms-review-actions .undo-bar-close { margin-inline-start: auto; color: var(--muted); }

@@ -292,6 +292,18 @@ if ('serviceWorker' in navigator) {
     // اعدادی که کنارِ این کلمه‌ها می‌آیند مبلغِ تراکنش **نیستند**.
     var NOT_AMOUNT = ['مانده', 'موجودی', 'موجودي', 'باقیمانده', 'باقيمانده', 'اعتبار', 'سقف'];
 
+    // ⛔ عددی که **بلافاصله** بعد از یکی از این برچسب‌ها می‌آید یک
+    //    شناسه است، نه پول: «حساب: 0377803217328»، «پیگیری: 123456».
+    //
+    //    **گزارشِ مالکِ نصب (پیامکِ تجارت):** «حساب: 0377803217328 /
+    //    برداشت: 209,000 ریال» — شماره‌ی حساب **یک کاراکتر** به کلمه‌ی
+    //    «برداشت» نزدیک‌تر بود تا خودِ مبلغ، پس به‌عنوان مبلغ نشست:
+    //    ۳۷٬۷۸۰٬۳۲۱٬۷۳۳ تومان. رتبه‌بندیِ فاصله درست کار کرده بود؛ خطا
+    //    این بود که آن عدد اصلاً نامزد نباید می‌شد.
+    // ⚠ فقط وقتی که برچسب **دقیقاً پیش از** عدد است (فقط `:`/فاصله
+    //   بینشان): «انتقال به حساب مبلغ 500,000» مبلغ را از دست نمی‌دهد.
+    var ID_LABEL = /(حساب|شماره|کارت|شبا|پیگیری|رهگیری|مرجع|ارجاع|سند|ترمینال|پایانه|کد)[\s:：#\-]*$/;
+
     function normalize(s) {
         s = String(s || '');
         // ارقام فارسی و عربی → لاتین
@@ -362,6 +374,42 @@ if ('serviceWorker' in navigator) {
     }
 
     /**
+     * چهار رقمِ آخرِ **شماره‌ی حساب** («حساب: 0377803217328» یا
+     * «حساب 0377***7328»). همان نقشِ `findCardTail` را برای بانک‌هایی
+     * دارد که پیامکشان به‌جای کارت، حساب را می‌گوید (تجارت، ملی، …).
+     * ⚠ جداکننده‌ی سه‌رقمی عمداً در کلاسِ کاراکتر نیست: «مانده حساب:
+     *   50,000,000» یک مبلغ است، نه شماره‌ی حساب.
+     */
+    function findAcctTail(text) {
+        var m = text.match(/حساب[^\d\n,،٬]{0,10}(\d[\d\-.*•x×]{4,30}\d)(?![\d,،٬])/);
+        if (!m) { return null; }
+        var groups = m[1].match(/\d+/g) || [];
+        var last = groups.length ? groups[groups.length - 1] : '';
+        if (last.length < 4) { return null; }
+        return last.slice(-4);
+    }
+
+    /**
+     * «مانده»ی حساب بعد از همین تراکنش، به **تومان** — یا `null`.
+     *
+     * ⛔ `known` فقط وقتی درست است که واحد روشن باشد (کنارِ خودِ مانده، یا
+     *    کنارِ مبلغِ همین پیامک). هم‌ترازیِ موجودیِ حساب روی همین عدد
+     *    سوار است؛ با واحدِ حدسی، موجودیِ حساب ده‌برابر می‌شد.
+     */
+    function findBalance(text, amountUnit) {
+        var re = /(مانده|موجودی|باقیمانده)[^\d\n\-−]{0,16}([\-−]?)\s*(\d{1,3}(?:[,،٬]\d{3})+|\d+)(\s*[:：]?\s*(ریال|ريال|تومان|تومن))?/;
+        var m = text.match(re);
+        if (!m) { return null; }
+        var val = parseInt(m[3].replace(/[,،٬]/g, ''), 10);
+        if (isNaN(val)) { return null; }
+        var tail = text.slice(m.index + m[0].length, m.index + m[0].length + 12);
+        var neg = m[2] !== '' || /^\s*(منفی|بدهکار|-)/.test(tail);
+        var unit = m[5] ? (/تومان|تومن/.test(m[5]) ? 'toman' : 'rial') : amountUnit;
+        if (unit !== 'toman') { val = Math.round(val / 10); }
+        return { value: neg ? -val : val, known: unit === 'toman' || unit === 'rial' };
+    }
+
+    /**
      * شماره‌ی کارت را با فاصله جای‌گزین می‌کند تا ارقامش به‌عنوان مبلغ
      * خوانده نشوند. طولِ متن دست‌نخورده می‌ماند، پس اندیسِ تاریخ که
      * روی متنِ اصلی حساب شده هنوز معتبر است.
@@ -404,10 +452,16 @@ if ('serviceWorker' in navigator) {
             var before = scan.slice(Math.max(0, at - 22), at);
             var after  = scan.slice(at + len, at + len + 14);
             if (firstIndexOf(before, NOT_AMOUNT) !== -1) { continue; }
+            if (ID_LABEL.test(before)) { continue; }
 
             var unit = /^[\s:：]*(ریال|ريال)/.test(after) ? 'rial'
                      : (/^[\s:：]*(تومان|تومن)/.test(after) ? 'toman' : null);
             var grouped = /[,،٬]/.test(m[0]);
+            // ⚠ عددِ ده‌رقمی به بالا بی‌جداکننده و بی‌واحد (و بی‌«مبلغ»)
+            //   شماره‌ی حساب یا کدِ پیگیری است، حتی اگر برچسبش نیامده
+            //   باشد: هیچ بانکی مبلغِ میلیاردی را بدونِ جداکننده و بدونِ
+            //   «ریال» نمی‌نویسد.
+            if (!grouped && !unit && len >= 10 && before.indexOf('مبلغ') === -1) { continue; }
             // ⛔ آنچه مبلغ را از بقیه‌ی عددها جدا می‌کند **فاصله** است،
             //    نه اینکه قبل یا بعدِ کلمه‌ی جهت باشد.
             //
@@ -438,12 +492,18 @@ if ('serviceWorker' in navigator) {
         }
         if (!cands.length) { return null; }
 
-        // اولویت: نزدیکِ کلمه‌ی جهت → نزدیک‌تر → کنارِ واحد پول →
+        // اولویت: نزدیکِ کلمه‌ی جهت → کنارِ واحد پول → نزدیک‌تر →
         // سه‌رقم‌جداشده → زودتر در متن.
+        //
+        // ⚠ «کنارِ واحد پول» **پیش از** فاصله است، و این یک باگِ واقعی
+        //   بود: عددی که «ریال» کنارش نوشته شده قوی‌ترین نشانه‌ی مبلغ
+        //   است و نباید به عددِ بی‌واحدی ببازد که فقط یک کاراکتر
+        //   نزدیک‌تر است. دو حالتِ آینه‌ای (کارمزد پیش و پس از مبلغ) هر
+        //   دو واحد دارند، پس فاصله همچنان بینشان داوری می‌کند.
         return cands.slice().sort(function (a, b) {
             if (a.near !== b.near)     { return a.near ? -1 : 1; }
-            if (a.dist !== b.dist)     { return a.dist - b.dist; }
             if (!!a.unit !== !!b.unit) { return a.unit ? -1 : 1; }
+            if (a.dist !== b.dist)     { return a.dist - b.dist; }
             if (a.grouped !== b.grouped) { return a.grouped ? -1 : 1; }
             return a.at - b.at;
         })[0];
@@ -460,7 +520,8 @@ if ('serviceWorker' in navigator) {
         var text = normalize(raw);
         var fail = function (why) {
             return { ok: false, type: null, amount: null, currency: null,
-                     date: null, card4: null, note: null, reason: why };
+                     date: null, card4: null, acct4: null, balance: null,
+                     balanceKnown: false, note: null, reason: why };
         };
         if (text.replace(/\s/g, '') === '') { return fail('متنی وارد نشده.'); }
 
@@ -500,6 +561,7 @@ if ('serviceWorker' in navigator) {
         if (currency !== 'toman') { amount = Math.round(amount / 10); }
 
         var noteM = text.match(/(?:بابت|پذیرنده|شرح)[:：\s]+([^\n\r]{2,40})/);
+        var bal = findBalance(text, hit.unit);
 
         return {
             ok: true,
@@ -508,6 +570,9 @@ if ('serviceWorker' in navigator) {
             currency: currency,
             date: dateHit ? dateHit.iso : null,
             card4: findCardTail(text),
+            acct4: findAcctTail(text),
+            balance: bal ? bal.value : null,
+            balanceKnown: bal ? bal.known : false,
             note: noteM ? noteM[1].trim() : null,
             reason: ''
         };
@@ -565,9 +630,63 @@ if ('serviceWorker' in navigator) {
             return { ok: false, why: 'برداشت یا واریز بودنش روشن نیست.' };
         }
         if (!walletCertain) {
-            return { ok: false, why: 'حساب از روی شماره‌ی کارت پیدا نشد.' };
+            return { ok: false, why: 'حساب از روی شماره‌ی کارت یا حساب پیدا نشد.' };
         }
         return { ok: true, why: '' };
+    };
+
+    /**
+     * ⛔ پیامک مالِ کدام حساب است؟ — تنها جای این تصمیم.
+     *
+     *    ترتیب از قطعی به کم‌قطعی: چهار رقمِ آخرِ **کارت** → چهار رقمِ
+     *    آخرِ **حساب** → **نامِ بانک**، اگر کاربر فقط **یک** حساب از آن
+     *    بانک دارد → کاربر اصلاً یک حساب دارد. هر تطبیقی که بیش از یک
+     *    حساب را بدهد «پیدا نشد» است، نه «اولی»: پولِ حسابِ اشتباه
+     *    خرابیِ بی‌صداست.
+     *
+     * ⚠ `how` به فراخواننده می‌گوید چقدر مطمئن است: هم‌ترازیِ مانده فقط
+     *   با `card`/`acct`/`bank` انجام می‌شود، نه با `single` — کاربری که
+     *   فقط «کیف پولِ» نقدی دارد نباید موجودیِ بانکش روی کیف پول بنشیند.
+     *
+     * ⚠ کلیدِ بانک فقط با پیشوندِ «بانک» پذیرفته می‌شود — «دی» در «ماه
+     *   دی» و «ملی» در «کد ملی» هم هست — مگر کلیدی که با `!` شروع شود
+     *   (`walletSmsKeys()` در PHP تصمیم می‌گیرد کدام).
+     *
+     * @param {string} raw     متنِ پیامک
+     * @param {object} r       خروجیِ parseBankSms
+     * @param {Array}  wallets [{id, card4, acct4, banks: [..]}]
+     * @returns {{id:number, how:?string}}
+     */
+    window.smsMatchWallet = function (raw, r, wallets) {
+        var none = { id: 0, how: null };
+        if (!Array.isArray(wallets) || !wallets.length || !r) { return none; }
+        var pick = function (field, val, how) {
+            if (!val) { return null; }
+            var hits = wallets.filter(function (w) { return w && w[field] === val; });
+            return hits.length === 1 ? { id: +hits[0].id, how: how } : null;
+        };
+        var got = pick('card4', r.card4, 'card') || pick('acct4', r.acct4, 'acct');
+        if (got) { return got; }
+
+        var text = normalize(raw);
+        var esc = function (s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
+        var bankHits = wallets.filter(function (w) {
+            return (w.banks || []).some(function (k) {
+                var loose = k.charAt(0) === '!';
+                var key = normalize(loose ? k.slice(1) : k).trim();
+                if (!key) { return false; }
+                var word = esc(key) + '(?![\\u0600-\\u06FF])';
+                var re = loose
+                    ? new RegExp('(^|[^\\u0600-\\u06FF])' + word)
+                    : new RegExp('بانک\\s*' + word);
+                return re.test(text);
+            });
+        });
+        if (bankHits.length === 1) { return { id: +bankHits[0].id, how: 'bank' }; }
+        if (bankHits.length > 1) { return none; }
+
+        if (wallets.length === 1) { return { id: +wallets[0].id, how: 'single' }; }
+        return none;
     };
 
     /**
@@ -798,6 +917,40 @@ window.appUpdateDue = function (o) {
     return true;
 };
 
+/**
+ * ⛔ دکمه‌ی «به‌روزرسانی» کجا برود — تنها جای این تصمیم، خالص.
+ *
+ *    **گزارشِ مالکِ نصب:** «باید وقتی آپدیت جدید برای اندروید آمده روش
+ *    بزنم و بلافاصله آپدیت بشه؛ الان می‌زنم دانلود می‌شه و باید دستی نصب
+ *    کنم.» از نسخه‌ی ۱۱ به بعد اپ خودش فایل را دریافت می‌کند و
+ *    **همان‌جا** پنجره‌ی نصبِ اندروید را باز می‌کند (`UpdateActivity`) —
+ *    یک تپ روی «به‌روزرسانی»ِ همان پنجره. نصبِ کاملاً بی‌صدا را خودِ
+ *    اندروید برای هیچ اپی جز فروشگاهِ سیستمی مجاز نمی‌کند.
+ *
+ * ⚠ اپِ قدیمی‌تر آن صفحه را ندارد، پس همان دانلودِ مرورگر می‌ماند؛ و
+ *   `S.browser_fallback_url` یعنی اگر لینکِ `intent://` به هر دلیلی
+ *   جایی نرسید، کروم خودش همان فایل را دانلود می‌کند — دکمه هرگز بی‌کار
+ *   نمی‌ماند.
+ */
+window.APP_UPDATE_NATIVE_MIN = 11;
+window.appUpdateHref = function (o) {
+    o = o || {};
+    var url = String(o.url || '');
+    var installed = parseInt(o.installed, 10) || 0;
+    var latest = parseInt(o.latest, 10) || 0;
+    var pkg = String(o.pkg || '');
+    if (installed >= window.APP_UPDATE_NATIVE_MIN && /^[a-z][a-z0-9_.]+$/i.test(pkg)
+        && /^https:\/\//.test(url)) {
+        return {
+            native: true,
+            href: 'intent://update?v=' + latest + '#Intent;scheme=hesabland;action='
+                + pkg + '.UPDATE;package=' + pkg + ';S.browser_fallback_url='
+                + encodeURIComponent(url) + ';end'
+        };
+    }
+    return { native: false, href: url || '#' };
+};
+
 document.addEventListener('DOMContentLoaded', function () {
 
     // اول از همه: حالا که این فایل واقعاً اجرا شد، صفحه دیگر «در حال
@@ -879,8 +1032,18 @@ document.addEventListener('DOMContentLoaded', function () {
         body.appendChild(note);
         var cta = document.createElement('a');
         cta.className = 'btn btn-primary btn-sm apk-bar-cta';
-        cta.href = meta.getAttribute('data-url') || '#';
-        cta.setAttribute('download', '');
+        var absUrl = '';
+        try { absUrl = new URL(meta.getAttribute('data-url') || '', window.location.href).href; }
+        catch (e) { absUrl = meta.getAttribute('data-url') || ''; }
+        var go = window.appUpdateHref({
+            url: absUrl, latest: latest,
+            installed: meta.getAttribute('data-installed'),
+            pkg: meta.getAttribute('data-package')
+        });
+        // ⚠ آدرسِ مطلق فقط برای بازگشتِ مرورگر داخلِ intent لازم است؛
+        //   دانلودِ معمولی همان آدرسِ نسبیِ سرور را نگه می‌دارد.
+        cta.href = go.native ? go.href : (meta.getAttribute('data-url') || '#');
+        if (!go.native) { cta.setAttribute('download', ''); }
         cta.textContent = 'به‌روزرسانی';
         var x = document.createElement('button');
         x.type = 'button';
@@ -892,8 +1055,10 @@ document.addEventListener('DOMContentLoaded', function () {
             // ⚠ دانلود را خودِ مرورگر انجام می‌دهد؛ اینجا فقط گامِ بعد گفته
             //   می‌شود — اندروید نصب را خودش نمی‌کند، کاربر باید فایل را باز کند.
             snooze(window.APP_UPDATE_TAPPED_MS);
-            note.textContent = 'فایل در حال دریافت است. از اعلانِ دانلود بازش کنید و «به‌روزرسانی» را بزنید.'
-                + ' اگر اندروید اجازه خواست، «نصب از این منبع» را روشن کنید.';
+            note.textContent = go.native
+                ? 'در حال دریافت… وقتی پنجره‌ی نصب آمد «به‌روزرسانی» را بزنید.'
+                : 'فایل در حال دریافت است. از اعلانِ دانلود بازش کنید و «به‌روزرسانی» را بزنید.'
+                  + ' اگر اندروید اجازه خواست، «نصب از این منبع» را روشن کنید.';
         });
         x.addEventListener('click', function () {
             snooze(window.APP_UPDATE_SNOOZE_MS);
@@ -1130,6 +1295,13 @@ document.addEventListener('DOMContentLoaded', function () {
                 try { auto = JSON.parse(quickAddForm.dataset.autoSms); } catch (e) { auto = null; }
                 delete quickAddForm.dataset.autoSms;
             }
+            // ⚠ مانده‌ی پیامک هم همین‌جا خوانده و **پاک** می‌شود: اگر این
+            //   ثبت شکست بخورد، ثبتِ دستیِ بعدی نباید آن را با خودش ببرد.
+            var smsBal = null;
+            if (quickAddForm.dataset.smsBal) {
+                try { smsBal = JSON.parse(quickAddForm.dataset.smsBal); } catch (e) { smsBal = null; }
+                delete quickAddForm.dataset.smsBal;
+            }
 
             submitBtn.disabled = true;
             submitBtnText.textContent = 'در حال ثبت...';
@@ -1169,6 +1341,13 @@ document.addEventListener('DOMContentLoaded', function () {
                             + ' تومان',
                             { ep: 'delete_transaction.php', field: 'transaction_id', value: data.id }
                         );
+                    }
+                    // ⛔ مانده‌ی پیامک فقط روی همان حسابی که پیامک نشان داد؛
+                    //    اگر کاربر حساب را در فرم عوض کرده، دست نمی‌زنیم.
+                    if (smsBal && String(formData.get('wallet_id')) === String(smsBal.w)) {
+                        smsPostBalance(smsBal.w, smsBal.b, smsBal.d)
+                            .then(function () { window.location.reload(); });
+                        return;
                     }
                     window.location.reload();
                 } else {
@@ -1586,6 +1765,123 @@ document.addEventListener('DOMContentLoaded', function () {
         catch (e) { /* بی‌نگهبان بهتر از خرابیِ ثبت است */ }
     }
 
+    // ---------- پیامک‌های «برای بررسی» ----------
+    //
+    // ⛔ **گزارشِ مالکِ نصب:** «خواندن اس ام اس الان معضل شده، یکسره روی
+    //    صفحه‌ست، مخصوصاً وقتی بخش حساب‌ها می‌رم و هیچ کاری نمیشه کرد.»
+    //    صفِ قبلی با **هر** بارگذاری شیتِ ثبت را باز می‌کرد تا کاربر
+    //    پیامکِ نامطمئن را تکلیف کند — یعنی تا وقتی صف خالی نمی‌شد، هیچ
+    //    صفحه‌ای قابلِ استفاده نبود.
+    //
+    //    حالا پیامکِ نامطمئن فقط **یادداشت** می‌شود و هیچ چیزی باز
+    //    نمی‌شود. کارتِ کوچکِ «برای بررسی» فقط روی **خانه** است و کاربر
+    //    هر وقت خواست تکلیفش را روشن می‌کند (ثبت یا رد).
+    // ⚠ متن روی همین دستگاه می‌ماند (localStorage، نه سرور) — همان قاعده‌ی
+    //   فرگمنت. مهلتش یک هفته است: پیامکِ کهنه‌تر از آن دیگر ارزشِ
+    //   بررسی ندارد و فقط کارت را شلوغ می‌کند.
+    var SMS_PENDING_KEY = 'daftar_sms_pending';
+    var SMS_PENDING_TTL = 7 * 24 * 60 * 60 * 1000;
+    var SMS_PENDING_MAX = 30;
+
+    function smsPendingRead() {
+        try {
+            var v = JSON.parse(localStorage.getItem(SMS_PENDING_KEY) || '[]');
+            if (!Array.isArray(v)) { return []; }
+            var now = Date.now();
+            return v.filter(function (e) {
+                return e && typeof e.raw === 'string' && e.fp
+                    && (now - (e.at || 0)) < SMS_PENDING_TTL
+                    && !smsAlreadyAuto(e.fp);
+            });
+        } catch (e) { return []; }
+    }
+    function smsPendingWrite(list) {
+        try {
+            if (!list.length) { localStorage.removeItem(SMS_PENDING_KEY); }
+            else { localStorage.setItem(SMS_PENDING_KEY, JSON.stringify(list.slice(-SMS_PENDING_MAX))); }
+        } catch (e) { /* ناشناس — فقط همین نوبت دیده نمی‌شود */ }
+    }
+    function smsPendingAdd(raw, fp) {
+        var list = smsPendingRead();
+        for (var i = 0; i < list.length; i++) { if (list[i].fp === fp) { return false; } }
+        list.push({ raw: raw, fp: fp, at: Date.now() });
+        smsPendingWrite(list);
+        return true;
+    }
+    /** «رد»: از فهرست بیرون، و دیگر هرگز از صندوق برنمی‌گردد. */
+    function smsPendingDrop(fp) {
+        smsMarkAuto(fp);
+        smsPendingWrite(smsPendingRead().filter(function (e) { return e.fp !== fp; }));
+    }
+
+    // ---------- ثبت و هم‌ترازیِ مانده، بی‌آنکه چیزی باز شود ----------
+    //
+    // ⚠ از همان اندپوینت‌هایی می‌رود که فرم و «تعدیل موجودی» می‌روند
+    //   (`add_transaction.php`, `adjust_wallet.php`) — منطقِ پول فقط
+    //   سمتِ سرور است (`txCreate()`)، اینجا فقط پاکت ساخته می‌شود.
+    function smsCsrf() {
+        var el = document.querySelector('#quickAddForm [name="csrf_token"]')
+              || document.querySelector('[name="csrf_token"]');
+        return el ? el.value : '';
+    }
+    function smsPostTx(r, walletId) {
+        var fd = new FormData();
+        fd.set('csrf_token', smsCsrf());
+        fd.set('type', r.type);
+        fd.set('amount', String(r.amount));
+        fd.set('title', r.note || ((r.type === 'income' ? 'واریز' : 'برداشت') + ' — از پیامک بانک'));
+        fd.set('note', '');
+        var dEl = document.getElementById('transaction_date');
+        fd.set('transaction_date', r.date || (dEl ? dEl.defaultValue : ''));
+        fd.set('category_id', '');
+        fd.set('wallet_id', String(walletId));
+        return fetch(apiUrl('add_transaction.php'), {
+            method: 'POST', body: fd,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (j) { return j && j.success ? (j.id || -1) : 0; });
+    }
+
+    // ⛔ «مانده»ی پیامک موجودیِ حساب را **برابر** می‌کند (حالتِ «موجودی
+    //    واقعی این‌قدر است» در تعدیل)، پس تراکنشی که ثبت نشده بود یا
+    //    موجودیِ اولیه‌ای که درست وارد نشده بود، خودش جبران می‌شود.
+    // ⛔ فقط از پیامکی که **خودکار** ثبت شد و حسابش با شماره‌ی کارت/حساب
+    //    یا نامِ بانک پیدا شد — نه با «کاربر فقط یک حساب دارد»: کیف پولِ
+    //    نقدی نباید موجودیِ بانک را بگیرد. و هرگز از پیامکی **قدیمی‌تر**
+    //    از آخرین مانده‌ای که روی همان حساب نشسته (نگهبانِ تاریخ).
+    var SMS_BAL_KEY = 'daftar_sms_bal_at';
+    function smsBalanceNewer(walletId, iso) {
+        try {
+            var m = JSON.parse(localStorage.getItem(SMS_BAL_KEY) || '{}') || {};
+            return !m[walletId] || String(iso) >= String(m[walletId]);
+        } catch (e) { return true; }
+    }
+    function smsPostBalance(walletId, balance, iso) {
+        if (!smsBalanceNewer(walletId, iso)) { return Promise.resolve(false); }
+        var fd = new FormData();
+        fd.set('csrf_token', smsCsrf());
+        fd.set('wallet_id', String(walletId));
+        fd.set('mode', 'set');
+        fd.set('amount', String(Math.abs(balance)));
+        if (balance < 0) { fd.set('negative', '1'); }
+        return fetch(apiUrl('adjust_wallet.php'), {
+            method: 'POST', body: fd,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (j) {
+            if (!j || !j.success) { return false; }
+            try {
+                var m = JSON.parse(localStorage.getItem(SMS_BAL_KEY) || '{}') || {};
+                m[walletId] = iso;
+                localStorage.setItem(SMS_BAL_KEY, JSON.stringify(m));
+            } catch (e) { /* بی‌نگهبان: پیامکِ بعدی باز هم مانده را می‌گذارد */ }
+            return true;
+        })
+        .catch(function () { return false; });
+    }
+
     // ---------- نوارِ «انجام شد — لغو» ----------
     //
     // ⛔ **یک نوار برای همه**: هم ثبتِ خودکار از پیامک، هم هر حذفی که
@@ -1652,18 +1948,27 @@ document.addEventListener('DOMContentLoaded', function () {
             btn.textContent = 'لغو';
             btn.addEventListener('click', function () {
                 btn.disabled = true;
-                var fd = new FormData();
-                fd.set('csrf_token', tokenEl.value);
-                fd.set(d.undo.field, d.undo.value);
-                fetch(apiUrl(d.undo.ep), {
-                    method: 'POST', body: fd,
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
-                })
-                .then(function (res) { return res.json(); })
+                // ⚠ `value` می‌تواند آرایه باشد: چند تراکنشی که از صندوقِ
+                //   پیامک با هم ثبت شده‌اند با **یک** «لغو» برمی‌گردند.
+                //   پشتِ سرِ هم، نه موازی — شکستِ وسطِ کار باید همان‌جا
+                //   دیده شود، نه اینکه نیمی برگردد و پیام «انجام شد» بدهد.
+                var values = Array.isArray(d.undo.value) ? d.undo.value : [d.undo.value];
+                var one = function (v) {
+                    var fd = new FormData();
+                    fd.set('csrf_token', tokenEl.value);
+                    fd.set(d.undo.field, v);
+                    return fetch(apiUrl(d.undo.ep), {
+                        method: 'POST', body: fd,
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    }).then(function (res) { return res.json(); });
+                };
+                values.reduce(function (p, v) {
+                    return p.then(function (j) { return (j && !j.success) ? j : one(v); });
+                }, Promise.resolve(null))
                 .then(function (j) {
-                    if (j.success) { window.location.reload(); return; }
+                    if (j && j.success) { window.location.reload(); return; }
                     btn.disabled = false;
-                    txt.textContent = j.message || 'لغو انجام نشد.';
+                    txt.textContent = (j && j.message) || 'لغو انجام نشد.';
                 })
                 .catch(function () {
                     btn.disabled = false;
@@ -1784,100 +2089,25 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         }
 
-        // ---- پیامکی که اپ اندروید خودش گرفته و آورده ----
+        // ---- پیامک‌هایی که اپ اندروید خودش آورده ----
         //
         // ⛔ **هیچ اندپوینتِ تازه‌ای در کار نیست و متن روی سیم نمی‌رود.**
-        //    اپ اندروید متن را در **فرگمنتِ** آدرس می‌گذارد (`#sms=…`) و
-        //    مرورگر فرگمنت را هرگز به سرور نمی‌فرستد — نه در درخواست، نه
-        //    در لاگِ دسترسی. همان تضمینی که تا امروز از «کاربر خودش
-        //    می‌چسباند» می‌آمد، حالا خودکار هم همان است.
+        //    اپ اندروید متن را در **فرگمنتِ** آدرس می‌گذارد (`#sms=…` یا
+        //    `#smsq=…`) و مرورگر فرگمنت را هرگز به سرور نمی‌فرستد. تنها
+        //    چیزی که به سرور می‌رسد همان فیلدهای یک تراکنش است.
         //
-        // ⛔ و پارس همان‌جایی انجام می‌شود که همیشه: `go.click()` صدا زده
-        //    می‌شود، نه یک مسیرِ دوم. پیاده‌سازیِ دومِ پر کردنِ فرم یعنی
-        //    مسیرِ خودکار و مسیرِ دستی دیر یا زود دو جور رفتار کنند.
-        // ⛔ `setTimeout(0)` اختیاری نیست و یک باگِ واقعی را می‌بندد:
-        //    این بلوک بالاتر از `go.addEventListener('click', …)` است،
-        //    پس `go.click()` وقتی اجرا می‌شد که هنوز هیچ شنونده‌ای ثبت
-        //    نشده بود — جعبه باز می‌شد و متن هم می‌نشست، ولی **هیچ
-        //    چیزی پارس نمی‌شد**: نه مبلغی پر می‌شد نه پیامی می‌آمد.
-        //    خرابیِ کاملاً بی‌صدا، و در مرورگر واقعاً دیده شد.
-        //    با یک تیک تأخیر، همه‌ی شنونده‌های همین چرخه ثبت شده‌اند و
-        //    این بلوک دیگر به **جای خودش در فایل** وابسته نیست.
-        // ---- صفِ پیامک‌ها ----
-        //
-        // ⛔ اپ اندروید ممکن است **چند** پیامک با هم بیاورد (`#smsq=`)، ولی
-        //    ثبت فقط از مسیرِ خودِ فرم می‌رود و هر ثبت صفحه را تازه
-        //    می‌کند. پس بقیه در `sessionStorage` صف می‌مانند و صفحه‌ی بعدی
-        //    یکی را برمی‌دارد — ثبتِ خودکار زنجیروار جلو می‌رود و پیامکی
-        //    که خودکار نمی‌شود، شیتِ پرشده را نشان می‌دهد و صف منتظرِ
-        //    کاربر می‌ماند.
-        // ⚠ متن روی دستگاه می‌ماند (sessionStorage، نه سرور) و مهلتش نیم
-        //   ساعت است: صفِ فراموش‌شده نباید فردا شیتی را باز کند.
-        var SMS_Q_KEY = 'daftar_sms_queue';
-        var SMS_Q_TTL = 30 * 60 * 1000;
-
-        function smsQueueRead() {
-            try {
-                var d = JSON.parse(sessionStorage.getItem(SMS_Q_KEY) || 'null');
-                if (!d || !Array.isArray(d.items) || (Date.now() - (d.at || 0)) > SMS_Q_TTL) {
-                    return [];
-                }
-                return d.items.filter(function (s) { return typeof s === 'string' && s.trim(); });
-            } catch (e) { return []; }
-        }
-        function smsQueueWrite(items) {
-            try {
-                if (!items.length) { sessionStorage.removeItem(SMS_Q_KEY); }
-                else { sessionStorage.setItem(SMS_Q_KEY, JSON.stringify({ items: items, at: Date.now() })); }
-            } catch (e) { /* ناشناس — فقط همین یکی پردازش می‌شود */ }
-        }
-
-        var smsQueueLeft = 0;
-
-        /**
-         * یکی از صف: پیامکی که قبلاً ثبت شده یا اصلاً تراکنش نیست بی‌صدا رد
-         * می‌شود، و اولی که می‌ماند شیت را باز می‌کند. اگر **همه** تراکنش
-         * نبودند، آخری نشان داده می‌شود تا کاربری که روی اعلان تپ کرده
-         * بداند چرا چیزی ثبت نشد — سکوتِ کامل همان «هیچ اتفاقی نیفتاد» است.
-         */
-        function smsQueueNext() {
-            var items = smsQueueRead();
-            var lastBad = '';
-            while (items.length) {
-                var raw = items.shift();
-                if (smsAlreadyAuto(window.smsFingerprint(raw))) { continue; }
-                if (!window.parseBankSms(raw).ok) { lastBad = raw; continue; }
-                smsQueueWrite(items);
-                smsQueueLeft = items.length;
-                openWithSms(raw);
-                return;
-            }
-            smsQueueWrite([]);
-            smsQueueLeft = 0;
-            if (lastBad) { openWithSms(lastBad); }
-        }
-
-        function takeSmsFragment() {
-            var h = window.location.hash || '';
-            if (h.indexOf('#sms=') !== 0 && h.indexOf('#smsq=') !== 0) { return; }
-
-            var got = window.smsHashDecode(h);
-
-            // ⚠ فرگمنت **بلافاصله** پاک می‌شود: با تازه‌سازیِ صفحه دوباره
-            //   اجرا می‌شد (یعنی تراکنشِ تکراری)، و تا آن موقع هم متنِ
-            //   پیامک در نوارِ آدرس و تاریخچه‌ی مرورگر می‌ماند.
-            try {
-                history.replaceState(null, '', window.location.pathname + window.location.search);
-            } catch (e) { window.location.hash = ''; }
-
-            if (!got.length) { return; }
-
-            var q = smsQueueRead();
-            got.forEach(function (s) { if (q.indexOf(s) === -1) { q.push(s); } });
-            smsQueueWrite(q);
-            smsQueueNext();
-        }
-
+        // ⛔ **و هیچ چیزی باز نمی‌شود.** گزارشِ مالکِ نصب: «خواندن اس ام اس
+        //    معضل شده، یکسره روی صفحه‌ست، مخصوصاً وقتی بخش حساب‌ها می‌رم و
+        //    هیچ کاری نمیشه کرد». صفِ قبلی برای هر پیامکِ نامطمئن شیتِ ثبت
+        //    را باز می‌کرد و تا صف خالی نمی‌شد، **هر** صفحه همان‌جا گیر
+        //    بود. حالا مثلِ اپ‌های حرفه‌ای:
+        //      • پیامکی که خواندنش قطعی است (`smsAutoOk`) بی‌صدا در حسابِ
+        //        خودش ثبت می‌شود و مانده‌ی حساب با «مانده»ی پیامک برابر
+        //        می‌شود؛ یک نوارِ کوچک با «لغو» می‌گوید چه شد.
+        //      • پیامکِ نامطمئن فقط در فهرستِ «برای بررسی» می‌نشیند و کارتِ
+        //        کوچکش روی **خانه** است — کاربر هر وقت خواست.
+        //      • پیامکی که اصلاً تراکنش نیست (کدِ تأیید، تبلیغ) بی‌صدا کنار
+        //        می‌رود.
         function openWithSms(raw) {
             // شیتِ ثبت تراکنش را باز کن — از همان کلاسِ مشترک، نه یک
             // شناسه: `.js-add-tx` هم روی نوارِ پایین است هم نوارِ کناری.
@@ -1888,8 +2118,6 @@ document.addEventListener('DOMContentLoaded', function () {
             //   `is-open` نوشته بود (کلاسِ بخش‌های دیگرِ همین فایل) و
             //   خرابی‌اش بی‌صدا بود: متن پر و پارس می‌شد ولی جعبه بسته
             //   می‌ماند، پس کاربر پیامِ «مبلغ پر شد» را اصلاً نمی‌دید.
-            //   `btn` هم هم‌زمان عوض می‌شود، وگرنه یک تپ روی آن جعبه‌ی
-            //   بازِ را دوباره باز می‌کرد (یعنی می‌بست).
             box.classList.add('open');
             btn.classList.add('active');
 
@@ -1897,20 +2125,190 @@ document.addEventListener('DOMContentLoaded', function () {
             go.click();
         }
 
-        // ⚠ بدونِ فرگمنت هم صف را ادامه می‌دهد: ثبتِ خودکارِ پیامکِ قبلی
-        //   صفحه را تازه کرده و بقیه منتظرند.
+        var fmtToman = function (n) {
+            return toPersianDigitsJs(Math.abs(Number(n) || 0)
+                .toLocaleString('en-US').replace(/,/g, '٬')) + ' تومان';
+        };
+        function smsSummary(r) {
+            var s = (r.type === 'income' ? 'واریز ' : 'برداشت ') + fmtToman(r.amount);
+            var api = window.JalaliDatePicker;
+            if (r.date && api && api.gregorianToJalali) {
+                var g = r.date.split('-').map(Number);
+                var j = api.gregorianToJalali(g[0], g[1], g[2]);
+                s += ' · ' + toPersianDigitsJs(j[0] + '/' + (j[1] < 10 ? '0' : '') + j[1]
+                                              + '/' + (j[2] < 10 ? '0' : '') + j[2]);
+            }
+            return s;
+        }
+
+        /**
+         * کارتِ «پیامکِ بانکی برای بررسی» — یکی‌یکی، با «ثبت» و «رد».
+         * جایش خانه است (`#smsPendingSlot`)؛ در صفحه‌های دیگر فقط وقتی
+         * همین حالا پیامکی رسیده یک بار بالای صفحه می‌آید (`flash`) و با
+         * رفتن به صفحه‌ی بعد دیگر تکرار نمی‌شود.
+         */
+        function renderSmsPending(flash) {
+            var slot = document.getElementById('smsPendingSlot');
+            var host = slot;
+            if (!host) {
+                if (!flash) { return; }
+                var pc = document.querySelector('.page-content');
+                if (!pc) { return; }
+                host = document.getElementById('smsPendingFlash') || document.createElement('div');
+                host.id = 'smsPendingFlash';
+                if (!host.parentNode) { pc.insertBefore(host, pc.firstChild); }
+            }
+            var list = smsPendingRead();
+            host.innerHTML = '';
+            if (!list.length) { host.hidden = true; return; }
+            host.hidden = false;
+
+            var first = list[0];
+            var r = window.parseBankSms(first.raw);
+            var card = document.createElement('div');
+            card.className = 'sms-review';
+
+            var head = document.createElement('div');
+            head.className = 'sms-review-head';
+            head.textContent = 'پیامکِ بانکی برای بررسی'
+                + (list.length > 1 ? ' (' + toPersianDigitsJs(String(list.length)) + ' مورد)' : '');
+            card.appendChild(head);
+
+            var body = document.createElement('div');
+            body.className = 'sms-review-body';
+            body.textContent = r.ok ? smsSummary(r) : 'پیامک خوانده نشد';
+            card.appendChild(body);
+
+            var acts = document.createElement('div');
+            acts.className = 'sms-review-actions';
+            var ok = document.createElement('button');
+            ok.type = 'button';
+            ok.className = 'btn btn-primary btn-sm';
+            ok.textContent = 'بررسی و ثبت';
+            ok.addEventListener('click', function () { openWithSms(first.raw); });
+            var no = document.createElement('button');
+            no.type = 'button';
+            no.className = 'btn btn-secondary btn-sm';
+            no.textContent = 'رد';
+            no.addEventListener('click', function () {
+                smsPendingDrop(first.fp);
+                renderSmsPending(flash);
+            });
+            acts.appendChild(ok);
+            acts.appendChild(no);
+            if (!slot) {
+                var x = document.createElement('button');
+                x.type = 'button';
+                x.className = 'undo-bar-close';
+                x.setAttribute('aria-label', 'بستن');
+                x.textContent = '×';
+                x.addEventListener('click', function () { host.hidden = true; });
+                acts.appendChild(x);
+            }
+            card.appendChild(acts);
+            host.appendChild(card);
+        }
+
+        /**
+         * همه‌ی پیامک‌های یک نوبت، پشتِ سرِ هم و **به ترتیبِ زمان** (اپ
+         * اندروید صندوق را `date ASC` می‌آورد) — تا مانده‌ی آخر همان
+         * مانده‌ی تازه‌ترین پیامک باشد.
+         */
+        var smsBusy = false;
+        function smsProcessBatch(items) {
+            if (smsBusy) { return; }
+            smsBusy = true;
+            var wallets = window.SMS_WALLETS || [];
+            var autoOn = smsAutoEnabled();
+            var dEl = document.getElementById('transaction_date');
+            var today = dEl ? dEl.defaultValue : '';
+            var saved = [], pending = 0, dup = 0, bal = {};
+
+            var seq = Promise.resolve();
+            items.forEach(function (raw) {
+                seq = seq.then(function () {
+                    var fp = window.smsFingerprint(raw);
+                    if (smsAlreadyAuto(fp)) { dup++; return; }
+                    var r = window.parseBankSms(raw);
+                    if (!r.ok) { return; }          // کدِ تأیید و تبلیغ: بی‌صدا
+                    var m = window.smsMatchWallet(raw, r, wallets);
+                    if (!autoOn || !window.smsAutoOk(r, !!m.id).ok) {
+                        if (smsPendingAdd(raw, fp)) { pending++; }
+                        return;
+                    }
+                    return smsPostTx(r, m.id).then(function (id) {
+                        if (!id) { if (smsPendingAdd(raw, fp)) { pending++; } return; }
+                        smsMarkAuto(fp);
+                        saved.push({ id: id, type: r.type, amount: r.amount });
+                        if (r.balance !== null && r.balanceKnown
+                            && (m.how === 'card' || m.how === 'acct' || m.how === 'bank')) {
+                            bal[m.id] = { b: r.balance, d: r.date || today };
+                        }
+                    }).catch(function () {
+                        if (smsPendingAdd(raw, fp)) { pending++; }
+                    });
+                });
+            });
+
+            seq.then(function () {
+                return Promise.all(Object.keys(bal).map(function (w) {
+                    return smsPostBalance(w, bal[w].b, bal[w].d);
+                }));
+            }).then(function () {
+                smsBusy = false;
+                if (saved.length) {
+                    var ids = saved.map(function (x) { return x.id; }).filter(function (i) { return i > 0; });
+                    var text = saved.length === 1
+                        ? 'از پیامک بانک ثبت شد: ' + (saved[0].type === 'income' ? 'واریز ' : 'برداشت ')
+                          + fmtToman(saved[0].amount)
+                        : toPersianDigitsJs(String(saved.length)) + ' تراکنش از پیامک بانک ثبت شد';
+                    if (pending) {
+                        text += ' · ' + toPersianDigitsJs(String(pending)) + ' مورد برای بررسی روی خانه';
+                    }
+                    queueUndoBar(text, ids.length
+                        ? { ep: 'delete_transaction.php', field: 'transaction_id', value: ids }
+                        : null);
+                    window.location.reload();
+                    return;
+                }
+                if (pending) { renderSmsPending(true); return; }
+                if (dup && items.length === 1) {
+                    queueUndoBar('این پیامک قبلاً ثبت شده بود.', null);
+                    window.location.reload();
+                }
+            });
+        }
+
+        function takeSmsFragment() {
+            var h = window.location.hash || '';
+            if (h.indexOf('#sms=') !== 0 && h.indexOf('#smsq=') !== 0) { return; }
+
+            var got = window.smsHashDecode(h);
+
+            // ⚠ فرگمنت **بلافاصله** پاک می‌شود: با تازه‌سازیِ صفحه دوباره
+            //   اجرا می‌شد، و تا آن موقع هم متنِ پیامک در نوارِ آدرس و
+            //   تاریخچه‌ی مرورگر می‌ماند.
+            try {
+                history.replaceState(null, '', window.location.pathname + window.location.search);
+            } catch (e) { window.location.hash = ''; }
+
+            if (got.length) { smsProcessBatch(got); }
+        }
+
+        // ⛔ `setTimeout(0)` اختیاری نیست: این بلوک بالاتر از
+        //    `go.addEventListener('click', …)` است و «بررسی و ثبت» از
+        //    `go.click()` می‌رود — با یک تیک تأخیر همه‌ی شنونده‌ها ثبت
+        //    شده‌اند. صفِ قدیمیِ `sessionStorage` (نسخه‌ی شیت‌به‌شیت) هم
+        //    یک بار پاک می‌شود تا دیگر چیزی را باز نکند.
         setTimeout(function () {
+            try { sessionStorage.removeItem('daftar_sms_queue'); } catch (e) { /* بی‌اهمیت */ }
             if (/^#smsq?=/.test(window.location.hash || '')) { takeSmsFragment(); }
-            else { smsQueueNext(); }
+            renderSmsPending(false);
         }, 0);
 
-        // ⛔ `hashchange` هم لازم است، و نبودش یک باگِ واقعی بود:
-        //    اگر اپ **همین حالا** روی همان صفحه باز باشد، تپ روی اعلان
-        //    فقط فرگمنت را عوض می‌کند — مرورگر ناوبریِ هم‌سند انجام
-        //    می‌دهد و صفحه اصلاً دوباره بارگذاری نمی‌شود، پس
-        //    `DOMContentLoaded` هرگز دوباره اجرا نمی‌شود و پیامک
-        //    **بی‌صدا نادیده گرفته می‌شود**. کاربر اعلان را می‌زند، اپ
-        //    باز می‌شود، و هیچ اتفاقی نمی‌افتد. در مرورگر بازتولید شد.
+        // ⛔ `hashchange` هم لازم است: اگر اپ **همین حالا** روی همان صفحه
+        //    باز باشد، تپ روی اعلان فقط فرگمنت را عوض می‌کند و صفحه دوباره
+        //    بارگذاری نمی‌شود — بدونِ این، پیامک **بی‌صدا نادیده** می‌ماند.
         window.addEventListener('hashchange', takeSmsFragment);
 
         go.addEventListener('click', function () {
@@ -1936,34 +2334,22 @@ document.addEventListener('DOMContentLoaded', function () {
             if (r.date && setDate(r.date)) { done.push('تاریخ'); }
             if (r.note && titleEl && !titleEl.value) { titleEl.value = r.note; done.push('عنوان'); }
 
-            // ⚠ حساب فقط وقتی عوض می‌شود که چهار رقمِ آخرِ کارت واقعاً با
-            //   یکی از حساب‌ها بخواند — وگرنه پول در حسابِ اشتباه می‌نشست.
-            var walletMatched = false;
-            if (r.card4 && walletEl) {
-                for (var i = 0; i < walletEl.options.length; i++) {
-                    if (walletEl.options[i].getAttribute('data-card4') === r.card4) {
-                        walletEl.selectedIndex = i;
-                        walletMatched = true;
-                        done.push('حساب');
-                        break;
-                    }
-                }
+            // ⚠ حساب فقط از `smsMatchWallet()` (کارت → حساب → نامِ بانک →
+            //   تک‌حساب) — وگرنه پول در حسابِ اشتباه می‌نشست.
+            var match = window.smsMatchWallet(ta.value, r, window.SMS_WALLETS || []);
+            if (match.id && walletEl) {
+                walletEl.value = String(match.id);
+                if (match.how !== 'single') { done.push('حساب'); }
             }
 
             // ---- ثبتِ خودکار، اگر کلیدش روشن و خواندن قطعی باشد ----
             //
             // ⛔ فقط از مسیرِ خودِ فرم (`requestSubmit`)، نه یک fetch تازه:
-            //    منطقِ ثبت — اعتبارسنجی، CSRF، پیام، تازه‌سازی — همان‌جاست
-            //    و نسخه‌ی دومش دیر یا زود از این عقب می‌افتد. همان دلیلی
-            //    که `includes/transactions.php` ساخته شد.
-            // ⚠ «مقصد قطعی است» یعنی یا کارت خواند، یا اصلاً بیش از یک
-            //   حساب وجود ندارد. با یک حساب، شیت `<select>` نمی‌سازد
-            //   (یک `input hidden` می‌گذارد) پس `walletEl` تهی است —
-            //   و بدونِ این شرط، این قابلیت برای کاربرِ تک‌حسابی هرگز
-            //   روشن نمی‌شد.
-            var walletCertain = walletMatched
-                || !walletEl
-                || walletEl.options.length <= 1;
+            //    منطقِ ثبت — اعتبارسنجی، CSRF، پیام، تازه‌سازی — همان‌جاست.
+            // ⚠ «مقصد قطعی است» یعنی `smsMatchWallet()` حسابی داد — از
+            //   جمله «کاربر اصلاً یک حساب دارد»، که آنجا شیت `<select>`
+            //   نمی‌سازد و `walletEl` تهی است.
+            var walletCertain = !!match.id;
 
             if (smsAutoEnabled() && quickAddForm) {
                 var verdict = window.smsAutoOk(r, walletCertain);
@@ -2005,6 +2391,16 @@ document.addEventListener('DOMContentLoaded', function () {
                     quickAddForm.dataset.autoSms = JSON.stringify({
                         type: r.type, amount: r.amount
                     });
+                    // ⛔ مانده‌ی پیامک فقط وقتی حساب با شماره یا نامِ بانک
+                    //    پیدا شده — همان شرطِ `smsProcessBatch()`.
+                    if (r.balance !== null && r.balanceKnown
+                        && (match.how === 'card' || match.how === 'acct' || match.how === 'bank')) {
+                        var dEl0 = document.getElementById('transaction_date');
+                        quickAddForm.dataset.smsBal = JSON.stringify({
+                            w: match.id, b: r.balance,
+                            d: r.date || (dEl0 ? dEl0.defaultValue : '')
+                        });
+                    }
                     msg.classList.add('ok');
                     msg.textContent = 'خوانده شد — در حال ثبتِ خودکار…';
                     if (quickAddForm.requestSubmit) { quickAddForm.requestSubmit(); }
@@ -2024,10 +2420,7 @@ document.addEventListener('DOMContentLoaded', function () {
             msg.classList.add(assumed ? 'warn' : 'ok');
             msg.textContent = (assumed
                 ? done.join('، ') + ' پر شد — واحد در پیامک نبود و ریال فرض شد؛ مبلغ را ببینید.'
-                : done.join('، ') + ' پر شد.')
-                + (smsQueueLeft > 0
-                    ? ' (' + toPersianDigitsJs(String(smsQueueLeft)) + ' پیامکِ دیگر بعد از ثبتِ این یکی می‌آید.)'
-                    : '');
+                : done.join('، ') + ' پر شد.');
 
             if (titleEl && !titleEl.value) { titleEl.focus(); }
         });

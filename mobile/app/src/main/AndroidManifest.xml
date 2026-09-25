@@ -66,6 +66,12 @@
            بانک از آن رد می‌شود هم اعلانِ خودِ سایت (Web Push). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
+    <!-- ⛔ به‌روزرسانی با یک تپ (`UpdateActivity`): بدونِ این، اندروید ۸ به
+         بالا پنجره‌ی نصبِ فایلی را که خودِ اپ دریافت کرده **بی‌صدا** باز
+         نمی‌کند. این مجوز خودش چیزی نصب نمی‌کند؛ فقط اجازه می‌دهد اپ
+         پنجره‌ی نصبِ سیستم را نشان بدهد و کاربر «به‌روزرسانی» را بزند. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+
     <!-- اندروید ۱۱ به بالا: بدون این، اپ نمی‌تواند ببیند کدام مرورگر
          نصب است و TWA بی‌سروصدا به حالت مرورگر معمولی می‌افتد. -->
     <queries>
@@ -177,6 +183,22 @@
                 <action android:name="ir.stland.hesabland.SMS_SETUP"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
+            </intent-filter>
+        </activity>
+
+        <!-- ⛔ به‌روزرسانی با یک تپ — از نوارِ «نسخه‌ی تازه آماده است» با
+             لینکِ `intent://update` باز می‌شود. آدرسِ فایل را خودش از
+             دامنه‌ی خودِ اپ می‌سازد، نه از لینک (بالای خودِ فایل). -->
+        <activity
+            android:name=".UpdateActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.HesabLand">
+            <intent-filter>
+                <action android:name="ir.stland.hesabland.UPDATE"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="hesabland" android:host="update"/>
             </intent-filter>
         </activity>
 

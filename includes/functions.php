@@ -871,37 +871,79 @@ function recentTransactionTitles(int $userId, int $limit = 30): array
 }
 
 /**
- * چهار رقمِ آخرِ کارتِ هر حساب — برای تطبیقِ پیامکِ بانک با حساب.
+ * نشانه‌های هر حساب برای پیدا کردنِ حسابِ یک پیامکِ بانک:
+ * چهار رقمِ آخرِ کارت، چهار رقمِ آخرِ شماره‌ی حساب، و کلیدِ نامِ بانک.
  *
- * ⚠ فقط چهار رقمِ آخر بیرون می‌رود، نه شماره‌ی کامل. شماره‌ی کارت
- *   حساس است و در فهرست حساب‌ها هم نشان داده نمی‌شود؛ اینجا هم نباید
- *   داخلِ سورسِ صفحه بنشیند.
+ * ⚠ فقط چهار رقمِ آخر بیرون می‌رود، نه شماره‌ی کامل. شماره‌ی کارت و
+ *   حساب حساس‌اند و در فهرست حساب‌ها هم نشان داده نمی‌شوند؛ اینجا هم
+ *   نباید داخلِ سورسِ صفحه بنشینند.
+ * ⚠ تطبیق خودش در `window.smsMatchWallet()` است (تنها جای آن تصمیم)؛
+ *   اینجا فقط داده ساخته می‌شود.
  *
- * @return array<int,string> شناسه‌ی حساب → چهار رقم
+ * @return list<array{id:int, card4:?string, acct4:?string, banks:list<string>}>
  */
-function walletCardTails(int $userId): array
+function walletSmsKeys(int $userId): array
 {
-    if (!tableHasColumn('wallets', 'card_number')) { return []; }
-
+    $cols = ['id'];
+    foreach (['card_number', 'account_number', 'bank_code', 'bank_name'] as $c) {
+        if (tableHasColumn('wallets', $c)) { $cols[] = $c; }
+    }
     try {
         $st = Database::getConnection()->prepare(
-            'SELECT id, card_number FROM wallets
-             WHERE user_id = :u AND is_active = 1 AND card_number <> ""'
+            'SELECT ' . implode(', ', $cols) . ' FROM wallets
+             WHERE user_id = :u AND is_active = 1
+             ORDER BY sort_order, name'
         );
         $st->execute(['u' => $userId]);
     } catch (PDOException $e) {
         return [];
     }
 
-    $out = [];
-    foreach ($st->fetchAll() as $r) {
+    $tail = static function ($enc): ?string {
         // ⚠ رمزگشایی **پیش از** برداشتنِ ارقام. بدون آن، `preg_replace`
         //   روی متنِ base64 اجرا می‌شد و چهار رقمِ تصادفی بیرون می‌داد —
-        //   یعنی «از پیامک بانک» حساب را اشتباه انتخاب می‌کرد، بی‌هیچ
-        //   خطایی.
-        $card = Crypto::decrypt((string)$r['card_number']);
-        $digits = preg_replace('/\D/', '', (string)$card);
-        if (strlen($digits) >= 4) { $out[(int)$r['id']] = substr($digits, -4); }
+        //   یعنی پیامک حساب را اشتباه انتخاب می‌کرد، بی‌هیچ خطایی.
+        if ($enc === null || $enc === '') { return null; }
+        $digits = preg_replace('/\D/', '', (string)Crypto::decrypt((string)$enc));
+        return strlen((string)$digits) >= 4 ? substr($digits, -4) : null;
+    };
+
+    $presets = bankPresets();
+    $out = [];
+    foreach ($st->fetchAll() as $r) {
+        $banks = [];
+        $code  = (string)($r['bank_code'] ?? '');
+        $name  = '';
+        if ($code !== '' && $code !== 'other' && isset($presets[$code])) {
+            $name = $presets[$code][0];
+        } elseif (!empty($r['bank_name'])) {
+            $name = (string)$r['bank_name'];
+        }
+        if ($code === 'blu') {
+            // بلو خودش را «بلو» می‌نامد، نه «بانک بلو».
+            $banks = ['!بلوبانک', '!بلو'];
+        } elseif ($name !== '') {
+            // ⛔ نامِ کامل (بی‌پیشوند) با کلمه‌ی تنها هم پذیرفته است
+            //    (`!`)، ولی فقط اگر بلندتر از سه حرف باشد: «دی» در «ماه
+            //    دی» و «ملت» در متنِ تبلیغ هم می‌آید. کلمه‌ی اولِ نامِ
+            //    چندکلمه‌ای («ملی» از «ملی ایران»، «رفاه» از «رفاه
+            //    کارگران») همیشه پیشوندِ «بانک» را می‌خواهد — پیامک
+            //    معمولاً نامِ کوتاه را می‌نویسد.
+            $key = trim((string)preg_replace('/^(مؤسسه اعتباری|موسسه اعتباری|بانک قرض‌الحسنه|بانک)\s+/u', '', $name));
+            if ($key === 'پست بانک' || $key === 'پست') {
+                $banks[] = '!پست بانک';
+            } elseif ($key !== '') {
+                $banks[] = (mb_strlen($key) > 3 ? '!' : '') . $key;
+                $first = explode(' ', $key)[0];
+                if ($first !== $key && $first !== 'توسعه') { $banks[] = $first; }
+            }
+        }
+        $out[] = [
+            'id'    => (int)$r['id'],
+            'card4' => $tail($r['card_number'] ?? null),
+            'acct4' => $tail($r['account_number'] ?? null),
+            'banks' => $banks,
+        ];
     }
     return $out;
 }

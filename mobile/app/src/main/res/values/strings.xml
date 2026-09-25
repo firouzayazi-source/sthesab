@@ -76,4 +76,13 @@
     <string name="sms_test_from">آزمایش</string>
     <string name="sms_test_body">واریز به حساب شما مبلغ 1,250,000 ریال انجام شد.</string>
     <string name="sms_test_sent">اعلان آزمایشی فرستاده شد. اگر آن را نمی‌بینید، اعلان‌های برنامه بسته‌اند.</string>
+
+    <!-- به‌روزرسانیِ درون‌اپ (UpdateActivity) -->
+    <string name="update_title">به‌روزرسانیِ حساب لند</string>
+    <string name="update_starting">در حال دریافتِ نسخه‌ی تازه…</string>
+    <string name="update_progress">در حال دریافت… %1$d٪</string>
+    <string name="update_need_source">برای نصب، یک بار «اجازه از این منبع» را روشن کنید و برگردید.</string>
+    <string name="update_failed">دریافت انجام نشد. می‌توانید فایل را با مرورگر بگیرید.</string>
+    <string name="update_in_browser">دریافت با مرورگر</string>
+    <string name="update_cancel">انصراف</string>
 </resources>

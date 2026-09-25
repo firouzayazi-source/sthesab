@@ -227,6 +227,26 @@ if ($nrc !== 0) {
         ['«بعداً» برای نسخه‌ی قبلی، نسخه‌ی تازه‌تر → بله', ['latest' => 11, 'installed' => 9, 'inApp' => true,
                                                      'snoozeFor' => 10, 'snoozeUntil' => $now + 1000, 'now' => $now], true],
         ['ورودیِ تهی → نه (بی‌خطا)',                 null, false],
+        // ⛔ به‌روزرسانی با یک تپ (`appUpdateHref`): از نسخه‌ی ۱۱ اپ خودش
+        //    فایل را می‌گیرد و پنجره‌ی نصب را باز می‌کند؛ قدیمی‌تر همان
+        //    دانلودِ مرورگر، و هر ورودیِ مشکوک هم همان.
+        ['⛔ اپِ ۱۱: لینکِ intent با بازگشتِ مرورگر',
+         ['href' => true, 'url' => 'https://h.test/download/hesabland.apk', 'latest' => 12, 'installed' => 11,
+          'pkg' => 'ir.stland.hesabland'],
+         ['native' => true, 'href' => 'intent://update?v=12#Intent;scheme=hesabland;action=ir.stland.hesabland.UPDATE;'
+             . 'package=ir.stland.hesabland;S.browser_fallback_url=https%3A%2F%2Fh.test%2Fdownload%2Fhesabland.apk;end']],
+        ['اپِ ۱۰ (بی‌صفحه‌ی بومی) → دانلودِ مرورگر',
+         ['href' => true, 'url' => 'https://h.test/d.apk', 'latest' => 12, 'installed' => 10, 'pkg' => 'ir.stland.hesabland'],
+         ['native' => false, 'href' => 'https://h.test/d.apk']],
+        ['نسخه‌ی نامعلوم → دانلودِ مرورگر',
+         ['href' => true, 'url' => 'https://h.test/d.apk', 'latest' => 12, 'installed' => '', 'pkg' => 'ir.stland.hesabland'],
+         ['native' => false, 'href' => 'https://h.test/d.apk']],
+        ['⛔ نامِ بسته‌ی دست‌کاری‌شده → دانلودِ مرورگر، نه intentِ ساختگی',
+         ['href' => true, 'url' => 'https://h.test/d.apk', 'latest' => 12, 'installed' => 11, 'pkg' => 'x;S.evil=1'],
+         ['native' => false, 'href' => 'https://h.test/d.apk']],
+        ['آدرسِ بی‌https → دانلودِ مرورگر',
+         ['href' => true, 'url' => 'http://h.test/d.apk', 'latest' => 12, 'installed' => 11, 'pkg' => 'ir.stland.hesabland'],
+         ['native' => false, 'href' => 'http://h.test/d.apk']],
     ];
     $desc = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
     $proc = proc_open('node ' . escapeshellarg(__DIR__ . '/update_js_dump.js'), $desc, $pipes);

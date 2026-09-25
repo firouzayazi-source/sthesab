@@ -68,7 +68,7 @@ for (const file of ['jalali-datepicker.js', 'app.js']) {
     }
 }
 
-for (const fn of ['parseBankSms', 'smsAutoOk', 'smsFingerprint', 'smsAutoEnabled']) {
+for (const fn of ['parseBankSms', 'smsAutoOk', 'smsFingerprint', 'smsAutoEnabled', 'smsMatchWallet']) {
     if (typeof sandbox.window[fn] !== 'function') {
         console.error('ERR_EXPORT: window.' + fn + ' صادر نشد');
         process.exit(2);
@@ -117,6 +117,29 @@ process.stdin.on('end', () => {
                         ['default', null, '1',  true],
                         ['denied',  null, null, true],
                     ].map(a => sandbox.window.pushAutoAction(...a)),
+                    // ⛔ پیامک مالِ کدام حساب است (`smsMatchWallet`).
+                    match: (() => {
+                        const W = [
+                            { id: 1, card4: '1234', acct4: null, banks: ['!تجارت'] },
+                            { id: 2, card4: null, acct4: '7328', banks: ['ملت'] },
+                            { id: 3, card4: null, acct4: null, banks: ['!ملی ایران', 'ملی'] },
+                        ];
+                        const M = (raw, w) => {
+                            const r = sandbox.window.parseBankSms(raw);
+                            const m = sandbox.window.smsMatchWallet(raw, r, w);
+                            return { id: m.id, how: m.how };
+                        };
+                        return [
+                            M('*بانک تجارت*\nحساب: 0377803217328\nبرداشت: 209,000 ریال', W),
+                            M('بانک تجارت\nبرداشت 50,000 ریال', W),
+                            M('بانک ملی\nبرداشت 50,000 ریال', W),
+                            M('کد ملی 0012\nبرداشت 50,000 ریال', W),
+                            M('کارت ****1234 برداشت 50,000 ریال', W),
+                            M('برداشت 50,000 ریال', [{ id: 9, card4: null, acct4: null, banks: [] }]),
+                            M('بانک تجارت برداشت 50,000 ریال', [W[0], { id: 4, banks: ['!تجارت'] }]),
+                            M('بلو\n250,000 تومان پرید', [W[0], { id: 5, banks: ['!بلوبانک', '!بلو'] }]),
+                        ];
+                    })(),
                     // ⛔ فرگمنتِ اپ اندروید → فهرستِ پیامک‌ها (`smsHashDecode`).
                     hashDecode: [
                         '#sms=' + encodeURIComponent('برداشت ۵۰۰٬۰۰۰ ریال'),

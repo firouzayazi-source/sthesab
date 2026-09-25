@@ -71,6 +71,11 @@ process.stdin.on('end', () => {
         process.exit(4);
     }
     const out = items.map((el) => {
+        // ⚠ ورودیِ نشانه‌دارِ `href` → `appUpdateHref()` (به‌روزرسانی با یک تپ).
+        if (el && el.href === true) {
+            try { return sandbox.window.appUpdateHref(el); }
+            catch (e) { return 'ERR:' + e.message; }
+        }
         try { return sandbox.window.appUpdateDue(el) === true; }
         catch (e) { return 'ERR:' + e.message; }
     });

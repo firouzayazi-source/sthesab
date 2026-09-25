@@ -17,9 +17,10 @@ $__useCounts = categoryUseCounts((int)Auth::userId());
 
 // حساب‌های فعال کاربر برای انتخاب در فرم (کش‌شده در همین درخواست)
 $__wallets = activeWallets((int)Auth::userId());
-// چهار رقمِ آخرِ کارت — تنها چیزی که «از پیامک بانک» برای پیدا کردنِ
-// حساب لازم دارد. شماره‌ی کامل عمداً بیرون نمی‌رود.
-$__cardTails = walletCardTails((int)Auth::userId());
+// نشانه‌های هر حساب (چهار رقمِ آخرِ کارت و حساب، و نامِ بانک) — تنها
+// چیزی که پیامکِ بانک برای پیدا کردنِ حساب لازم دارد. شماره‌ی کامل
+// عمداً بیرون نمی‌رود.
+$__smsWallets = walletSmsKeys((int)Auth::userId());
 ?>
 <div class="sheet-overlay" id="addTxSheet">
     <div class="sheet">
@@ -152,8 +153,7 @@ $__cardTails = walletCardTails((int)Auth::userId());
                 <label for="wallet_select">از/به حساب</label>
                 <select id="wallet_select" name="wallet_id">
                     <?php foreach ($__wallets as $__w): ?>
-                        <option value="<?= (int)$__w['id'] ?>"
-                                <?php if (isset($__cardTails[(int)$__w['id']])): ?>data-card4="<?= h($__cardTails[(int)$__w['id']]) ?>"<?php endif; ?>><?= h($__w['name']) ?></option>
+                        <option value="<?= (int)$__w['id'] ?>"><?= h($__w['name']) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -199,6 +199,10 @@ $__catJson = static function (array $cats) use ($__useCounts): string {
 };
 ?>
 <script>
+    // ⛔ حسابِ یک پیامکِ بانک فقط از `window.smsMatchWallet()` پیدا
+    //    می‌شود و داده‌اش همین است. `JSON_HEX_TAG` اجباری است (قاعده ۵۴):
+    //    نامِ بانکِ دلخواه را کاربر می‌نویسد.
+    window.SMS_WALLETS = <?= json_encode($__smsWallets, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>;
     window.CATEGORY_DATA = {
         income: <?= $__catJson($incomeCategories) ?>,
         expense: <?= $__catJson($expenseCategories) ?>

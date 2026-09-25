@@ -76,7 +76,7 @@ if (!isset($pageWide)) {
        کرومِ معمولی. فقط برای اندروید رندر می‌شود — بقیه یک stat هم نمی‌دهند. */
     $__apk = isAndroidRequest() ? androidApkLatest() : null;
     if ($__apk !== null): ?>
-    <meta name="apk-latest" content="<?= (int)$__apk['code'] ?>" data-name="<?= h($__apk['name']) ?>" data-url="<?= h($__apk['url']) ?>" data-installed="<?= Auth::appVersion() ?: '' ?>" data-app="<?= h(APP_NAME) ?>">
+    <meta name="apk-latest" content="<?= (int)$__apk['code'] ?>" data-name="<?= h($__apk['name']) ?>" data-url="<?= h($__apk['url']) ?>" data-installed="<?= Auth::appVersion() ?: '' ?>" data-app="<?= h(APP_NAME) ?>" data-package="<?= h(defined('ANDROID_PACKAGE') ? ANDROID_PACKAGE : '') ?>">
     <?php endif; ?>
 </head>
 <body>
