@@ -6384,4 +6384,56 @@ if (!preg_match('~<\?php if \(\$creditReady\): \?>\s*<div class="form-group">\s*
 }
 T::bulk(14, $cBad, 'نسیه پول را تکان نمی‌دهد و طلب/بدهی از یک جا هم‌گام می‌شود');
 
+// ---------------------------------------------------------------
+// قاعده ۶۷ — حلقه‌ی پرداختِ جزئیِ طلب/بدهی، و برچسبِ امانی/نسیه
+//
+// ⛔ چرا شکل هم لازم است: `test_debt_ring` بدونِ دیتابیس `T::blocked`
+//    است. این قاعده می‌بندد: نوارِ خطی به کارت برنگردد، حلقه و رنگش
+//    فقط از `debtPaidRing()` بیاید، عددِ درشتِ شاخه‌ی جزئی باقیمانده
+//    باشد، رنگ پیوسته از فام باشد (نه چند پله) و حلقه در RTL برعکس نشود.
+T::group('قاعده ۶۷ — حلقه‌ی پرداختِ جزئی');
+$rBad = [];
+$db67 = (string)file_get_contents(__DIR__ . '/../debts.php');
+$fn67 = '';
+if (preg_match('~function renderDebtCard\(.*?\n\}\n~s', $db67, $m67)) { $fn67 = $m67[0]; }
+if ($fn67 === '') { $rBad[] = 'debts.php — renderDebtCard() پیدا نشد (قاعده کور شد)'; }
+if (str_contains($fn67, 'budget-bar')) {
+    $rBad[] = 'debts.php — نوارِ خطی به کارتِ طلب/بدهی برگشت';
+}
+if (!preg_match('~\$ring\s*=\s*debtPaidRing\(\$paid,~', $fn67)) {
+    $rBad[] = 'debts.php — درصد/رنگِ حلقه از debtPaidRing() نمی‌آید (نسخه‌ی دوم)';
+}
+if (!preg_match('~--ring-h:<\?= \(int\)\$ring\[\'hue\'\]~', $fn67)
+    || !preg_match('~stroke-dasharray="<\?= \(int\)\$ring\[\'pct\'\] \?> 100"~', $fn67)) {
+    $rBad[] = 'debts.php — حلقه رنگ یا پر شدنش را از $ring نمی‌گیرد';
+}
+// شاخه‌ی جزئی: عددِ درشت = باقیمانده، مبلغِ اولیه در debt-amount-was
+if (!preg_match('~<\?php if \(\$partial\): \?>.*?class="debt-amount"><\?= formatMoney\(debtRemaining\(\$d\)\)~s', $fn67)
+    || !preg_match('~class="debt-amount-was".*?formatMoney\(\$d\[\'amount\'\]\)~s', $fn67)) {
+    $rBad[] = 'debts.php — در پرداختِ جزئی عددِ درشت باقیمانده نیست یا مبلغِ اولیه کوچک زیرش نیست';
+}
+if (!preg_match('~\$partial\s*=\s*\$paid > 0 && !\(int\)\$d\[\'is_settled\'\]~', $fn67)) {
+    $rBad[] = 'debts.php — حلقه بدونِ شرطِ «پرداخت‌دار و تسویه‌نشده» رندر می‌شود';
+}
+$fx67 = (string)file_get_contents(__DIR__ . '/../includes/functions.php');
+if (!preg_match('~function debtPaidRing\(.*?\n\}~s', $fx67, $rf67)
+    || !preg_match('~\'hue\'\s*=>\s*\(int\)round\(\$pct \* 1\.2\)~', $rf67[0] ?? '')
+    || !str_contains($rf67[0] ?? '', 'floor(')
+    || !preg_match('~max\(1,\s*min\(99,~', $rf67[0] ?? '')) {
+    $rBad[] = 'functions.php — debtPaidRing(): فامِ پیوسته (pct×۱٫۲)، floor، یا بازه‌ی ۱..۹۹ نیست';
+}
+$cs67 = preg_replace('~/\*.*?\*/~s', '', (string)file_get_contents(__DIR__ . '/../assets/css/style.css'));
+if (!preg_match('~\.debt-ring\s*\{[^}]*direction:\s*ltr[^}]*--ring-c:\s*hsl\(var\(--ring-h~s', $cs67)) {
+    $rBad[] = 'style.css — .debt-ring جهتِ ltr یا رنگِ hsl از --ring-h ندارد';
+}
+if (!preg_match('~html\[data-theme="dark"\] \.debt-ring\s*\{[^}]*--ring-c:~', $cs67)) {
+    $rBad[] = 'style.css — حلقه در حالت شب روشناییِ جدا ندارد (روی زمینه‌ی تیره گم می‌شود)';
+}
+$tp67 = (string)file_get_contents(__DIR__ . '/../trades.php');
+if (!str_contains($tp67, '<option value="credit">خرید امانی / نسیه</option>')
+    || !str_contains($tp67, '<option value="credit">فروش امانی / نسیه</option>')) {
+    $rBad[] = 'trades.php — برچسبِ گزینه‌ی نسیه «خرید/فروش امانی / نسیه» نیست';
+}
+T::bulk(10, $rBad, 'حلقه جای نوار، عددِ درشت = باقیمانده، رنگ از درصد');
+
 exit(T::report());

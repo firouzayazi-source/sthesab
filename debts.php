@@ -199,23 +199,48 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
                 <div class="debt-dates">ثبت: <?= toJalali($d['entry_date']) ?> &nbsp;·&nbsp; <?= !empty($d['due_date']) ? 'سررسید: ' . toJalali($d['due_date']) : 'بدون سررسید' ?></div>
                 <?php if (!empty($d['note'])): ?><div class="debt-note"><?= h($d['note']) ?></div><?php endif; ?>
             </div>
-            <div class="debt-amount"><?= formatMoney($d['amount']) ?><small> تومان</small></div>
+            <?php
+            $paid    = (int)($d['paid_amount'] ?? 0);
+            $partial = $paid > 0 && !(int)$d['is_settled'];
+            ?>
+            <?php if ($partial): ?>
+                <?php /* ⛔ عددِ درشت «باقیمانده» است، نه مبلغِ اولیه: بعد از
+                         پرداختِ جزئی، تنها عددی که کاربر رویش تصمیم می‌گیرد
+                         همان است. مبلغِ اولیه کوچک زیرش می‌ماند. */ ?>
+                <div class="debt-amount-stack">
+                    <div class="debt-amount"><?= formatMoney(debtRemaining($d)) ?><small> تومان</small></div>
+                    <div class="debt-amount-was">از <span class="ltr-num"><?= formatMoney($d['amount']) ?></span></div>
+                </div>
+            <?php else: ?>
+                <div class="debt-amount"><?= formatMoney($d['amount']) ?><small> تومان</small></div>
+            <?php endif; ?>
         </div>
 
         <?php
-        $paid = (int)($d['paid_amount'] ?? 0);
         // برنامه‌ی اقساط مجازی است؛ هیچ ردیفی ذخیره نشده.
         $instalments = debtInstallments($d);
         $nextInst    = $instalments ? nextDebtInstallment($d) : null;
         ?>
-        <?php if ($paid > 0 && !(int)$d['is_settled']): ?>
-            <?php $pct = min(100, round(($paid / max(1, (int)$d['amount'])) * 100)); ?>
-            <div class="budget-bar-track" style="margin:9px 0 5px;">
-                <div class="budget-bar budget-bar-good" style="width:<?= $pct ?>%;"></div>
-            </div>
-            <div class="debt-partial-note">
-                <span class="asset-tag">تسویه‌ی جزئی</span>
-                <?= formatMoney($paid) ?> پرداخت شده — <?= formatMoney(debtRemaining($d)) ?> باقیمانده (<?= toPersianDigits($pct) ?>٪)
+        <?php if ($partial): ?>
+            <?php
+            // ⛔ حلقه جای نوارِ خطی و جمله‌ی زیرش را گرفت، در همان ارتفاع
+            //    (۳۹ پیکسل در برابرِ ~۴۰ِ نوار + جمله) — پس کارت بلندتر
+            //    نمی‌شود. کنارِ عددِ درشتِ بالا نیست چون روی موبایل ستونِ
+            //    نام را می‌فشرد و تاریخ‌ها چهار خط می‌شدند (اندازه‌گیری شد).
+            $ring = debtPaidRing($paid, (int)$d['amount']);
+            ?>
+            <div class="debt-progress">
+                <svg class="debt-ring" viewBox="0 0 36 36" style="--ring-h:<?= (int)$ring['hue'] ?>;"
+                     role="img" aria-label="<?= h(toPersianDigits($ring['pct'])) ?>٪ پرداخت شده">
+                    <circle class="debt-ring-track" cx="18" cy="18" r="15.9155"></circle>
+                    <circle class="debt-ring-fill" cx="18" cy="18" r="15.9155"
+                            stroke-dasharray="<?= (int)$ring['pct'] ?> 100"></circle>
+                    <text class="debt-ring-pct" x="18" y="18"><?= toPersianDigits($ring['pct']) ?>٪</text>
+                </svg>
+                <div class="debt-partial-note">
+                    <span class="asset-tag">تسویه‌ی جزئی</span>
+                    <span class="debt-partial-paid"><span class="ltr-num"><?= formatMoney($paid) ?></span> پرداخت شده</span>
+                </div>
             </div>
         <?php endif; ?>
 

@@ -2623,7 +2623,41 @@ html[data-theme="dark"] .seg-item.active { background: #2b3037; color: var(--ink
     background: var(--line-soft);
     border-radius: var(--r-sm);
 }
-.debt-partial-note { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+/* پرداختِ جزئی — حلقه‌ی پیشرفت به‌جای نوارِ خطی.
+   ⛔ ردیفِ `.debt-progress` هم‌قد یا کوتاه‌ترِ نوار + جمله‌ی قبلی است (۳۹ در برابرِ
+      ~۴۰)، پس کارت بلندتر نمی‌شود. حلقه عمداً کنارِ عددِ درشتِ بالا
+      نیست: روی موبایل ستونِ نام را می‌فشرد (اندازه‌گیری شد).
+   ⛔ رنگ از `--ring-h` می‌آید که `debtPaidRing()` می‌دهد (۰ قرمز → ۱۲۰
+      سبز)؛ روشنایی در شب جدا است، وگرنه روی زمینه‌ی تیره گم می‌شد.
+      حلقه از بالا و ساعت‌گرد پر می‌شود و `direction: ltr` دارد تا در
+      صفحه‌ی راست‌به‌چپ برعکس نشود (قاعده‌ی میله‌های پیشرفت). */
+.debt-amount-stack { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.35; flex-shrink: 0; }
+.debt-amount-was { font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+/* هم‌خط با ستونِ نام (۲۵ دکمه‌ی تیک + ۱۱ فاصله) */
+.debt-progress { display: flex; align-items: center; gap: 10px; margin-top: 5px; padding-inline-start: 36px; }
+.debt-partial-note {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+    font-size: 11px; color: var(--muted); line-height: 1.4; min-width: 0;
+}
+.debt-partial-paid { white-space: nowrap; }
+.debt-ring {
+    width: 34px; height: 34px; flex-shrink: 0; display: block;
+    direction: ltr; overflow: visible;
+    --ring-c: hsl(var(--ring-h, 0) 72% 44%);
+}
+.debt-ring circle { fill: none; stroke-width: 3.6; }
+.debt-ring-track { stroke: var(--line); }
+.debt-ring-fill {
+    stroke: var(--ring-c); stroke-linecap: round;
+    transform: rotate(-90deg); transform-origin: 18px 18px;
+    transition: stroke-dasharray .5s ease;
+}
+.debt-ring-pct {
+    fill: var(--ring-c); font-size: 9.5px; font-weight: 700;
+    text-anchor: middle; dominant-baseline: central;
+    font-variant-numeric: tabular-nums;
+}
+html[data-theme="dark"] .debt-ring { --ring-c: hsl(var(--ring-h, 0) 65% 60%); }
 
 /* ============================================================
    ۲۸. تراکنش دوره‌ای

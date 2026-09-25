@@ -352,8 +352,8 @@ if ($planRO) { echo planReadOnlyNotice('trades'); }
             <div class="form-group">
                 <label for="trade_pay_mode">پرداخت</label>
                 <select id="trade_pay_mode" name="pay_mode" class="js-pay-mode" data-wallet-box="tradeWalletBox" data-credit-hint="tradeCreditHint" data-person="trade_counterparty">
-                    <option value="paid" selected>پرداخت کردم</option>
-                    <option value="credit">امانی / نسیه — پولش را هنوز نداده‌ام</option>
+                    <option value="paid" selected>خرید نقدی</option>
+                    <option value="credit">خرید امانی / نسیه</option>
                 </select>
                 <p class="hint" id="tradeCreditHint" hidden>مبلغ خرید از هیچ حسابی کم نمی‌شود؛ به‌جایش بدهی به فروشنده در «طلب و بدهی» ثبت می‌شود. نام فروشنده را پایین‌تر بنویسید.</p>
             </div>
@@ -481,8 +481,8 @@ if ($planRO) { echo planReadOnlyNotice('trades'); }
             <div class="form-group">
                 <label for="sell_pay_mode">دریافت</label>
                 <select id="sell_pay_mode" name="pay_mode" class="js-pay-mode" data-wallet-box="sellWalletBox" data-credit-hint="sellCreditHint" data-person="sell_counterparty">
-                    <option value="paid" selected>پولش را گرفتم</option>
-                    <option value="credit">نسیه — پولش را بعداً می‌دهد</option>
+                    <option value="paid" selected>فروش نقدی</option>
+                    <option value="credit">فروش امانی / نسیه</option>
                 </select>
                 <p class="hint" id="sellCreditHint" hidden>پولی به حساب نمی‌نشیند؛ به‌جایش طلب از خریدار در «طلب و بدهی» ثبت می‌شود. سود فروش مثل همیشه حساب می‌شود. نام خریدار را پایین‌تر بنویسید.</p>
             </div>
