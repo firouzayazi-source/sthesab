@@ -6285,4 +6285,103 @@ if ($wkBody === '' || !str_contains($wkBody, 'substr($digits, -4)')) {
 }
 T::bulk(11, $qBad, 'صف بی‌صدا ثبت می‌کند، نامطمئن را فقط روی خانه نگه می‌دارد');
 
+// ---------------------------------------------------------------
+// قاعده ۶۶ — خرید امانی/نسیه و فروش نسیه: پول تکان نمی‌خورد، طلب/بدهی
+//             از یک جا ساخته می‌شود، و ردیفِ پرداخت‌دار پاک نمی‌شود.
+//
+//    **خواسته‌ی مالکِ نصب:** «از علی کالا خریدم ولی پول ندادم، تو طلب و
+//    بدهی بهش بدهکار بشم؛ به محمد فروختم، طلبکار بشم». `test_trade_credit`
+//    رفتار را با HTTP می‌سنجد؛ این قاعده شکل را، چون آن تست بدونِ دیتابیس
+//    `T::blocked` است.
+T::group('قاعده ۶۶ — معاملاتِ امانی/نسیه');
+$cBad = [];
+$rd66 = fn(string $f) => (string)@file_get_contents(__DIR__ . '/../' . $f);
+$strip66 = function (string $src): string {
+    $o = '';
+    foreach (token_get_all($src) as $t) {
+        if (is_array($t) && ($t[0] === T_COMMENT || $t[0] === T_DOC_COMMENT)) { continue; }
+        $o .= is_array($t) ? $t[1] : $t;
+    }
+    return $o;
+};
+$tc66 = $strip66($rd66('includes/trade_credit.php'));
+if ($tc66 === '') {
+    $cBad[] = 'includes/trade_credit.php نیست';
+} else {
+    // ⛔ هر کوئری شرطِ کاربر دارد (قانونِ جداسازی)
+    // کلِ آرگومانِ prepare، نه فقط اولین رشته: بعضی کوئری‌ها نامِ ستون را
+    // وسطش می‌چسبانند و شرطِ کاربر در تکه‌ی دوم است.
+    preg_match_all('~prepare\((.*?)\)\s*(?:->|;)~s', $tc66, $qs66);
+    $nq = 0;
+    foreach ($qs66[1] as $q) {
+        $nq++;
+        if (!preg_match('~^\s*[\x27"]INSERT~i', $q) && !str_contains($q, 'user_id = :u')) {
+            $cBad[] = 'trade_credit.php — کوئریِ بی‌شرطِ کاربر: ' . mb_substr(trim($q), 0, 60);
+        }
+    }
+    if ($nq < 4) { $cBad[] = 'trade_credit.php — کوئری‌ها پیدا نشدند (بررسی کور است)'; }
+    // ⛔ هیچ پولی جابه‌جا نمی‌شود: نه حساب، نه تراکنش
+    if (preg_match('~wallet_id|INTO\s+transactions|debt_payments\s*\(~i', $tc66)) {
+        $cBad[] = 'trade_credit.php — به حساب یا تراکنش دست می‌زند (پای نسیه پول ندارد)';
+    }
+    // ⛔ ردیفِ پرداخت‌دار فقط پیوندش برداشته می‌شود — شرط پیش از DELETE
+    $rp = strpos($tc66, 'function tradeCreditRelease(');
+    $rb = $rp === false ? '' : substr($tc66, $rp, (int)(strpos($tc66, 'function ', $rp + 10) - $rp));
+    $pc = strpos($rb, 'FROM debt_payments');
+    $dl = strpos($rb, 'DELETE FROM debts');
+    // ⚠ «کوئری هست» کافی نیست — جوابش باید شرطِ نگه داشتن باشد؛ وگرنه
+    //   جهشِ `if (false)` زنده می‌ماند (و ماند).
+    $kp = strpos($rb, 'if ((int)$paid->fetchColumn() > 0');
+    if ($pc === false || $dl === false || $pc > $dl || $kp === false || $kp > $dl
+        || !str_contains($rb, "return 'kept'")) {
+        $cBad[] = 'trade_credit.php — tradeCreditRelease پیش از حذف، پرداخت را نمی‌سنجد';
+    }
+    if (!str_contains($tc66, 'if ($amount < $paid)')) {
+        $cBad[] = 'trade_credit.php — مبلغِ کمتر از پرداخت‌شده رد نمی‌شود';
+    }
+}
+$sv66 = $strip66($rd66('api/save_trade.php'));
+if (!str_contains($sv66, 'if ($onCredit) { $walletId = 0; }')) {
+    $cBad[] = 'api/save_trade.php — خریدِ امانی هنوز از حساب برداشت می‌کند';
+}
+if (!str_contains($sv66, "tradeCreditUpsert(\$pdo, \$userId, 'buy'") || !str_contains($sv66, "tradeCreditRelease(\$pdo, \$userId, 'buy'")) {
+    $cBad[] = 'api/save_trade.php — بدهیِ پیوندی ساخته/پس گرفته نمی‌شود';
+}
+$sl66 = $strip66($rd66('api/sell_trade.php'));
+if (!str_contains($sl66, "'w' => \$onCredit ? null : resolveWalletId(")) {
+    $cBad[] = 'api/sell_trade.php — فروشِ نسیه به کیف پول واریز می‌شود';
+}
+if (!str_contains($sl66, "tradeCreditUpsert(\$pdo, \$userId, 'sale'")) {
+    $cBad[] = 'api/sell_trade.php — طلبِ فروشِ نسیه ساخته نمی‌شود';
+}
+foreach (['api/delete_trade.php' => ['tradeCreditReleaseTrade(', 'DELETE FROM trades'],
+          'api/delete_trade_sale.php' => ["tradeCreditRelease(\$pdo, \$userId, 'sale'", 'DELETE FROM trade_sales']] as $f => [$call, $del]) {
+    $src = $strip66($rd66($f));
+    $a = strpos($src, $call); $b = strpos($src, $del);
+    if ($a === false || $b === false || $a > $b) {
+        $cBad[] = "{$f} — طلب/بدهیِ پیوندی پیش از حذف پس گرفته نمی‌شود (یتیم می‌ماند)";
+    }
+}
+// ⛔ تنها سازنده‌ی ردیفِ پیوندی همین فایل است
+foreach (array_merge(glob(__DIR__ . '/../api/*.php') ?: [], glob(__DIR__ . '/../includes/*.php') ?: []) as $f) {
+    if (basename($f) === 'trade_credit.php') { continue; }
+    if (preg_match('~INSERT\s+INTO\s+debts\s*\([^)]*\btrade_(sale_)?id\b~i', $strip66((string)file_get_contents($f)))) {
+        $cBad[] = basename($f) . ' — ردیفِ پیوندیِ طلب/بدهی را خودش می‌سازد (نسخه‌ی دوم)';
+    }
+}
+$mg66 = $rd66('migration_trade_credit.sql');
+if (substr_count($mg66, 'FOREIGN KEY') < 2) {
+    $cBad[] = 'migration_trade_credit.sql — پیوندها کلیدِ خارجی نیستند (بازگرداندنِ بکاپ نگاشتشان نمی‌کند)';
+}
+$ms66 = $rd66('deploy/migrate.sh');
+if (!preg_match('~^\s+migration_trade_credit\.sql$~m', $ms66) || !str_contains($ms66, '[migration_trade_credit.sql]=')) {
+    $cBad[] = 'deploy/migrate.sh — migration_trade_credit در MIGRATIONS/SENTINEL نیست';
+}
+$tp66 = $rd66('trades.php');
+if (!preg_match('~<\?php if \(\$creditReady\): \?>\s*<div class="form-group">\s*<label for="trade_pay_mode"~', $tp66)
+    || !preg_match('~<\?php if \(\$creditReady\): \?>\s*<div class="form-group">\s*<label for="sell_pay_mode"~', $tp66)) {
+    $cBad[] = 'trades.php — گزینه‌ی نسیه بدونِ نگهبانِ migration رندر می‌شود';
+}
+T::bulk(14, $cBad, 'نسیه پول را تکان نمی‌دهد و طلب/بدهی از یک جا هم‌گام می‌شود');
+
 exit(T::report());

@@ -6691,6 +6691,37 @@ document.addEventListener('DOMContentLoaded', function () {
                        || document.getElementById('asset_sell_date');
         var todayG = todayHidden ? todayHidden.value : '';
 
+        // ---- پرداخت: نقدی یا امانی/نسیه ----
+        // ⛔ نسیه یعنی هیچ حسابی درگیر نیست، پس منوی حساب پنهان می‌شود و
+        //    توضیحِ «در طلب و بدهی ثبت می‌شود» دیده می‌شود. خودِ تصمیم سمتِ
+        //    سرور است (`pay_mode`)؛ اینجا فقط نما.
+        function applyPayMode(sel) {
+            if (!sel) return;
+            var credit = sel.value === 'credit';
+            var box = document.getElementById(sel.getAttribute('data-wallet-box'));
+            var hint = document.getElementById(sel.getAttribute('data-credit-hint'));
+            if (box) box.hidden = credit;
+            if (hint) hint.hidden = !credit;
+            // در نسیه نامِ طرف لازم است (سرور بی‌آن ۴۲۲ می‌دهد)؛ برچسبِ
+            // «(اختیاری)» آنجا دروغ می‌گفت.
+            var pIn = document.getElementById(sel.getAttribute('data-person') || '');
+            var pLbl = pIn ? pIn.closest('.form-group').querySelector('.person-label-row label, label') : null;
+            if (pLbl) {
+                if (!pLbl.dataset.orig) pLbl.dataset.orig = pLbl.textContent;
+                pLbl.textContent = credit ? pLbl.dataset.orig.replace(/\s*\(اختیاری\)\s*$/, '') + ' — لازم' : pLbl.dataset.orig;
+            }
+        }
+        function setPayMode(id, mode) {
+            var sel = document.getElementById(id);
+            if (!sel) return;
+            sel.value = mode === 'credit' ? 'credit' : 'paid';
+            applyPayMode(sel);
+        }
+        document.querySelectorAll('.js-pay-mode').forEach(function (sel) {
+            sel.addEventListener('change', function () { applyPayMode(this); });
+            applyPayMode(sel);
+        });
+
         var addBtn = document.getElementById('addTradeBtn');
         if (addBtn) {
             addBtn.addEventListener('click', function () {
@@ -6701,6 +6732,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('trade_buy_total').value = '';
                 document.getElementById('trade_side_costs').value = '';
                 resetSelect(document.getElementById('trade_wallet'));
+                setPayMode('trade_pay_mode', 'paid');
+                syncPersonPicker('trade_counterparty', '');
                 document.getElementById('trade_notes').value = '';
                 setJdpByHidden(document.getElementById('trade_buy_date'), todayG);
                 var m = document.getElementById('tradeMessage');
@@ -6719,6 +6752,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 var sc = this.getAttribute('data-side-costs');
                 document.getElementById('trade_side_costs').value = sc === '0' ? '' : sc;
                 document.getElementById('trade_wallet').value = this.getAttribute('data-wallet') || '0';
+                setPayMode('trade_pay_mode', this.getAttribute('data-pay-mode'));
+                syncPersonPicker('trade_counterparty', this.getAttribute('data-counterparty') || '');
                 document.getElementById('trade_notes').value = this.getAttribute('data-notes') || '';
                 setJdpByHidden(document.getElementById('trade_buy_date'), this.getAttribute('data-buy-date'));
                 var m = document.getElementById('tradeMessage');
@@ -6744,6 +6779,8 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.getElementById('sell_total').value = '';
                 document.getElementById('sell_qty').value = remaining;
                 resetSelect(document.getElementById('sell_wallet'));
+                setPayMode('sell_pay_mode', 'paid');
+                syncPersonPicker('sell_counterparty', '');
                 document.getElementById('sell_notes').value = '';
                 document.getElementById('sellRemainingHint').textContent =
                     remaining === '1' ? '' : 'مانده: ' + remaining;

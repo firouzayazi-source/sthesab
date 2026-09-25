@@ -12,6 +12,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/trade_credit.php';
 
 Auth::initSession();
 Auth::requireLogin();
@@ -27,6 +28,9 @@ $userId = Auth::userId();
 $todayStr = today();
 
 $tablesReady = tradesTablesExist($pdo);
+// امانی/نسیه — فقط وقتی ستون‌هایش آمده‌اند؛ وگرنه گزینه‌ای که ذخیره نمی‌شود
+// رندر نمی‌شد (همان «دکمه‌ی بی‌کار»).
+$creditReady = $tablesReady && tradeCreditAvailable();
 $enabled = $tablesReady && tradesEnabled($pdo, $userId);
 
 $allTrades = $enabled ? tradesWithProgress($userId) : [];
@@ -221,7 +225,8 @@ if ($planRO) { echo planReadOnlyNotice('trades'); }
                     <div class="trade-meta">
                         خرید: <?= toJalali($t['buy_date']) ?>
                         <?php if ((float)$t['qty'] != 1.0): ?> · تعداد: <?= formatQty($t['qty']) ?><?php endif; ?>
-                        <?php if ($t['wallet_name']): ?> · از <?= h($t['wallet_name']) ?><?php endif; ?>
+                        <?php if (!empty($t['on_credit'])): ?> · <span class="trade-credit-tag">امانی<?= !empty($t['counterparty_name']) ? ' از ' . h($t['counterparty_name']) : '' ?></span>
+                        <?php elseif ($t['wallet_name']): ?> · از <?= h($t['wallet_name']) ?><?php endif; ?>
                     </div>
                 </div>
                 <span class="trade-status <?= $isClosed ? 'is-closed' : 'is-open' ?>">
@@ -269,7 +274,8 @@ if ($planRO) { echo planReadOnlyNotice('trades'); }
                             <span class="trade-sale-meta">
                                 <?= toJalali($s['sale_date']) ?>
                                 <?php if ((float)$s['qty'] != 1.0 || (float)$t['qty'] != 1.0): ?> · <?= formatQty($s['qty']) ?> واحد<?php endif; ?>
-                                <?php if ($s['wallet_name']): ?> · به <?= h($s['wallet_name']) ?><?php endif; ?>
+                                <?php if (!empty($s['on_credit'])): ?> · <span class="trade-credit-tag">نسیه<?= !empty($s['counterparty_name']) ? ' به ' . h($s['counterparty_name']) : '' ?></span>
+                                <?php elseif ($s['wallet_name']): ?> · به <?= h($s['wallet_name']) ?><?php endif; ?>
                             </span>
                             <?php if ($s['notes']): ?><span class="trade-sale-meta"><?= h($s['notes']) ?></span><?php endif; ?>
                         </div>
@@ -294,6 +300,8 @@ if ($planRO) { echo planReadOnlyNotice('trades'); }
                     data-side-costs="<?= (int)$t['side_costs'] ?>"
                     data-buy-date="<?= h($t['buy_date']) ?>"
                     data-wallet="<?= (int)($t['buy_wallet_id'] ?? 0) ?>"
+                    data-pay-mode="<?= !empty($t['on_credit']) ? 'credit' : 'paid' ?>"
+                    data-counterparty="<?= h($t['counterparty_name'] ?? '') ?>"
                     data-notes="<?= h($t['notes'] ?? '') ?>">ویرایش</button>
                 <button type="button" class="delete-btn js-del-trade" data-id="<?= (int)$t['id'] ?>">حذف</button>
             </div>
@@ -340,6 +348,18 @@ if ($planRO) { echo planReadOnlyNotice('trades'); }
                 </div>
             </div>
 
+            <?php if ($creditReady): ?>
+            <div class="form-group">
+                <label for="trade_pay_mode">پرداخت</label>
+                <select id="trade_pay_mode" name="pay_mode" class="js-pay-mode" data-wallet-box="tradeWalletBox" data-credit-hint="tradeCreditHint" data-person="trade_counterparty">
+                    <option value="paid" selected>پرداخت کردم</option>
+                    <option value="credit">امانی / نسیه — پولش را هنوز نداده‌ام</option>
+                </select>
+                <p class="hint" id="tradeCreditHint" hidden>مبلغ خرید از هیچ حسابی کم نمی‌شود؛ به‌جایش بدهی به فروشنده در «طلب و بدهی» ثبت می‌شود. نام فروشنده را پایین‌تر بنویسید.</p>
+            </div>
+            <?php endif; ?>
+
+            <div id="tradeWalletBox">
             <div class="form-group">
                 <label for="trade_wallet">پرداخت از حساب</label>
                 <select id="trade_wallet" name="buy_wallet_id">
@@ -349,6 +369,7 @@ if ($planRO) { echo planReadOnlyNotice('trades'); }
                     <?php endforeach; ?>
                 </select>
                 <p class="hint">اگر انتخاب کنید، مبلغ خرید از موجودی آن حساب کم می‌شود.</p>
+            </div>
             </div>
 
             <div class="form-group">
@@ -456,6 +477,18 @@ if ($planRO) { echo planReadOnlyNotice('trades'); }
                 </div>
             </div>
 
+            <?php if ($creditReady): ?>
+            <div class="form-group">
+                <label for="sell_pay_mode">دریافت</label>
+                <select id="sell_pay_mode" name="pay_mode" class="js-pay-mode" data-wallet-box="sellWalletBox" data-credit-hint="sellCreditHint" data-person="sell_counterparty">
+                    <option value="paid" selected>پولش را گرفتم</option>
+                    <option value="credit">نسیه — پولش را بعداً می‌دهد</option>
+                </select>
+                <p class="hint" id="sellCreditHint" hidden>پولی به حساب نمی‌نشیند؛ به‌جایش طلب از خریدار در «طلب و بدهی» ثبت می‌شود. سود فروش مثل همیشه حساب می‌شود. نام خریدار را پایین‌تر بنویسید.</p>
+            </div>
+            <?php endif; ?>
+
+            <div id="sellWalletBox">
             <div class="form-group">
                 <label for="sell_wallet">واریز به حساب</label>
                 <select id="sell_wallet" name="wallet_id">
@@ -464,6 +497,7 @@ if ($planRO) { echo planReadOnlyNotice('trades'); }
                     <?php endforeach; ?>
                 </select>
                 <p class="hint">اگر دست نزنید، پول به کیف پول می‌رود؛ هر وقت خواستید حساب واقعی را انتخاب کنید.</p>
+            </div>
             </div>
 
             <?= personPicker($userId, 'sell_counterparty', 'به چه کسی فروختم (اختیاری)', 'نام خریدار') ?>

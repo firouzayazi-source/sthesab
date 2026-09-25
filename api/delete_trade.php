@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/trade_credit.php';
 
 Auth::initSession();
 header('Content-Type: application/json; charset=utf-8');
@@ -21,14 +22,22 @@ $tradeId = (int)postParam('trade_id');
 $pdo = Database::getConnection();
 
 try {
+    $pdo->beginTransaction();
+    // ⛔ بدهیِ خرید و طلبِ فروش‌های نسیه با معامله می‌روند، **پیش از** حذف:
+    //    `ON DELETE SET NULL` آن‌ها را یتیم در «طلب و بدهی» جا می‌گذاشت.
+    //    ردیفی که پرداخت دارد می‌ماند (پولِ واقعی جابه‌جا شده).
+    $kept = tradeCreditAvailable() ? tradeCreditReleaseTrade($pdo, $userId, $tradeId) : 0;
+
     // تراکنش‌های سودِ فروش‌ها جدول جدایی‌اند و CASCADE شاملشان نمی‌شود
     deleteTradeProfitTransactions($userId, $tradeId);
     // فروش‌ها با ON DELETE CASCADE خودشان پاک می‌شوند
     $st = $pdo->prepare('DELETE FROM trades WHERE id = :id AND user_id = :u');
     $st->execute(['id' => $tradeId, 'u' => $userId]);
-    if ($st->rowCount() === 0) { jsonResponse(['success' => false, 'message' => 'معامله یافت نشد.'], 404); }
-    jsonResponse(['success' => true, 'message' => 'معامله حذف شد.']);
+    if ($st->rowCount() === 0) { $pdo->rollBack(); jsonResponse(['success' => false, 'message' => 'معامله یافت نشد.'], 404); }
+    $pdo->commit();
+    jsonResponse(['success' => true, 'message' => 'معامله حذف شد.' . tradeCreditKeptNote($kept)]);
 } catch (PDOException $e) {
+    if ($pdo->inTransaction()) { $pdo->rollBack(); }
     Log::error('api.delete_trade', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

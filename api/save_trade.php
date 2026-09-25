@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/trade_credit.php';
 
 Auth::initSession();
 header('Content-Type: application/json; charset=utf-8');
@@ -33,8 +34,16 @@ $notes     = trim(postParam('notes'));
 
 // نام طرف مقابل (فروشنده). ستون ممکن است هنوز با migration نیامده باشد،
 // پس پایین‌تر مشروط به وجودش نوشته می‌شود.
-$counterparty = postParam('counterparty_name');
+$counterparty = trim(postParam('counterparty_name'));
 $hasCp = tableHasColumn('trades', 'counterparty_name');
+
+// ⛔ امانی/نسیه: پولی از هیچ حسابی کم نمی‌شود و به‌جایش یک **بدهی** به
+//    فروشنده در «طلب و بدهی» ساخته می‌شود (includes/trade_credit.php).
+//    حالتِ صریح است نه حدس از «حسابِ خالی» — «بدون برداشت از حساب»
+//    گزینه‌ی دیگری است.
+$hasCredit = tradeCreditAvailable();
+$onCredit  = $hasCredit && postParam('pay_mode') === 'credit';
+if ($onCredit) { $walletId = 0; }
 
 $errors = [];
 if ($title === '' || mb_strlen($title) > 150) { $errors[] = 'عنوان معامله الزامی است.'; }
@@ -44,6 +53,7 @@ if ($buyTotal <= 0) { $errors[] = 'مبلغ خرید الزامی است.'; }
 if ($buyTotal > 999999999999 || $sideCosts > 999999999999) { $errors[] = 'مبلغ بیش از حد بزرگ است.'; }
 if (!isValidDate($buyDate)) { $errors[] = 'تاریخ خرید نامعتبر است.'; }
 if (mb_strlen($notes) > 2000) { $errors[] = 'توضیحات بیش از حد بلند است.'; }
+if ($onCredit && $counterparty === '') { $errors[] = 'برای خرید امانی/نسیه، نام فروشنده لازم است.'; }
 
 // حساب انتخاب‌شده باید مال خود کاربر باشد
 if ($walletId > 0) {
@@ -54,18 +64,22 @@ if ($walletId > 0) {
 
 if (!empty($errors)) { jsonResponse(['success' => false, 'message' => implode(' ', $errors)], 422); }
 
+$creditNote = 'امانی/نسیه — خرید «' . $title . '» در معاملات';
+
 try {
+    $pdo->beginTransaction();
     if ($tradeId > 0) {
         $own = $pdo->prepare('SELECT id, qty FROM trades WHERE id = :id AND user_id = :u');
         $own->execute(['id' => $tradeId, 'u' => $userId]);
         $existing = $own->fetch();
-        if (!$existing) { jsonResponse(['success' => false, 'message' => 'معامله یافت نشد.'], 404); }
+        if (!$existing) { $pdo->rollBack(); jsonResponse(['success' => false, 'message' => 'معامله یافت نشد.'], 404); }
 
         // تعداد را نمی‌شود کمتر از مقدارِ تاکنون فروخته‌شده کرد
         $sold = $pdo->prepare('SELECT COALESCE(SUM(qty),0) FROM trade_sales WHERE trade_id = :t AND user_id = :u');
         $sold->execute(['t' => $tradeId, 'u' => $userId]);
         $soldQty = (float)$sold->fetchColumn();
         if ($qty < $soldQty) {
+            $pdo->rollBack();
             jsonResponse(['success' => false,
                 'message' => 'تعداد نمی‌تواند کمتر از مقدار فروخته‌شده (' . toPersianDigits(rtrim(rtrim(number_format($soldQty, 3, '.', ''), '0'), '.')) . ') باشد.'], 422);
         }
@@ -73,7 +87,8 @@ try {
         $st = $pdo->prepare(
             'UPDATE trades SET title = :t, qty = :q, buy_total = :b, side_costs = :s,
                     buy_date = :d, buy_wallet_id = :w, notes = :n'
-             . ($hasCp ? ', counterparty_name = :cp' : '') .
+             . ($hasCp ? ', counterparty_name = :cp' : '')
+             . ($hasCredit ? ', on_credit = :oc' : '') .
             ' WHERE id = :id AND user_id = :u'
         );
         $st->execute([
@@ -81,25 +96,50 @@ try {
             'd' => $buyDate, 'w' => $walletId > 0 ? $walletId : null,
             'n' => $notes !== '' ? $notes : null,
             'id' => $tradeId, 'u' => $userId,
-        ] + ($hasCp ? ['cp' => $counterparty !== '' ? $counterparty : null] : []));
+        ] + ($hasCp ? ['cp' => $counterparty !== '' ? $counterparty : null] : [])
+          + ($hasCredit ? ['oc' => $onCredit ? 1 : 0] : []));
+
+        // بدهیِ پیوندی با خودِ معامله هم‌گام می‌ماند: نسیه → ساخته/به‌روز؛
+        // نقدی شد → پس گرفته می‌شود، مگر پرداخت داشته باشد.
+        $kept = 0;
+        if ($onCredit) {
+            $r = tradeCreditUpsert($pdo, $userId, 'buy', $tradeId, $counterparty, $buyTotal, $buyDate, $creditNote);
+            if (!$r['ok']) { $pdo->rollBack(); jsonResponse(['success' => false, 'message' => $r['error']], 422); }
+        } elseif ($hasCredit) {
+            $kept = tradeCreditRelease($pdo, $userId, 'buy', $tradeId) === 'kept' ? 1 : 0;
+        }
+        $pdo->commit();
         // تغییر مبلغ/تعداد/هزینه‌ی جانبی، سودِ فروش‌های قبلی را عوض می‌کند
         syncTradeProfitTransactions($userId, $tradeId);
-        jsonResponse(['success' => true, 'message' => 'معامله بروزرسانی شد.']);
+        jsonResponse(['success' => true, 'message' => 'معامله بروزرسانی شد.' . tradeCreditKeptNote($kept)]);
     }
 
     $st = $pdo->prepare(
         'INSERT INTO trades (user_id, title, qty, buy_total, side_costs, buy_date, buy_wallet_id, notes'
-        . ($hasCp ? ', counterparty_name' : '') .
+        . ($hasCp ? ', counterparty_name' : '')
+        . ($hasCredit ? ', on_credit' : '') .
         ') VALUES (:u, :t, :q, :b, :s, :d, :w, :n'
-        . ($hasCp ? ', :cp' : '') . ')'
+        . ($hasCp ? ', :cp' : '')
+        . ($hasCredit ? ', :oc' : '') . ')'
     );
     $st->execute([
         'u' => $userId, 't' => $title, 'q' => $qty, 'b' => $buyTotal, 's' => $sideCosts,
         'd' => $buyDate, 'w' => $walletId > 0 ? $walletId : null,
         'n' => $notes !== '' ? $notes : null,
-    ] + ($hasCp ? ['cp' => $counterparty !== '' ? $counterparty : null] : []));
-    jsonResponse(['success' => true, 'message' => 'خرید ثبت شد.']);
+    ] + ($hasCp ? ['cp' => $counterparty !== '' ? $counterparty : null] : [])
+      + ($hasCredit ? ['oc' => $onCredit ? 1 : 0] : []));
+    $newId = (int)$pdo->lastInsertId();
+
+    if ($onCredit) {
+        $r = tradeCreditUpsert($pdo, $userId, 'buy', $newId, $counterparty, $buyTotal, $buyDate, $creditNote);
+        if (!$r['ok']) { $pdo->rollBack(); jsonResponse(['success' => false, 'message' => $r['error']], 422); }
+    }
+    $pdo->commit();
+    jsonResponse(['success' => true, 'message' => $onCredit
+        ? "خرید ثبت شد و بدهی به «{$counterparty}» در طلب و بدهی نشست."
+        : 'خرید ثبت شد.']);
 } catch (PDOException $e) {
+    if ($pdo->inTransaction()) { $pdo->rollBack(); }
     Log::error('api.save_trade', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
 }

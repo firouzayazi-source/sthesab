@@ -3533,6 +3533,13 @@ html[data-theme="dark"] .money-card-expense { background: linear-gradient(140deg
 .trade-sale-row:last-child { border-bottom: none; }
 .trade-sale-info b { font-size: 13px; }
 .trade-sale-meta { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; }
+/* امانی/نسیه — نشانِ آرام کنارِ متا: پولی هنوز جابه‌جا نشده و در
+   «طلب و بدهی» نشسته. رنگِ هشدار نیست (چیزی خراب نیست)، فقط متمایز. */
+.trade-credit-tag {
+    display: inline-block; padding: 0 6px; border-radius: 6px;
+    background: var(--gold-wash); color: var(--brand-fg);
+    font-weight: 600; white-space: nowrap;
+}
 
 .trade-actions { display: flex; gap: 7px; margin-top: 13px; flex-wrap: wrap; }
 

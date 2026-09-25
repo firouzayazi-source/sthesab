@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/trade_credit.php';
 
 Auth::initSession();
 header('Content-Type: application/json; charset=utf-8');
@@ -30,12 +31,20 @@ $notes     = trim(postParam('notes'));
 $counterparty = trim(postParam('counterparty_name'));
 $hasCp = tableHasColumn('trade_sales', 'counterparty_name');
 
+// ⛔ فروش نسیه: پولی به هیچ حسابی نمی‌نشیند و به‌جایش یک **طلب** از
+//    خریدار در «طلب و بدهی» ساخته می‌شود. سهمِ سود مثل همیشه ثبت می‌شود —
+//    فروش انجام شده، فقط پولش هنوز نرسیده.
+$hasCredit = tradeCreditAvailable();
+$onCredit  = $hasCredit && postParam('pay_mode') === 'credit';
+if ($onCredit) { $walletId = 0; }
+
 $errors = [];
 if ($qty <= 0) { $errors[] = 'تعداد فروش باید بزرگ‌تر از صفر باشد.'; }
 if ($saleTotal <= 0) { $errors[] = 'مبلغ فروش الزامی است.'; }
 if ($saleTotal > 999999999999) { $errors[] = 'مبلغ بیش از حد بزرگ است.'; }
 if (!isValidDate($saleDate)) { $errors[] = 'تاریخ فروش نامعتبر است.'; }
 if (mb_strlen($notes) > 500) { $errors[] = 'توضیحات بیش از حد بلند است.'; }
+if ($onCredit && $counterparty === '') { $errors[] = 'برای فروش نسیه، نام خریدار لازم است.'; }
 
 if ($walletId > 0) {
     $own = $pdo->prepare('SELECT id FROM wallets WHERE id = :id AND user_id = :u');
@@ -49,7 +58,7 @@ try {
     // قفل روی معامله تا دو فروش هم‌زمان نتوانند بیشتر از موجودی بفروشند
     $pdo->beginTransaction();
 
-    $st = $pdo->prepare('SELECT qty, buy_date FROM trades WHERE id = :id AND user_id = :u FOR UPDATE');
+    $st = $pdo->prepare('SELECT qty, buy_date, title FROM trades WHERE id = :id AND user_id = :u FOR UPDATE');
     $st->execute(['id' => $tradeId, 'u' => $userId]);
     $trade = $st->fetch();
     if (!$trade) {
@@ -75,22 +84,35 @@ try {
 
     $ins = $pdo->prepare(
         'INSERT INTO trade_sales (trade_id, user_id, qty, sale_total, sale_date, wallet_id, notes'
-        . ($hasCp ? ', counterparty_name' : '') .
+        . ($hasCp ? ', counterparty_name' : '')
+        . ($hasCredit ? ', on_credit' : '') .
         ') VALUES (:t, :u, :q, :s, :d, :w, :n'
-        . ($hasCp ? ', :cp' : '') . ')'
+        . ($hasCp ? ', :cp' : '')
+        . ($hasCredit ? ', :oc' : '') . ')'
     );
     $ins->execute([
         't' => $tradeId, 'u' => $userId, 'q' => $qty, 's' => $saleTotal,
-        'd' => $saleDate, 'w' => resolveWalletId($userId, $walletId),
+        // نسیه → بدونِ حساب؛ وگرنه `resolveWalletId()` (هیچ پولی بی‌حساب نمی‌ماند)
+        'd' => $saleDate, 'w' => $onCredit ? null : resolveWalletId($userId, $walletId),
         'n' => $notes !== '' ? $notes : null,
-    ] + ($hasCp ? ['cp' => $counterparty !== '' ? $counterparty : null] : []));
+    ] + ($hasCp ? ['cp' => $counterparty !== '' ? $counterparty : null] : [])
+      + ($hasCredit ? ['oc' => $onCredit ? 1 : 0] : []));
+
+    if ($onCredit) {
+        $saleId = (int)$pdo->lastInsertId();
+        $r = tradeCreditUpsert($pdo, $userId, 'sale', $saleId, $counterparty, $saleTotal, $saleDate,
+            'نسیه — فروش «' . $trade['title'] . '» در معاملات');
+        if (!$r['ok']) { $pdo->rollBack(); jsonResponse(['success' => false, 'message' => $r['error']], 422); }
+    }
 
     $pdo->commit();
 
     // سهم سود این فروش به‌صورت تراکنش در حسابداری ثبت می‌شود
     syncTradeProfitTransactions($userId, $tradeId);
 
-    jsonResponse(['success' => true, 'message' => 'فروش ثبت شد.']);
+    jsonResponse(['success' => true, 'message' => $onCredit
+        ? "فروش ثبت شد و طلب از «{$counterparty}» در طلب و بدهی نشست."
+        : 'فروش ثبت شد.']);
 } catch (PDOException $e) {
     if ($pdo->inTransaction()) { $pdo->rollBack(); }
     Log::error('api.sell_trade', $e);
