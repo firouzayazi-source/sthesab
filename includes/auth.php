@@ -61,6 +61,47 @@ class Auth
         if (!headers_sent()) {
             header('Cache-Control: no-store, private');
         }
+
+        self::captureAppVersion();
+    }
+
+    /** کوکیِ «نسخه‌ی اپِ اندرویدِ نصب‌شده روی این دستگاه». */
+    public const APP_VERSION_COOKIE = 'daftar_app_vc';
+
+    /**
+     * `?appv=10` که اپِ اندروید روی آدرسِ باز شدن می‌گذارد → کوکی.
+     *
+     * ⛔ **چرا اینجا و نه در `app.js`:** اولین درخواستِ هر بار باز شدنِ
+     *    اپ ممکن است به صفحه‌ی ورود ریدایرکت شود و query همان‌جا گم
+     *    می‌شود؛ ولی `initSession()` پیش از `requireLogin()` اجرا می‌شود،
+     *    پس کوکی روی خودِ پاسخِ ریدایرکت هم می‌نشیند. بدونش کاربری که
+     *    نشستش تمام شده بود «نسخه‌ی نامعلوم» می‌شد و نوارِ به‌روزرسانی را
+     *    روی اپِ **به‌روز** می‌دید.
+     *
+     * ⛔ فقط رقم پذیرفته می‌شود و کوکی `httponly` است: مقدار فقط در
+     *    `header.php` خوانده می‌شود، و رشته‌ی دلخواهِ آدرس نباید به صفحه
+     *    برسد. عدد نه مجوز می‌دهد نه چیزی را باز می‌کند — دروغ گفتنش فقط
+     *    نوار را روی همان دستگاه پنهان یا آشکار می‌کند.
+     */
+    public static function captureAppVersion(): void
+    {
+        $v = $_GET['appv'] ?? null;
+        if (!is_string($v) || !preg_match('/^[1-9][0-9]{0,8}$/', $v) || headers_sent()) { return; }
+        setcookie(self::APP_VERSION_COOKIE, $v, [
+            'expires'  => time() + 400 * 86400,   // سقفِ کروم؛ هر باز شدنِ اپ تازه‌اش می‌کند
+            'path'     => '/',
+            'secure'   => defined('APP_FORCE_HTTPS') && APP_FORCE_HTTPS,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+        $_COOKIE[self::APP_VERSION_COOKIE] = $v;
+    }
+
+    /** نسخه‌ی اپِ نصب‌شده روی این دستگاه، یا ۰ اگر نامعلوم است. */
+    public static function appVersion(): int
+    {
+        $v = $_COOKIE[self::APP_VERSION_COOKIE] ?? '';
+        return is_string($v) && preg_match('/^[1-9][0-9]{0,8}$/', $v) ? (int)$v : 0;
     }
 
     /**

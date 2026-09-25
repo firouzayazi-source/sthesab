@@ -1508,7 +1508,12 @@ foreach ($nativeJava as $j) {
     $src  = file_get_contents($j);
     $name = basename($j);
 
-    if (preg_match('~[?&]smsq?=~', $src) || str_contains($src, 'appendQueryParameter')) {
+    // ⛔ تنها query مجاز `appv` (نسخه‌ی خودِ اپ، قاعده ۶۴) است، و فقط با
+    //    همان یک شکل: کلیدِ ثابت و `String.valueOf(عدد)`. هر
+    //    `appendQueryParameter`ِ دیگری یعنی چیزی روی سیم می‌رود.
+    $qAll  = substr_count($src, 'appendQueryParameter');
+    $qAppv = preg_match_all('~appendQueryParameter\(PARAM_APP_VERSION,\s*String\.valueOf\(vc\)\)~', $src);
+    if (preg_match('~[?&]smsq?=~', $src) || $qAll !== $qAppv) {
         $smsBad[] = "$name — `?sms=` یا query پیدا شد؛ متنِ پیامک به سرور می‌رفت";
     }
     // ⛔ هیچ کلاسِ شبکه‌ای: اگر روزی کسی وسوسه شود متن را «برای پارسِ
@@ -6008,5 +6013,104 @@ foreach (array_keys($all) as $p) {
     $out = [];
 }
 T::bulk(count($all), $bad, 'همه‌ی فایل‌های PHP نحو درست دارند');
+
+// =====================================================================
+// ⛔ قاعده ۶۴ — به‌روزرسانیِ درون‌برنامه‌ای
+//
+// «وقتی آپدیت شد، برنامه رو باز کرد، پیام برای کاربر بره که آپدیت کنه.»
+// سه تکه در سه زبان (جاوا، PHP، جاوااسکریپت) که باید با هم بخوانند؛
+// `test_app_update.php` رفتار را می‌سنجد، اینجا شکل — چون آن تست به node
+// و کرومیوم بند است و روی ماشینِ بی‌آن‌ها فقط همین می‌ماند.
+T::group('قاعده ۶۴ — به‌روزرسانیِ درون‌برنامه‌ای');
+$upBad = [];
+
+$gradle = (string)@file_get_contents(__DIR__ . '/../mobile/app/build.gradle.kts');
+$apkMeta = (string)@file_get_contents(__DIR__ . '/../includes/apk_meta.php');
+preg_match('~applicationId\s*=\s*"([^"]+)"~', $gradle, $gm);
+preg_match("~const\s+ANDROID_PACKAGE\s*=\s*'([^']+)'~", $apkMeta, $am);
+// ⛔ مصرف‌کننده‌ی `applicationId`، نه مرجعِ دوم.
+if (($gm[1] ?? 'x') !== ($am[1] ?? 'y')) {
+    $upBad[] = 'ANDROID_PACKAGE در apk_meta.php با applicationId در build.gradle.kts نمی‌خواند؛'
+             . ' نوارِ به‌روزرسانی هرگز نمی‌آید (بسته «دیگر» دیده می‌شود)';
+}
+
+// جاوا: نسخه روی آدرسِ باز شدن، از PackageManager، و در getLaunchingUrl.
+$lau = (string)@file_get_contents(__DIR__ . '/../mobile/app/src/main/java/'
+     . str_replace('.', '/', $gm[1] ?? 'ir.stland.hesabland') . '/HesabLauncherActivity.java');
+$lauNC = preg_replace('~/\*.*?\*/|(?<!:)//[^\n]*~s', '', $lau) ?? $lau;
+if (!preg_match('~PARAM_APP_VERSION\s*=\s*"appv"\s*;~', $lauNC)) {
+    $upBad[] = 'HesabLauncherActivity — PARAM_APP_VERSION = "appv" نیست؛ سرور نسخه را نمی‌شناسد';
+}
+if (!preg_match('~Uri\s+getLaunchingUrl\(\)\s*\{.*?return\s+withAppVersion\(u\);~s', $lauNC)) {
+    $upBad[] = 'HesabLauncherActivity — getLaunchingUrl() نسخه را روی آدرس نمی‌گذارد';
+}
+if (!str_contains($lauNC, 'getPackageManager().getPackageInfo(getPackageName()')) {
+    $upBad[] = 'HesabLauncherActivity — نسخه از PackageManager خوانده نمی‌شود (BuildConfig در AGP 8 پیش‌فرض ساخته نمی‌شود)';
+}
+
+// PHP: کوکی در initSession (پیش از هر ریدایرکت)، httponly، فقط رقم.
+$authSrc = (string)@file_get_contents(__DIR__ . '/../includes/auth.php');
+$isPos = strpos($authSrc, 'public static function initSession()');
+$isEnd = $isPos === false ? false : strpos($authSrc, 'public static function', $isPos + 10);
+if ($isPos === false || $isEnd === false
+    || !str_contains(substr($authSrc, $isPos, $isEnd - $isPos), 'self::captureAppVersion();')) {
+    $upBad[] = 'auth.php — initSession() کوکیِ نسخه را نمی‌گذارد؛ پشتِ ریدایرکتِ ورود نسخه گم می‌شود';
+}
+$cav = strpos($authSrc, 'function captureAppVersion()');
+$cavBody = $cav === false ? '' : substr($authSrc, $cav, 900);
+if (!str_contains($cavBody, "'httponly' => true") || !str_contains($cavBody, '[1-9][0-9]{0,8}')) {
+    $upBad[] = 'auth.php — کوکیِ نسخه httponly نیست یا ورودیِ غیرِعددی را می‌پذیرد';
+}
+
+// header.php: فقط برای اندروید و فقط از androidApkLatest().
+$hdr = (string)@file_get_contents(__DIR__ . '/../includes/header.php');
+if (!preg_match('~isAndroidRequest\(\)\s*\?\s*androidApkLatest\(\)~', $hdr)
+    || !str_contains($hdr, 'name="apk-latest"') || !str_contains($hdr, 'Auth::appVersion()')) {
+    $upBad[] = 'header.php — متای apk-latest از androidApkLatest() و فقط برای اندروید رندر نمی‌شود';
+}
+
+// functions.php: عدد از خودِ فایل، و نگهبانِ بسته.
+$fnSrc = (string)@file_get_contents(__DIR__ . '/../includes/functions.php');
+$alf = strpos($fnSrc, 'function apkLatestFrom(');
+$alfBody = $alf === false ? '' : substr($fnSrc, $alf, 1800);
+if (!str_contains($alfBody, 'apkManifestInfo($apk)') || !str_contains($alfBody, '!== ANDROID_PACKAGE')) {
+    $upBad[] = 'functions.php — apkLatestFrom() نسخه را از خودِ APK نمی‌خواند یا بسته را نمی‌سنجد';
+}
+
+// app.js: تصمیم خالص و بیرون از DOMContentLoaded، نوار با textContent و شناور نه.
+$js = (string)@file_get_contents(__DIR__ . '/../assets/js/app.js');
+$dcl = strpos($js, "document.addEventListener('DOMContentLoaded'");
+$due = strpos($js, 'window.appUpdateDue = function');
+if ($due === false || $dcl === false || $due > $dcl) {
+    $upBad[] = 'app.js — appUpdateDue بیرون از DOMContentLoaded نیست (در node آزمودنی نمی‌ماند)';
+}
+$bp = strpos($js, '(function appUpdateBar()');
+$barBody = $bp === false ? '' : substr($js, $bp, (int)(strpos($js, '})();', $bp) - $bp));
+if ($barBody === '' || !str_contains($barBody, 'window.appUpdateDue(')) {
+    $upBad[] = 'app.js — نوار از appUpdateDue() تصمیم نمی‌گیرد';
+}
+if (preg_match('~(title|note|cta)\.innerHTML~', $barBody) || str_contains($barBody, 'position')) {
+    $upBad[] = 'app.js — متنِ نوار با innerHTML نوشته می‌شود یا نوار شناور است';
+}
+if (!str_contains($barBody, 'location.hash')) {
+    $upBad[] = 'app.js — پاک کردنِ appv فرگمنتِ پیامک را نگه نمی‌دارد';
+}
+
+// ساختِ گیت‌هاب: خواننده‌ی سایت روی APKِ واقعی با aapt2 مقایسه می‌شود.
+$wf = (string)@file_get_contents(__DIR__ . '/../.github/workflows/android.yml');
+if (!str_contains($wf, 'php ../deploy/apk-version.php --expect "$APK"') || !str_contains($wf, '"$SC" != "$VC"')) {
+    $upBad[] = 'android.yml — خواننده‌ی نسخه‌ی سایت روی APKِ واقعی با aapt2 سنجیده نمی‌شود';
+}
+foreach (["- 'includes/apk_meta.php'", "- 'deploy/apk-version.php'"] as $pth) {
+    if (!str_contains($wf, $pth)) { $upBad[] = "android.yml — «{$pth}» در paths نیست؛ تغییرِ تجزیه‌گر ساخت را راه نمی‌اندازد"; }
+}
+
+// apk-publish.sh: بسته‌ی دیگر منتشر نشود.
+$pub = (string)@file_get_contents(__DIR__ . '/../deploy/apk-publish.sh');
+if (!str_contains($pub, 'apk-version.php" --expect "$SRC"') || !preg_match('~VER_RC"\s*=\s*"2"\s*\]; then.*?exit 1~s', $pub)) {
+    $upBad[] = 'apk-publish.sh — APKِ اپِ دیگر را منتشر می‌کند';
+}
+
+T::bulk(14, $upBad, 'زنجیره‌ی به‌روزرسانی با هم می‌خواند');
 
 exit(T::report());

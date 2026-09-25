@@ -17,6 +17,8 @@ on:
       - 'mobile/**'
       - '.well-known/assetlinks.json'
       - '.github/workflows/android.yml'
+      - 'includes/apk_meta.php'
+      - 'deploy/apk-version.php'
 
 jobs:
   build:
@@ -242,6 +244,25 @@ jobs:
             test -n "$VC" || { echo "::error::versionCode از APK خوانده نشد."; exit 1; }
             echo "VERSION_CODE=$VC" >> "$GITHUB_ENV"
             echo "✓ versionCode = $VC"
+
+            # ⛔ نوارِ «نسخه‌ی تازه‌ی اپ آماده است» روی سایت، نسخه را با
+            #    تجزیه‌گرِ PHPِ خودمان (`includes/apk_meta.php`) از همین فایل
+            #    می‌خواند. اینجا روی APKِ **واقعیِ** همین ساخت با aapt2
+            #    مقایسه می‌شود — اگر روزی قالبِ خروجیِ aapt2 عوض شود، ساخت
+            #    قرمز می‌شود، نه اینکه نوار بی‌صدا نیاید یا دروغ بگوید.
+            PKG=$("$AAPT" dump badging "$APK" 2>/dev/null \
+                  | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -1)
+            SITE=$(php ../deploy/apk-version.php --expect "$APK") \
+              || { echo "::error::خواننده‌ی نسخه‌ی سایت این APK را نخواند (یا نامِ بسته فرق دارد)."; exit 1; }
+            SC=$(printf '%s' "$SITE" | cut -f1)
+            SP=$(printf '%s' "$SITE" | cut -f3)
+            echo "سایت: $SITE — aapt2: $VC $PKG"
+            if [ "$SC" != "$VC" ] || [ "$SP" != "$PKG" ]; then
+              echo "::error::نسخه‌ای که سایت از APK می‌خواند ($SC $SP) با aapt2 ($VC $PKG) یکی نیست."
+              echo "::error::نوارِ به‌روزرسانی روی گوشی کاربر دروغ می‌گفت."
+              exit 1
+            fi
+            echo "✓ خواننده‌ی نسخه‌ی سایت با aapt2 می‌خواند."
           else
             echo "::warning::aapt2 پیدا نشد؛ بازرسیِ manifestِ APK انجام نشد."
           fi

@@ -4871,6 +4871,80 @@ function androidApkUrl(): string
     return '';
 }
 
+/**
+ * آخرین نسخه‌ی اپ که روی سرور دانلودشدنی است — یا `null`.
+ *
+ * ⛔ **تنها جای این تصمیم** (مثل `androidApkUrl()`): نوارِ «نسخه‌ی تازه
+ *    آماده است» فقط از همین می‌پرسد.
+ *
+ * ⛔ عدد از **خودِ فایل** خوانده می‌شود (`apkManifestInfo()`)، نه از یک
+ *    فایلِ کناری یا متنِ Release: با مرجعِ دوم، دیر یا زود عدد با فایلی
+ *    که واقعاً دانلود می‌شود نمی‌خواند و کاربرِ به‌روز هر روز «به‌روزرسانی
+ *    کن» می‌گرفت — حتی بلافاصله بعد از نصب.
+ *
+ * ⚠ نتیجه در `var/apk-meta.json` کش می‌شود با کلیدِ اندازه + زمان + inode
+ *   فایل؛ جابه‌جاییِ اتمیِ `apk-publish.sh` هر سه را عوض می‌کند، پس فایلِ
+ *   تازه همان درخواستِ بعدی دیده می‌شود. نتیجه‌ی **ناموفق** هم کش می‌شود
+ *   تا فایلِ خراب در هر بارگذاری دوباره تجزیه نشود.
+ *
+ * ⚠ با `ANDROID_APK_URL` (میزبانیِ بیرونی) فایل اینجا نیست، پس عدد فقط از
+ *   `ANDROID_APK_VERSION_CODE` می‌آید؛ نبودش یعنی «نوار نیاید» — سمتِ
+ *   امنِ خطا.
+ *
+ * @return array{code:int, name:string, url:string}|null
+ */
+function androidApkLatest(): ?array
+{
+    $url = androidApkUrl();
+    if ($url === '') { return null; }
+
+    if (defined('ANDROID_APK_URL') && trim((string)ANDROID_APK_URL) !== '') {
+        $code = defined('ANDROID_APK_VERSION_CODE') ? (int)ANDROID_APK_VERSION_CODE : 0;
+        if ($code <= 0) { return null; }
+        $name = defined('ANDROID_APK_VERSION_NAME') ? (string)ANDROID_APK_VERSION_NAME : '';
+        return ['code' => $code, 'name' => $name, 'url' => $url];
+    }
+
+    $info = apkLatestFrom(__DIR__ . '/../download/hesabland.apk', __DIR__ . '/../var/apk-meta.json');
+    return $info === null ? null : $info + ['url' => $url];
+}
+
+/**
+ * نسخه‌ی فایلِ `$apk` با کشِ `$cache` — جدا از `androidApkLatest()` تا
+ * بی‌دست زدن به `download/` آزمودنی باشد.
+ *
+ * @return array{code:int, name:string}|null
+ */
+function apkLatestFrom(string $apk, string $cache): ?array
+{
+    require_once __DIR__ . '/apk_meta.php';
+
+    clearstatcache(true, $apk);
+    $st = @stat($apk);
+    if (!$st || (int)$st['size'] <= 0) { return null; }
+    $key = $st['size'] . ':' . $st['mtime'] . ':' . $st['ino'];
+
+    $c = json_decode((string)@file_get_contents($cache), true);
+    if (is_array($c) && ($c['key'] ?? null) === $key && array_key_exists('info', $c)) {
+        $info = is_array($c['info']) ? $c['info'] : null;
+    } else {
+        $info = apkManifestInfo($apk);
+        // ⚠ نوشتنِ کش اختیاری است: `var/` نوشتنی نباشد، هر درخواست
+        //   دوباره تجزیه می‌کند (حدود یک میلی‌ثانیه) و چیزی نمی‌شکند.
+        $tmp = $cache . '.' . getmypid() . '.tmp';
+        if (@file_put_contents($tmp, json_encode(['key' => $key, 'info' => $info])) !== false) {
+            @rename($tmp, $cache) || @unlink($tmp);
+        }
+    }
+
+    // ⛔ بسته‌ی دیگر یعنی نوار نیاید: «به‌روزرسانی» یک اپِ دیگر نصب می‌کرد.
+    if (!is_array($info) || ($info['package'] ?? '') !== ANDROID_PACKAGE
+        || (int)($info['version_code'] ?? 0) <= 0) {
+        return null;
+    }
+    return ['code' => (int)$info['version_code'], 'name' => (string)($info['version_name'] ?? '')];
+}
+
 /** آیا این درخواست از یک دستگاهِ اندرویدی آمده؟ */
 function isAndroidRequest(): bool
 {

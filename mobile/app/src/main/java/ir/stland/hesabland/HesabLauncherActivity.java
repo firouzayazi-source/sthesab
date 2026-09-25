@@ -4,6 +4,7 @@ import android.Manifest;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.Intent;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.net.Uri;
@@ -141,9 +142,44 @@ public class HesabLauncherActivity extends LauncherActivity {
         Uri u = super.getLaunchingUrl();
         try {
             Uri withSms = withPendingSms(u, getIntent().getBooleanExtra(EXTRA_DEEP, false));
-            if (withSms != null) { return withSms; }
+            if (withSms != null) { u = withSms; }
         } catch (Throwable ignored) { }
-        return u;
+        return withAppVersion(u);
+    }
+
+    /**
+     * ⛔ **کارِ سوم: گفتنِ نسخه‌ی خودِ اپ به سایت** (`?appv=10`).
+     *    گزارشِ مالکِ نصب: «وقتی آپدیت شد، برنامه رو باز کرد، پیام برای
+     *    کاربر بره که آپدیت کنه.» سایت آخرین نسخه را از خودِ فایلِ APKِ
+     *    روی دامنه می‌خواند؛ بدونِ این عدد نمی‌دانست نسخه‌ی روی گوشی
+     *    کدام است.
+     *
+     * ⛔ **query است نه فرگمنت، و این استثنای قاعده ۱۹ عمدی و تک‌کلیدی است.**
+     *    سرور *باید* این یکی را ببیند (کوکی را پشتِ ریدایرکتِ ورود هم
+     *    می‌گذارد)، و این عدد هیچ چیزِ شخصی‌ای نیست — همان چیزی است که
+     *    هر فروشگاه هم می‌بیند. متنِ پیامک همچنان فقط در فرگمنت است.
+     *
+     * ⚠ از `PackageManager` خوانده می‌شود نه `BuildConfig`: AGP 8 کلاسِ
+     *   `BuildConfig` را پیش‌فرض نمی‌سازد. هر خطا یعنی آدرسِ دست‌نخورده —
+     *   نسخه هرگز جلوی باز شدنِ اپ را نمی‌گیرد.
+     */
+    static final String PARAM_APP_VERSION = "appv";
+
+    private Uri withAppVersion(Uri u) {
+        try {
+            if (u == null || u.getQueryParameter(PARAM_APP_VERSION) != null) { return u; }
+            long vc = installedVersionCode();
+            if (vc <= 0) { return u; }
+            return u.buildUpon().appendQueryParameter(PARAM_APP_VERSION, String.valueOf(vc)).build();
+        } catch (Throwable t) {
+            return u;
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private long installedVersionCode() throws Exception {
+        PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.P ? pi.getLongVersionCode() : pi.versionCode;
     }
 
     /**

@@ -766,6 +766,38 @@ window.skeletonHtml = function (rows) {
     return out + '</div>';
 };
 
+/**
+ * آیا نوارِ «نسخه‌ی تازه‌ی اپ آماده است» باید دیده شود؟
+ *
+ * **خواسته‌ی مالکِ نصب:** «وقتی آپدیت شد، برنامه رو باز کرد، پیام برای
+ * کاربر بره که آپدیت کنه.»
+ *
+ * ⛔ **فقط داخلِ خودِ اپ** (`inApp`). کروم و اپ یک مخزنِ کوکی دارند، پس
+ *    کسی که همان سایت را در کرومِ معمولی باز کند هم کوکیِ نسخه را دارد؛
+ *    آنجا «اپ را به‌روز کن» بی‌ربط است.
+ * ⛔ **نسخه‌ی نامعلوم یعنی قدیمی** (`installed` صفر). اپِ پیش از این
+ *    قابلیت (۱٫۸ و قبل‌تر) هیچ نسخه‌ای نمی‌فرستد — و دقیقاً همان‌ها باید
+ *    پیام بگیرند. اپِ تازه همیشه می‌فرستد و سرور روی همان اولین درخواست
+ *    (حتی پشتِ ریدایرکتِ ورود) کوکی می‌گذارد، پس «نامعلوم» برایش پیش
+ *    نمی‌آید.
+ * ⛔ **«بعداً» فقط همان نسخه را، و فقط مدتی، ساکت می‌کند** (`snoozeFor`،
+ *    `snoozeUntil`). نسخه‌ی تازه‌تر دوباره می‌پرسد؛ پیامی که یک بار بسته
+ *    شود و دیگر هرگز نیاید، همان «هیچ اتفاقی نیفتاد» است.
+ * ⚠ خالص و بیرون از `DOMContentLoaded` — آزمودنی در node.
+ */
+window.APP_UPDATE_SNOOZE_MS = 3 * 24 * 60 * 60 * 1000;
+window.APP_UPDATE_TAPPED_MS = 6 * 60 * 60 * 1000;
+window.appUpdateDue = function (o) {
+    o = o || {};
+    var latest = parseInt(o.latest, 10);
+    if (!o.inApp || !(latest > 0)) { return false; }
+    var installed = parseInt(o.installed, 10);
+    if (!(installed > 0)) { installed = 0; }
+    if (installed >= latest) { return false; }
+    if (parseInt(o.snoozeFor, 10) === latest && Number(o.now) < Number(o.snoozeUntil)) { return false; }
+    return true;
+};
+
 document.addEventListener('DOMContentLoaded', function () {
 
     // اول از همه: حالا که این فایل واقعاً اجرا شد، صفحه دیگر «در حال
@@ -773,6 +805,107 @@ document.addEventListener('DOMContentLoaded', function () {
     // خوش‌ظاهر بالا می‌آمد و کاربر دکمه می‌زد و هیچ اتفاقی نمی‌افتاد،
     // بی‌هیچ نشانه‌ای از خرابی.
     document.documentElement.classList.remove('js-loading');
+
+    // ---------- نوارِ «نسخه‌ی تازه‌ی اپ آماده است» ----------
+    // ⛔ تصمیم در `appUpdateDue()` است؛ اینجا فقط ورودی‌ها جمع می‌شوند و
+    //    نوار ساخته می‌شود. متن‌ها با `textContent` (نامِ برنامه از
+    //    پیکربندی می‌آید) و هیچ `position: fixed` ای نیست — همان کارتِ
+    //    معمولیِ `.apk-bar`، بالای محتوا.
+    (function appUpdateBar() {
+        var meta = document.querySelector('meta[name="apk-latest"]');
+        if (!meta) { return; }
+
+        var inApp = false;
+        try {
+            // اپ روی اولین آدرس `?appv=` می‌گذارد و اولین ناوبریِ TWA
+            // referrerِ `android-app://` دارد. sessionStorage مالِ همان
+            // زبانه است، پس کرومِ معمولی آن را نمی‌بیند.
+            var qs = /[?&]appv=\d/.test(location.search);
+            if (qs || (document.referrer || '').indexOf('android-app://') === 0) {
+                sessionStorage.setItem('daftar_in_app', '1');
+                try { localStorage.setItem('daftar_has_apk', '1'); } catch (e2) {}
+            }
+            inApp = sessionStorage.getItem('daftar_in_app') === '1';
+            if (qs && history.replaceState) {
+                // ⚠ فرگمنت (`#smsq=`) دست نمی‌خورد؛ فقط `appv` از نوارِ آدرس می‌رود.
+                var q = location.search.replace(/([?&])appv=\d+(&|$)/, function (m, a, b) { return b ? a : ''; })
+                                       .replace(/[?&]$/, '');
+                history.replaceState(history.state, '', location.pathname + q + location.hash);
+            }
+        } catch (e) {}
+        // ⚠ ورود از صفحه‌ی ورود (ریدایرکت) referrer و query را می‌برد؛ اپِ
+        //   نصب‌شده در حالتِ standalone باز می‌شود و کوکیِ نسخه را دارد.
+        if (!inApp && window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) {
+            var hasApk = false;
+            try { hasApk = localStorage.getItem('daftar_has_apk') === '1'; } catch (e) {}
+            inApp = hasApk || meta.getAttribute('data-installed') !== '';
+        }
+
+        var latest = parseInt(meta.getAttribute('content'), 10);
+        var snoozeFor = 0, snoozeUntil = 0;
+        try {
+            var sz = String(localStorage.getItem('daftar_update_snooze') || '').split(':');
+            snoozeFor = parseInt(sz[0], 10) || 0;
+            snoozeUntil = parseInt(sz[1], 10) || 0;
+        } catch (e) {}
+
+        if (!window.appUpdateDue({
+            latest: latest, installed: meta.getAttribute('data-installed'), inApp: inApp,
+            snoozeFor: snoozeFor, snoozeUntil: snoozeUntil, now: Date.now()
+        })) { return; }
+
+        var host = document.querySelector('.page-content');
+        if (!host) { return; }
+        function snooze(ms) {
+            try { localStorage.setItem('daftar_update_snooze', latest + ':' + (Date.now() + ms)); } catch (e) {}
+        }
+
+        var bar = document.createElement('div');
+        bar.className = 'apk-bar app-update-bar';
+        bar.setAttribute('role', 'status');
+        var icon = document.createElement('span');
+        icon.className = 'apk-bar-icon';
+        icon.setAttribute('aria-hidden', 'true');
+        icon.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 4v5h-5"/></svg>';
+        var body = document.createElement('div');
+        body.className = 'apk-bar-body';
+        var title = document.createElement('strong');
+        var name = meta.getAttribute('data-name') || '';
+        title.textContent = 'نسخه‌ی تازه‌ی «' + (meta.getAttribute('data-app') || 'حساب لند') + '» آماده است'
+            + (name ? ' (' + name.replace(/\d/g, function (d) { return '۰۱۲۳۴۵۶۷۸۹'[d]; }).replace('.', '٫') + ')' : '') + '.';
+        var note = document.createElement('span');
+        note.textContent = 'با یک تپ به‌روز کنید؛ اطلاعاتتان روی سرور است و سرِ جایش می‌ماند.';
+        body.appendChild(title);
+        body.appendChild(note);
+        var cta = document.createElement('a');
+        cta.className = 'btn btn-primary btn-sm apk-bar-cta';
+        cta.href = meta.getAttribute('data-url') || '#';
+        cta.setAttribute('download', '');
+        cta.textContent = 'به‌روزرسانی';
+        var x = document.createElement('button');
+        x.type = 'button';
+        x.className = 'apk-bar-x';
+        x.setAttribute('aria-label', 'بعداً');
+        x.textContent = '×';
+
+        cta.addEventListener('click', function () {
+            // ⚠ دانلود را خودِ مرورگر انجام می‌دهد؛ اینجا فقط گامِ بعد گفته
+            //   می‌شود — اندروید نصب را خودش نمی‌کند، کاربر باید فایل را باز کند.
+            snooze(window.APP_UPDATE_TAPPED_MS);
+            note.textContent = 'فایل در حال دریافت است. از اعلانِ دانلود بازش کنید و «به‌روزرسانی» را بزنید.'
+                + ' اگر اندروید اجازه خواست، «نصب از این منبع» را روشن کنید.';
+        });
+        x.addEventListener('click', function () {
+            snooze(window.APP_UPDATE_SNOOZE_MS);
+            bar.remove();
+        });
+
+        bar.appendChild(icon);
+        bar.appendChild(body);
+        bar.appendChild(cta);
+        bar.appendChild(x);
+        host.insertBefore(bar, host.firstChild);
+    })();
 
     // پایه‌ی آدرس API — تا فراخوانی‌ها از داخل پوشه admin/ هم درست کار کند
     function apiUrl(name) {

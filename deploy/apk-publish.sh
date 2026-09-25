@@ -261,6 +261,40 @@ if [ "$HAS_MANIFEST" != "1" ]; then
     exit 1
 fi
 
+# ⛔ نسخه از **خودِ فایل** — همان خواننده‌ای که سایت برای نوارِ «نسخه‌ی
+#    تازه آماده است» به کار می‌برد (`includes/apk_meta.php`). دو کار:
+#    - نامِ بسته باید اپِ ما باشد، وگرنه **منتشر نمی‌شود**: کاربر با زدنِ
+#      «به‌روزرسانی» یک اپِ **دیگر** کنارِ اپِ خودش نصب می‌کرد.
+#    - اگر خوانده نشد منتشر می‌شود (نوارِ نصب کار می‌کند) ولی صریح گفته
+#      می‌شود که پیامِ به‌روزرسانی برای این فایل نمی‌آید.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+NEW_CODE=""
+NEW_NAME=""
+OLD_CODE=""
+if command -v php >/dev/null 2>&1; then
+    VER_RC=0
+    VER_OUT=$(php "$SCRIPT_DIR/apk-version.php" --expect "$SRC" 2>&1) || VER_RC=$?
+    if [ "$VER_RC" = "2" ]; then
+        red "این APK مالِ اپِ دیگری است — منتشر نشد."
+        printf '    %s\n' "$VER_OUT"
+        exit 1
+    elif [ "$VER_RC" = "0" ]; then
+        NEW_CODE=$(printf '%s' "$VER_OUT" | head -n1 | cut -f1)
+        NEW_NAME=$(printf '%s' "$VER_OUT" | head -n1 | cut -f2)
+    else
+        info "⚠ نسخه از این فایل خوانده نشد؛ نوارِ «نسخه‌ی تازه» برای آن نمی‌آید."
+    fi
+    if [ -f "$DEST" ]; then
+        OLD_CODE=$(php "$SCRIPT_DIR/apk-version.php" "$DEST" 2>/dev/null | head -n1 | cut -f1 || true)
+    fi
+else
+    info "⚠ php پیدا نشد؛ نسخه‌ی فایل سنجیده نشد."
+fi
+if [ -n "$NEW_CODE" ] && [ -n "$OLD_CODE" ] && [ "$NEW_CODE" -le "$OLD_CODE" ]; then
+    info "⚠ نسخه‌ی این فایل ($NEW_CODE) از نسخه‌ی فعلیِ روی سرور ($OLD_CODE) بالاتر نیست؛"
+    info "  کسی پیامِ به‌روزرسانی نمی‌گیرد."
+fi
+
 mkdir -p "$DEST_DIR"
 cp "$SRC" "$DEST.tmp"
 
@@ -275,6 +309,10 @@ chmod 644 "$DEST"
 
 SIZE=$(du -h "$DEST" | cut -f1)
 grn "✅ نصب شد: $DEST  ($SIZE)"
+if [ -n "$NEW_CODE" ]; then
+    grn "   نسخه‌ی $NEW_NAME (کد $NEW_CODE) — هر کس نسخه‌ی قدیمی‌تر دارد، با باز کردنِ اپ"
+    grn "   نوارِ «نسخه‌ی تازه آماده است» را می‌بیند."
+fi
 echo
 info "حالا روی گوشیِ اندرویدی، همان آدرسِ سایت را باز کنید — نوارِ"
 info "«دریافت اپ» بالای صفحه می‌آید. داخلِ خودِ اپ عمداً نمی‌آید."

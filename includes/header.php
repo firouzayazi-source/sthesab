@@ -69,6 +69,15 @@ if (!isset($pageWide)) {
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="<?= h(APP_NAME) ?>">
     <meta name="theme-color" content="#2a3563">
+    <?php
+    /* ⛔ نوارِ «نسخه‌ی تازه‌ی اپ آماده است»: سرور آخرین نسخه (از خودِ فایلِ
+       APK) و نسخه‌ی نصب‌شده (کوکیِ `Auth::captureAppVersion()`) را می‌دهد و
+       `app.js` تصمیم می‌گیرد، چون فقط مرورگر می‌داند *داخلِ اپ* است یا
+       کرومِ معمولی. فقط برای اندروید رندر می‌شود — بقیه یک stat هم نمی‌دهند. */
+    $__apk = isAndroidRequest() ? androidApkLatest() : null;
+    if ($__apk !== null): ?>
+    <meta name="apk-latest" content="<?= (int)$__apk['code'] ?>" data-name="<?= h($__apk['name']) ?>" data-url="<?= h($__apk['url']) ?>" data-installed="<?= Auth::appVersion() ?: '' ?>" data-app="<?= h(APP_NAME) ?>">
+    <?php endif; ?>
 </head>
 <body>
 <div class="app-shell">
