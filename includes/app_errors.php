@@ -65,6 +65,17 @@ final class AppErrors
         self::$installed = true;
 
         set_error_handler(static function (int $no, string $msg, string $file = '', int $line = 0) {
+            // ⛔ `@` یعنی «این شکست انتظار می‌رود» — ثبتش نکن.
+            //    **گزارشِ مالکِ نصب (با اسکرین‌شات):** «خطای» باز در پنل
+            //    برای `@file_get_contents(var/apk-meta.json)` — کشی که
+            //    بارِ اول هنوز ساخته نشده، و کد دقیقاً همان را پیش‌بینی
+            //    کرده بود. گیرنده‌ی سراسری `@` را نادیده می‌گرفت، پس هر
+            //    `@`ِ پروژه (ده‌ها جا) می‌توانست یک ردیفِ بی‌معنا بسازد و
+            //    نشانِ قرمزِ نوارِ مدیر را روشن کند — همان «هشدارِ همیشگی».
+            //    در PHP 8 `@` مقدارِ `error_reporting()` را موقتاً به
+            //    خطاهای کشنده محدود می‌کند؛ پس هشدارِ خاموش‌شده اینجا
+            //    بیتِ خودش را ندارد.
+            if (!(error_reporting() & $no)) { return false; }
             if ($no & (E_ERROR | E_WARNING | E_USER_ERROR | E_USER_WARNING | E_RECOVERABLE_ERROR)) {
                 self::record(self::levelName($no), $msg, $file, $line);
             }

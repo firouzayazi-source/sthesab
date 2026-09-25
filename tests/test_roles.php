@@ -239,6 +239,7 @@ $session = function (string $username, string $password) use ($port): callable {
 $asAdmin     = $session(RPREFIX . 'admin', 'Rol12345');
 $asSupport   = $session(RPREFIX . 'support', 'Rol12345');
 $asColleague = $session(RPREFIX . 'colleague', 'Rol12345');
+$asUser      = $session(RPREFIX . 'user', 'Rol12345');
 
 // ⛔ اول ثابت می‌کنیم نشست‌ها واقعاً برقرارند — وگرنه «۴۰۳ گرفت» ممکن
 //    است فقط یعنی «اصلاً وارد نشده» و همه‌ی بررسی‌های زیر **پوچ**اند.
@@ -340,6 +341,13 @@ T::ok(!str_contains($colHome, 'js-open-admin'),
     '⛔ و دکمه‌ی «مدیریت» هم برایش رندر نمی‌شود',
     'سرتیترِ مدیریت بدونِ هیچ قلمی، همان «دکمه‌ی بی‌کار» است');
 T::ok(str_contains($colHome, 'همکار'), 'نشانِ نقش «همکار» دیده می‌شود');
+
+// ⛔ **گزارشِ مالکِ نصب:** «هیچ چیز مدیریتی نباید برای کاربر عادی بیاد».
+//    کاربرِ عادی جدا سنجیده می‌شود، نه فقط از راهِ «همکار مثلِ کاربر است».
+[, $usrHome] = $asUser('index.php');
+T::ok($usrHome !== '' && str_contains($usrHome, '</html>'), 'خانه‌ی کاربرِ عادی رندر شد (پیش‌شرط)');
+T::ok(!str_contains($usrHome, 'admin/') && !str_contains($usrHome, 'پاسخ به تیکت') && !str_contains($usrHome, 'js-open-admin'),
+    '⛔ کاربرِ عادی هیچ لینک، کارت یا سرتیترِ مدیریتی ندارد');
 
 [, $admHome] = $asAdmin('index.php');
 $admSide = $sidebarOf($admHome);

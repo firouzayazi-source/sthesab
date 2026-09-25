@@ -290,4 +290,33 @@ if (!Notify::available()) {
     deleteUserAccount($uid);
 }
 
+// =====================================================================
+// ۳. `@` یعنی «انتظار می‌رود» — ثبت نمی‌شود
+// =====================================================================
+/**
+ * **گزارشِ مالکِ نصب (با اسکرین‌شات):** یک «خطای» باز برای
+ * `@file_get_contents(var/apk-meta.json)` — کشی که بارِ اول نیست و کد
+ * همان را پیش‌بینی کرده بود. گیرنده‌ی سراسری `@` را نادیده می‌گرفت.
+ *
+ * ⚠ هر دو نیمه لازم است: با فقط نیمه‌ی اول، جهشِ «گیرنده هیچ هشداری
+ *   ثبت نکند» هم سبز می‌ماند.
+ */
+T::group('خطای خاموش‌شده با @ ثبت نمی‌شود');
+$resetCap();
+$missing = '/nonexistent-dir/' . $MARK . '-quiet.json';
+$r = @file_get_contents($missing);
+T::same(false, $r, 'خواندنِ فایلِ ناموجود شکست خورد (پیش‌شرطِ آزمون)');
+T::same(0, count(array_filter($mine('all'), static fn($x) => str_contains((string)$x['message'], '-quiet.json'))),
+    '⛔ هشدارِ خاموش‌شده با @ هیچ ردیفی نساخت');
+
+$resetCap();
+$loud = '/nonexistent-dir/' . $MARK . '-loud.json';
+$prevDisplay = ini_set('display_errors', '0');
+$prevLog = ini_set('log_errors', '0');
+$r = file_get_contents($loud);
+ini_set('display_errors', (string)$prevDisplay);
+ini_set('log_errors', (string)$prevLog);
+T::same(1, count(array_filter($mine('all'), static fn($x) => str_contains((string)$x['message'], '-loud.json'))),
+    'ولی همان هشدار بدونِ @ هنوز ثبت می‌شود (گیرنده خاموش نشده)');
+
 exit(T::report());

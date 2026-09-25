@@ -4966,7 +4966,7 @@ function apkLatestFrom(string $apk, string $cache): ?array
     if (!$st || (int)$st['size'] <= 0) { return null; }
     $key = $st['size'] . ':' . $st['mtime'] . ':' . $st['ino'];
 
-    $c = json_decode((string)@file_get_contents($cache), true);
+    $c = is_file($cache) ? json_decode((string)@file_get_contents($cache), true) : null;
     if (is_array($c) && ($c['key'] ?? null) === $key && array_key_exists('info', $c)) {
         $info = is_array($c['info']) ? $c['info'] : null;
     } else {
