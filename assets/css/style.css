@@ -4726,6 +4726,13 @@ html[data-theme="dark"] .start-card {
     color: var(--color-gray-500);
 }
 .store-own-stat b { font-size: .98rem; }
+/* مانده‌ی نقدی: همان کارت، با نوارِ کنارِ رنگِ درآمد — پولی است که
+   مالِ اوست و فقط هنوز به دستش نرسیده. رنگ روی مرز است نه زمینه (درسِ
+   `.start-card`: زمینه در حالت شب بازنویسی می‌شود). */
+.store-own-cash { border-inline-start: 3px solid var(--in); }
+.store-own-total b { font-size: .95rem; }
+/* گوشیِ نه در انبار نه فروخته (ثبت‌شده، بایگانی، مرجوع) — آرام، نه هشدار. */
+.store-row-out { color: var(--color-gray-500); }
 .store-own-stat small {
     font-size: .72rem;
     color: var(--color-gray-500);

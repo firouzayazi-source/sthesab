@@ -208,11 +208,11 @@ if (StoreShare::available()) {
 $storeCanView = StoreShare::available() && StoreShare::canViewAssets($userId, Auth::isAdmin());
 
 if ($storeShare !== null) {
-    $storeDevices = isset($storeShare['devices']) && is_array($storeShare['devices'])
-        ? $storeShare['devices'] : [];
+    // ⚠ تعداد از `active_count`ِ خودِ فروشگاه، نه `count(devices)`: آن
+    //   فهرست فروخته‌ها و گوشیِ خارج از انبار را هم دارد.
     $portfolio[] = [
         'name'  => 'دارایی من در فروشگاه',
-        'qty'   => (float)count($storeDevices),
+        'qty'   => (float)($storeShare['active_count'] ?? 0),
         'unit'  => 'دستگاه',
         'value' => (int)StoreShare::valueFor($userId),
         'kind'  => 'store_share',
@@ -475,10 +475,18 @@ include __DIR__ . '/includes/header.php';
  *    نسخه‌ی دومِ آن منطق، همان مرزی که بین `my-assets.php` و
  *    `trades.php` هم عمداً کشیده شده.
  */
-$shDevices = ($storeShare !== null && isset($storeShare['devices']) && is_array($storeShare['devices']))
-    ? $storeShare['devices'] : [];
-$shSold = 0;
-foreach ($shDevices as $d) { if (is_array($d) && ($d['status'] ?? '') === 'SOLD') { $shSold++; } }
+/*
+ * ⛔ همان سه تکه‌ی صفحه‌ی کالاها — «سرمایه یا گوشی است یا پولِ آن گوشی
+ *    که در فروشگاه است»: کالای در انبار، مانده‌ی نقدی، و جمعشان
+ *    (`valueFor()`). «مانده» و «اصل سرمایه»ی دفتر کل از اینجا رفتند؛ روی
+ *    نصبِ واقعی با کالاها نمی‌خواندند و عددی بودند که از هیچ‌جای صفحه
+ *    درنمی‌آمد. نصبِ عقب‌مانده‌ی فروشگاه (بی‌`holding`) همان «مانده»ی
+ *    قبلی را می‌گیرد، با برچسبِ خودش.
+ */
+$shNum    = static fn($v): int => (int)round((float)($v ?? 0));
+$shUnified = $storeShare !== null && array_key_exists('holding', $storeShare);
+$shActive  = $storeShare !== null ? (int)($storeShare['active_count'] ?? 0) : 0;
+$shSold    = $storeShare !== null ? (int)($storeShare['sold_count'] ?? 0) : 0;
 ?>
 <div class="card store-mini">
     <div class="card-header-row">
@@ -489,24 +497,26 @@ foreach ($shDevices as $d) { if (is_array($d) && ($d['status'] ?? '') === 'SOLD'
     <?php if ($storeShare !== null): ?>
         <div class="store-own-stats">
             <div class="store-own-stat">
-                <span class="store-own-label">مانده</span>
+                <span class="store-own-label"><?= $shUnified ? 'دارایی در فروشگاه' : 'مانده' ?></span>
                 <b class="ltr-num<?= (int)StoreShare::valueFor($userId) < 0 ? ' asset-amount-neg' : '' ?>"><?= formatMoney((int)StoreShare::valueFor($userId)) ?></b>
             </div>
+            <?php if ($shUnified): ?>
             <div class="store-own-stat">
-                <span class="store-own-label">اصل سرمایه</span>
-                <b class="ltr-num"><?= formatMoney((int)round((float)($storeShare['capital'] ?? 0))) ?></b>
+                <span class="store-own-label">در انبار</span>
+                <b class="ltr-num"><?= formatMoney($shNum($storeShare['active_cost'] ?? 0) + $shNum($storeShare['items_cost'] ?? 0)) ?></b>
             </div>
+            <div class="store-own-stat">
+                <span class="store-own-label">مانده نقدی</span>
+                <b class="ltr-num<?= $shNum($storeShare['cash_held'] ?? 0) < 0 ? ' asset-amount-neg' : '' ?>"><?= formatMoney($shNum($storeShare['cash_held'] ?? 0)) ?></b>
+            </div>
+            <?php endif; ?>
             <div class="store-own-stat">
                 <span class="store-own-label">سهم سود</span>
-                <b class="ltr-num"><?= formatMoney((int)round((float)($storeShare['earned'] ?? 0))) ?></b>
-            </div>
-            <div class="store-own-stat">
-                <span class="store-own-label">پرداخت‌شده</span>
-                <b class="ltr-num"><?= formatMoney((int)round((float)($storeShare['paid'] ?? 0))) ?></b>
+                <b class="ltr-num"><?= formatMoney($shNum($storeShare['own_profit'] ?? ($storeShare['earned'] ?? 0))) ?></b>
             </div>
         </div>
         <p class="hint asset-total-note">
-            <?= toPersianDigits((string)(count($shDevices) - $shSold)) ?> دستگاه فروش‌نرفته و
+            <?= toPersianDigits((string)$shActive) ?> دستگاه در انبار و
             <?= toPersianDigits((string)$shSold) ?> دستگاه فروخته‌شده.
             سهمِ سود خودکار در دفتر شما ثبت می‌شود.
             <?php if ($storeSyncStatus['fetched_at']): ?>

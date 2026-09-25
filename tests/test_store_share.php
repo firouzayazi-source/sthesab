@@ -565,6 +565,96 @@ T::ok(count($oldAdmin) === 1, 'بدونِ `house` فقط سهامدارها می
 T::ok($oldAdmin[0]['rows'] !== [] && $oldAdmin[0]['rows'][0]['cat_label'] === '',
     '⛔ برچسبِ نبوده خالی می‌ماند، نه حدسِ محلی');
 
+/* ─────────────── ۱۱/ب. «در انبار» یعنی در انبار، و مانده‌ی نقدی ─────────────── */
+
+T::group('۱۱/ب — گوشیِ خارج از انبار «در انبار» نیست، و مانده‌ی نقدی');
+
+/*
+ * ⛔ گزارشِ مالکِ نصب: «۲۰ تا درسته اما اقلامِ پایین درست نیست» — فهرستِ
+ *    «در انبار» ۲۱ قلم می‌گفت. نسخه‌ی قبلی هر چیزِ غیرِ SOLD را «در
+ *    انبار» می‌خواند، ولی فروشگاه گوشیِ ثبت‌شده‌ی بی‌خرید، بایگانی و
+ *    مرجوع را هم در فهرست می‌فرستد.
+ */
+$payloadGone = $payloadFull;
+$payloadGone['shareholders'][0]['devices'][] = [
+    'id' => 13, 'imei' => '350000000000013', 'product' => 'آیفون ۱۵', 'category' => 'PHONE',
+    'category_label' => 'گوشی', 'status' => 'REGISTERED', 'cost' => 0, 'sale_price' => 0,
+    'purchased_at' => null, 'sold_at' => null, 'profit' => 0, 'own' => 0,
+];
+$payloadGone['shareholders'][0]['devices'][] = [
+    'id' => 14, 'imei' => '350000000000014', 'product' => 'آیفون ۱۲', 'category' => 'PHONE',
+    'category_label' => 'گوشی', 'status' => 'ARCHIVED', 'state' => 'other',
+    'status_label' => 'بایگانی', 'cost' => 40000000, 'sale_price' => 0,
+    'purchased_at' => '2026-07-01', 'sold_at' => null, 'profit' => 0, 'own' => 0,
+];
+$setState($payloadGone);
+T::ok(!empty(StoreShare::sync()['ok']), 'پیلود با گوشیِ خارج از انبار همگام شد');
+
+$blk    = StoreShare::assetOwners($A, false)[0] ?? ['rows' => []];
+$states = [];
+foreach ($blk['rows'] as $r) { if ($r['kind'] === 'device') { $states[$r['label']] = $r['state']; } }
+T::ok(($states['350000000000013'] ?? '') === 'other',
+    '⛔ گوشیِ «ثبت‌شده» (بدونِ کلیدِ state، نصبِ عقب‌مانده) در انبار نیست',
+    json_encode($states));
+T::ok(($states['350000000000014'] ?? '') === 'other', 'گوشیِ بایگانی با state=other در انبار نیست');
+T::ok(($states['350000000000011'] ?? '') === 'active', 'گوشیِ IN_STOCK در انبار است');
+T::ok(($states['350000000000012'] ?? '') === 'sold', 'گوشیِ SOLD فروخته است');
+$activeRows = count(array_filter($blk['rows'],
+    static fn($r) => $r['kind'] === 'device' && $r['state'] === 'active'));
+T::ok($activeRows === (int)$blk['active_count'],
+    '⛔ شمارِ ردیف‌های «در انبار» با active_countِ خودِ فروشگاه یکی است',
+    "rows=$activeRows active_count={$blk['active_count']}");
+
+// ⛔ state ی فروشگاه بر حدسِ محلی مقدم است — آن مدرکِ فروش را می‌بیند.
+T::ok(StoreShare::deviceState(['status' => 'IN_STOCK', 'state' => 'sold']) === 'sold',
+    'state فروشگاه بر status مقدم است');
+T::ok(StoreShare::deviceState(['status' => 'RETURNED_TO_SUPPLIER']) === 'other',
+    'مرجوع در انبار نیست');
+T::ok(StoreShare::deviceState(['status' => 'IN_REPAIR']) === 'active', 'در تعمیر هنوز در فروشگاه است');
+T::ok(StoreShare::deviceState(['status' => 'IN_STOCK', 'state' => 'bogus']) === 'active',
+    'مقدارِ ناشناخته‌ی state نادیده گرفته می‌شود');
+
+// نصبِ عقب‌مانده: مانده‌ی نقدی نامعلوم است — null، نه صفرِ ساختگی.
+T::ok($blk['cash_held'] === null && $blk['holding'] === null,
+    '⛔ بدونِ cash_held در پاسخ، کارت عددی نمی‌سازد');
+
+/*
+ * ⛔ مانده‌ی نقدی و «دارایی من در فروشگاه» — سیستمِ یکدست:
+ *    دارایی = کالای انبار + لوازم جانبی + مانده‌ی نقدی،
+ *    مانده‌ی نقدی = بهای خریدِ فروخته + سود − تسویه.
+ *    عددها را فروشگاه می‌سازد؛ اینجا فقط باید همان‌ها برسند.
+ */
+$payloadCash = $payloadGone;
+$payloadCash['shareholders'][0]['sold_cost'] = 63000000;
+$payloadCash['shareholders'][0]['settled']   = 20000000;
+$payloadCash['shareholders'][0]['cash_held'] = 63000000 + 4800000 - 20000000;
+$payloadCash['shareholders'][0]['holding']   = 151000000 + 3000000 + (63000000 + 4800000 - 20000000);
+$setState($payloadCash);
+T::ok(!empty(StoreShare::sync()['ok']), 'پیلود با مانده‌ی نقدی همگام شد');
+$blk = StoreShare::assetOwners($A, false)[0] ?? [];
+T::ok(($blk['cash_held'] ?? null) === 47800000, 'مانده‌ی نقدی همان عددِ فروشگاه است',
+    'cash=' . var_export($blk['cash_held'] ?? null, true));
+T::ok(($blk['settled'] ?? null) === 20000000, 'تسویه‌شده از settled می‌آید');
+T::ok(StoreShare::valueFor($A) === 201800000,
+    '⛔ «دارایی من در فروشگاه» = انبار + لوازم + مانده‌ی نقدی (holding)، نه «مانده»ی دفتر',
+    'value=' . var_export(StoreShare::valueFor($A), true));
+T::ok(StoreShare::valueFor($A) === $blk['active_cost'] + $blk['items_cost'] + $blk['cash_held'],
+    '⛔ و همان سه عددِ روی کارت، جمعِ آن‌اند');
+// ⛔ طلبِ سایرین با همان مبنای دفتر کم می‌شود، نه با holding.
+T::ok(StoreShare::storeOwed($A) === (int)$payloadCash['store']['shareholders_owed']
+        - (int)$payloadCash['shareholders'][0]['balance'],
+    '⛔ storeOwed() «مانده»ی دفترِ خودِ مدیر را کم می‌کند، نه holding',
+    'owed=' . var_export(StoreShare::storeOwed($A), true));
+
+$houseBlk = null;
+foreach (StoreShare::assetOwners($A, true) as $o) { if ($o['is_house']) { $houseBlk = $o; } }
+T::ok($houseBlk !== null && $houseBlk['cash_held'] === null,
+    'فروشگاه طلبِ نقدی از خودش ندارد');
+
+// برگرداندن به پیلودِ قبلی، تا بخشِ ۱۲ روی همان پایه بماند.
+$setState($payloadFull);
+StoreShare::sync();
+
 /* ─────────────── ۱۲. تسویه‌ی نقدی ─────────────── */
 
 /*

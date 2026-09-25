@@ -68,10 +68,18 @@ if (!isset(STORE_ASSET_FILTERS[$filter])) { $filter = 'open'; }
 
 $q = trim((string)getParam('q', ''));
 
-/** صافیِ یک ردیف: وضعیت و جست‌وجو. */
+/**
+ * صافیِ یک ردیف: وضعیت و جست‌وجو.
+ *
+ * ⛔ «در انبار» یعنی `state === 'active'`، نه «فروخته نیست». گوشیِ
+ *    ثبت‌شده‌ی بی‌خرید، بایگانی و مرجوع نه در انبارند نه فروخته؛ با
+ *    `!sold`، همان‌ها فهرستِ یک سهامدار را «۲۱ قلم» می‌کردند در حالی
+ *    که «سرمایه در انبار» بالای همان کارت ۲۰ دستگاه می‌گفت. آن‌ها فقط در
+ *    «همه» دیده می‌شوند، با برچسبِ وضعیتِ خودِ فروشگاه.
+ */
 $matches = static function (array $r) use ($filter, $q): bool {
-    if ($filter === 'open' && $r['sold']) { return false; }
-    if ($filter === 'sold' && !$r['sold']) { return false; }
+    if ($filter === 'open' && $r['state'] !== 'active') { return false; }
+    if ($filter === 'sold' && $r['state'] !== 'sold') { return false; }
     if ($q === '') { return true; }
     // ⚠ ارقامِ فارسی هم باید پیدا شوند: کیبوردِ فارسی «۱۲۳» می‌دهد و آن
     //   با `123` یکی نیست — همان قاعده‌ی `txSearchAmount()`.
@@ -236,12 +244,37 @@ include __DIR__ . '/includes/header.php';
             <span class="store-own-label">سهم سود</span>
             <b class="ltr-num<?= $own['own_profit'] < 0 ? ' asset-amount-neg' : '' ?>"><?= formatMoney($own['own_profit']) ?></b>
         </div>
+        <?php
+        /*
+         * ⛔ مانده‌ی نقدی در فروشگاه — پولِ گوشیِ فروخته‌شده که هنوز
+         *    تسویه نشده. **خواسته‌ی مالکِ نصب:** «گوشی که فروخته می‌شه
+         *    تبدیل به پول می‌شه تا زمانی که از حسابداری فروشگاه پرداختش
+         *    رو نزنم.» عدد را خودِ فروشگاه می‌سازد (`cash_held` =
+         *    اصلِ پولِ فروخته + سهمِ سود − تسویه‌ها)؛ اینجا حسابی نیست.
+         *
+         * ⛔ کلیدِ نبوده یعنی قلم **رندر نمی‌شود**، نه صفر: نصبِ
+         *    عقب‌مانده‌ی فروشگاه آن را نمی‌دهد و «۰ تومان» دروغ بود.
+         */
+        ?>
+        <?php if ($own['cash_held'] !== null): ?>
+        <div class="store-own-stat store-own-cash">
+            <span class="store-own-label">مانده نقدی در فروشگاه</span>
+            <b class="ltr-num<?= $own['cash_held'] < 0 ? ' asset-amount-neg' : '' ?>"><?= formatMoney($own['cash_held']) ?></b>
+            <small>فروخته‌شده + سود − تسویه‌شده</small>
+        </div>
         <?php endif; ?>
-        <?php if ($own['paid'] !== null && $own['paid'] !== 0): ?>
+        <?php endif; ?>
+        <?php
+        // ⚠ «تسویه‌شده» فقط سندِ **پرداخت** است (`settled`)، همان پولی که
+        //   به کیف پولِ شما رسیده؛ `paid`ِ دفتر سندِ افتتاحیه و دستی را هم
+        //   دارد و با کارتِ بالا جمع نمی‌خورد. نصبِ عقب‌مانده همان `paid`.
+        $settledShown = $own['settled'] ?? $own['paid'];
+        ?>
+        <?php if ($settledShown !== null && $settledShown !== 0): ?>
         <div class="store-own-stat">
-            <span class="store-own-label">پرداخت‌شده</span>
-            <b class="ltr-num"><?= formatMoney($own['paid']) ?></b>
-            <small>تسویه‌ی نقدی</small>
+            <span class="store-own-label">تسویه‌شده</span>
+            <b class="ltr-num"><?= formatMoney($settledShown) ?></b>
+            <small>به کیف پول رسیده</small>
         </div>
         <?php endif; ?>
         <?php if ($own['items_cost'] !== 0): ?>
@@ -252,6 +285,23 @@ include __DIR__ . '/includes/header.php';
         </div>
         <?php endif; ?>
     </div>
+
+    <?php if ($own['holding'] !== null): ?>
+        <?php
+        /*
+         * ⛔ یک خط که سه تکه را به هم می‌رساند — «سیستمِ یکدست»: کالای
+         *    انبار + لوازم جانبی + مانده‌ی نقدی = همان عددِ «دارایی من در
+         *    فروشگاه» در صفحه‌ی دارایی. پولِ تسویه‌شده در آن نیست، چون
+         *    به کیف پولتان رفته و آنجا شمرده می‌شود.
+         */
+        ?>
+        <p class="hint store-own-total">
+            دارایی شما در فروشگاه:
+            <b class="ltr-num<?= $own['holding'] < 0 ? ' asset-amount-neg' : '' ?>"><?= formatMoney($own['holding']) ?></b>
+            — کالای در انبار<?= $own['items_cost'] !== 0 ? '، لوازم جانبی' : '' ?> و مانده‌ی نقدی.
+            پولِ تسویه‌شده در کیف پولتان است و اینجا دوباره شمرده نمی‌شود.
+        </p>
+    <?php endif; ?>
 
     <?php if ($own['capped']): ?>
         <p class="hint" style="color:var(--warn-ink);">
@@ -295,7 +345,10 @@ include __DIR__ . '/includes/header.php';
                     <div class="tx-row-texts">
                         <span class="tx-row-title"><?= h($r['product']) ?></span>
                         <span class="tx-row-cat">
-                            <?= $r['sold'] ? 'فروخته شد' : 'در انبار' ?>
+                            <?php if ($r['state'] === 'sold'): ?>فروخته شد
+                            <?php elseif ($r['state'] === 'active'): ?>در انبار
+                            <?php else: ?><span class="store-row-out"><?= h($r['status_label'] !== '' ? $r['status_label'] : 'خارج از انبار') ?></span>
+                            <?php endif; ?>
                             <?php if ($r['kind'] === 'item'): ?>
                                 · <?= formatQuantity($r['qty']) ?> عدد
                             <?php endif; ?>

@@ -4052,7 +4052,7 @@ $ssOwed = $stripComments($root . '/includes/store_share.php');
 if (!preg_match("/array_key_exists\('shareholders_owed'/", $ssOwed)) {
     $badSS[] = '⛔ store_share — storeOwed() وجودِ کلید را نمی‌سنجد؛ نصبِ عقب‌مانده صفر می‌گیرد';
 }
-if (!preg_match('/\$owed\s*-=\s*\$mine/', $ssOwed)) {
+if (!preg_match('/\$owed\s*-=/', $ssOwed)) {
     $badSS[] = '⛔ store_share — سهمِ خودِ کاربر از طلبِ سهامداران کم نمی‌شود';
 }
 
@@ -4155,6 +4155,39 @@ if (!is_file($saPath)) {
     if (!preg_match('/\$soldKnown\s*=\s*!\$own\[[\x27"]capped[\x27"]\]\s*&&\s*\$soldRows\s*===\s*\$own\[[\x27"]sold_count[\x27"]\]/', $saSrc)) {
         $badSS[] = '⛔ store-assets.php — نگهبانِ «جمعِ ردیف‌های فروخته کامل است» برداشته شده';
     }
+    // ⛔ «در انبار» یعنی state === 'active'، نه «فروخته نیست». گوشیِ
+    //    ثبت‌شده‌ی بی‌خرید، بایگانی و مرجوع فهرست را «۲۱ قلم» می‌کردند در
+    //    حالی که active_countِ همان کارت ۲۰ می‌گفت (گزارشِ مالکِ نصب).
+    if (!preg_match('/\$filter\s*===\s*[\x27"]open[\x27"]\s*&&\s*\$r\[[\x27"]state[\x27"]\]\s*!==\s*[\x27"]active[\x27"]/', $saSrc)) {
+        $badSS[] = '⛔ store-assets.php — صافیِ «در انبار» از state === active نمی‌آید (گوشیِ خارج از انبار دوباره در فهرست می‌نشیند)';
+    }
+    // ⛔ کارتِ «مانده نقدی» از عددِ خودِ فروشگاه، با نگهبانِ «کلید نبود»:
+    //    صفرِ ساختگی روی نصبِ عقب‌مانده دروغ بود.
+    if (!preg_match('/\$own\[[\x27"]cash_held[\x27"]\]\s*!==\s*null/', $saSrc)
+        || strpos($saSrc, 'مانده نقدی در فروشگاه') === false) {
+        $badSS[] = '⛔ store-assets.php — کارتِ «مانده نقدی در فروشگاه» یا نگهبانِ null اش نیست';
+    }
+}
+// ⛔ سیستمِ یکدست: «دارایی من در فروشگاه» همان holding است (انبار + لوازم
+//    + مانده‌ی نقدی)، و `storeOwed()` با مبنای دفتر («مانده»ی خودِ مدیر)
+//    کم می‌کند نه با holding — وگرنه اختلافِ دفتر و کالا بی‌صدا به «طلب
+//    سایر سهامداران» منتقل می‌شد.
+if (!preg_match('/array_key_exists\(\x27holding\x27,\s*\$sh\)/', $ssSrc)) {
+    $badSS[] = '⛔ store_share — valueFor() از holding نمی‌خواند';
+}
+if (!preg_match('/function\s+storeOwed[\s\S]*?\$owed\s*-=\s*\(int\)round\(\(float\)\(\$sh\[[\x27"]balance[\x27"]\]/', $ssSrc)) {
+    $badSS[] = '⛔ store_share — storeOwed() سهمِ مدیر را با «مانده»ی دفتر کم نمی‌کند';
+}
+if (!preg_match('/\$state\s*=\s*self::deviceState\(\$d\)/', $ssSrc)) {
+    $badSS[] = '⛔ store_share — ownerBlock() جای دستگاه را از deviceState() نمی‌گیرد';
+}
+// و کارتِ صفحه‌ی دارایی: تعداد از active_count، نه count(devices) که
+// فروخته و خارج از انبار را هم دارد؛ و «اصل سرمایه»ی دفتر برنگردد.
+if (preg_match('/count\(\$storeDevices\)|count\(\$shDevices\)/', $maSrc)) {
+    $badSS[] = '⛔ my-assets.php — شمارِ دستگاه از count(devices) است، نه active_count';
+}
+if (preg_match('/\$storeShare\[[\x27"]capital[\x27"]\]/', $maSrc)) {
+    $badSS[] = '⛔ my-assets.php — «اصل سرمایه»ی دفتر دوباره روی کارت آمده';
 }
 // دکمه‌ی ورود به **همان** تابع بند است، نه یک شرطِ محلیِ دوم.
 if (!preg_match('/StoreShare::canViewAssets\(\s*\$userId\s*,\s*Auth::isAdmin\(\)\s*\)/', $maSrc)) {

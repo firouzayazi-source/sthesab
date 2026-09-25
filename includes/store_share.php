@@ -559,6 +559,31 @@ final class StoreShare
     {
         $sh = self::forUser($userId);
         if ($sh === null) { return null; }
+        /*
+         * ⛔ **و از وقتی فروشگاه `holding` می‌فرستد، همان است نه «مانده».**
+         *
+         * **خواسته‌ی مالکِ نصب:** «سرمایه یا گوشیه یا پولِ اون گوشی که
+         * در فروشگاه هست… پولِ تسویه‌شده دیگه جزو دارایی نمیاد.» یعنی:
+         *
+         *     دارایی = کالای در انبار + لوازم جانبی + مانده‌ی نقدی
+         *     مانده‌ی نقدی = بهای خریدِ فروخته‌ها + سهمِ سود − تسویه‌ها
+         *
+         * هر سه تکه همان عددهایی‌اند که صفحه‌ی کالاها روی کارت نشان
+         * می‌دهد، پس این قلم و آن کارت **یک عدد** می‌گویند. «مانده»ی
+         * دفتر کل همین را از روی `capital` می‌سازد و روی نصبِ واقعی ۹۹
+         * میلیون با کالاها نمی‌خواند — عددی که از هیچ‌جای صفحه قابل
+         * درآوردن نبود.
+         *
+         * هنوز همان خاصیتِ «سرِ فروش سقوط نمی‌کند» را دارد: بهای گوشی از
+         * انبار به مانده‌ی نقدی می‌رود، و با تسویه به کیف پول
+         * (`store_settlements`) — خالص دارایی در هیچ‌کدام تکان نمی‌خورد.
+         *
+         * ⚠ نصبِ عقب‌مانده‌ی فروشگاه این کلید را ندارد؛ آن‌وقت همان
+         *   «مانده»ی قبلی — ناقص ولی نه ساختگی.
+         */
+        if (array_key_exists('holding', $sh)) {
+            return (int)round((float)$sh['holding']);
+        }
         return (int)round((float)($sh['balance'] ?? 0));
     }
 
@@ -610,8 +635,13 @@ final class StoreShare
 
         $owed = (int)round((float)$data['store']['shareholders_owed']);
         if ($excludeUserId !== null) {
-            $mine = self::valueFor($excludeUserId);
-            if ($mine !== null) { $owed -= $mine; }
+            // ⛔ با همان **مبنا** کم می‌شود: `shareholders_owed` جمعِ
+            //    «مانده»های دفتر است، پس سهمِ خودِ مدیر هم «مانده»ی دفترِ
+            //    اوست — نه `valueFor()` که از کالا ساخته می‌شود. با
+            //    مبنای مختلط، اختلافِ دفتر و کالای خودِ او بی‌صدا به
+            //    «طلب سایر سهامداران» منتقل می‌شد.
+            $sh = self::forUser($excludeUserId);
+            if ($sh !== null) { $owed -= (int)round((float)($sh['balance'] ?? 0)); }
         }
         return $owed;
     }
@@ -698,16 +728,51 @@ final class StoreShare
      *   سودِ فروش از کدام خرید آمده. `profit`/`own` شان `null` می‌ماند،
      *   نه صفر — «نمی‌دانیم» با «صفر بود» یکی نیست.
      */
+    /**
+     * جای یک دستگاه: `active` (در انبار)، `sold`، یا `other` (هیچ‌کدام).
+     *
+     * ⛔ **حالتِ سوم همان چیزی بود که فهرست را ۲۱ قلم می‌کرد.** نسخه‌ی
+     *    قبلی فقط `status === 'SOLD'` را می‌پرسید و هر چیزِ دیگری را «در
+     *    انبار» می‌خواند؛ ولی فهرستِ فروشگاه گوشیِ «ثبت‌شده — هنوز وارد
+     *    انبار نشده»، بایگانی و مرجوع را هم دارد. عددِ بالای کارت (از
+     *    `active_count`ِ خودِ فروشگاه) ۲۰ می‌گفت و فهرستِ زیرش ۲۱ — بی‌هیچ
+     *    خطایی، و کسی نمی‌فهمید کدام درست است.
+     *
+     * ⛔ تصمیم مالِ فروشگاه است (`state`، از `deviceStockState()` —
+     *    همان دو شرطی که `active_count` را می‌سازد). فقط اگر نصبِ
+     *    فروشگاه عقب باشد و آن کلید را ندهد، همان قاعده از روی `status`
+     *    خوانده می‌شود — ناقص‌تر (فروشِ بی‌مدرک را نمی‌شناسد) ولی دیگر
+     *    هیچ گوشیِ خارج از انبار را «در انبار» نمی‌خواند.
+     */
+    public const DEVICE_ACTIVE_STATUSES = ['IN_STOCK', 'RESERVED', 'IN_REPAIR'];
+
+    public static function deviceState(array $d): string
+    {
+        $state = (string)($d['state'] ?? '');
+        if (in_array($state, ['active', 'sold', 'other'], true)) { return $state; }
+        $status = (string)($d['status'] ?? '');
+        if ($status === 'SOLD') { return 'sold'; }
+        return in_array($status, self::DEVICE_ACTIVE_STATUSES, true) ? 'active' : 'other';
+    }
+
     private static function ownerBlock(array $sh, bool $isHouse): array
     {
         $num = static fn($v): int => (int)round((float)($v ?? 0));
+        // ⛔ کلیدِ نبوده `null` می‌ماند، نه صفر: «نمی‌دانیم» با «صفر بود»
+        //    یکی نیست، و کارتِ «مانده نقدی» با صفرِ ساختگی عددی نشان می‌داد
+        //    که کاربر واقعی می‌خواندش.
+        $opt = static fn(string $k): ?int
+            => ($isHouse || !array_key_exists($k, $sh)) ? null : (int)round((float)$sh[$k]);
 
         $rows = [];
         foreach ((isset($sh['devices']) && is_array($sh['devices'])) ? $sh['devices'] : [] as $d) {
             if (!is_array($d)) { continue; }
-            $sold = ($d['status'] ?? '') === 'SOLD';
+            $state = self::deviceState($d);
+            $sold  = $state === 'sold';
             $rows[] = [
                 'kind'      => 'device',
+                'state'     => $state,
+                'status_label' => (string)($d['status_label'] ?? ''),
                 'category'  => (string)($d['category'] ?? ''),
                 'cat_label' => (string)($d['category_label'] ?? ''),
                 'product'   => (string)($d['product'] ?? '—'),
@@ -725,6 +790,8 @@ final class StoreShare
             if (!is_array($i)) { continue; }
             $rows[] = [
                 'kind'      => 'item',
+                'state'     => 'active',
+                'status_label' => '',
                 'category'  => (string)($i['category'] ?? ''),
                 'cat_label' => (string)($i['category_label'] ?? ''),
                 'product'   => (string)($i['product'] ?? '—'),
@@ -754,6 +821,10 @@ final class StoreShare
             'sold_count'   => (int)($sh['sold_count'] ?? 0),
             'sold_total'   => $num($sh['sold_total'] ?? 0),
             'own_profit'   => $num($sh['own_profit'] ?? 0),
+            // مانده‌ی نقدی در فروشگاه و تکه‌هایش — بالای `valueFor()`.
+            'settled'      => $opt('settled'),
+            'cash_held'    => $opt('cash_held'),
+            'holding'      => $opt('holding'),
             'items_cost'   => $num($sh['items_cost'] ?? 0),
             // ⚠ سقف **گفته** می‌شود، نه بی‌صدا: فهرستِ زیر ممکن است
             //   بریده باشد در حالی که جمع‌های بالا روی همه‌اند.
