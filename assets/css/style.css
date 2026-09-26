@@ -5585,7 +5585,13 @@ html[data-theme="dark"][data-palette="lilac"] {
 .desk-kpi.is-warn { border-color: var(--warn-ink); }
 .desk-kpi-label { font-size: 12.5px; color: var(--muted); font-weight: 600; }
 .desk-kpi-label small { font-weight: 400; }
-.desk-kpi-value { font-size: 22px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.desk-kpi-value {
+    font-size: 22px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    /* ⛔ عدد چپ‌چین (قاعده‌ی «متنِ فارسی راست‌چین، عدد چپ‌چین»): در ستونِ
+       فلکسِ راست‌به‌چپ، `flex-end` یعنی لبه‌ی **چپ** — و `ltr` واحد را
+       همان سمتی می‌نشاند که روی کارتِ ماه است. `test_number_align` گرفتش. */
+    align-self: flex-end; max-width: 100%; direction: ltr;
+}
 .desk-kpi-value small { font-size: 12px; font-weight: 500; color: var(--muted); }
 .desk-kpi-sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .desk-kpi.is-warn .desk-kpi-sub { color: var(--warn-ink); }
