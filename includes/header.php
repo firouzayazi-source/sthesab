@@ -61,6 +61,9 @@ if (!isset($pageWide)) {
     <?php foreach (assetUrls(['js/jalali-datepicker.js', 'js/app.js']) as $__u): ?>
     <script defer src="<?= h($__u) ?>"></script>
     <?php endforeach; ?>
+    <?php /* ⛔ پیش‌گیریِ صفحه‌ی بعد — تصمیم و فهرستِ استثناها در
+             `speculationRulesJson()`؛ مرورگرِ بی‌پشتیبانی نادیده‌اش می‌گیرد. */ ?>
+    <script type="speculationrules" id="specRules"><?= speculationRulesJson() ?></script>
     <link rel="apple-touch-icon" href="<?= iconUrl('icon-180.png') ?>">
     <link rel="icon" type="image/png" sizes="32x32" href="<?= iconUrl('icon-32.png') ?>">
     <link rel="icon" type="image/png" sizes="16x16" href="<?= iconUrl('icon-16.png') ?>">

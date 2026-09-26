@@ -3683,6 +3683,61 @@ function iconUrl(string $file): string
     return APP_BASE_PATH . '/assets/icons/' . $file . '?v=' . assetVersion(['icons/' . $file]);
 }
 
+/**
+ * ⛔ صفحه‌هایی که **با GET چیزی را عوض می‌کنند** — پیش‌گیری (prefetch)
+ * هرگز سراغشان نمی‌رود. `notifications.php` همه را «خوانده» می‌کند و
+ * `support.php` تیکتِ باز شده را؛ اگر مرورگر آن‌ها را فقط به‌خاطرِ نگه
+ * داشتنِ نشانگر روی لینک بگیرد و کاربر بعد منصرف شود، اعلانی که هرگز
+ * دیده نشده «خوانده» ثبت می‌شد. `logout.php` هم که روشن است.
+ * قاعده ۶۸ هر صفحه‌ای را که `markRead(` دارد با همین فهرست می‌سنجد.
+ */
+const PREFETCH_SKIP = ['logout.php', 'notifications.php', 'support.php'];
+
+/**
+ * قاعده‌ی «پیش‌گیریِ صفحه‌ی بعدی» (Speculation Rules) — تنها جای این تصمیم.
+ *
+ * مرورگر وقتی انگشت/نشانگر روی لینکِ داخلی می‌نشیند، همان لحظه صفحه‌ی
+ * بعد را می‌گیرد؛ تا کاربر انگشت را بردارد (یا روی دسکتاپ کلیک کند)
+ * یک رفت‌وبرگشتِ شبکه تمام شده است. اندازه‌گیری شد (کرومیوم، ۱۵۰ms
+ * تأخیر): رسیدنِ صفحه از ~۱۶۵ به ~۶۵ میلی‌ثانیه.
+ *
+ * ⛔ فقط prefetch، نه prerender: prerender جاوااسکریپتِ صفحه را هم اجرا
+ *    می‌کند، و `app.js` هنگامِ بارگذاری کار می‌کند (صفِ پیامکِ بانک
+ *    تراکنش ثبت می‌کند، اشتراکِ اعلان، معرفیِ اولیه). یعنی صفحه‌ای که
+ *    کاربر هرگز باز نکرد می‌توانست تراکنش بنویسد.
+ * ⛔ `moderate` نه `eager`: فقط وقتی کاربر واقعاً سراغِ لینک رفته
+ *    (نشانگرِ ۲۰۰ms روی لینک یا لمس). با `eager` همه‌ی لینک‌های صفحه
+ *    گرفته می‌شد — چند برابر بارِ سرور، و پاسخ‌هایی که تا پنج دقیقه
+ *    کهنه می‌مانند. کهنگیِ همین پنجره‌ی کوتاه را هم `app.js` با
+ *    `resetSpeculation()` بعد از هر نوشتنِ موفق می‌بندد.
+ * ⚠ HTML همچنان `no-store` است؛ کشِ پیش‌گیری جدا از کشِ HTTP است و
+ *    فقط برای **همان یک ناوبری** مصرف می‌شود (در کرومیوم ۱۴۱ سنجیده شد،
+ *    حتی با سرویس‌ورکرِ فعال).
+ */
+function speculationRulesJson(): string
+{
+    $b = APP_BASE_PATH;
+    $not = [];
+    foreach (PREFETCH_SKIP as $page) {
+        $not[] = ['href_matches' => $b . '/' . $page . '*'];
+        $not[] = ['href_matches' => $b . '/*/' . $page . '*'];
+    }
+    foreach (['api', 'download', 'uploads', 'assets'] as $dir) {
+        $not[] = ['href_matches' => $b . '/' . $dir . '/*'];
+    }
+    // لینکی که `onclick` دارد (مثلاً `confirm()`) ممکن است لغو شود.
+    $not[] = ['selector_matches' => '[download], [target], [onclick], [data-no-prefetch]'];
+
+    $rules = ['prefetch' => [[
+        'where' => ['and' => [
+            ['href_matches' => $b . '/*'],
+            ['not' => ['or' => $not]],
+        ]],
+        'eagerness' => 'moderate',
+    ]]];
+    return json_encode($rules, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+}
+
 function assetUrls(array $relativePaths): array
 {
     $ver  = assetVersion($relativePaths);

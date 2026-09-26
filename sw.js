@@ -67,6 +67,14 @@ self.addEventListener('activate', (event) => {
             names.filter((n) => n.startsWith('daftar-') && !n.startsWith(VERSION))
                  .map((n) => caches.delete(n))
         );
+        /* ⛔ Navigation Preload: بدونش درخواستِ صفحه تا بیدار شدنِ خودِ
+           این سرویس‌ورکر **منتظر** می‌ماند (روی گوشی، بعد از ~۳۰ ثانیه
+           بی‌کاری، ده‌ها تا صدها میلی‌ثانیه). با آن، مرورگر درخواست را
+           هم‌زمان با بیدار کردنِ ما می‌فرستد و شاخه‌ی `navigate` پایین
+           همان پاسخ را برمی‌دارد. */
+        if (self.registration.navigationPreload) {
+            try { await self.registration.navigationPreload.enable(); } catch (e) {}
+        }
         await self.clients.claim();
     })());
 });
@@ -93,6 +101,11 @@ self.addEventListener('fetch', (event) => {
     if (req.mode === 'navigate') {
         event.respondWith((async () => {
             try {
+                // ⚠ پاسخِ پیش‌بارگذاری‌شده همان درخواستِ شبکه است (با همان
+                //   کوکی و همان `no-store`)، نه نسخه‌ی کش — قاعده‌ی «هیچ HTML
+                //   ای کش نمی‌شود» دست‌نخورده می‌ماند.
+                const pre = await event.preloadResponse;
+                if (pre) { return pre; }
                 return await fetch(req);
             } catch (e) {
                 const cache = await caches.open(ASSET_CACHE);

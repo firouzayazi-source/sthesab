@@ -6436,4 +6436,78 @@ if (!str_contains($tp67, '<option value="credit">خرید امانی / نسیه<
 }
 T::bulk(10, $rBad, 'حلقه جای نوار، عددِ درشت = باقیمانده، رنگ از درصد');
 
+// ---------------------------------------------------------------
+// قاعده ۶۸ — سرعتِ تعویض صفحه: پیش‌گیری، کهنه نشدن، و Navigation Preload
+//
+// ⛔ چرا شکل هم لازم است: `test_page_speed` به کرومیوم و دیتابیس بند
+//    است. این قاعده می‌بندد: prerender (که `app.js` صفحه‌ی باز‌نشده را
+//    اجرا می‌کرد) و `eager` برنگردند؛ صفحه‌ای که با GET «خوانده» می‌زند
+//    هرگز پیش‌گرفته نشود؛ پیش‌گرفته‌ها بعد از هر نوشتنِ موفق دور ریخته
+//    شوند؛ و سرویس‌ورکر پیش‌بارگذاریِ ناوبری را روشن کند و مصرفش کند.
+T::group('قاعده ۶۸ — سرعتِ تعویض صفحه');
+$sBad = [];
+$strip68 = function (string $php): string {
+    $o = '';
+    foreach (token_get_all($php) as $t) {
+        if (is_array($t) && in_array($t[0], [T_COMMENT, T_DOC_COMMENT], true)) { continue; }
+        $o .= is_array($t) ? $t[1] : $t;
+    }
+    return $o;
+};
+$hd68 = (string)file_get_contents(__DIR__ . '/../includes/header.php');
+if (!str_contains($hd68, '<script type="speculationrules" id="specRules"><?= speculationRulesJson() ?></script>')) {
+    $sBad[] = 'header.php — قاعده‌ی پیش‌گیری از speculationRulesJson() رندر نمی‌شود';
+}
+$fx68 = $strip68((string)file_get_contents(__DIR__ . '/../includes/functions.php'));
+$sr68 = preg_match('~function speculationRulesJson\(\).*?\n\}~s', $fx68, $m68) ? $m68[0] : '';
+if ($sr68 === '') { $sBad[] = 'functions.php — speculationRulesJson() پیدا نشد (قاعده کور شد)'; }
+if (!str_contains($sr68, "'eagerness' => 'moderate'")) {
+    $sBad[] = 'speculationRulesJson() — eagerness «moderate» نیست (eager همه‌ی لینک‌ها را می‌گیرد)';
+}
+if (preg_match('~prerender|\'eager\'|\'immediate\'~', $sr68)) {
+    $sBad[] = 'speculationRulesJson() — prerender یا eager/immediate برگشت';
+}
+if (!str_contains($sr68, 'foreach (PREFETCH_SKIP as') || !str_contains($sr68, '[onclick]')) {
+    $sBad[] = 'speculationRulesJson() — استثناهای PREFETCH_SKIP یا لینکِ onclick‌دار اعمال نمی‌شود';
+}
+$skip68 = preg_match("~const PREFETCH_SKIP = \[([^\]]*)\]~", $fx68, $k68) ? $k68[1] : '';
+if (!str_contains($skip68, "'logout.php'")) { $sBad[] = 'PREFETCH_SKIP — logout.php در فهرست نیست'; }
+// ⛔ هر صفحه‌ای که با GET «خوانده» ثبت می‌کند باید در فهرست باشد —
+//    فهرست از خودِ صفحه‌ها کشف می‌شود، نه دستی.
+$pages68 = array_merge(glob(__DIR__ . '/../*.php') ?: [], glob(__DIR__ . '/../admin/*.php') ?: []);
+$seen68 = 0;
+foreach ($pages68 as $pf) {
+    $src = $strip68((string)file_get_contents($pf));
+    if (!preg_match('~::markRead\(~', $src)) { continue; }
+    $seen68++;
+    if (!str_contains($skip68, "'" . basename($pf) . "'")) {
+        $sBad[] = basename($pf) . ' — با GET «خوانده» می‌زند ولی در PREFETCH_SKIP نیست';
+    }
+}
+if ($seen68 < 2) { $sBad[] = 'کشفِ صفحه‌های markRead چیزی پیدا نکرد (قاعده کور شد)'; }
+$js68 = (string)file_get_contents(__DIR__ . '/../assets/js/app.js');
+$dcl68 = strpos($js68, "addEventListener('DOMContentLoaded'");
+$rs68 = strpos($js68, 'window.resetSpeculation = reset');
+if ($rs68 === false || ($dcl68 !== false && $rs68 > $dcl68)) {
+    $sBad[] = 'app.js — resetSpeculation بیرون از DOMContentLoaded تعریف نشده';
+}
+$blk68 = $rs68 !== false ? substr($js68, max(0, $rs68 - 1200), 2400) : '';
+if (!str_contains($blk68, 'parent.removeChild(old)') || !str_contains($blk68, 'setTimeout(')) {
+    $sBad[] = 'app.js — قاعده برداشته و یک تیک بعد نشانده نمی‌شود (جایگزینیِ درجا پیش‌گرفته‌ی کهنه را نگه می‌دارد)';
+}
+if (!preg_match("~m !== 'GET' && m !== 'HEAD'\) \{\s*p\.then\(function \(r\) \{ if \(r && r\.ok\) \{ try \{ reset\(\);~", $blk68)) {
+    $sBad[] = 'app.js — بعد از نوشتنِ موفق با fetch، پیش‌گرفته‌ها دور ریخته نمی‌شوند';
+}
+$sw68 = preg_replace('~/\*.*?\*/|//[^\n]*~s', '', (string)file_get_contents(__DIR__ . '/../sw.js'));
+if (!preg_match("~addEventListener\('activate'.*?navigationPreload\.enable\(\)~s", $sw68)) {
+    $sBad[] = 'sw.js — Navigation Preload در activate روشن نمی‌شود';
+}
+if (!preg_match("~req\.mode === 'navigate'.*?await event\.preloadResponse;\s*if \(pre\) \{ return pre; \}\s*return await fetch\(req\);~s", $sw68)) {
+    $sBad[] = 'sw.js — شاخه‌ی ناوبری پاسخِ پیش‌بارگذاری را پیش از fetch مصرف نمی‌کند';
+}
+if (!str_contains((string)file_get_contents(__DIR__ . '/../includes/log.php'), "\$ctx['prefetch'] = true")) {
+    $sBad[] = 'log.php — درخواستِ پیش‌گیری در خطِ request علامت نمی‌خورد';
+}
+T::bulk(12, $sBad, 'پیش‌گیریِ امن، کهنه‌نشدن، و پیش‌بارگذاریِ ناوبری');
+
 exit(T::report());

@@ -1,4 +1,50 @@
 /* ============================================================
+   پیش‌گیریِ صفحه‌ی بعد — و کهنه نشدنش
+   ------------------------------------------------------------
+   `<script type="speculationrules" id="specRules">` (از
+   `speculationRulesJson()`) صفحه‌ی بعد را وقتی نشانگر/انگشت روی لینک
+   می‌نشیند می‌گیرد. خطرش **کهنگی** است: اگر کاربر روی لینکی مکث کند،
+   بعد در همین صفحه چیزی را با `fetch` عوض کند (پینِ حساب، ثبتِ خودکار از
+   پیامک، …) و بعد روی همان لینک بزند، پاسخِ پیش‌گرفته عددِ **قبل** از
+   تغییر را نشان می‌داد — همان باگی که HTML را `no-store` کرد.
+
+   ⛔ پس بعد از هر درخواستِ **نویسنده**ی موفق، قاعده برداشته و یک تیک
+   بعد دوباره نشانده می‌شود: برداشتن، پیش‌گرفته‌هایش را دور می‌ریزد.
+   ⚠ جایگزینیِ درجا (`replaceChild` با همان متن) **کافی نبود** — کرومیوم
+   نامزدهای هم‌آدرس را نگه می‌داشت و پاسخِ کهنه باز هم مصرف می‌شد؛
+   هر دو شکل اندازه‌گیری شد. روی `fetch` سراسری است نه تک‌تکِ ۵۰
+   فراخوانی، تا مسیرِ نویسنده‌ی فردا خودبه‌خود پوشش داشته باشد.
+   ============================================================ */
+(function () {
+    function reset() {
+        var old = document.getElementById('specRules');
+        if (!old || !old.parentNode) { return; }
+        var parent = old.parentNode, text = old.textContent;
+        parent.removeChild(old);
+        setTimeout(function () {
+            if (document.getElementById('specRules')) { return; }
+            var fresh = document.createElement('script');
+            fresh.type = 'speculationrules';
+            fresh.id = 'specRules';
+            fresh.textContent = text;
+            parent.appendChild(fresh);
+        }, 0);
+    }
+    window.resetSpeculation = reset;
+    if (typeof window.fetch !== 'function') { return; }
+    var orig = window.fetch;
+    window.fetch = function (input, init) {
+        var method = (init && init.method) || (input && typeof input === 'object' && input.method) || 'GET';
+        var p = orig.apply(this, arguments);
+        var m = String(method).toUpperCase();
+        if (m !== 'GET' && m !== 'HEAD') {
+            p.then(function (r) { if (r && r.ok) { try { reset(); } catch (e) {} } }, function () {});
+        }
+        return p;
+    };
+})();
+
+/* ============================================================
    خطای جاوااسکریپت و «کد پیگیری»
    ------------------------------------------------------------
    بی‌صداترین خرابیِ این اپ صفحه‌ای است که کامل بالا می‌آید و هیچ

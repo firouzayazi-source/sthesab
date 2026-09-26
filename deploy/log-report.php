@@ -95,13 +95,14 @@ if ($tail > 0) {
 
 // ---------- خلاصه ----------
 $requests = array_values(array_filter($rows, fn($r) => ($r['event'] ?? '') === 'request'));
-$n5 = $n4 = $slow = $dbFailed = 0;
+$n5 = $n4 = $slow = $dbFailed = $prefetched = 0;
 $ms = [];
 $byRoute = [];
 foreach ($requests as $r) {
     $st = (int)($r['status'] ?? 0);
     if ($st >= 500) { $n5++; } elseif ($st >= 400) { $n4++; }
     if (!empty($r['slow'])) { $slow++; }
+    if (!empty($r['prefetch'])) { $prefetched++; }
     $dbFailed += (int)($r['db']['failed'] ?? 0);
     $ms[] = (float)($r['ms'] ?? 0);
     $rt = (string)($r['route'] ?? '?');
@@ -140,7 +141,7 @@ if (count($cronBad) >= THRESHOLDS['cron_stale'])        { $alerts[] = count($cro
 $report = [
     'hours' => $hours, 'requests' => $total, 'status_5xx' => $n5, 'status_4xx' => $n4,
     'error_rate' => round($rate, 4), 'p50_ms' => $pct($ms, 0.5), 'p95_ms' => $p95,
-    'slow_requests' => $slow, 'slow_queries' => $slowQueries, 'db_failed' => $dbFailed,
+    'slow_requests' => $slow, 'prefetched' => $prefetched, 'slow_queries' => $slowQueries, 'db_failed' => $dbFailed,
     'client_errors' => $clientErr, 'login_failed' => $loginFailed,
     'distinct_errors_db' => AppErrors::countSince(max(1, (int)ceil($hours / 24))),
     'top_errors' => array_slice($errors, 0, 8, true),
@@ -156,7 +157,7 @@ if ($json) {
 }
 
 printf("گزارشِ %d ساعتِ گذشته (%s)\n", $hours, date('Y-m-d H:i'));
-printf("  درخواست: %d   ۵xx: %d   ۴xx: %d   نرخِ خطا: %.2f%%\n", $total, $n5, $n4, $rate * 100);
+printf("  درخواست: %d (پیش‌گیریِ مرورگر: %d)   ۵xx: %d   ۴xx: %d   نرخِ خطا: %.2f%%\n", $total, $prefetched, $n5, $n4, $rate * 100);
 printf("  زمانِ پاسخ p50: %.0f ms   p95: %.0f ms   کند (>%d): %d\n", $pct($ms, 0.5), $p95, Log::SLOW_REQUEST_MS, $slow);
 printf("  کوئریِ کند (>%d ms): %d   کوئریِ شکست‌خورده: %d\n", Log::SLOW_QUERY_MS, $slowQueries, $dbFailed);
 printf("  خطای مرورگر: %d   ورودِ ناموفق: %d   خطای متمایز در app_errors: %d\n",

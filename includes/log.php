@@ -335,6 +335,9 @@ final class Log
                 'ip'     => (string)($_SERVER['REMOTE_ADDR'] ?? ''),
             ];
             if ($ms >= self::SLOW_REQUEST_MS) { $ctx['slow'] = true; }
+            // ⚠ پیش‌گیریِ مرورگر (`speculationRulesJson()`) هم یک درخواست است؛
+            //   علامت می‌خورد تا `log-report` آن‌ها را جدا بشمارد، نه قاطیِ بازدید.
+            if (stripos((string)($_SERVER['HTTP_SEC_PURPOSE'] ?? ''), 'prefetch') !== false) { $ctx['prefetch'] = true; }
             self::write($level, 'request', $ctx);
         } catch (Throwable $e) {
             // سکوت — پایانِ درخواست جای خرابیِ تازه نیست
