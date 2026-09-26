@@ -13,6 +13,12 @@ if (!isset($pageTitle)) {
 if (!isset($pageWide)) {
     $pageWide = false;
 }
+/* نمای دسکتاپ — فقط بالای `DESK_MIN_PX` عرض را باز می‌کند (برخلافِ
+   `$pageWide` که از ۷۲۰ به بعد باز است)، تا تبلت و پنجره‌ی نیمه‌باز همان
+   ستونِ خواندنیِ همیشگی بمانند. */
+if (!isset($pageDesk)) {
+    $pageDesk = false;
+}
 // فشرده‌سازی خروجی در includes/db.php و پیش از هر خروجی فعال می‌شود
 ?>
 <!DOCTYPE html>
@@ -41,6 +47,8 @@ if (!isset($pageWide)) {
                 }
             } catch (e) {}
         })();
+        /* ⛔ نمای دسکتاپ: کوکیِ `DESK_COOKIE` برای بارگذاریِ **بعدی** (دلیلش بالای `deskView()`). */
+        <?= deskCookieScript() ?>
     </script>
     <meta charset="UTF-8">
     <!-- viewport-fit=cover لازم است وگرنه iOS مقدار env(safe-area-inset-*)
@@ -142,7 +150,7 @@ if (!isset($pageWide)) {
 
         <?php /* صفحه‌ای که جدولِ پهن دارد پیش از این include مقدارِ
                  `$pageWide = true` می‌گذارد؛ بقیه دست‌نخورده می‌مانند. */ ?>
-        <div class="page-content<?= $pageWide ? ' is-wide' : '' ?>">
+        <div class="page-content<?= $pageWide ? ' is-wide' : '' ?><?= $pageDesk ? ' is-desk' : '' ?>">
             <?php /* پیشنهادِ نصبِ اپ اندروید — بالای همه چیز، ولی فقط
                      روی اندروید و فقط وقتی APK واقعاً وجود دارد. خودش
                      تصمیم می‌گیرد که رندر شود یا نه. */ ?>

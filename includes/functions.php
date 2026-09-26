@@ -715,6 +715,189 @@ function assetSummaryRows(int $userId): array
 }
 
 /**
+ * اقلامِ «خالص دارایی» — تنها جای این محاسبه.
+ *
+ * ⛔ پیش از این همین منطق داخلِ خودِ `my-assets.php` بود. با آمدنِ
+ *    خانه‌ی دسکتاپ (که عددِ «خالص دارایی» را کنارِ «مجموع حساب‌ها»
+ *    نشان می‌دهد) باید بار دوم نوشته می‌شد، و دو نسخه از منطقِ پول
+ *    دیر یا زود دو عدد می‌گویند — آن‌وقت کاربر روی خانه یک عدد می‌بیند
+ *    و در صفحه‌ی دارایی عددِ دیگری، و به هیچ‌کدام اعتماد نمی‌کند.
+ *
+ * هر ردیف: name, qty, unit, value, kind. `kind` همان نامی است که
+ * `netWorthSnapParts()` سطلِ عکسِ روزانه را از رویش پیدا می‌کند.
+ *
+ * ⛔ هیچ درخواستِ شبکه‌ای نمی‌زند: تازه کردنِ آینه‌ی فروشگاه کارِ
+ *    فراخواننده است (فقط `my-assets.php`)، وگرنه خانه در هر بارگذاری
+ *    یک درخواستِ HTTP به فروشگاه می‌زد. آینه را cronِ هر دقیقه تازه
+ *    نگه می‌دارد.
+ *
+ * خروجی: ['rows' => مرتب از بزرگ به کوچک, 'total' => int,
+ *          'trade_open_count', 'cheque_count', 'debt_count',
+ *          'store_share' => ?array, 'owed_mine' => bool]
+ */
+function netWorthPortfolio(int $userId, bool $isAdmin, ?array $walletRows = null, ?array $assetSummary = null): array
+{
+    $pdo = Database::getConnection();
+    $rows = [];
+
+    // ⚠ صفحه‌ی دارایی همین ردیف‌ها را برای فهرستش هم لازم دارد؛ پاس دادنشان
+    //   یک کوئریِ تکراری را برمی‌دارد.
+    foreach ($assetSummary ?? assetSummaryRows($userId) as $s) {
+        $rows[] = ['name' => $s['name'], 'qty' => (float)$s['total_qty'], 'unit' => $s['unit'],
+                   'value' => (int)$s['total_value'], 'kind' => 'asset'];
+    }
+
+    // کالای بازِ بخش معاملات **یک قلمِ جمع‌شده** است، نه یکی به‌ازای هر کالا:
+    // این نمای ترکیبِ دارایی است و نامِ تک‌تکِ معامله‌ها درصدها را خرد
+    // می‌کرد؛ جای دیدنشان صفحه‌ی معاملات است.
+    $tradeValue = 0;
+    $tradeCount = 0;
+    if (tradesTablesExist($pdo) && tradesEnabled($pdo, $userId)) {
+        foreach (tradesWithProgress($userId) as $t) {
+            if ($t['is_closed']) { continue; }
+            $tradeValue += $t['open_cost'];
+            $tradeCount++;
+        }
+    }
+    if ($tradeCount > 0) {
+        $rows[] = ['name' => 'مجموع دارایی‌های بخش معاملات', 'qty' => (float)$tradeCount,
+                   'unit' => 'قلم', 'value' => (int)$tradeValue, 'kind' => 'trade'];
+    }
+
+    // ⛔ فقط چکِ **در جریان** — چکِ پاس‌شده پولش از قبل در موجودی حساب
+    //    نشسته (walletBalances با settle_wallet_id)، پس آوردنش اینجا یعنی
+    //    دوبار شمردن. دریافتی مثبت و صادره منفی.
+    $chequeNet = 0;
+    $chequeCount = 0;
+    if (tableExists('cheques')) {
+        try {
+            $cq = $pdo->prepare(
+                "SELECT direction, COUNT(*) AS n, COALESCE(SUM(amount), 0) AS total
+                 FROM cheques
+                 WHERE user_id = :u AND " . chequeActiveSql() . "
+                 GROUP BY direction"
+            );
+            $cq->execute(['u' => $userId]);
+            foreach ($cq->fetchAll() as $r) {
+                $chequeCount += (int)$r['n'];
+                $chequeNet   += ($r['direction'] === 'received' ? 1 : -1) * (int)$r['total'];
+            }
+        } catch (PDOException $e) { $chequeCount = 0; $chequeNet = 0; }
+    }
+    if ($chequeCount > 0) {
+        $rows[] = ['name' => 'خالص چک‌های در جریان', 'qty' => (float)$chequeCount,
+                   'unit' => 'چک', 'value' => $chequeNet, 'kind' => 'cheques'];
+    }
+
+    // ⛔ فقط **باقیمانده** — پرداخت‌های انجام‌شده از قبل در موجودیِ حساب‌ها
+    //    هستند (debt_payments.wallet_id).
+    $debtNet = 0;
+    $debtCount = 0;
+    if (tableExists('debts')) {
+        try {
+            $dq = $pdo->prepare(
+                'SELECT direction, amount, paid_amount FROM debts
+                 WHERE user_id = :u AND is_settled = 0'
+            );
+            $dq->execute(['u' => $userId]);
+            foreach ($dq->fetchAll() as $d) {
+                $remaining = debtRemaining($d);
+                if ($remaining === 0) { continue; }
+                $debtCount++;
+                $debtNet += ($d['direction'] === 'receivable' ? 1 : -1) * $remaining;
+            }
+        } catch (PDOException $e) { $debtCount = 0; $debtNet = 0; }
+    }
+    if ($debtCount > 0) {
+        $rows[] = ['name' => 'خالص طلب و بدهی', 'qty' => (float)$debtCount,
+                   'unit' => 'مورد', 'value' => $debtNet, 'kind' => 'debts'];
+    }
+
+    // ⚠ موجودی را فراخواننده پاس می‌دهد، نه کش — درسِ قاعده ۲۹.
+    $walletsTotal = 0;
+    $walletsCount = 0;
+    try {
+        foreach ($walletRows ?? walletBalances($userId) as $w) {
+            if ((int)$w['is_active'] !== 1) { continue; }
+            $walletsTotal += (int)$w['balance'];
+            $walletsCount++;
+        }
+    } catch (PDOException $e) { $walletsCount = 0; }
+    if ($walletsCount > 0) {
+        $rows[] = ['name' => 'مجموع حساب‌ها', 'qty' => (float)$walletsCount,
+                   'unit' => 'حساب', 'value' => $walletsTotal, 'kind' => 'wallets'];
+    }
+
+    // ---------- فروشگاه (فقط خواندنِ آینه) ----------
+    // ⛔ «دارایی من در فروشگاه» از `StoreShare::valueFor()` می‌آید و هیچ
+    //    محاسبه‌ای اینجا نیست؛ دو قلمِ کلِ فروشگاه **فقط برای مدیر**، و
+    //    سهمِ خودِ مدیر از «طلب سهامداران» کم می‌شود تا دو بار شمرده نشود.
+    $storeShare = null;
+    $owedMine   = false;
+    require_once __DIR__ . '/store_share.php';
+    if (StoreShare::available()) {
+        $storeShare = StoreShare::forUser($userId);
+        if ($storeShare !== null) {
+            $rows[] = ['name' => 'دارایی من در فروشگاه',
+                       'qty' => (float)($storeShare['active_count'] ?? 0),
+                       'unit' => 'دستگاه', 'value' => (int)StoreShare::valueFor($userId),
+                       'kind' => 'store_share'];
+        }
+        if ($isAdmin) {
+            $storeNet  = StoreShare::storeNetWorth();
+            $storeOwed = StoreShare::storeOwed($userId);
+            $owedMine  = StoreShare::ownShareCounted($userId);
+            if ($storeNet !== null) {
+                $rows[] = ['name' => 'دارایی خودِ فروشگاه', 'qty' => 1.0, 'unit' => 'فروشگاه',
+                           'value' => (int)$storeNet, 'kind' => 'store_total'];
+            }
+            if ($storeOwed !== null) {
+                $rows[] = ['name' => $owedMine ? 'طلب سایر سهامداران فروشگاه' : 'طلب سهامداران فروشگاه',
+                           'qty' => 1.0, 'unit' => 'فروشگاه', 'value' => (int)$storeOwed,
+                           'kind' => 'store_owed'];
+            }
+        }
+    }
+
+    // بزرگ‌ترین‌ها اول — وقتی اقلام زیاد شوند، مهم‌ها بالا می‌مانند
+    usort($rows, fn($a, $b) => $b['value'] <=> $a['value']);
+    $total = 0;
+    foreach ($rows as $r) { $total += $r['value']; }
+
+    return [
+        'rows'             => $rows,
+        'total'            => $total,
+        'trade_open_count' => $tradeCount,
+        'cheque_count'     => $chequeCount,
+        'debt_count'       => $debtCount,
+        'store_share'      => $storeShare,
+        'owed_mine'        => $owedMine,
+    ];
+}
+
+/**
+ * اقلامِ خالص دارایی → سطل‌های عکسِ روزانه.
+ *
+ * ⚠ نامِ کلیدها دقیقاً همان `kind`های `netWorthPortfolio()` است. اگر
+ *   اینجا مفرد نوشته شود (wallet، cheque) همه به سطلِ «دارایی»
+ *   می‌افتند — جمعِ کل درست می‌ماند ولی اجزا غلط، و **بی‌صدا**.
+ */
+function netWorthSnapParts(array $rows): array
+{
+    $parts = ['wallets' => 0, 'assets' => 0, 'trades_open' => 0,
+              'cheques_net' => 0, 'debts_net' => 0,
+              'store_share' => 0, 'store_total' => 0, 'store_owed' => 0];
+    $map = ['wallets' => 'wallets', 'trade' => 'trades_open',
+            'cheques' => 'cheques_net', 'debts' => 'debts_net',
+            'store_share' => 'store_share', 'store_total' => 'store_total',
+            'store_owed' => 'store_owed'];
+    foreach ($rows as $row) {
+        $parts[$map[$row['kind']] ?? 'assets'] += (int)$row['value'];
+    }
+    return $parts;
+}
+
+/**
  * عکسِ امروزِ خالص دارایی را می‌نویسد — بدونِ cron.
  *
  * ⚠ همان الگوی `processRecurringTransactions()`: اولین بازدیدِ روز
@@ -2431,6 +2614,10 @@ function safeToSpend(int $userId, int $daysAhead = 30, ?array $walletRows = null
         // مبلغ، این‌قدر سررسیدش گذشته» — بدون آن، کاربر نمی‌فهمد چرا
         // عدد ناگهان کوچک شد.
         'overdue' => $overdue,
+        // ⚠ کلیدِ افزوده: خودِ رویدادها (۹۰ روز عقب تا افق)، تا فهرستِ
+        //   سررسیدِ خانه‌ی دسکتاپ از **همین** رویدادها ساخته شود، نه با
+        //   `financialEvents()`ِ دوم — عددِ کارت و فهرستِ زیرش از یک چیز.
+        'events' => $events,
     ];
 }
 
@@ -2755,7 +2942,7 @@ function monthComparison(int $userId): array
  */
 function financialHighlights(int $userId, ?array $walletRows = null,
                              ?array $monthCmp = null, bool $monthShownElsewhere = false,
-                             array $skip = []): array
+                             array $skip = [], ?array $safe = null): array
 {
     $out = [];
     // ⛔ `$skip` کلیدهای `HOME_WIDGETS`ی است که کاربر خاموش کرده. جمله‌ی
@@ -2769,7 +2956,9 @@ function financialHighlights(int $userId, ?array $walletRows = null,
     //    چکِ برگشتی عارضه‌ی حقوقی دارد و بدهیِ دیرکرد رابطه را خراب
     //    می‌کند. مقایسه‌ی هزینه‌ی ماه در برابرش تزئین است.
     if ($on('overdue')) try {
-        $safe = safeToSpend($userId, 30, $walletRows);
+        // ⚠ خانه‌ی دسکتاپ همین عدد را برای کارتِ «پول قابل خرج» از قبل
+        //   حساب کرده و پاس می‌دهد — `financialEvents()` چند کوئری است.
+        $safe = $safe ?? safeToSpend($userId, 30, $walletRows);
         if (!empty($safe['overdue']) && (int)$safe['overdue'] > 0) {
             $out[] = [
                 'kind' => 'overdue',
@@ -3707,6 +3896,38 @@ const PREFETCH_SKIP = ['logout.php', 'notifications.php', 'support.php'];
  *    آن بدنه **می‌نویسد** (صفِ پیامکِ بانک، اشتراکِ اعلان).
  */
 const PRERENDER_TABS = ['index.php', 'transactions.php', 'dashboard.php'];
+
+/*
+ * ⛔ نمای دسکتاپ — تنها جای تصمیمِ «آیا این مرورگر پنجره‌ی بزرگ دارد؟».
+ *
+ * سرور عرضِ پنجره را نمی‌داند. اسکریپتِ درون‌خطیِ سرآیند (و صفحه‌ی ورود)
+ * با همان `DESK_MIN_PX`ی که CSS می‌خواند یک کوکیِ نمایشی می‌گذارد یا
+ * برمی‌دارد، و صفحه‌ی بعد از روی آن می‌فهمد.
+ *
+ * ⛔ چرا کوکی و نه «همیشه رندر کن و با CSS پنهان کن»: بلوک‌های دسکتاپِ
+ *    خانه (خالص دارایی، پول قابل خرج، سررسیدها) چند کوئری‌اند. با رندرِ
+ *    همیشگی، **گوشی** — که این‌ها را نمی‌بیند — هزینه‌شان را در هر
+ *    بارگذاری می‌داد. خواسته‌ی مالکِ نصب این بود که گوشی دست نخورد.
+ * ⚠ بدترین حالتش بی‌خطر است: اولین بارگذاری پس از پاک شدنِ کوکی، نمای
+ *   گوشی را در پنجره‌ی بزرگ نشان می‌دهد و صفحه‌ی بعد درست است. و اگر
+ *   کوکی هست ولی پنجره کوچک شده، همان بلوک‌ها با CSS پنهان‌اند.
+ * ⚠ یک ترجیحِ نمایشی است نه ردیابی: فقط «۱» یا هیچ، `SameSite=Lax`، و
+ *   هیچ‌جا خوانده نمی‌شود جز همین تابع.
+ */
+const DESK_COOKIE = 'daftar_desk';
+const DESK_MIN_PX = 1100;
+
+function deskView(): bool
+{
+    return ($_COOKIE[DESK_COOKIE] ?? '') === '1';
+}
+
+/** اسکریپتِ درون‌خطیِ کوکیِ نمای دسکتاپ — سرآیند و صفحه‌ی ورود هر دو همین را چاپ می‌کنند. */
+function deskCookieScript(): string
+{
+    return "(function(){try{var d=window.matchMedia&&window.matchMedia('(min-width: " . DESK_MIN_PX . "px)').matches;"
+         . "document.cookie='" . DESK_COOKIE . "='+(d?'1':'')+';path=/;SameSite=Lax;max-age='+(d?31536000:0);}catch(e){}})();";
+}
 
 /**
  * قاعده‌ی «پیش‌گیریِ صفحه‌ی بعدی» (Speculation Rules) — تنها جای این تصمیم.

@@ -43,163 +43,24 @@ $listStmt->execute(['user_id' => $userId]);
 $assetRecords = $listStmt->fetchAll();
 
 // نمای کلی دارایی‌ها: هم دارایی‌های ثبت‌شده‌ی خود کاربر، هم کالایی که
-// در بخش معاملات خریده و هنوز نفروخته — چون همه‌ی این‌ها دارایی‌اند.
+// در بخش معاملات خریده و هنوز نفروخته، چک و طلب/بدهیِ باز، حساب‌ها، و
+// سهمِ فروشگاه — چون همه‌ی این‌ها دارایی‌اند.
+//
+// ⛔ خودِ محاسبه در `netWorthPortfolio()` است، نه اینجا: خانه‌ی دسکتاپ هم
+//    «خالص دارایی» را نشان می‌دهد و دو نسخه از این منطق دیر یا زود دو
+//    عدد می‌گفتند. دلیلِ تک‌تکِ قلم‌ها (چرا معاملات یک قلمِ جمع‌شده است،
+//    چرا فقط چکِ در جریان، چرا «مانده»ی فروشگاه و چرا دو قلمِ فروشگاه
+//    فقط برای مدیر) بالای همان تابع نوشته شده.
 //
 // ⚠️ اینجا فقط «چقدر داریم» دیده می‌شود. خرید و فروش فقط در بخش
 // معاملات انجام می‌شود و کم و زیاد کردن مقدار دارایی فقط همین‌جا.
-$portfolio = [];
-
-foreach ($assetSummary as $s) {
-    $portfolio[] = [
-        'name'  => $s['name'],
-        'qty'   => (float)$s['total_qty'],
-        'unit'  => $s['unit'],
-        'value' => (int)$s['total_value'],
-        'kind'  => 'asset',
-    ];
-}
-
-// کالای بازِ بخش معاملات **یک قلمِ جمع‌شده** است، نه یکی به‌ازای هر کالا.
-//
-// چرا: این صفحه نمای کلیِ ترکیب دارایی است — «چند درصدم طلاست، چند
-// درصدم پولِ نقد». اسمِ تک‌تکِ معامله‌ها (گوشی، سکه، …) اینجا فهرست را
-// شلوغ می‌کرد و درصدها را خرد می‌کرد، در حالی که جای دیدنِ آن‌ها صفحه‌ی
-// معاملات است. با یک ردیف و یک توگل، می‌شود پرسید «دارایی‌ام بدون
-// بخش معاملات چقدر است؟» — که همان سؤالِ واقعی است.
-//
-// دارایی‌های ثبت‌شده عمداً جدا جدا می‌مانند (به تفکیک نوع)، چون آن‌ها
-// خودشان ترکیبِ دارایی‌اند نه یک بخش.
-$tradeInventoryValue = 0;
-$tradeOpenCount      = 0;
-if (tradesTablesExist($pdo) && tradesEnabled($pdo, $userId)) {
-    foreach (tradesWithProgress($userId) as $t) {
-        if ($t['is_closed']) { continue; }
-        $tradeInventoryValue += $t['open_cost'];
-        $tradeOpenCount++;
-    }
-}
-if ($tradeOpenCount > 0) {
-    $portfolio[] = [
-        'name'  => 'مجموع دارایی‌های بخش معاملات',
-        'qty'   => (float)$tradeOpenCount,
-        'unit'  => 'قلم',
-        'value' => (int)$tradeInventoryValue,
-        'kind'  => 'trade',
-    ];
-}
-
-// ---------- چک‌های در جریان ----------
-//
-// **فقط چکِ پاس‌نشده.** چکی که پاس شده پولش از قبل در موجودی حساب نشسته
-// (walletBalances آن را با settle_wallet_id جمع می‌کند)، پس آوردنش اینجا
-// یعنی دوبار شمردنِ همان پول.
-//
-// دریافتی مثبت و صادره منفی است، و خالصشان یک ردیف می‌شود: اگر بیشتر
-// چکِ صادره داشته باشید، این قلم از دارایی کم می‌کند — که درست است،
-// چون آن پول در آینده از دستتان می‌رود.
-$chequeNet   = 0;
-$chequeCount = 0;
-if (tableExists('cheques')) {
-    try {
-        $cq = $pdo->prepare(
-            "SELECT direction, COUNT(*) AS n, COALESCE(SUM(amount), 0) AS total
-             FROM cheques
-             WHERE user_id = :u AND " . chequeActiveSql() . "
-             GROUP BY direction"
-        );
-        $cq->execute(['u' => $userId]);
-        foreach ($cq->fetchAll() as $r) {
-            $chequeCount += (int)$r['n'];
-            $chequeNet   += ($r['direction'] === 'received' ? 1 : -1) * (int)$r['total'];
-        }
-    } catch (PDOException $e) { $chequeCount = 0; $chequeNet = 0; }
-}
-if ($chequeCount > 0) {
-    $portfolio[] = [
-        'name'  => 'خالص چک‌های در جریان',
-        'qty'   => (float)$chequeCount,
-        'unit'  => 'چک',
-        'value' => $chequeNet,
-        'kind'  => 'cheques',
-    ];
-}
-
-// ---------- خالص طلب و بدهی ----------
-//
-// باقیمانده‌ی طلب منهای باقیمانده‌ی بدهی. «باقیمانده» یعنی آنچه هنوز
-// جابه‌جا نشده؛ پرداخت‌های انجام‌شده از قبل در موجودی حساب‌ها هستند
-// (debt_payments.wallet_id)، پس اینجا دوباره شمرده نمی‌شوند.
-//
-// یعنی اگر ۵ میلیون طلب و ۳ میلیون بدهی داشته باشید، ۲ میلیون به
-// دارایی اضافه می‌شود؛ اگر برعکس بود، همان‌قدر کم می‌شود.
-$debtNet   = 0;
-$debtCount = 0;
-if (tableExists('debts')) {
-    try {
-        $dq = $pdo->prepare(
-            'SELECT direction, amount, paid_amount FROM debts
-             WHERE user_id = :u AND is_settled = 0'
-        );
-        $dq->execute(['u' => $userId]);
-        foreach ($dq->fetchAll() as $d) {
-            $remaining = debtRemaining($d);
-            if ($remaining === 0) { continue; }
-            $debtCount++;
-            $debtNet += ($d['direction'] === 'receivable' ? 1 : -1) * $remaining;
-        }
-    } catch (PDOException $e) { $debtCount = 0; $debtNet = 0; }
-}
-if ($debtCount > 0) {
-    $portfolio[] = [
-        'name'  => 'خالص طلب و بدهی',
-        'qty'   => (float)$debtCount,
-        'unit'  => 'مورد',
-        'value' => $debtNet,
-        'kind'  => 'debts',
-    ];
-}
-
-// پولِ توی حساب‌ها هم دارایی است. به‌صورت یک قلم می‌آید تا در همین
-// نمودار دیده شود، ولی مثل بقیه‌ی قلم‌ها قابل خاموش کردن است — گاهی
-// می‌خواهید بدانید دارایی غیرنقدی‌تان چقدر است.
-$walletsTotal = 0;
-$walletsCount = 0;
-try {
-    foreach (walletBalances($userId) as $w) {
-        if ((int)$w['is_active'] !== 1) { continue; }
-        $walletsTotal += (int)$w['balance'];
-        $walletsCount++;
-    }
-} catch (PDOException $e) {
-    $walletsCount = 0;
-}
-if ($walletsCount > 0) {
-    $portfolio[] = [
-        'name'  => 'مجموع حساب‌ها',
-        'qty'   => (float)$walletsCount,
-        'unit'  => 'حساب',
-        'value' => $walletsTotal,
-        'kind'  => 'wallets',
-    ];
-}
-
-// ---------- سهمِ سهامدارِ فروشگاه ----------
-//
-// ⛔ عددش **مانده‌ی دفترِ آن سیستم** است، نه جمعِ بهای گوشی‌های
-//    نفروخته — دلیلش بالای `StoreShare::valueFor()` نوشته شده: لحظه‌ی
-//    فروش، گوشی از انبار بیرون می‌رود ولی پولش همچنان به او بدهکار
-//    است، پس با جمعِ گوشی‌ها خالص داراییِ او سرِ هر فروش سقوط می‌کرد.
-//
-// ⛔ و هیچ محاسبه‌ای اینجا نیست: درصدِ سهم و سودِ هر قلم در حسابداریِ
-//    فروشگاه حساب و سند می‌شوند. اینجا فقط نمایش است.
-$storeShare = null;
 $storeSyncStatus = ['fetched_at' => null, 'last_error' => null];
 if (StoreShare::available()) {
     // آینه اگر کهنه بود تازه می‌شود — و همان‌جا سهمِ سود در دفترِ
-    // کاربر ثبت می‌شود. جای این فراخوانی عمداً همین یک صفحه است.
+    // کاربر ثبت می‌شود. جای این فراخوانی عمداً همین یک صفحه است؛
+    // `netWorthPortfolio()` خودش هیچ درخواستِ شبکه‌ای نمی‌زند.
     StoreShare::refreshIfStale();
     $storeSyncStatus = StoreShare::status();
-    $storeShare      = StoreShare::forUser($userId);
 }
 // ⛔ دکمه‌ی ورود به صفحه‌ی کالاها به **همان تابعی** بند است که خودِ آن
 //    صفحه دامنه‌اش را از آن می‌گیرد (`StoreShare::assetOwners()`). با یک
@@ -207,65 +68,12 @@ if (StoreShare::available()) {
 //    خالی است — همان «دکمه‌ی بی‌کار از نبودنش بدتر است».
 $storeCanView = StoreShare::available() && StoreShare::canViewAssets($userId, Auth::isAdmin());
 
-if ($storeShare !== null) {
-    // ⚠ تعداد از `active_count`ِ خودِ فروشگاه، نه `count(devices)`: آن
-    //   فهرست فروخته‌ها و گوشیِ خارج از انبار را هم دارد.
-    $portfolio[] = [
-        'name'  => 'دارایی من در فروشگاه',
-        'qty'   => (float)($storeShare['active_count'] ?? 0),
-        'unit'  => 'دستگاه',
-        'value' => (int)StoreShare::valueFor($userId),
-        'kind'  => 'store_share',
-    ];
-}
-
-// ---------- خالص داراییِ کلِ فروشگاه (فقط مدیر) ----------
-//
-// ⛔ فقط برای مدیر رندر می‌شود و **خالص** است، نه ناخالص: داراییِ
-//    فروشگاه منهای بدهی‌اش به سهامداران. با عددِ ناخالص، گوشیِ
-//    سهامدارها هم جزو ثروتِ مالکِ فروشگاه شمرده می‌شد — همان پول دو
-//    بار، یک بار در دفترِ سهامدار و یک بار اینجا.
-$storeNet  = null;
-$storeOwed = null;
-$owedMine  = false;
-if (Auth::isAdmin() && StoreShare::available()) {
-    $storeNet  = StoreShare::storeNetWorth();
-    // ⛔ سهمِ خودِ همین مدیر کم می‌شود، وگرنه با «دارایی من در فروشگاه»
-    //    هم‌پوشانی دارد و مانده‌اش دو بار در جمع می‌نشیند.
-    $storeOwed = StoreShare::storeOwed($userId);
-    $owedMine  = StoreShare::ownShareCounted($userId);
-}
-if ($storeNet !== null) {
-    $portfolio[] = [
-        'name'  => 'دارایی خودِ فروشگاه',
-        'qty'   => 1.0,
-        'unit'  => 'فروشگاه',
-        'value' => (int)$storeNet,
-        'kind'  => 'store_total',
-    ];
-}
-// ---------- طلبِ سهامدارانِ فروشگاه (فقط مدیر) ----------
-//
-// ⛔ قلمِ جدا، چون مالکِ نصب خواست سه چیز را از هم تفکیک کند: داراییِ
-//    خودِ فروشگاه، داراییِ بچه‌ها، و باهم. «باهم» همان کلیدِ روشن/خاموشِ
-//    همیشگی است — هر دو روشن، جمع می‌شوند — پس هیچ کنترلِ تازه‌ای لازم
-//    نشد. و چون `store_total` خالص است، جمعشان چیزی را دو بار نمی‌شمارد.
-//
-// ⚠ `null` یعنی اندپوینتِ فروشگاه هنوز این کلید را نمی‌دهد (نصبِ
-//   عقب‌مانده)؛ آن‌وقت قلم **اصلاً رندر نمی‌شود**، نه اینکه صفر نشان
-//   بدهد — صفرِ ساختگی از نبودنِ قلم گمراه‌کننده‌تر است.
-if ($storeOwed !== null) {
-    $portfolio[] = [
-        'name'  => $owedMine ? 'طلب سایر سهامداران فروشگاه' : 'طلب سهامداران فروشگاه',
-        'qty'   => 1.0,
-        'unit'  => 'فروشگاه',
-        'value' => (int)$storeOwed,
-        'kind'  => 'store_owed',
-    ];
-}
-
-// بزرگ‌ترین‌ها اول — وقتی اقلام زیاد شوند، مهم‌ها بالا می‌مانند
-usort($portfolio, fn($a, $b) => $b['value'] <=> $a['value']);
+$nw = netWorthPortfolio($userId, Auth::isAdmin(), null, $assetSummary);
+$portfolio      = $nw['rows'];
+$tradeOpenCount = $nw['trade_open_count'];
+$chequeCount    = $nw['cheque_count'];
+$debtCount      = $nw['debt_count'];
+$storeShare     = $nw['store_share'];
 
 // همان پالت گزارش دسته‌بندی، تا دو صفحه یک زبان بصری داشته باشند.
 // قاچ اول سبز است (دارایی) و بقیه از چرخه‌ی هیوهای متمایز می‌آیند.
@@ -289,23 +97,7 @@ $chartable = array_values(array_filter($portfolio, fn($r) => $r['value'] > 0));
 // عکسِ امروز با همان اجزایی که بالا حساب شده‌اند ثبت می‌شود — بدون
 // cron، به همان روشِ processRecurringTransactions. اجزا جدا ذخیره
 // می‌شوند نه جمع، چون هر قلم کلیدِ روشن/خاموش دارد.
-$snapParts = ['wallets' => 0, 'assets' => 0, 'trades_open' => 0,
-              'cheques_net' => 0, 'debts_net' => 0,
-              'store_share' => 0, 'store_total' => 0, 'store_owed' => 0];
-// ⚠ نامِ کلیدها دقیقاً همانی است که بالا در $portfolio گذاشته شده:
-//   asset / trade / cheques / debts / wallets. اگر اینجا مفرد نوشته
-//   شود (wallet, cheque, debt) همه به شاخه‌ی else می‌افتند و جزوِ
-//   «دارایی» شمرده می‌شوند — جمعِ کل درست می‌ماند ولی اجزا غلط، و
-//   همه‌ی دلیلِ جدا ذخیره کردنشان از بین می‌رود. بی‌صدا هم خراب
-//   می‌شود، چون عددِ روی صفحه فرقی نمی‌کند.
-$snapMap = ['wallets' => 'wallets', 'trade' => 'trades_open',
-            'cheques' => 'cheques_net', 'debts' => 'debts_net',
-            'store_share' => 'store_share', 'store_total' => 'store_total',
-            'store_owed' => 'store_owed'];
-foreach ($portfolio as $row) {
-    $bucket = $snapMap[$row['kind']] ?? 'assets';
-    $snapParts[$bucket] += $row['value'];
-}
+$snapParts = netWorthSnapParts($portfolio);
 recordNetWorthSnapshot($userId, $snapParts);
 
 $nwHistory = netWorthHistory($userId, 12);

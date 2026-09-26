@@ -70,7 +70,56 @@ $walletRows = walletBalances($userId);
 $homeHidden = homeHiddenWidgets($userId);
 $hw = fn(string $k): bool => homeWidgetOn($homeHidden, $k);
 
-$highlights = financialHighlights($userId, $walletRows, $monthCmp, true, $homeHidden);
+// ---------- نمای دسکتاپ: داشبوردِ کلی ----------
+//
+// **خواسته‌ی مالکِ نصب:** «وقتی اپ باز میشه در دسکتاپ باید داشبورد با
+// مانده حساب‌ها و دارایی و کلیات باز بشه.»
+//
+// ⛔ فقط وقتی `deskView()` درست است ساخته می‌شود — روی گوشی هیچ‌کدام از
+//    این کوئری‌ها زده نمی‌شوند و HTML هم دست نمی‌خورد (دلیلش بالای همان
+//    تابع). هر عدد از **همان تابعی** می‌آید که صفحه‌ی خودش از آن می‌خواند:
+//    موجودی از `$walletRows`، خالص دارایی از `netWorthPortfolio()` (همان
+//    صفحه‌ی دارایی)، و «پول قابل خرج» و سررسیدها از **یک** `safeToSpend()`
+//    که به `financialHighlights()` هم پاس داده می‌شود.
+$desk        = deskView();
+$deskSafe    = null;
+$deskNw      = null;
+$deskWallets = [];
+$deskDues    = ['rows' => [], 'overdue_n' => 0, 'overdue_sum' => 0, 'soon_n' => 0, 'soon_out' => 0, 'soon_in' => 0];
+if ($desk) {
+    try { $deskSafe = safeToSpend($userId, 30, $walletRows); } catch (Throwable $e) { $deskSafe = null; }
+    try {
+        $deskNw = netWorthPortfolio($userId, Auth::isAdmin(), $walletRows);
+        // ⚠ عکسِ روزانه از خانه هم ثبت می‌شود (`INSERT IGNORE`، اولینِ روز
+        //   برنده است): تا امروز فقط بازدیدِ صفحه‌ی دارایی آن را می‌ساخت،
+        //   پس روندِ خالص دارایی برای کسی که آن صفحه را کم باز می‌کند سوراخ
+        //   داشت. اجزا همان‌اند، پس دو مسیر عددِ متفاوتی نمی‌نویسند.
+        recordNetWorthSnapshot($userId, netWorthSnapParts($deskNw['rows']));
+    } catch (Throwable $e) { $deskNw = null; }
+
+    foreach ($walletRows as $__w) {
+        if ((int)$__w['is_active'] === 1) { $deskWallets[] = $__w; }
+    }
+
+    // ⛔ «سررسیدِ نزدیک» = ۱۴ روزِ آینده، به‌علاوه‌ی هر چه **گذشته** و
+    //    هنوز باز است — همان پنجره‌ای که `safeToSpend()` از آن تعهد
+    //    می‌سازد، پس کارت و فهرست از یک چیز حرف می‌زنند.
+    $__soonTo = date('Y-m-d', strtotime(today() . ' +14 days'));
+    foreach (($deskSafe['events'] ?? []) as $__e) {
+        $__past = $__e['date'] < today();
+        if (!$__past && $__e['date'] > $__soonTo) { continue; }
+        $deskDues['rows'][] = $__e;
+        if ($__past) {
+            $deskDues['overdue_n']++;
+            if ($__e['direction'] === 'out') { $deskDues['overdue_sum'] += (int)$__e['amount']; }
+        } else {
+            $deskDues['soon_n']++;
+            $deskDues['soon_' . ($__e['direction'] === 'out' ? 'out' : 'in')] += (int)$__e['amount'];
+        }
+    }
+}
+
+$highlights = financialHighlights($userId, $walletRows, $monthCmp, true, $homeHidden, $deskSafe);
 
 // نوارِ «چقدر از دریافتی خرج شد» و خطِ مقایسه — تصمیمش در
 // `monthMeter()` است تا تست بدونِ رندرِ صفحه بسنجدش.
@@ -85,6 +134,7 @@ $openingHint = openingBalanceHint($userId);
 $pinned = pinnedWallets($userId, $walletRows);
 
 $pageTitle = 'خانه';
+$pageDesk  = $desk;
 include __DIR__ . '/includes/header.php';
 ?>
 
@@ -166,6 +216,54 @@ include __DIR__ . '/includes/header.php';
             عمداً روی کارت نمی‌آیند و فقط داخلِ نما باز می‌شوند، چون
             آن‌ها در یک نگاه از دور خوانده نمی‌شوند ولی در یک عکس
             می‌مانند. */ ?>
+<?php if ($desk):
+    $__m = fn(int $v): string => ($v < 0 ? '−' : '') . formatMoney(abs($v));
+    $__walletSum = totalBalance($userId, $walletRows);
+?>
+<?php /* ⛔ ردیفِ شاخص‌ها — فقط نمای دسکتاپ (`deskView()`). چهار سؤالی که آدم
+         پشتِ میز اول می‌پرسد: «چقدر پول دارم»، «کلاً چقدر دارم»، «چقدرش را
+         می‌توانم خرج کنم»، و «چه چیزی در راه است». هر کاشی لینکِ صفحه‌ی
+         همان عدد است — عددی که نشود دنبالش کرد، کاربر به آن اعتماد
+         نمی‌کند. ⚠ کلاسِ `desk-only`: اگر کوکی هست ولی پنجره کوچک شده،
+         CSS پنهانش می‌کند. */ ?>
+<div class="desk-kpis desk-only">
+    <a class="desk-kpi" href="<?= APP_BASE_PATH ?>/wallets.php">
+        <span class="desk-kpi-label">مجموع حساب‌ها</span>
+        <span class="desk-kpi-value"><span class="ltr-num<?= $__walletSum < 0 ? ' is-neg' : '' ?>"><?= $__m($__walletSum) ?></span> <small><?= h(APP_CURRENCY) ?></small></span>
+        <span class="desk-kpi-sub"><?= toPersianDigits((string)count($deskWallets)) ?> حساب فعال</span>
+    </a>
+    <?php if ($deskNw !== null): ?>
+    <a class="desk-kpi" href="<?= APP_BASE_PATH ?>/my-assets.php">
+        <span class="desk-kpi-label">خالص دارایی</span>
+        <span class="desk-kpi-value"><span class="ltr-num<?= $deskNw['total'] < 0 ? ' is-neg' : '' ?>"><?= $__m((int)$deskNw['total']) ?></span> <small><?= h(APP_CURRENCY) ?></small></span>
+        <span class="desk-kpi-sub">حساب‌ها، دارایی، چک و طلب/بدهی</span>
+    </a>
+    <?php endif; ?>
+    <?php if ($deskSafe !== null && $deskSafe['available'] !== null): ?>
+    <a class="desk-kpi" href="<?= APP_BASE_PATH ?>/due.php?t=list">
+        <span class="desk-kpi-label">پول قابل خرج <small>(۳۰ روز)</small></span>
+        <span class="desk-kpi-value"><span class="ltr-num<?= (int)$deskSafe['available'] < 0 ? ' is-neg' : '' ?>"><?= $__m((int)$deskSafe['available']) ?></span> <small><?= h(APP_CURRENCY) ?></small></span>
+        <span class="desk-kpi-sub">تعهدِ قطعی: <span class="ltr-num"><?= formatMoney((int)$deskSafe['commitments']) ?></span></span>
+    </a>
+    <?php endif; ?>
+    <a class="desk-kpi<?= $deskDues['overdue_n'] > 0 ? ' is-warn' : '' ?>" href="<?= APP_BASE_PATH ?>/due.php?t=list">
+        <span class="desk-kpi-label">سررسیدِ ۱۴ روزِ آینده</span>
+        <span class="desk-kpi-value"><span class="ltr-num"><?= toPersianDigits((string)$deskDues['soon_n']) ?></span> <small>مورد</small></span>
+        <span class="desk-kpi-sub">
+            <?php if ($deskDues['overdue_n'] > 0): ?>
+                <?= toPersianDigits((string)$deskDues['overdue_n']) ?> مورد گذشته<?= $deskDues['overdue_sum'] > 0 ? ' · <span class="ltr-num">' . formatMoney($deskDues['overdue_sum']) . '</span>' : '' ?>
+            <?php elseif ($deskDues['soon_out'] > 0): ?>
+                پرداخت: <span class="ltr-num"><?= formatMoney($deskDues['soon_out']) ?></span>
+            <?php else: ?>
+                پرداختِ نزدیکی نیست
+            <?php endif; ?>
+        </span>
+    </a>
+</div>
+<div class="home-desk">
+<div class="home-main">
+<?php endif; ?>
+
 <div class="home-carousel">
     <div class="home-slides" id="homeSlides">
         <div class="balance-ribbon">
@@ -316,6 +414,101 @@ include __DIR__ . '/includes/header.php';
         <?php endif; ?>
     </div>
 </div>
+
+<?php if ($desk): ?>
+</div><?php /* .home-main */ ?>
+
+<?php /* ⛔ ستونِ کناری — فقط نمای دسکتاپ. در RTL ستونِ دومِ توری سمتِ چپ
+         می‌نشیند، پس ستونِ اصلی (کارتِ ماه و تراکنش‌ها) همان‌جایی می‌ماند
+         که چشمِ فارسی‌خوان اول می‌رود. */ ?>
+<aside class="home-side desk-only">
+    <div class="card desk-card">
+        <div class="card-header-row">
+            <h2 class="card-title">مانده‌ی حساب‌ها</h2>
+            <a href="<?= APP_BASE_PATH ?>/wallets.php" class="link-more">مدیریت ←</a>
+        </div>
+        <?php if (!$deskWallets): ?>
+            <p class="empty-row">هنوز حسابی ندارید.</p>
+        <?php else: ?>
+        <div class="desk-list">
+            <?php foreach ($deskWallets as $__w):
+                $__logo = bankLogoUrl($__w['bank_code'] ?? null);
+                $__b    = (int)$__w['balance'];
+            ?>
+            <a class="desk-row" href="<?= APP_BASE_PATH ?>/transactions.php?wallet=<?= (int)$__w['id'] ?>">
+                <span class="desk-row-mark" style="--wc: <?= h($__w['color']) ?>;"><?php if ($__logo !== null): ?><img src="<?= h($__logo) ?>" alt="" width="18" height="18"><?php endif; ?></span>
+                <span class="desk-row-name"><?= h($__w['name']) ?><small><?= h(walletKindLabel($__w['kind'], $__w['kind_label'] ?? null)) ?></small></span>
+                <span class="desk-row-amount ltr-num<?= $__b < 0 ? ' is-neg' : '' ?>"><?= $__m($__b) ?></span>
+            </a>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+    </div>
+
+    <?php if ($deskNw !== null && $deskNw['rows']):
+        $__pl = chartPalette('green', 'light');
+        $__pd = chartPalette('green', 'dark');
+        $__pn = count($__pl);
+        $__top = array_slice($deskNw['rows'], 0, 6);
+    ?>
+    <?php /* ⚠ همان رنگ و ترتیبِ صفحه‌ی دارایی (`chartPalette('green')` به
+             ترتیبِ رتبه)، تا قلمِ سوم اینجا و آنجا یک رنگ باشد. درصد فقط
+             وقتی که هم جمع مثبت باشد هم خودِ قلم — همان قاعده‌ی آن صفحه. */ ?>
+    <div class="card desk-card">
+        <div class="card-header-row">
+            <h2 class="card-title">ترکیب دارایی</h2>
+            <a href="<?= APP_BASE_PATH ?>/my-assets.php" class="link-more">جزئیات ←</a>
+        </div>
+        <div class="desk-list">
+            <?php foreach ($__top as $__i => $__r):
+                $__v   = (int)$__r['value'];
+                $__pct = ($deskNw['total'] > 0 && $__v > 0) ? round($__v / $deskNw['total'] * 100) : null;
+            ?>
+            <div class="desk-comp">
+                <div class="desk-comp-head">
+                    <span class="cat-dot" style="--dot-l:<?= h($__pl[$__i % $__pn]) ?>; --dot-d:<?= h($__pd[$__i % $__pn]) ?>;"></span>
+                    <span class="desk-row-name"><?= h($__r['name']) ?></span>
+                    <span class="desk-row-amount ltr-num<?= $__v < 0 ? ' is-neg' : '' ?>"><?= $__m($__v) ?></span>
+                </div>
+                <?php if ($__pct !== null): ?>
+                <div class="cat-breakdown-bar-track"><div class="cat-breakdown-bar" style="width:<?= (int)min(100, $__pct) ?>%; --dot-l:<?= h($__pl[$__i % $__pn]) ?>; --dot-d:<?= h($__pd[$__i % $__pn]) ?>;"></div></div>
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php if (count($deskNw['rows']) > count($__top)): ?>
+            <p class="hint">و <?= toPersianDigits((string)(count($deskNw['rows']) - count($__top))) ?> قلمِ دیگر در صفحه‌ی دارایی.</p>
+        <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
+    <div class="card desk-card">
+        <div class="card-header-row">
+            <h2 class="card-title">سررسیدهای نزدیک</h2>
+            <a href="<?= APP_BASE_PATH ?>/due.php?t=list" class="link-more">همه ←</a>
+        </div>
+        <?php if (!$deskDues['rows']): ?>
+            <p class="empty-row">تا ۱۴ روزِ آینده سررسیدی ندارید.</p>
+        <?php else: ?>
+        <div class="desk-list">
+            <?php foreach (array_slice($deskDues['rows'], 0, 7) as $__e):
+                $__past = $__e['date'] < today();
+            ?>
+            <a class="desk-row" href="<?= APP_BASE_PATH ?>/<?= h($__e['url'] ?? 'due.php?t=list') ?>">
+                <span class="desk-due-date<?= $__past ? ' is-past' : '' ?>"><?= h(toJalali($__e['date'])) ?></span>
+                <span class="desk-row-name"><?= h($__e['title']) ?><small><?= h(eventKindLabel((string)$__e['kind'])) ?><?= $__past ? ' · گذشته' : '' ?></small></span>
+                <span class="desk-row-amount ltr-num <?= $__e['direction'] === 'out' ? 'is-out' : 'is-in' ?>"><?= $__e['direction'] === 'out' ? '−' : '+' ?><?= formatMoney((int)$__e['amount']) ?></span>
+            </a>
+            <?php endforeach; ?>
+        </div>
+        <?php if (count($deskDues['rows']) > 7): ?>
+            <p class="hint">و <?= toPersianDigits((string)(count($deskDues['rows']) - 7)) ?> مورد دیگر.</p>
+        <?php endif; ?>
+        <?php endif; ?>
+    </div>
+</aside>
+</div><?php /* .home-desk */ ?>
+<?php endif; ?>
 
 <meta name="csrf-token" content="<?= Csrf::token() ?>">
 

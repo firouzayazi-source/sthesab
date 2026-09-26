@@ -5530,3 +5530,95 @@ html[data-theme="dark"][data-palette="lilac"] {
 .sms-review-body { font-size: 14px; font-weight: 700; margin: 4px 0 10px; }
 .sms-review-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .sms-review-actions .undo-bar-close { margin-inline-start: auto; color: var(--muted); }
+
+/* ---------- نمای دسکتاپِ خانه: داشبوردِ کلی ----------
+   **خواسته‌ی مالکِ نصب:** «در دسکتاپ فضا اصلاً متناسب نیست… وقتی اپ
+   باز میشه در دسکتاپ باید داشبورد با مانده حساب‌ها و دارایی و کلیات
+   باز بشه.» روی ۱۴۴۰ پیکسل ستونِ ۷۲۰پیکسلی ۴۷۰ پیکسل (۴۰٪) خالی
+   می‌گذاشت.
+
+   ⛔ همه‌ی این بلوک‌ها فقط وقتی در HTML هستند که `deskView()` درست باشد،
+      و همین‌جا هم پشتِ همان `DESK_MIN_PX` (۱۱۰۰) پنهان‌اند. پس نمای
+      گوشی — و پنجره‌ی کوچکِ دسکتاپ — همان قبلی است.
+   ⚠ `.desk-card` عمداً زمینه‌ی خودش را ندارد و از `.card` می‌گیرد، تا
+     قاعده‌ی حالتِ شبِ `.card` برنده بماند (درسِ `.start-card`). */
+.desk-only { display: none; }
+
+@media (min-width: 1100px) {
+    .page-content.is-desk { max-width: 1240px; }
+    .desk-only { display: block; }
+
+    .desk-kpis.desk-only {
+        display: grid;
+        /* هر تعداد کاشی (۳ یا ۴ — «خالص دارایی» و «پول قابل خرج» شرطی‌اند)
+           هم‌عرض در یک ردیف. */
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
+        gap: 14px;
+        margin-bottom: 16px;
+    }
+    /* ⚠ `min-width: 0` روی ستون‌ها: آیتمِ گرید پیش‌فرض `min-width: auto`
+       دارد و نامِ بلندِ یک حساب کلِ ستون را پهن می‌کرد (درسِ منوی کناری). */
+    .home-desk {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+        gap: 18px;
+        align-items: start;
+    }
+    .home-main, .home-side { min-width: 0; }
+    .home-side .card { margin-bottom: 14px; }
+}
+
+.desk-kpi {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 16px 18px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg, 16px);
+    box-shadow: var(--sh-card, none);
+    color: var(--ink);
+    text-decoration: none;
+    min-width: 0;
+    transition: border-color .15s ease, transform .15s ease;
+}
+.desk-kpi:hover { border-color: var(--brand-fg); transform: translateY(-1px); }
+.desk-kpi.is-warn { border-color: var(--warn-ink); }
+.desk-kpi-label { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.desk-kpi-label small { font-weight: 400; }
+.desk-kpi-value { font-size: 22px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.desk-kpi-value small { font-size: 12px; font-weight: 500; color: var(--muted); }
+.desk-kpi-sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.desk-kpi.is-warn .desk-kpi-sub { color: var(--warn-ink); }
+
+.desk-list { display: flex; flex-direction: column; }
+.desk-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 2px;
+    border-bottom: 1px solid var(--line);
+    color: var(--ink); text-decoration: none;
+    min-width: 0;
+}
+.desk-list > :last-child { border-bottom: 0; }
+a.desk-row:hover .desk-row-name { color: var(--brand-fg); }
+.desk-row-mark {
+    flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%;
+    background: var(--wc, var(--line));
+    display: inline-flex; align-items: center; justify-content: center;
+}
+/* ⛔ لوگو همیشه روی پایه‌ی سفید — همان قاعده‌ی `.bank-logo`. */
+.desk-row-mark img { background: #fff; border-radius: 50%; padding: 2px; box-sizing: content-box; }
+.desk-row-name {
+    flex: 1 1 auto; min-width: 0;
+    font-size: 13.5px; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.desk-row-name small { display: block; font-size: 11.5px; font-weight: 400; color: var(--muted); }
+.desk-row-amount { flex: 0 0 auto; font-size: 13.5px; font-weight: 700; white-space: nowrap; }
+.desk-row-amount.is-neg, .desk-kpi-value .is-neg, .desk-row-amount.is-out { color: var(--out); }
+.desk-row-amount.is-in { color: var(--in); }
+.desk-due-date { flex: 0 0 auto; font-size: 11.5px; color: var(--muted); min-width: 64px; }
+.desk-due-date.is-past { color: var(--warn-ink); font-weight: 700; }
+
+.desk-comp { padding: 8px 2px; border-bottom: 1px solid var(--line); }
+.desk-comp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; min-width: 0; }
+.desk-comp .cat-breakdown-bar-track { margin: 0; }

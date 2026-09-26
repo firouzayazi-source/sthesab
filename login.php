@@ -93,6 +93,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          را صفر می‌دهد و همه‌ی محاسبه‌های حاشیه‌ی امن بی‌اثر می‌مانند. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover">
     <title>ورود | <?= h(APP_NAME) ?></title>
+    <?php /* ⛔ نمای دسکتاپ از همین‌جا: اولین صفحه‌ی بعد از ورود خانه است و
+             کوکی باید **پیش از** آن درخواست نشسته باشد (دلیلش بالای `deskView()`). */ ?>
+    <script><?= deskCookieScript() ?></script>
     <?php foreach (assetUrls(['css/style.css']) as $__u): ?>
     <link rel="stylesheet" href="<?= h($__u) ?>">
     <?php endforeach; ?>

@@ -4918,7 +4918,7 @@ $globalAssigns = function (string $file): array {
    `$incomeCategories`/`$expenseCategories` را صفحه‌ای که از قبل
    دسته‌ها را خوانده به `add_tx_sheet`/`edit_tx_modal` می‌دهد (هر دو
    با `isset()` می‌سنجند و اگر نبود خودشان می‌سازند). */
-$tplInputs = ['pageTitle', 'pageWide', 'incomeCategories', 'expenseCategories'];
+$tplInputs = ['pageTitle', 'pageWide', 'pageDesk', 'incomeCategories', 'expenseCategories'];
 
 /* کشفِ گرافِ include: هر فایل → فایل‌هایی که `include` می‌کند. */
 $includesOf = function (string $file): array {
