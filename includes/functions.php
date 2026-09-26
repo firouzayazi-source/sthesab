@@ -3694,6 +3694,21 @@ function iconUrl(string $file): string
 const PREFETCH_SKIP = ['logout.php', 'notifications.php', 'support.php'];
 
 /**
+ * ⛔ سه زبانه‌ی نوارِ پایین — تنها صفحه‌هایی که **کامل از پیش آماده**
+ * می‌شوند (prerender)، نه فقط گرفته. گزارشِ مالکِ نصب: «بیشتر» آنی باز
+ * می‌شود (شیت است، ناوبری نیست) ولی خانه/تراکنش‌ها/گزارش حدود یک ثانیه.
+ * اندازه‌گیری شد: روی گوشیِ کُند فقط کارِ خودِ مرورگر (تجزیه، استایل،
+ * چیدمان، نمودار) ۲۵۰ تا ۵۰۰ms است و شبکه جدا — پیش‌گیریِ لحظه‌ی لمس
+ * فقط ~۱۰۰ms جلو می‌افتاد. با prerender هر دو پیش از لمس تمام شده‌اند.
+ *
+ * ⛔ فقط همین سه، نه هر لینکی: هر prerender یک صفحه‌ی کامل در حافظه‌ی
+ *    گوشی و یک درخواست روی سرور است. این سه مقصدِ همیشگیِ نوارِ پایین‌اند.
+ * ⛔ و `app.js` بدنه‌اش را تا `prerenderingchange` اجرا نمی‌کند — بارگذاریِ
+ *    آن بدنه **می‌نویسد** (صفِ پیامکِ بانک، اشتراکِ اعلان).
+ */
+const PRERENDER_TABS = ['index.php', 'transactions.php', 'dashboard.php'];
+
+/**
  * قاعده‌ی «پیش‌گیریِ صفحه‌ی بعدی» (Speculation Rules) — تنها جای این تصمیم.
  *
  * مرورگر وقتی انگشت/نشانگر روی لینکِ داخلی می‌نشیند، همان لحظه صفحه‌ی
@@ -3701,10 +3716,9 @@ const PREFETCH_SKIP = ['logout.php', 'notifications.php', 'support.php'];
  * یک رفت‌وبرگشتِ شبکه تمام شده است. اندازه‌گیری شد (کرومیوم، ۱۵۰ms
  * تأخیر): رسیدنِ صفحه از ~۱۶۵ به ~۶۵ میلی‌ثانیه.
  *
- * ⛔ فقط prefetch، نه prerender: prerender جاوااسکریپتِ صفحه را هم اجرا
- *    می‌کند، و `app.js` هنگامِ بارگذاری کار می‌کند (صفِ پیامکِ بانک
- *    تراکنش ثبت می‌کند، اشتراکِ اعلان، معرفیِ اولیه). یعنی صفحه‌ای که
- *    کاربر هرگز باز نکرد می‌توانست تراکنش بنویسد.
+ * ⛔ برای لینک‌های دلخواه فقط prefetch؛ prerender فقط برای `PRERENDER_TABS`
+ *    است و `app.js` بدنه‌اش را تا فعال شدنِ صفحه نگه می‌دارد — وگرنه
+ *    صفحه‌ای که کاربر هرگز باز نکرد می‌توانست تراکنش بنویسد (صفِ پیامک).
  * ⛔ `moderate` نه `eager`: فقط وقتی کاربر واقعاً سراغِ لینک رفته
  *    (نشانگرِ ۲۰۰ms روی لینک یا لمس). با `eager` همه‌ی لینک‌های صفحه
  *    گرفته می‌شد — چند برابر بارِ سرور، و پاسخ‌هایی که تا پنج دقیقه
@@ -3714,7 +3728,7 @@ const PREFETCH_SKIP = ['logout.php', 'notifications.php', 'support.php'];
  *    فقط برای **همان یک ناوبری** مصرف می‌شود (در کرومیوم ۱۴۱ سنجیده شد،
  *    حتی با سرویس‌ورکرِ فعال).
  */
-function speculationRulesJson(): string
+function speculationRulesJson(string $currentScript = ''): string
 {
     $b = APP_BASE_PATH;
     $not = [];
@@ -3735,7 +3749,30 @@ function speculationRulesJson(): string
         ]],
         'eagerness' => 'moderate',
     ]]];
+
+    // زبانه‌ای که همین حالا باز است دوباره آماده نمی‌شود.
+    $tabs = [];
+    foreach (PRERENDER_TABS as $tab) {
+        if ($currentScript !== $b . '/' . $tab) { $tabs[] = $b . '/' . $tab; }
+    }
+    // ⚠ فقط **اولی** اینجا؛ بقیه را `app.js` با فاصله اضافه می‌کند
+    //   (`speculationNextTabs()`). دو prerenderِ هم‌زمانِ همین صفحه‌ها در
+    //   کرومیوم ۱۴۱ دومی را با `PrerenderFailedDuringPrefetch` لغو کرد —
+    //   هر کدام تنها، و با صفحه‌های سبک هر دو با هم، موفق بودند.
+    if ($tabs !== []) {
+        $rules['prerender'] = [['source' => 'list', 'urls' => [$tabs[0]], 'eagerness' => 'immediate']];
+    }
     return json_encode($rules, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+}
+
+/** زبانه‌هایی که بعد از اولی، یکی‌یکی آماده می‌شوند — برای `data-next`ِ همان اسکریپت. */
+function speculationNextTabs(string $currentScript = ''): string
+{
+    $tabs = [];
+    foreach (PRERENDER_TABS as $tab) {
+        if ($currentScript !== APP_BASE_PATH . '/' . $tab) { $tabs[] = APP_BASE_PATH . '/' . $tab; }
+    }
+    return implode(' ', array_slice($tabs, 1));
 }
 
 function assetUrls(array $relativePaths): array

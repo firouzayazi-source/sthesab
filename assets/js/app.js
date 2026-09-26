@@ -1,5 +1,5 @@
 /* ============================================================
-   پیش‌گیریِ صفحه‌ی بعد — و کهنه نشدنش
+   پیش‌گیریِ صفحه‌ی بعد (و آماده‌سازیِ سه زبانه) — و کهنه نشدنش
    ------------------------------------------------------------
    `<script type="speculationrules" id="specRules">` (از
    `speculationRulesJson()`) صفحه‌ی بعد را وقتی نشانگر/انگشت روی لینک
@@ -31,6 +31,62 @@
         }, 0);
     }
     window.resetSpeculation = reset;
+    // ⚠ بی‌قاعده (صفحه‌های بیرون از قالب، یا node در تست‌ها) هیچ تایمری
+    //   راه نمی‌افتد — `setInterval` در node پروسه را برای همیشه زنده نگه
+    //   می‌داشت و تست‌هایی که app.js را بار می‌کنند گیر می‌کردند.
+    var hasRules = false;
+    try { hasRules = !!(document.getElementById && document.getElementById('specRules')); } catch (e) {}
+
+    /* ⛔ کهنگیِ زمانی: زبانه‌های از-پیش-آماده عکسِ لحظه‌ی آماده شدن‌اند.
+       دستگاهِ دیگر، cronِ فروشگاه یا پیامکِ رسیده ممکن است در این فاصله
+       داده را عوض کرده باشد؛ پس اگر صفحه بیش از `SPEC_MAX_AGE_MS` باز و
+       دیده‌شده ماند، یا کاربر بعد از آن به اپ برگشت، دوباره آماده می‌شوند.
+       در پس‌زمینه هیچ کاری نمی‌شود (باتری). */
+    var SPEC_MAX_AGE_MS = 90000;
+    var armedAt = Date.now();
+    var baseReset = reset;
+    reset = function () { armedAt = Date.now(); baseReset(); };
+    window.resetSpeculation = reset;
+    /* زبانه‌های بعدی یکی‌یکی و با فاصله آماده می‌شوند (نه هم‌زمان با اولی —
+       آن در کرومیوم دومی را لغو کرد). هر reset همه را از نو می‌چیند. */
+    var NEXT_GAP_MS = 2500;
+    var nextTimers = [];
+    function armNext() {
+        nextTimers.forEach(clearTimeout);
+        nextTimers = [];
+        document.querySelectorAll('script.spec-next').forEach(function (n) { n.remove(); });
+        var main = document.getElementById('specRules');
+        var urls = ((main && main.getAttribute('data-next')) || '').split(' ').filter(Boolean);
+        urls.forEach(function (u, i) {
+            nextTimers.push(setTimeout(function () {
+                if (document.hidden) { return; }
+                var sc = document.createElement('script');
+                sc.type = 'speculationrules';
+                sc.className = 'spec-next';
+                sc.textContent = JSON.stringify({ prerender: [{ source: 'list', urls: [u], eagerness: 'immediate' }] });
+                document.head.appendChild(sc);
+            }, NEXT_GAP_MS * (i + 1)));
+        });
+    }
+    var baseReset2 = reset;
+    reset = function () { baseReset2(); armNext(); };
+    window.resetSpeculation = reset;
+    if (hasRules) {
+        if (document.prerendering) {
+            document.addEventListener('prerenderingchange', armNext, { once: true });
+        } else {
+            armNext();
+        }
+    }
+
+    function refreshIfOld() {
+        if (!document.hidden && !document.prerendering && Date.now() - armedAt >= SPEC_MAX_AGE_MS) { reset(); }
+    }
+    if (hasRules) {
+        setInterval(refreshIfOld, 15000);
+        document.addEventListener('visibilitychange', refreshIfOld);
+    }
+
     if (typeof window.fetch !== 'function') { return; }
     var orig = window.fetch;
     window.fetch = function (input, init) {
@@ -997,7 +1053,20 @@ window.appUpdateHref = function (o) {
     return { native: false, href: url || '#' };
 };
 
-document.addEventListener('DOMContentLoaded', function () {
+/* ============================================================
+   ⛔ صفحه‌ی از-پیش-آماده (prerender) تا دیده نشده، هیچ کاری نمی‌کند
+   ------------------------------------------------------------
+   سه زبانه‌ی نوارِ پایین پیش از لمس کاملاً آماده می‌شوند
+   (`speculationRulesJson()`). ولی این بدنه هنگامِ بارگذاری **کار
+   می‌کند** — صفِ پیامکِ بانک تراکنش ثبت می‌کند، اعلانِ گوشی اشتراک
+   می‌گیرد، معرفیِ اولیه باز می‌شود. صفحه‌ای که کاربر هنوز باز نکرده
+   (و شاید هرگز باز نکند) نباید هیچ‌کدام را انجام بدهد. پس تا
+   `document.prerendering` برقرار است بدنه منتظرِ `prerenderingchange`
+   می‌ماند؛ HTML و CSS و چیدمان از قبل آماده‌اند، فقط این ~۳۰ms می‌ماند.
+   ============================================================ */
+function appMain() {
+    // شاهدِ تست (`test_page_speed`): بدنه بعد از فعال شدن اجرا شد، نه هنگامِ prerender.
+    window.__appMainAt = performance.now();
 
     // اول از همه: حالا که این فایل واقعاً اجرا شد، صفحه دیگر «در حال
     // آماده شدن» نیست. پیش از این، اگر app.js نمی‌رسید صفحه کامل و
@@ -6921,4 +6990,11 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     })();
 
+}
+document.addEventListener('DOMContentLoaded', function () {
+    if (document.prerendering) {
+        document.addEventListener('prerenderingchange', appMain, { once: true });
+    } else {
+        appMain();
+    }
 });

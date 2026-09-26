@@ -36,8 +36,21 @@ require_once $root . '/includes/user_data.php';
 // ---------- بخشِ بی‌مرورگر: خودِ قاعده ----------
 $rules = json_decode(speculationRulesJson(), true);
 T::ok(is_array($rules) && isset($rules['prefetch'][0]), 'speculationRulesJson() یک JSONِ معتبر با prefetch می‌دهد');
-T::ok(!isset($rules['prerender']), '⛔ prerender نیست (app.js صفحه‌ی باز‌نشده را اجرا می‌کرد)');
+// prerender فقط فهرستِ صریحِ زبانه‌هاست (نه قاعده‌ی سندی) و فقط **یکی** در همان قاعده.
+$pr = $rules['prerender'] ?? [];
+T::ok(count($pr) === 1 && ($pr[0]['source'] ?? '') === 'list' && !isset($pr[0]['where']),
+    '⛔ prerender فقط فهرستِ صریح است، نه قاعده‌ی سندی روی همه‌ی لینک‌ها');
+T::same(1, count($pr[0]['urls'] ?? []), '⛔ در قاعده‌ی سرآیند فقط یک زبانه (بقیه با فاصله از app.js)');
+foreach (($pr[0]['urls'] ?? []) as $u) {
+    T::ok(in_array(basename($u), PRERENDER_TABS, true), "prerenderِ {$u} یکی از زبانه‌های نوارِ پایین است");
+}
+$onIdx = json_decode(speculationRulesJson(APP_BASE_PATH . '/index.php'), true);
+T::ok(!in_array(APP_BASE_PATH . '/index.php', $onIdx['prerender'][0]['urls'] ?? [], true)
+    && !str_contains(speculationNextTabs(APP_BASE_PATH . '/index.php'), 'index.php'),
+    'زبانه‌ی باز (خانه) دوباره آماده نمی‌شود');
+T::same(APP_BASE_PATH . '/dashboard.php', speculationNextTabs(APP_BASE_PATH . '/index.php'), 'از خانه: گزارش دومی است و با فاصله می‌آید');
 T::same('moderate', $rules['prefetch'][0]['eagerness'] ?? null, '⛔ eagerness «moderate» است');
+// (prefetch برای هر لینک؛ prerender فقط برای زبانه‌ها — پایین‌تر)
 $flat = json_encode($rules);
 foreach (PREFETCH_SKIP as $p) {
     T::ok(str_contains($flat, '/' . $p), "استثنای {$p} در قاعده هست");
@@ -169,6 +182,18 @@ try {
         $cleanup();
         exit(T::report());
     }
+
+    T::group('زبانه‌های از-پیش-آماده (prerender)');
+    $tab = $out['pre']['tab'] ?? null;
+    T::ok(is_array($tab) && $tab['act'] > 0, '⛔ خانه → گزارش از صفحه‌ی از-پیش-آماده باز شد (زبانه‌ی دوم، با فاصله)',
+        'activationStart: ' . var_export($tab['act'] ?? null, true));
+    T::ok(is_array($tab) && $tab['main'] >= $tab['act'] && $tab['act'] > 0,
+        '⛔ بدنه‌ی app.js فقط بعد از فعال شدن اجرا شد، نه هنگامِ prerender',
+        'appMain: ' . var_export($tab['main'] ?? null, true) . ' act: ' . var_export($tab['act'] ?? null, true));
+    T::same(200, $out['pre']['postStatus'] ?? null, 'نوشتنِ آزمایشی موفق بود');
+    $ap = $out['pre']['afterPost'] ?? null;
+    T::ok(is_array($ap) && ($ap['act'] === 0 || $ap['createdAfterPost'] === true),
+        '⛔ بعد از نوشتن، زبانه‌ی آماده‌شده‌ی قبلی مصرف نشد', var_export($ap, true));
 
     T::group('پیش‌بارگذاریِ ناوبری');
     T::ok($out['controlled'] === true, 'صفحه زیرِ سرویس‌ورکر است (وگرنه بقیه‌ی بررسی‌ها چیزی نمی‌سنجند)');

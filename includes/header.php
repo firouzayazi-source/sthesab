@@ -63,7 +63,7 @@ if (!isset($pageWide)) {
     <?php endforeach; ?>
     <?php /* ⛔ پیش‌گیریِ صفحه‌ی بعد — تصمیم و فهرستِ استثناها در
              `speculationRulesJson()`؛ مرورگرِ بی‌پشتیبانی نادیده‌اش می‌گیرد. */ ?>
-    <script type="speculationrules" id="specRules"><?= speculationRulesJson() ?></script>
+    <script type="speculationrules" id="specRules" data-next="<?= h(speculationNextTabs((string)($_SERVER['SCRIPT_NAME'] ?? ''))) ?>"><?= speculationRulesJson((string)($_SERVER['SCRIPT_NAME'] ?? '')) ?></script>
     <link rel="apple-touch-icon" href="<?= iconUrl('icon-180.png') ?>">
     <link rel="icon" type="image/png" sizes="32x32" href="<?= iconUrl('icon-32.png') ?>">
     <link rel="icon" type="image/png" sizes="16x16" href="<?= iconUrl('icon-16.png') ?>">

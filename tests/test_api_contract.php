@@ -6455,17 +6455,24 @@ $strip68 = function (string $php): string {
     return $o;
 };
 $hd68 = (string)file_get_contents(__DIR__ . '/../includes/header.php');
-if (!str_contains($hd68, '<script type="speculationrules" id="specRules"><?= speculationRulesJson() ?></script>')) {
+if (!str_contains($hd68, '<script type="speculationrules" id="specRules"')
+    || !str_contains($hd68, "><?= speculationRulesJson((string)(\$_SERVER['SCRIPT_NAME'] ?? '')) ?></script>")) {
     $sBad[] = 'header.php — قاعده‌ی پیش‌گیری از speculationRulesJson() رندر نمی‌شود';
 }
 $fx68 = $strip68((string)file_get_contents(__DIR__ . '/../includes/functions.php'));
-$sr68 = preg_match('~function speculationRulesJson\(\).*?\n\}~s', $fx68, $m68) ? $m68[0] : '';
+$sr68 = preg_match("~function speculationRulesJson\\(string \\\$currentScript = ''\\).*?\n\\}~s", $fx68, $m68) ? $m68[0] : '';
 if ($sr68 === '') { $sBad[] = 'functions.php — speculationRulesJson() پیدا نشد (قاعده کور شد)'; }
 if (!str_contains($sr68, "'eagerness' => 'moderate'")) {
     $sBad[] = 'speculationRulesJson() — eagerness «moderate» نیست (eager همه‌ی لینک‌ها را می‌گیرد)';
 }
-if (preg_match('~prerender|\'eager\'|\'immediate\'~', $sr68)) {
-    $sBad[] = 'speculationRulesJson() — prerender یا eager/immediate برگشت';
+// ⛔ prerender فقط فهرستِ صریحِ PRERENDER_TABS، نه قاعده‌ی سندی (where) روی لینک‌ها.
+if (preg_match("~'eager'~", $sr68)
+    || !str_contains($sr68, '$rules[\'prerender\'] = [[\'source\' => \'list\', \'urls\' => [$tabs[0]], \'eagerness\' => \'immediate\']];')
+    || !str_contains($sr68, 'foreach (PRERENDER_TABS as')) {
+    $sBad[] = 'speculationRulesJson() — prerender جز فهرستِ صریحِ یک‌زبانه از PRERENDER_TABS شد، یا eager برگشت';
+}
+if (!preg_match("~const PRERENDER_TABS = \['index\.php', 'transactions\.php', 'dashboard\.php'\];~", $fx68)) {
+    $sBad[] = 'PRERENDER_TABS — جز سه زبانه‌ی نوارِ پایین شد (هر prerender یک صفحه‌ی کامل در حافظه‌ی گوشی است)';
 }
 if (!str_contains($sr68, 'foreach (PREFETCH_SKIP as') || !str_contains($sr68, '[onclick]')) {
     $sBad[] = 'speculationRulesJson() — استثناهای PREFETCH_SKIP یا لینکِ onclick‌دار اعمال نمی‌شود';
@@ -6491,12 +6498,27 @@ $rs68 = strpos($js68, 'window.resetSpeculation = reset');
 if ($rs68 === false || ($dcl68 !== false && $rs68 > $dcl68)) {
     $sBad[] = 'app.js — resetSpeculation بیرون از DOMContentLoaded تعریف نشده';
 }
-$blk68 = $rs68 !== false ? substr($js68, max(0, $rs68 - 1200), 2400) : '';
+// بلوکِ کاملِ IIFEِ پیش‌گیری: از تعریفِ reset تا پایانِ بسته‌بندیِ fetch.
+$bs68 = strpos($js68, 'function reset() {');
+$be68 = $bs68 !== false ? strpos($js68, "\n})();", $bs68) : false;
+$blk68 = ($bs68 !== false && $be68 !== false) ? substr($js68, $bs68, $be68 - $bs68) : '';
 if (!str_contains($blk68, 'parent.removeChild(old)') || !str_contains($blk68, 'setTimeout(')) {
     $sBad[] = 'app.js — قاعده برداشته و یک تیک بعد نشانده نمی‌شود (جایگزینیِ درجا پیش‌گرفته‌ی کهنه را نگه می‌دارد)';
 }
 if (!preg_match("~m !== 'GET' && m !== 'HEAD'\) \{\s*p\.then\(function \(r\) \{ if \(r && r\.ok\) \{ try \{ reset\(\);~", $blk68)) {
     $sBad[] = 'app.js — بعد از نوشتنِ موفق با fetch، پیش‌گرفته‌ها دور ریخته نمی‌شوند';
+}
+// ⛔ بدنه‌ی app.js در صفحه‌ی از-پیش-آماده تا فعال شدن اجرا نمی‌شود (می‌نویسد).
+if (!preg_match("~document\.addEventListener\('DOMContentLoaded', function \(\) \{\s*if \(document\.prerendering\) \{\s*document\.addEventListener\('prerenderingchange', appMain, \{ once: true \}\);\s*\} else \{\s*appMain\(\);~", $js68)) {
+    $sBad[] = 'app.js — بدنه (appMain) هنگامِ prerender هم اجرا می‌شود (صفحه‌ی باز‌نشده تراکنش می‌نوشت)';
+}
+if (!str_contains($blk68, 'function armNext()')
+    || !preg_match("~urls\.forEach\(function \(u, i\) \{.*?prerender: \[\{ source: 'list', urls: \[u\], eagerness: 'immediate' \}\].*?NEXT_GAP_MS \* \(i \+ 1\)~s", $blk68)
+    || !preg_match('~reset = function \(\) \{ baseReset2\(\); armNext\(\); \};~', $js68)) {
+    $sBad[] = 'app.js — زبانه‌های بعدی با فاصله آماده نمی‌شوند یا reset آن‌ها را از نو نمی‌چیند';
+}
+if (!str_contains($hd68, 'data-next="<?= h(speculationNextTabs(')) {
+    $sBad[] = 'header.php — فهرستِ زبانه‌های بعدی (data-next) رندر نمی‌شود';
 }
 $sw68 = preg_replace('~/\*.*?\*/|//[^\n]*~s', '', (string)file_get_contents(__DIR__ . '/../sw.js'));
 if (!preg_match("~addEventListener\('activate'.*?navigationPreload\.enable\(\)~s", $sw68)) {
@@ -6508,6 +6530,6 @@ if (!preg_match("~req\.mode === 'navigate'.*?await event\.preloadResponse;\s*if 
 if (!str_contains((string)file_get_contents(__DIR__ . '/../includes/log.php'), "\$ctx['prefetch'] = true")) {
     $sBad[] = 'log.php — درخواستِ پیش‌گیری در خطِ request علامت نمی‌خورد';
 }
-T::bulk(12, $sBad, 'پیش‌گیریِ امن، کهنه‌نشدن، و پیش‌بارگذاریِ ناوبری');
+T::bulk(16, $sBad, 'پیش‌گیریِ امن، زبانه‌های از-پیش-آماده، کهنه‌نشدن، و پیش‌بارگذاریِ ناوبری');
 
 exit(T::report());

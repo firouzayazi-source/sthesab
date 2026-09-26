@@ -38,7 +38,7 @@ if (!bin) { process.stdout.write(JSON.stringify({ ok: false, why: 'no_chromium' 
         try { proc.kill('SIGKILL'); } catch (e) {}
         process.exit(0);
     };
-    setTimeout(() => done({ ok: false, why: 'timeout' }), 90000);
+    setTimeout(() => done({ ok: false, why: 'timeout' }), 150000);
 
     let ver = null;
     for (let i = 0; i < 60; i++) {
@@ -62,6 +62,51 @@ if (!bin) { process.stdout.write(JSON.stringify({ ok: false, why: 'no_chromium' 
         pending.set(i, res);
         ws.send(JSON.stringify({ id: i, method, params, sessionId }));
     });
+
+    // ---------- مرحله‌ی الف: prerenderِ زبانه‌ها ----------
+    // ⚠ کرومیوم prerender را برای صفحه‌ای که DevTools به آن **وصل** است
+    //   خاموش می‌کند (`PrerenderingDisabledByDevTools`). پس صفحه بی‌اتصال
+    //   باز می‌شود، صبر می‌کنیم تا زبانه‌ها آماده شوند، و فقط بعد وصل
+    //   می‌شویم — همان‌طور که روی گوشی هیچ DevTools ای وصل نیست.
+    const pre = {};
+    await send('Storage.setCookies', { cookies: [{ name: cookieName, value: cookieValue, domain: new URL(base).hostname, path: '/' }] });
+    const evIn = async (sid, x) => (await send('Runtime.evaluate', { expression: x, awaitPromise: true, returnByValue: true }, sid)).result.result.value;
+    const openBare = async (url) => (await send('Target.createTarget', { url })).result.targetId;
+    const attach = async (tid) => (await send('Target.attachToTarget', { targetId: tid, flatten: true })).result.sessionId;
+    const findPage = async (part) => {
+        const all = (await send('Target.getTargets')).result.targetInfos;
+        const p = all.find((x) => x.type === 'page' && x.url.indexOf(part) !== -1);
+        return p ? p.targetId : null;
+    };
+    const navInfo = `(()=>{const n=performance.getEntriesByType('navigation')[0];return {act:Math.round(n.activationStart||0),main:(typeof window.__appMainAt==='number')?Math.round(window.__appMainAt):-1,origin:performance.timeOrigin}})()`;
+    {
+        // ۰) گرم کردنِ سرویس‌ورکر، تا مرحله‌ی الف زیرِ همان شرایطِ واقعی باشد
+        const w = await openBare(base + 'index.php');
+        await sleep(3000);
+        await send('Target.closeTarget', { targetId: w });
+        // ۱) خانه → گزارش: دومین زبانه با فاصله آماده می‌شود
+        const tA = await openBare(base + 'index.php');
+        await sleep(8000);
+        const sA = await attach(tA);
+        await evIn(sA, `location.href=${JSON.stringify(base + 'dashboard.php')}`);
+        await sleep(2500);
+        const tD = await findPage('dashboard.php');
+        pre.tab = tD ? await evIn(await attach(tD), navInfo) : null;
+        if (tD) { await send('Target.closeTarget', { targetId: tD }); }
+        // ۲) کهنگی: بعد از یک POSTِ موفق، prerenderِ قبلی نباید مصرف شود
+        const tB = await openBare(base + 'index.php');
+        await sleep(6000);
+        const sB = await attach(tB);
+        pre.postStatus = await evIn(sB, `fetch(location.href,{method:'POST',headers:{'X-Requested-With':'fetch'}}).then(r=>r.status)`);
+        const tPost = Date.now();
+        await sleep(500);
+        await evIn(sB, `location.href=${JSON.stringify(base + 'transactions.php')}`);
+        await sleep(2500);
+        const tT = await findPage('transactions.php');
+        const infoT = tT ? await evIn(await attach(tT), navInfo) : null;
+        pre.afterPost = infoT ? { act: infoT.act, createdAfterPost: infoT.origin > tPost } : null;
+        if (tT) { await send('Target.closeTarget', { targetId: tT }); }
+    }
 
     const t = await send('Target.createTarget', { url: 'about:blank' });
     const a = await send('Target.attachToTarget', { targetId: t.result.targetId, flatten: true });
@@ -94,7 +139,7 @@ if (!bin) { process.stdout.write(JSON.stringify({ ok: false, why: 'no_chromium' 
         return true;
     };
 
-    const out = { ok: true };
+    const out = { ok: true, pre };
     await go('index.php');
     await ev('navigator.serviceWorker.ready.then(()=>1)');
     await sleep(1500);
