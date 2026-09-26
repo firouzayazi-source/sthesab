@@ -4028,13 +4028,20 @@ if (!is_file($root . '/admin/store-share.php')) {
 
 // ۸) توگلِ «دارایی کل فروشگاه» فقط برای مدیر، و سطلِ عکسِ روزانه
 //    دقیقاً هم‌نامِ `kind` — وگرنه اجزا بی‌صدا غلط می‌شوند.
-$maSrc = $stripComments($root . '/my-assets.php');
-if (!preg_match('/Auth::isAdmin\(\)\s*&&\s*StoreShare::available\(\)/', $maSrc)) {
-    $badSS[] = '⛔ my-assets.php — «دارایی کل فروشگاه» پشتِ Auth::isAdmin() نیست';
+//    ⚠ این منطق از `my-assets.php` به `netWorthPortfolio()` /
+//    `netWorthSnapParts()` رفت (خانه‌ی دسکتاپ هم همان را می‌خواند)، پس
+//    بدنه‌ی همان دو تابع سنجیده می‌شود، نه صفحه.
+$maSrc   = $stripComments($root . '/my-assets.php');
+$fnSrc46 = $stripComments($root . '/includes/functions.php');
+$nwBody  = preg_match('/function netWorthPortfolio\(.*?\n\}/s', $fnSrc46, $mm46) ? $mm46[0] : '';
+$snBody  = preg_match('/function netWorthSnapParts\(.*?\n\}/s', $fnSrc46, $mm46) ? $mm46[0] : '';
+if (!preg_match('/if \(StoreShare::available\(\)\) \{.*?if \(\$isAdmin\) \{\s*\$storeNet\s*=\s*StoreShare::storeNetWorth\(\)/s', $nwBody)
+    || !preg_match('/netWorthPortfolio\(\$userId, Auth::isAdmin\(\)/', $stripComments($root . '/my-assets.php'))) {
+    $badSS[] = '⛔ netWorthPortfolio — «دارایی کل فروشگاه» پشتِ isAdmin نیست (یا صفحه نقشِ مدیر را پاس نمی‌دهد)';
 }
 foreach (['store_share', 'store_total', 'store_owed'] as $kind) {
-    if (!preg_match("/'" . $kind . "'\s*=>\s*'" . $kind . "'/", $maSrc)) {
-        $badSS[] = '⛔ my-assets.php — سطلِ ' . $kind . ' در $snapMap هم‌نامِ kind نیست';
+    if (!preg_match("/'" . $kind . "'\s*=>\s*'" . $kind . "'/", $snBody)) {
+        $badSS[] = '⛔ netWorthSnapParts — سطلِ ' . $kind . ' هم‌نامِ kind نیست';
     }
 }
 
@@ -4042,11 +4049,11 @@ foreach (['store_share', 'store_total', 'store_owed'] as $kind) {
 //      می‌شود — وگرنه با «دارایی من در فروشگاه» هم‌پوشانی دارد و مانده‌اش
 //      **دو بار** در جمعِ صفحه می‌نشیند. هر دو عدد جداگانه درست‌اند، پس
 //      این خرابی هیچ نشانه‌ای ندارد.
-if (!preg_match('/StoreShare::storeOwed\(\s*\$userId\s*\)/', $maSrc)) {
-    $badSS[] = '⛔ my-assets.php — storeOwed() بدونِ $userId صدا زده شده؛ سهمِ خودِ مدیر دو بار شمرده می‌شود';
+if (!preg_match('/StoreShare::storeOwed\(\s*\$userId\s*\)/', $nwBody)) {
+    $badSS[] = '⛔ netWorthPortfolio — storeOwed() بدونِ $userId صدا زده شده؛ سهمِ خودِ مدیر دو بار شمرده می‌شود';
 }
-if (!preg_match('/\$storeOwed\s*!==\s*null/', $maSrc)) {
-    $badSS[] = '⛔ my-assets.php — قلمِ «طلب سهامداران» بدونِ نگهبانِ null رندر می‌شود (صفرِ ساختگی)';
+if (!preg_match('/\$storeOwed\s*!==\s*null/', $nwBody)) {
+    $badSS[] = '⛔ netWorthPortfolio — قلمِ «طلب سهامداران» بدونِ نگهبانِ null ساخته می‌شود (صفرِ ساختگی)';
 }
 $ssOwed = $stripComments($root . '/includes/store_share.php');
 if (!preg_match("/array_key_exists\('shareholders_owed'/", $ssOwed)) {
@@ -6002,7 +6009,7 @@ foreach (array_keys(HOME_WIDGETS) as $k) {
         $badHome[] = "index.php — قلمِ «{$k}» از \$hw() نمی‌پرسد (کلیدی که کاری نمی‌کند)";
     }
 }
-if (!preg_match('/financialHighlights\([^;]*\$homeHidden\)/', $idxSrc)) {
+if (!preg_match('/financialHighlights\([^;]*\$homeHidden[,)]/', $idxSrc)) {
     $badHome[] = 'index.php — financialHighlights() خاموش‌ها را نمی‌گیرد (جمله ساخته و بعد پنهان می‌شد)';
 }
 if (!preg_match('/foreach \(HOME_WIDGETS as/', $profSrc) || !preg_match('/foreach \(HOME_WIDGET_GROUPS as/', $profSrc)) {
@@ -6531,5 +6538,73 @@ if (!str_contains((string)file_get_contents(__DIR__ . '/../includes/log.php'), "
     $sBad[] = 'log.php — درخواستِ پیش‌گیری در خطِ request علامت نمی‌خورد';
 }
 T::bulk(16, $sBad, 'پیش‌گیریِ امن، زبانه‌های از-پیش-آماده، کهنه‌نشدن، و پیش‌بارگذاریِ ناوبری');
+
+// ---------------------------------------------------------------
+// قاعده ۶۹ — خانه‌ی دسکتاپ: داشبوردِ کلی بی‌هزینه برای گوشی، و «خالص
+// دارایی» فقط از یک جا
+//
+// ⛔ رفتار را `test_desk_home.php` در مرورگر و با HTTP می‌سنجد؛ این قاعده
+//    شکل را نگه می‌دارد برای ماشینی که دیتابیس یا کرومیوم ندارد.
+// ---------------------------------------------------------------
+T::group('قاعده ۶۹ — خانه‌ی دسکتاپ');
+$dBad = [];
+$strip69 = function (string $f): string {
+    $out = '';
+    foreach (token_get_all((string)file_get_contents(__DIR__ . '/../' . $f)) as $t) {
+        if (is_array($t) && ($t[0] === T_COMMENT || $t[0] === T_DOC_COMMENT)) { continue; }
+        $out .= is_array($t) ? $t[1] : $t;
+    }
+    return $out;
+};
+$idx69 = $strip69('index.php');
+$ma69  = $strip69('my-assets.php');
+$fn69  = $strip69('includes/functions.php');
+if (!preg_match('/\$desk\s*=\s*deskView\(\);/', $idx69)) {
+    $dBad[] = 'index.php — تصمیمِ نمای دسکتاپ از deskView() نمی‌آید';
+}
+// هر سه محاسبه‌ی سنگین فقط داخلِ if ($desk)
+if (!preg_match('/if \(\$desk\) \{\s*try \{ \$deskSafe = safeToSpend\(.*?netWorthPortfolio\(\$userId, Auth::isAdmin\(\), \$walletRows\).*?recordNetWorthSnapshot\(\$userId, netWorthSnapParts\(/s', $idx69)) {
+    $dBad[] = 'index.php — محاسبه‌های دسکتاپ پشتِ if ($desk) نیستند (گوشی هزینه‌شان را می‌داد)';
+}
+if (substr_count($idx69, 'netWorthPortfolio(') !== 1 || substr_count($idx69, 'safeToSpend(') !== 1) {
+    $dBad[] = 'index.php — netWorthPortfolio/safeToSpend دقیقاً یک بار صدا زده نمی‌شوند';
+}
+if (!str_contains($idx69, 'financialHighlights($userId, $walletRows, $monthCmp, true, $homeHidden, $deskSafe)')) {
+    $dBad[] = 'index.php — «پول قابل خرج» به financialHighlights پاس داده نمی‌شود (financialEvents دو بار)';
+}
+if (!preg_match('/<\?php if \(\$desk\):.*?<div class="desk-kpis desk-only">/s', $idx69)
+    || !preg_match('/<\?php if \(\$desk\): \?>\s*<\/div>.*?<aside class="home-side desk-only">/s', $idx69)) {
+    $dBad[] = 'index.php — ردیفِ شاخص یا ستونِ کناری بیرونِ if ($desk) رندر می‌شود';
+}
+if (!preg_match('/\$pageDesk\s*=\s*\$desk;/', $idx69)) {
+    $dBad[] = 'index.php — $pageDesk از $desk نمی‌آید';
+}
+// ⛔ خالص دارایی فقط در netWorthPortfolio — my-assets کوئریِ اقلام را خودش نمی‌زند
+if (!str_contains($ma69, 'netWorthPortfolio($userId, Auth::isAdmin(), null, $assetSummary)')
+    || !str_contains($ma69, 'netWorthSnapParts($portfolio)')) {
+    $dBad[] = 'my-assets.php — اقلامِ خالص دارایی از netWorthPortfolio/netWorthSnapParts نمی‌آیند';
+}
+if (preg_match('/FROM\s+(cheques|debts)\b/i', $ma69) || str_contains($ma69, 'tradesWithProgress(')) {
+    $dBad[] = 'my-assets.php — نسخه‌ی دومِ محاسبه‌ی چک/طلب/معامله برگشته (دو عدد برای خالص دارایی)';
+}
+if (!preg_match('/function netWorthPortfolio\(.*?\n\}/s', $fn69, $nwm) || str_contains($nwm[0], 'refreshIfStale')) {
+    $dBad[] = 'functions.php — netWorthPortfolio نباید درخواستِ شبکه (refreshIfStale) بزند';
+}
+if (!preg_match("/function deskView\(\): bool\s*\{\s*return \(\\\$_COOKIE\[DESK_COOKIE\] \?\? ''\) === '1';/", $fn69)) {
+    $dBad[] = 'functions.php — deskView() فقط «۱»ِ کوکیِ DESK_COOKIE را نمی‌پذیرد';
+}
+$hd69 = (string)file_get_contents(__DIR__ . '/../includes/header.php');
+if (!str_contains($hd69, '<?= deskCookieScript() ?>') || !str_contains((string)file_get_contents(__DIR__ . '/../login.php'), '<script><?= deskCookieScript() ?></script>')) {
+    $dBad[] = 'header.php/login.php — اسکریپتِ کوکیِ نمای دسکتاپ چاپ نمی‌شود';
+}
+if (!str_contains($hd69, "<?= \$pageDesk ? ' is-desk' : '' ?>")) {
+    $dBad[] = 'header.php — کلاسِ is-desk روی .page-content نمی‌نشیند';
+}
+$css69 = (string)file_get_contents(__DIR__ . '/../assets/css/style.css');
+if (!preg_match('/@media \(min-width: 1100px\) \{\s*\.page-content\.is-desk \{ max-width: 1240px; \}\s*\.desk-only \{ display: block; \}/', $css69)
+    || !str_contains($fn69, 'const DESK_MIN_PX = 1100;')) {
+    $dBad[] = 'style.css — آستانه‌ی CSS با DESK_MIN_PX یکی نیست';
+}
+T::bulk(13, $dBad, 'داشبوردِ دسکتاپ پشتِ deskView، خالص دارایی از یک منبع، و آستانه‌ی یکسان');
 
 exit(T::report());
