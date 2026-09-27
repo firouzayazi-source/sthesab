@@ -27,7 +27,10 @@ require __DIR__ . '/../includes/biz_head.php';
 ?>
 <div class="st-page-head">
     <h1 class="st-h1">طرف‌حساب‌ها</h1>
-    <a class="st-btn" href="<?= h(Biz::url('party.php')) ?>">+ طرف‌حسابِ تازه</a>
+    <div class="st-head-actions">
+        <a class="st-btn st-btn-ghost" href="<?= h(Biz::url('print.php') . '?' . http_build_query(array_filter(['doc' => 'parties', 'f' => $filter], fn($v) => $v !== ''))) ?>">چاپِ مانده‌ها</a>
+        <a class="st-btn" href="<?= h(Biz::url('party.php')) ?>">+ طرف‌حسابِ تازه</a>
+    </div>
 </div>
 
 <div class="st-chips-row">

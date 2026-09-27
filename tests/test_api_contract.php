@@ -6707,7 +6707,8 @@ if (!preg_match("/Biz::typeFor\(.*?=== 'business'.*?Api::fail\(.*?ApiAuth::issue
 
 // ۴. هر صفحه‌ی store/ دروازه‌ی خودش را دارد و هیچ چیزی از پوسته‌ی شخصی لود نمی‌کند
 $storeFiles70 = glob(__DIR__ . '/../store/*.php') ?: [];
-foreach (['login.php', 'logout.php', 'index.php', 'settings.php', 'products.php', 'product.php', 'parties.php', 'party.php'] as $must) {
+foreach (['login.php', 'logout.php', 'index.php', 'settings.php', 'products.php', 'product.php', 'parties.php', 'party.php',
+          'products-io.php', 'reports.php', 'print-settings.php', 'print.php'] as $must) {
     if (!is_file(__DIR__ . '/../store/' . $must)) { $bBad[] = "store/{$must} نیست"; }
 }
 foreach (array_merge($storeFiles70, [__DIR__ . '/../includes/biz_head.php', __DIR__ . '/../includes/biz_foot.php']) as $f) {
@@ -6723,7 +6724,8 @@ foreach (array_merge($storeFiles70, [__DIR__ . '/../includes/biz_head.php', __DI
 }
 // ⛔ دفترِ فروشگاه هیچ جدول یا تابعِ پولِ شخصی را نمی‌خواند — حسابِ «شخصی +
 //    فروشگاه» وگرنه پولِ خانه‌اش را روی داشبوردِ مغازه می‌دید.
-foreach (array_merge($storeFiles70, [__DIR__ . '/../includes/biz_catalog.php']) as $f) {
+foreach (array_merge($storeFiles70, [__DIR__ . '/../includes/biz_catalog.php', __DIR__ . '/../includes/biz_io.php',
+                                     __DIR__ . '/../includes/biz_print.php']) as $f) {
     $src = $strip70((string)file_get_contents($f));
     if (preg_match('/walletBalances|totalBalance|activeWallets|\b(?:FROM|JOIN|INTO|UPDATE)\s+`?(?:transactions|wallets|transfers|debts|debt_payments|cheques|trades|trade_sales|assets)\b/i', $src, $pm)) {
         $bBad[] = basename(dirname($f)) . '/' . basename($f) . " — به دفترِ شخصی دست می‌زند ({$pm[0]})";
@@ -6795,6 +6797,70 @@ foreach (array_keys($dirs70) as $d) {
         $bBad[] = "پوشه‌ی {$d} فایلِ PHP دارد ولی هیچ اسکنرِ تستی آن را نمی‌بیند";
     }
 }
-T::bulk(28, $bBad, 'محیطِ فروشگاهی: دروازه‌ی بی‌کوئری، سه نوعِ حساب، تنها نویسنده، دفترِ جدا از پولِ شخصی، و طرفِ شخصیِ دست‌نخورده');
+// ۷. منوی کناری، ورود/خروجِ کالا، دریافت از سایت، چاپ
+require_once __DIR__ . '/../includes/biz.php';
+$flat70 = Biz::navFlat();
+if (array_diff(Biz::TABBAR, array_keys($flat70))) {
+    $bBad[] = 'Biz::TABBAR کلیدی دارد که در Biz::NAV نیست — برچسبِ منوی پایین از NAV می‌آید';
+}
+foreach (array_keys($flat70) as $nf) {
+    if (!is_file(__DIR__ . '/../store/' . $nf)) { $bBad[] = "Biz::NAV به store/{$nf} اشاره می‌کند که نیست"; }
+}
+// ⛔ هر صفحه‌ی store/ یا در منوست یا عمداً بیرون (جزئیات، ورود، برگه‌ی چاپ) — وگرنه بی‌راه می‌ماند
+foreach ($storeFiles70 as $f) {
+    $bn = basename($f);
+    if (!isset($flat70[$bn]) && !isset(Biz::NAV_PARENT[$bn]) && !in_array($bn, ['login.php', 'logout.php', 'print.php'], true)) {
+        $bBad[] = "store/{$bn} در Biz::NAV نیست و هیچ راهی از منو ندارد";
+    }
+}
+$head70 = $strip70((string)file_get_contents(__DIR__ . '/../includes/biz_head.php'));
+$foot70 = $strip70((string)file_get_contents(__DIR__ . '/../includes/biz_foot.php'));
+if (!str_contains($head70, 'foreach (Biz::NAV as $__group => $__items)') || !str_contains($head70, 'class="st-side"')
+    || !str_contains($head70, 'id="stNavToggle"') || !str_contains($foot70, 'foreach (Biz::TABBAR as $__file)')
+    || !str_contains($foot70, 'for="stNavToggle"')) {
+    $bBad[] = 'پوسته‌ی فروشگاه — نوارِ کناری از Biz::NAV، کشوی بی‌جاوااسکریپت (stNavToggle) یا منوی پایین از TABBAR نیست';
+}
+$css70 = (string)file_get_contents(__DIR__ . '/../assets/css/store.css');
+if (!preg_match('/\.st-side\s*\{[^}]*inset-inline-start:\s*0/', $css70) || !preg_match('/\.st-shell\s*\{\s*margin-inline-start:\s*248px/', $css70)) {
+    $bBad[] = 'store.css — نوارِ کناری به لبه‌ی شروع (راست در rtl) نچسبیده یا بدنه کنارش جا باز نمی‌کند';
+}
+$io70 = $strip70((string)file_get_contents(__DIR__ . '/../includes/biz_io.php'));
+if (preg_match('/\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+`?biz_(?:products|stock_moves)\b/i', $io70, $iom)) {
+    $bBad[] = "biz_io.php — ورودِ کالا مستقیم می‌نویسد ({$iom[0]})؛ باید از BizProducts::save()/BizStock::adjustTo() برود";
+}
+if (!str_contains($io70, 'BizProducts::save($userId, $in)') || !str_contains($io70, 'BizStock::adjustTo($userId,')) {
+    $bBad[] = 'biz_io.php — apply() از BizProducts::save() و BizStock::adjustTo() نمی‌گذرد';
+}
+if (!preg_match("/SELECT id, name, sku FROM biz_products WHERE user_id = :u'/", $io70)) {
+    $bBad[] = 'biz_io.php — تطبیقِ پیش‌نمایش فقط میانِ کالاهای همین کاربر نیست';
+}
+// ⛔ سدِ SSRF: IPِ سنجیده سنجاق، ریدایرکت دستی و هر بار سنجیده، فقط http(s)، پرچمِ آزمون فقط در cli
+if (!preg_match('/for \(\$hop = 0;.*?\$c = self::check\(\$url\);.*?CURLOPT_RESOLVE\s*=> \[\$c\[\'host\'\]/s', $io70)
+    || !str_contains($io70, 'CURLOPT_FOLLOWLOCATION => false') || !str_contains($io70, 'CURLPROTO_HTTP | CURLPROTO_HTTPS')
+    || !str_contains($io70, 'return self::$allowLoopbackForTests && PHP_SAPI === \'cli\';')
+    || !str_contains($io70, 'FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE')) {
+    $bBad[] = 'biz_io.php — سدِ SSRF (سنجاقِ IP، سنجشِ هر ریدایرکت، فقط http(s)، پرچمِ آزمونِ فقط-cli) ناقص است';
+}
+foreach (array_merge(glob(__DIR__ . '/../*.php') ?: [], glob(__DIR__ . '/../store/*.php') ?: [], glob(__DIR__ . '/../includes/*.php') ?: [],
+                     glob(__DIR__ . '/../api/*.php') ?: []) as $f) {
+    if (preg_match('/allowLoopbackForTests\s*=\s*true/', $strip70((string)file_get_contents($f)))) {
+        $bBad[] = basename($f) . ' — پرچمِ آزمونِ loopback را بیرون از tests/ روشن می‌کند';
+    }
+}
+if (!str_contains($io70, "strpbrk(\$s[0], '=+-@') !== false ? \"'\" . \$s : \$s")) {
+    $bBad[] = 'biz_io.php — CSVِ خروجی فرمولِ تزریقی (= + - @) را خنثی نمی‌کند';
+}
+$pio70 = $strip70((string)file_get_contents(__DIR__ . '/../store/products-io.php'));
+if (substr_count($pio70, 'BizImport::apply(') !== 1 || !preg_match("/if \(\\\$action === 'apply'\) \{.*?BizImport::load\(\\\$userId\).*?BizImport::apply\(/s", $pio70)) {
+    $bBad[] = 'products-io.php — ثبت باید فقط از گامِ «ثبت نهایی» و روی پیش‌نمایشِ ذخیره‌شده باشد';
+}
+if (preg_match('/REQUEST_METHOD|Csrf::verifyOrFail|\$_POST/', $strip70((string)file_get_contents(__DIR__ . '/../store/print.php')))) {
+    $bBad[] = 'store/print.php — برگه‌ی چاپ فقط خواندنی است و نباید چیزی بنویسد';
+}
+if (!str_contains($mig70, "    migration_biz_print.sql\n") || !str_contains($mig70, '[migration_biz_print.sql]="biz_settings.print_prefs"')) {
+    $bBad[] = 'migrate.sh — migration_biz_print.sql در MIGRATIONS یا SENTINEL نیست';
+}
+
+T::bulk(44, $bBad, 'محیطِ فروشگاهی: دروازه‌ی بی‌کوئری، سه نوعِ حساب، تنها نویسنده، دفترِ جدا از پولِ شخصی، و طرفِ شخصیِ دست‌نخورده');
 
 exit(T::report());

@@ -371,6 +371,16 @@ if ($node === '') {
         foreach ($pr['res'] as $m) {
             T::ok($m['sw'] <= $m['W'] && !$m['out'], "«{$m['pg']}» روی {$m['w']}: بی‌اسکرولِ افقی و بی‌بیرون‌زدگی",
                 "scrollWidth={$m['sw']} width={$m['W']} " . implode(' | ', $m['out']));
+            // ⛔ «همه چیز راست‌چین جز عدد» — خواسته‌ی مالکِ نصب
+            T::ok(!$m['rtl'], "«{$m['pg']}» روی {$m['w']}: هر متنِ فارسی rtl و راست‌چین است", implode(' | ', $m['rtl'] ?? ['?']));
+            if ($m['w'] >= 900) {
+                T::ok(!empty($m['side']['shown']) && abs($m['side']['right'] - $m['W']) <= 1,
+                    "«{$m['pg']}» روی {$m['w']}: نوارِ کناری دیده می‌شود و به لبه‌ی **راست** چسبیده", json_encode($m['side']));
+            } else {
+                T::ok(empty($m['side']['shown']), "«{$m['pg']}» روی {$m['w']}: نوارِ کناری تا زدنِ «منو» پنهان است", json_encode($m['side']));
+                T::ok(isset($m['drawer']['right']) && abs($m['drawer']['right'] - $m['W']) <= 1 && $m['drawer']['left'] > 0,
+                    "«{$m['pg']}» روی {$m['w']}: «منو» کشو را از لبه‌ی راست باز می‌کند", json_encode($m['drawer']));
+            }
         }
     }
 }

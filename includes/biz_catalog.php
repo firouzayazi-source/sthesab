@@ -81,8 +81,13 @@ final class BizProducts
 
     public const PAGE_SIZE = 25;
 
-    /** @return array{rows:array, total:int, page:int, pages:int} */
-    public static function list(int $userId, string $q = '', string $filter = '', string $category = '', int $page = 1): array
+    /**
+     * ⛔ تنها جای صافی‌های فهرستِ کالا — فهرستِ صفحه‌بندی‌شده و چاپ هر دو
+     *    از همین می‌گذرند، وگرنه «کم‌موجودی»ِ روی صفحه با «کم‌موجودی»ِ کاغذ
+     *    دو فهرستِ متفاوت می‌شد.
+     * @return array{0:string, 1:array}
+     */
+    private static function where(int $userId, string $q, string $filter, string $category): array
     {
         $where  = ['p.user_id = :u'];
         $params = ['u' => $userId];
@@ -108,7 +113,30 @@ final class BizProducts
             $where[] = 'p.category = :c';
             $params['c'] = $category;
         }
-        $sqlWhere = implode(' AND ', $where);
+        return [implode(' AND ', $where), $params];
+    }
+
+    /**
+     * همه‌ی ردیف‌ها بی‌صفحه‌بندی — برای چاپ. سقف دارد و می‌گوید بریده شده.
+     * @return array{rows:array, capped:bool}
+     */
+    public static function all(int $userId, string $filter = '', string $category = '', int $cap = 3000): array
+    {
+        [$sqlWhere, $params] = self::where($userId, '', $filter, $category);
+        $st = Database::getConnection()->prepare(
+            "SELECT p.* FROM biz_products p WHERE {$sqlWhere} ORDER BY p.category IS NULL, p.category, p.name, p.id LIMIT :lim"
+        );
+        foreach ($params as $k => $v) { $st->bindValue($k, $v); }
+        $st->bindValue('lim', $cap + 1, PDO::PARAM_INT);
+        $st->execute();
+        $rows = $st->fetchAll();
+        return ['rows' => array_slice($rows, 0, $cap), 'capped' => count($rows) > $cap];
+    }
+
+    /** @return array{rows:array, total:int, page:int, pages:int} */
+    public static function list(int $userId, string $q = '', string $filter = '', string $category = '', int $page = 1): array
+    {
+        [$sqlWhere, $params] = self::where($userId, $q, $filter, $category);
         $pdo = Database::getConnection();
 
         $st = $pdo->prepare("SELECT COUNT(*) FROM biz_products p WHERE {$sqlWhere}");
@@ -486,6 +514,30 @@ final class BizStock
         });
     }
 
+    /**
+     * کاردکسِ کالا — همه‌ی حرکت‌ها به ترتیبِ زمان با موجودیِ جاری؛ همان
+     * ترتیبِ `recalc()` (اول دوره همیشه اول)، پس موجودیِ پایانی دقیقاً همان
+     * `stock_qty` است.
+     * @return array{rows:array, capped:bool}
+     */
+    public static function ledger(int $userId, int $productId, int $cap = 2000): array
+    {
+        $st = Database::getConnection()->prepare(
+            "SELECT * FROM biz_stock_moves WHERE product_id = :p AND user_id = :u
+             ORDER BY (kind = 'opening') DESC, move_date, id LIMIT :lim"
+        );
+        $st->bindValue('p', $productId, PDO::PARAM_INT);
+        $st->bindValue('u', $userId, PDO::PARAM_INT);
+        $st->bindValue('lim', $cap + 1, PDO::PARAM_INT);
+        $st->execute();
+        $rows = $st->fetchAll();
+        $capped = count($rows) > $cap;
+        $run = 0.0;
+        foreach ($rows as &$m) { $run = round($run + (float)$m['qty'], 3); $m['balance'] = $run; }
+        unset($m);
+        return ['rows' => array_slice($rows, 0, $cap), 'capped' => $capped];
+    }
+
     public static function moves(int $userId, int $productId, int $limit = 50): array
     {
         $st = Database::getConnection()->prepare(
@@ -531,7 +583,8 @@ final class BizParties
      */
     public const BALANCE_SQL = 'p.opening_balance';
 
-    public static function list(int $userId, string $q = '', string $filter = '', int $page = 1): array
+    /** ⛔ تنها جای صافی‌های فهرستِ طرف‌حساب (صفحه و چاپ). @return array{0:string, 1:array} */
+    private static function where(int $userId, string $q, string $filter): array
     {
         $bal    = self::BALANCE_SQL;
         $where  = ['p.user_id = :u'];
@@ -549,7 +602,55 @@ final class BizParties
             $params['q1'] = BizCommon::like($q);
             $params['q2'] = BizCommon::like(toLatinDigits($q));
         }
-        $sqlWhere = implode(' AND ', $where);
+        return [implode(' AND ', $where), $params];
+    }
+
+    /** همه‌ی ردیف‌ها برای چاپ. @return array{rows:array, capped:bool} */
+    public static function all(int $userId, string $filter = '', int $cap = 3000): array
+    {
+        $bal = self::BALANCE_SQL;
+        [$sqlWhere, $params] = self::where($userId, '', $filter);
+        $st = Database::getConnection()->prepare(
+            "SELECT p.*, {$bal} AS balance FROM biz_parties p WHERE {$sqlWhere} ORDER BY p.name, p.id LIMIT :lim"
+        );
+        foreach ($params as $k => $v) { $st->bindValue($k, $v); }
+        $st->bindValue('lim', $cap + 1, PDO::PARAM_INT);
+        $st->execute();
+        $rows = $st->fetchAll();
+        return ['rows' => array_slice($rows, 0, $cap), 'capped' => count($rows) > $cap];
+    }
+
+    /**
+     * صورت‌حسابِ یک طرف‌حساب: ردیف‌های بدهکار/بستانکار با مانده‌ی جاری.
+     * ⛔ مانده‌ی پایانی باید با `BALANCE_SQL` یکی باشد (تست همین را
+     *    می‌سنجد) — امروز فقط مانده‌ی اول دوره است و فاکتور و
+     *    دریافت/پرداختِ مرحله‌ی ۳ همین‌جا ردیف اضافه می‌کنند.
+     * @return array{party:array, lines:array, debit:int, credit:int, balance:int}|null
+     */
+    public static function statement(int $userId, int $id): ?array
+    {
+        $party = self::get($userId, $id);
+        if (!$party) { return null; }
+        $lines = [];
+        $ob = (int)$party['opening_balance'];
+        if ($ob !== 0) {
+            $lines[] = ['date' => substr((string)$party['created_at'], 0, 10), 'desc' => 'مانده‌ی اول دوره',
+                        'debit' => max($ob, 0), 'credit' => max(-$ob, 0)];
+        }
+        $run = 0; $dr = 0; $cr = 0;
+        foreach ($lines as &$l) {
+            $run += $l['debit'] - $l['credit'];
+            $dr += $l['debit']; $cr += $l['credit'];
+            $l['balance'] = $run;
+        }
+        unset($l);
+        return ['party' => $party, 'lines' => $lines, 'debit' => $dr, 'credit' => $cr, 'balance' => $run];
+    }
+
+    public static function list(int $userId, string $q = '', string $filter = '', int $page = 1): array
+    {
+        $bal = self::BALANCE_SQL;
+        [$sqlWhere, $params] = self::where($userId, $q, $filter);
         $pdo = Database::getConnection();
 
         $st = $pdo->prepare("SELECT COUNT(*) FROM biz_parties p WHERE {$sqlWhere}");

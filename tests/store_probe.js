@@ -103,7 +103,24 @@ if (!bin) { process.stdout.write(JSON.stringify({ ok: false, why: 'no_chromium' 
         for (const tw of document.querySelectorAll('.st-table-wrap')) {
             if (tw.scrollWidth > tw.clientWidth + 1) { out.push('st-table-wrap scroll ' + tw.scrollWidth + '>' + tw.clientWidth); }
         }
-        return { sw: document.documentElement.scrollWidth, W, out: out.slice(0, 5),
+        // ⛔ «همه چیز راست‌چین، جز عدد» — متنِ فارسی که جهتش rtl نیست یا
+        //    چپ‌چین شده خطاست. عدد (.st-num، ستونِ عدد، ورودیِ ltr) عمداً
+        //    بیرون است.
+        const rtlBad = [];
+        const FA = /[\u0600-\u06FF]/;
+        for (const el of document.querySelectorAll('.st-main *, .st-side *, .st-top *, .st-tabbar *')) {
+            if (el.closest('.st-num, .st-td-num, .st-th-num, [dir="ltr"], svg, option')) continue;
+            const own = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join('').trim();
+            if (!own || !FA.test(own)) continue;
+            const cs = getComputedStyle(el);
+            if (cs.direction !== 'rtl' || cs.textAlign === 'left') {
+                rtlBad.push((el.className || el.tagName) + ' dir=' + cs.direction + ' align=' + cs.textAlign);
+            }
+        }
+        const sd = document.querySelector('.st-side');
+        const sr = sd ? sd.getBoundingClientRect() : null;
+        const side = sr ? { left: Math.round(sr.left), right: Math.round(sr.right), shown: sr.right > 0 && sr.left < W } : null;
+        return { sw: document.documentElement.scrollWidth, W, out: out.slice(0, 5), rtl: rtlBad.slice(0, 5), side,
                  done: document.documentElement.outerHTML.includes('</html>') || !!document.querySelector('.st-tabbar') };
     })()`;
 
@@ -113,7 +130,16 @@ if (!bin) { process.stdout.write(JSON.stringify({ ok: false, why: 'no_chromium' 
         for (const pg of pages) {
             await go(pg);
             const m = await ev(probe);
-            res.push({ w, pg, sw: m.sw, W: m.W, out: m.out });
+            // کشوی موبایل: با زدنِ «منو» نوار از لبه‌ی راست بیرون می‌آید
+            let drawer = null;
+            if (w < 700) {
+                await ev(`document.getElementById('stNavToggle').checked = true`);
+                await sleep(350);
+                drawer = await ev(`(()=>{const r=document.querySelector('.st-side').getBoundingClientRect();return {left:Math.round(r.left),right:Math.round(r.right)}})()`);
+                await ev(`document.getElementById('stNavToggle').checked = false`);
+                await sleep(300);
+            }
+            res.push({ w, pg, sw: m.sw, W: m.W, out: m.out, rtl: m.rtl, side: m.side, drawer });
             if (shotDir) {
                 const shot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false }, S);
                 fs.writeFileSync(`${shotDir}/${w}-${pg.replace(/[^a-z0-9]+/gi, '_')}.png`, Buffer.from(shot.result.data, 'base64'));

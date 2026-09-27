@@ -96,6 +96,8 @@ require __DIR__ . '/../includes/biz_head.php';
             <a class="st-quick-btn" href="<?= h(Biz::url('party.php?kind=customer')) ?>">+ مشتریِ تازه</a>
             <a class="st-quick-btn" href="<?= h(Biz::url('party.php?kind=supplier')) ?>">+ تأمین‌کننده‌ی تازه</a>
             <a class="st-quick-btn" href="<?= h(Biz::url('settings.php')) ?>#cash">صندوق‌ها</a>
+            <a class="st-quick-btn" href="<?= h(Biz::url('products-io.php')) ?>">ورود از اکسل</a>
+            <a class="st-quick-btn" href="<?= h(Biz::url('reports.php')) ?>">چاپ و گزارش</a>
         </div>
         <p class="st-muted st-soon">در راه: فاکتورِ خرید و فروش با چاپ، دریافت و پرداخت، و گزارشِ فروش و سود.</p>
     </section>

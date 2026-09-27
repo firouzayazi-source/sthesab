@@ -84,7 +84,10 @@ require __DIR__ . '/../includes/biz_head.php';
         <a class="st-back" href="<?= h(Biz::url('products.php')) ?>">‹ کالاها</a>
         <h1 class="st-h1"><?= h($product ? (string)$product['name'] : 'کالای تازه') ?></h1>
     </div>
-    <?php if ($product && (int)$product['is_active'] !== 1): ?><span class="st-badge is-out">غیرفعال</span><?php endif; ?>
+    <div class="st-head-actions">
+        <?php if ($product && (int)$product['is_active'] !== 1): ?><span class="st-badge is-out">غیرفعال</span><?php endif; ?>
+        <?php if ($product && (int)$product['track_stock'] === 1): ?><a class="st-btn st-btn-ghost" href="<?= h(Biz::url('print.php?doc=kardex&id=' . (int)$product['id'])) ?>">چاپِ کاردکس</a><?php endif; ?>
+    </div>
 </div>
 
 <?php if ($error !== ''): ?>

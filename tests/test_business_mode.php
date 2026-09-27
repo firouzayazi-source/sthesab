@@ -48,6 +48,10 @@ const STORE_BUDGET = [
     'store/product.php'  => 9,
     'store/parties.php'  => 9,
     'store/party.php'    => 7,
+    'store/products-io.php'    => 5,
+    'store/reports.php'        => 9,
+    'store/print-settings.php' => 6,
+    'store/print.php'          => 7,
 ];
 const STORE_NO_BUDGET = ['store/login.php', 'store/logout.php'];
 

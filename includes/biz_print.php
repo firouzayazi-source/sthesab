@@ -1,0 +1,137 @@
+<?php
+/**
+ * ⛔ پوسته‌ی چاپِ محیطِ فروشگاهی — «پرینت حساب» و «تنظیم پرینت».
+ *
+ * هندسه‌ی برگه (اندازه، جهت، حاشیه، اندازه‌ی قلم) فقط از
+ * `Biz::printPrefs()` می‌آید و فقط اینجا به CSS تبدیل می‌شود؛ هر سندی
+ * (`store/print.php`) فقط محتوای خودش را می‌نویسد. با دو جای محاسبه،
+ * پیش‌نمایشِ صفحه‌ی تنظیمات با کاغذِ واقعی نمی‌خواند.
+ *
+ * روی صفحه: یک برگه‌ی سفید به اندازه‌ی کاغذ + نوارِ ابزار؛ هنگامِ چاپ نوار
+ * پنهان و حاشیه را خودِ `@page` می‌دهد. نه منو، نه `store.css`: برگه‌ی
+ * چاپی نباید به استایلِ صفحه‌ها بند باشد.
+ */
+if (!defined('APP_BASE_PATH')) { http_response_code(404); exit; }
+
+final class BizPrint
+{
+    /** ⛔ تنها مرجعِ سندهای چاپی — صفحه‌ی «چاپ و گزارش» و `print.php` هر دو از همین. */
+    public const DOCS = [
+        'stock'   => 'موجودی انبار',
+        'prices'  => 'فهرست قیمت',
+        'parties' => 'مانده‌ی طرف‌حساب‌ها',
+        'party'   => 'صورت‌حساب طرف‌حساب',
+        'kardex'  => 'کاردکس کالا',
+    ];
+
+    /** آدرسِ یک سند — تنها سازنده‌ی لینکِ چاپ. */
+    public static function url(string $doc, array $params = []): string
+    {
+        return Biz::url('print.php') . '?' . http_build_query(['doc' => $doc] + array_filter($params, fn($v) => $v !== '' && $v !== null));
+    }
+
+    /** عرض و ارتفاعِ کاغذ به میلی‌متر؛ رول ارتفاع ندارد. */
+    public const PAPER_MM = ['a4' => [210, 297], 'a5' => [148, 210], '80mm' => [80, 0], '58mm' => [58, 0]];
+    private const MARGIN_MM = ['narrow' => 7, 'normal' => 12, 'wide' => 18];
+    private const MARGIN_ROLL_MM = ['narrow' => 2, 'normal' => 3, 'wide' => 5];
+    private const FONT_PX = ['sm' => 11, 'md' => 13, 'lg' => 15];
+    private const FONT_ROLL_PX = ['sm' => 10, 'md' => 11, 'lg' => 13];
+
+    public static function isRoll(array $p): bool
+    {
+        return (self::PAPER_MM[$p['paper']][1] ?? 1) === 0;
+    }
+
+    /**
+     * @return array{w:int, h:int, m:int, font:int, css:string}
+     */
+    public static function geometry(array $p): array
+    {
+        [$w, $h] = self::PAPER_MM[$p['paper']] ?? self::PAPER_MM['a4'];
+        $roll = $h === 0;
+        if (!$roll && $p['orient'] === 'landscape') { [$w, $h] = [$h, $w]; }
+        $m    = ($roll ? self::MARGIN_ROLL_MM : self::MARGIN_MM)[$p['margin']] ?? 12;
+        $font = ($roll ? self::FONT_ROLL_PX : self::FONT_PX)[$p['font']] ?? 13;
+        // ⚠ رول اندازه‌ی `@page` نمی‌گیرد: ارتفاعِ ثابت یعنی کاغذِ سفیدِ اضافه
+        //   روی فیش‌پرینتر؛ عرض را خودِ برگه نگه می‌دارد.
+        $page = $roll ? "@page { margin: {$m}mm; }" : "@page { size: {$w}mm {$h}mm; margin: {$m}mm; }";
+        $inner = $w - 2 * $m;
+        $css = $page . "\n:root { --pr-font: {$font}px; --pr-w: {$w}mm; --pr-m: {$m}mm; --pr-inner: {$inner}mm; }";
+        return ['w' => $w, 'h' => $h, 'm' => $m, 'font' => $font, 'css' => $css];
+    }
+
+    /** سرآیندِ برگه — `$back` جایی است که «بازگشت» می‌برد. */
+    public static function head(int $userId, string $title, string $back, array $meta = []): void
+    {
+        $p    = Biz::printPrefs($userId);
+        $set  = Biz::settings($userId);
+        $geo  = self::geometry($p);
+        $shop = $set['shop_name'] !== '' ? $set['shop_name'] : Auth::fullName();
+        ?>
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="robots" content="noindex">
+    <title><?= h($title . ' · ' . $shop) ?></title>
+    <?php foreach (assetUrls(['css/store-print.css']) as $u): ?>
+    <link rel="stylesheet" href="<?= h($u) ?>">
+    <?php endforeach; ?>
+    <style><?= $geo['css'] ?></style>
+</head>
+<body class="pr-body<?= self::isRoll($p) ? ' pr-roll' : '' ?>" data-paper="<?= h((string)$p['paper']) ?>">
+<div class="pr-bar">
+    <button type="button" class="pr-btn pr-btn-main" onclick="window.print()">چاپ</button>
+    <a class="pr-btn" href="<?= h($back) ?>">بازگشت</a>
+    <a class="pr-btn" href="<?= h(Biz::url('print-settings.php')) ?>">تنظیماتِ چاپ</a>
+    <span class="pr-bar-note"><?= h(Biz::PRINT_OPTIONS['paper'][$p['paper']]) ?><?= self::isRoll($p) ? '' : ' · ' . h(Biz::PRINT_OPTIONS['orient'][$p['orient']]) ?></span>
+</div>
+<article class="pr-sheet">
+    <?php if ($p['show_header']): ?>
+    <header class="pr-head">
+        <h1 class="pr-shop"><?= h($shop) ?></h1>
+        <?php if ($p['show_contact'] && ($set['phone'] !== '' || $set['address'] !== '')): ?>
+        <p class="pr-contact">
+            <?php if ($set['phone'] !== ''): ?><span>تلفن: <span class="pr-num" dir="ltr"><?= h($set['phone']) ?></span></span><?php endif; ?>
+            <?php if ($set['address'] !== ''): ?><span><?= h($set['address']) ?></span><?php endif; ?>
+        </p>
+        <?php endif; ?>
+    </header>
+    <?php endif; ?>
+    <div class="pr-titlebar">
+        <h2 class="pr-title"><?= h($title) ?></h2>
+        <?php if ($p['show_date']): ?>
+        <span class="pr-date"><?= h(toJalali(date('Y-m-d'))) ?> · <?= h(toPersianDigits(date('H:i'))) ?></span>
+        <?php endif; ?>
+    </div>
+    <?php if ($meta): ?>
+    <dl class="pr-meta">
+        <?php foreach ($meta as $k => $v): if ($v === '' || $v === null) { continue; } ?>
+        <div><dt><?= h($k) ?></dt><dd><?= h((string)$v) ?></dd></div>
+        <?php endforeach; ?>
+    </dl>
+    <?php endif; ?>
+        <?php
+    }
+
+    /** پایینِ برگه — متنِ پای فاکتور و جای امضا، به انتخابِ تنظیمات. */
+    public static function foot(int $userId, array $signs = ['امضای فروشگاه']): void
+    {
+        $p   = Biz::printPrefs($userId);
+        $set = Biz::settings($userId);
+        ?>
+    <?php if ($p['show_sign'] && $signs): ?>
+    <div class="pr-signs">
+        <?php foreach ($signs as $s): ?><div class="pr-sign"><?= h($s) ?></div><?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+    <?php if ($p['show_footer'] && $set['invoice_footer'] !== ''): ?>
+    <footer class="pr-foot"><?= nl2br(h($set['invoice_footer'])) ?></footer>
+    <?php endif; ?>
+</article>
+</body>
+</html>
+        <?php
+    }
+}

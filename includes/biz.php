@@ -67,16 +67,40 @@ final class Biz
     public const SHARED = ['logout.php', 'health.php'];
 
     /**
-     * ⛔ منوی محیطِ فروشگاهی — فهرستِ بسته، مثلِ `admin/_nav.php`.
-     *    فایلی که هنوز ساخته نشده رندر نمی‌شود (دکمه‌ی بی‌کار از نبودنش
-     *    بدتر است).
+     * ⛔ منوی محیطِ فروشگاهی — تنها مرجع، گروه‌بندی‌شده (نوارِ کناریِ
+     *    سمتِ راست از همین رندر می‌شود). فایلی که هنوز ساخته نشده رندر
+     *    نمی‌شود (دکمه‌ی بی‌کار از نبودنش بدتر است).
      */
     public const NAV = [
-        'index.php'    => 'داشبورد',
-        'products.php' => 'کالاها',
-        'parties.php'  => 'طرف‌حساب‌ها',
-        'settings.php' => 'تنظیمات',
+        'پیشخوان'      => ['index.php' => 'داشبورد'],
+        'انبار و کالا' => ['products.php' => 'کالاها', 'products-io.php' => 'ورود و خروجِ اکسل'],
+        'اشخاص'        => ['parties.php' => 'طرف‌حساب‌ها'],
+        'گزارش و چاپ'  => ['reports.php' => 'چاپ و گزارش'],
+        'تنظیمات'      => ['settings.php' => 'تنظیمات فروشگاه', 'print-settings.php' => 'تنظیمات چاپ'],
     ];
+
+    /**
+     * منوی پایینِ موبایل — فقط **کلید**ها؛ برچسب از `NAV` می‌آید (فهرستِ
+     * دومِ برچسب ساخته نمی‌شود). بقیه در کشوی «منو» است.
+     */
+    public const TABBAR = ['index.php', 'products.php', 'parties.php'];
+
+    /** صفحه‌ی جزئیات کدام قلمِ منو را روشن می‌کند. */
+    public const NAV_PARENT = ['product.php' => 'products.php', 'party.php' => 'parties.php'];
+
+    /** @return array<string,string> فایل ← برچسب، به ترتیبِ منو */
+    public static function navFlat(): array
+    {
+        $out = [];
+        foreach (self::NAV as $items) { $out += $items; }
+        return $out;
+    }
+
+    /** قلمِ فعالِ منو برای یک اسکریپت (صفحه‌ی جزئیات → فهرستش). */
+    public static function navCurrent(string $page): string
+    {
+        return self::NAV_PARENT[$page] ?? $page;
+    }
 
     /** نقش‌هایی که حسابِ فروشگاهی می‌تواند داشته باشد. */
     private const BUSINESS_ROLES = ['user', 'colleague'];
@@ -379,5 +403,87 @@ final class Biz
             'a' => $clean['address'], 'f' => $clean['invoice_footer'],
         ]);
         return ['ok' => true, 'message' => 'تنظیماتِ فروشگاه ذخیره شد.'];
+    }
+
+    /* ============================================================
+       تنظیماتِ چاپ — «تنظیم پرینت» (migration_biz_print)
+       ============================================================ */
+
+    /** ⛔ تنها مرجعِ گزینه‌ها؛ کلیدِ اولِ هر گروه پیش‌فرض نیست — `PRINT_DEFAULTS` است. */
+    public const PRINT_OPTIONS = [
+        'paper'  => ['a4' => 'A4', 'a5' => 'A5', '80mm' => 'رولِ ۸۰ میلی‌متری (فیش‌پرینتر)', '58mm' => 'رولِ ۵۸ میلی‌متری'],
+        'orient' => ['portrait' => 'عمودی', 'landscape' => 'افقی'],
+        'font'   => ['sm' => 'ریز', 'md' => 'معمولی', 'lg' => 'درشت'],
+        'margin' => ['narrow' => 'کم', 'normal' => 'معمولی', 'wide' => 'زیاد'],
+    ];
+
+    public const PRINT_FLAGS = [
+        'show_header'  => 'سربرگ (نامِ فروشگاه)',
+        'show_contact' => 'تلفن و نشانی زیرِ سربرگ',
+        'show_date'    => 'تاریخ و ساعتِ چاپ',
+        'show_footer'  => 'متنِ پای فاکتور (از تنظیماتِ فروشگاه)',
+        'show_sign'    => 'جای امضا در پایینِ برگه',
+    ];
+
+    public const PRINT_DEFAULTS = [
+        'paper' => 'a4', 'orient' => 'portrait', 'font' => 'md', 'margin' => 'normal',
+        'show_header' => true, 'show_contact' => true, 'show_date' => true, 'show_footer' => true, 'show_sign' => false,
+    ];
+
+    private static array $printCache = [];
+
+    /**
+     * ⛔ مقدارِ ناشناخته (JSONِ خراب، کلیدِ کهنه) بی‌صدا به پیش‌فرض برمی‌گردد،
+     *    نه اینکه برگه‌ی چاپ بشکند. نبودِ ستون (migration نخورده) هم همین.
+     * @return array<string,string|bool>
+     */
+    public static function printPrefs(int $userId): array
+    {
+        if (isset(self::$printCache[$userId])) { return self::$printCache[$userId]; }
+        $raw = null;
+        try {
+            $st = Database::getConnection()->prepare('SELECT print_prefs FROM biz_settings WHERE user_id = :u LIMIT 1');
+            $st->execute(['u' => $userId]);
+            $raw = $st->fetchColumn();
+        } catch (PDOException $e) {
+            if ((string)$e->getCode() !== '42S22' && (string)$e->getCode() !== '42S02') { throw $e; }
+        }
+        $in = is_string($raw) ? json_decode($raw, true) : null;
+        return self::$printCache[$userId] = self::cleanPrint(is_array($in) ? $in : []);
+    }
+
+    /** @return array<string,string|bool> */
+    private static function cleanPrint(array $in): array
+    {
+        $out = self::PRINT_DEFAULTS;
+        foreach (self::PRINT_OPTIONS as $k => $opts) {
+            if (isset($in[$k]) && is_string($in[$k]) && isset($opts[$in[$k]])) { $out[$k] = $in[$k]; }
+        }
+        foreach (self::PRINT_FLAGS as $k => $_) {
+            if (array_key_exists($k, $in)) { $out[$k] = (bool)$in[$k]; }
+        }
+        return $out;
+    }
+
+    /**
+     * از یک فرمِ چک‌باکسی: گزینه‌ی نبوده یعنی «خاموش» (تنها تعبیرِ
+     * بی‌ابهامِ چک‌باکس)؛ مقدارِ ناشناخته‌ی منو رد می‌شود.
+     * @return array{ok:bool, message:string}
+     */
+    public static function savePrintPrefs(int $userId, array $in): array
+    {
+        $clean = [];
+        foreach (self::PRINT_OPTIONS as $k => $opts) {
+            $v = (string)($in[$k] ?? '');
+            if (!isset($opts[$v])) { return ['ok' => false, 'message' => 'یکی از گزینه‌های چاپ معتبر نیست.']; }
+            $clean[$k] = $v;
+        }
+        foreach (self::PRINT_FLAGS as $k => $_) { $clean[$k] = !empty($in[$k]); }
+        unset(self::$printCache[$userId]);
+        Database::getConnection()->prepare(
+            'INSERT INTO biz_settings (user_id, print_prefs) VALUES (:u, :p)
+             ON DUPLICATE KEY UPDATE print_prefs = VALUES(print_prefs)'
+        )->execute(['u' => $userId, 'p' => json_encode($clean, JSON_UNESCAPED_UNICODE)]);
+        return ['ok' => true, 'message' => 'تنظیماتِ چاپ ذخیره شد.'];
     }
 }

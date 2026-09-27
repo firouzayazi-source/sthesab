@@ -112,7 +112,8 @@ $pages = ['dashboard.php', 'transactions.php', 'wallets.php', 'budget.php',
           'recurring.php', 'search.php', 'calendar.php', 'profile.php',
           // محیطِ فروشگاهی → ورودِ **فروشگاه**
           'store/index.php', 'store/settings.php', 'store/products.php', 'store/product.php',
-          'store/parties.php', 'store/party.php'];
+          'store/parties.php', 'store/party.php', 'store/products-io.php', 'store/reports.php',
+          'store/print-settings.php', 'store/print.php'];
 $bad = [];
 foreach ($pages as $p) {
     [$code, $body] = $req("/$p", 'GET');

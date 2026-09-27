@@ -122,6 +122,7 @@ const NO_BUDGET = [
     //    (`STORE_BUDGET`، فهرستِ بسته‌ی خودش) سنجیده می‌شود.
     'store/index.php', 'store/settings.php', 'store/login.php', 'store/logout.php',
     'store/products.php', 'store/product.php', 'store/parties.php', 'store/party.php',
+    'store/products-io.php', 'store/reports.php', 'store/print-settings.php', 'store/print.php',
 ];
 
 // ---------------------------------------------------------------

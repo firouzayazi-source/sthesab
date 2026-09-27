@@ -4,7 +4,7 @@
    ⛔ فایلِ جداست تا `style.css`ِ حساب لندِ شخصی حتی یک بایت عوض نشود.
    هیچ کلاسی از آن فایل اینجا نیست و هیچ کلاسی از اینجا آنجا نیست
    (پیشوندِ `st-`). ظاهر عمداً هیچ نسبتی با حساب لند ندارد: سنگی و
-   کهربایی، سربرگِ تیره، و منوی افقی به‌جای نوارِ کناری.
+   کهربایی، و نوارِ کناریِ سمتِ راست (روی گوشی کشو + منوی پایین).
    ============================================================ */
 
 @font-face {
@@ -68,34 +68,67 @@ body.st-body {
 }
 a { color: var(--st-accent); }
 
-/* ---------- سربرگ ---------- */
+/* ---------- قاب: نوارِ کناریِ راست + بدنه ----------
+   ⛔ خواسته‌ی مالکِ نصب: «ساید بار سمت راست». روی دسکتاپ (≥۹۰۰) نوار
+   ثابت است و بدنه کنارش؛ روی گوشی همان نوار کشو است (چک‌باکسِ پنهان +
+   `<label>` — بی‌جاوااسکریپت) و منوی پایین سرِ جایش می‌ماند.
+   ⚠ جای نوار با `inset-inline-start` است: در `dir="rtl"` یعنی راست. */
+.st-nav-toggle { position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0; }
+.st-side {
+    position: fixed; z-index: 40; inset-block: 0; inset-inline-start: 0;
+    width: 248px; display: flex; flex-direction: column;
+    background: var(--st-top); color: var(--st-top-ink);
+    padding: calc(14px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom));
+    overflow-y: auto; overscroll-behavior: contain;
+}
+.st-side-brand { padding: 4px 6px 14px; border-bottom: 1px solid rgba(250,250,249,.1); margin-bottom: 8px; flex-shrink: 0; }
+/* ⛔ `min-height: 0` نیمه‌ی دومِ اسکرول است (درسِ منوی کناریِ حساب لند) */
+.st-side-nav { flex: 1; min-height: 0; }
+.st-side-group { margin-bottom: 10px; }
+.st-side-title {
+    margin: 10px 8px 4px; font-size: 11px; font-weight: 700; letter-spacing: 0;
+    color: var(--st-top-ink); opacity: .45; text-align: right;
+}
+.st-side-item {
+    display: flex; align-items: center; gap: 10px; text-align: right;
+    color: var(--st-top-ink); opacity: .8; text-decoration: none; font-size: 14px;
+    padding: 8px 10px; border-radius: 10px; white-space: nowrap;
+}
+.st-side-item:hover { opacity: 1; background: rgba(250,250,249,.06); }
+.st-side-item.is-active { opacity: 1; background: rgba(245,158,11,.16); color: #fcd34d; font-weight: 700; }
+.st-side-ico { flex: 0 0 auto; }
+.st-side-foot { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid rgba(250,250,249,.1); flex-shrink: 0; }
+.st-side-scrim { display: none; }
+
+.st-shell { min-height: 100vh; }
+@media (min-width: 900px) {
+    .st-shell { margin-inline-start: 248px; }
+    .st-top { display: none; }
+}
+
+/* سربرگِ موبایل */
 .st-top {
     position: sticky; top: 0; z-index: 20;
     background: var(--st-top); color: var(--st-top-ink);
     padding-top: env(safe-area-inset-top);
 }
 .st-top-in {
-    max-width: 1100px; margin: 0 auto;
-    display: flex; align-items: center; gap: 16px;
-    padding: 12px max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left));
 }
+.st-menu-btn { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; cursor: pointer; flex: 0 0 auto; }
+.st-menu-btn:hover { background: rgba(250,250,249,.08); }
 .st-brand {
     display: flex; align-items: center; gap: 10px; min-width: 0;
     color: inherit; text-decoration: none; font-weight: 800;
 }
+.st-top .st-brand { flex: 1; }
 .st-brand-mark {
     display: grid; place-items: center; flex: 0 0 auto;
     width: 34px; height: 34px; border-radius: 10px;
     background: var(--st-accent); color: var(--st-accent-ink);
 }
 .st-brand-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.st-nav { display: flex; gap: 4px; margin-inline-start: auto; }
-.st-nav-item {
-    color: var(--st-top-ink); opacity: .75; text-decoration: none;
-    padding: 6px 12px; border-radius: 999px; white-space: nowrap;
-}
-.st-nav-item:hover { opacity: 1; }
-.st-nav-item.is-active { opacity: 1; background: rgba(250,250,249,.12); }
 .st-logout {
     color: var(--st-top-ink); opacity: .7; text-decoration: none; white-space: nowrap;
     border: 1px solid rgba(250,250,249,.25); border-radius: 999px; padding: 4px 12px; font-size: 13px;
@@ -103,8 +136,8 @@ a { color: var(--st-accent); }
 
 /* ---------- بدنه ---------- */
 .st-main {
-    max-width: 1100px; margin: 0 auto;
-    padding: 20px max(16px, env(safe-area-inset-right)) 32px max(16px, env(safe-area-inset-left));
+    max-width: 1180px; margin: 0 auto;
+    padding: 22px max(18px, env(safe-area-inset-right)) 32px max(18px, env(safe-area-inset-left));
 }
 .st-h1 { font-size: 22px; margin: 0 0 4px; font-weight: 800; }
 .st-h2 { font-size: 16px; margin: 0 0 6px; font-weight: 700; }
@@ -323,13 +356,17 @@ a.st-kpi-card:hover { border-color: var(--st-accent); }
 .st-danger-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .st-subform { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--st-line); }
 
-/* ---------- منوی پایینِ موبایل ---------- */
+/* ---------- گوشی: کشو + منوی پایین ---------- */
 .st-tabbar { display: none; }
-@media (max-width: 720px) {
-    .st-nav { display: none; }
-    .st-switch { margin-inline-start: auto; }
-    .st-switch + .st-logout { margin-inline-start: 0; }
-    .st-logout { margin-inline-start: auto; }
+@media (max-width: 899px) {
+    .st-side {
+        width: min(300px, 86vw); transform: translateX(105%);
+        transition: transform .22s ease; box-shadow: none;
+    }
+    .st-nav-toggle:checked ~ .st-side { transform: none; box-shadow: -8px 0 30px rgba(0,0,0,.25); }
+    .st-nav-toggle:checked ~ .st-side-scrim {
+        display: block; position: fixed; inset: 0; z-index: 35; background: rgba(12,10,9,.45);
+    }
     .st-main { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
     .st-tabbar {
         display: flex; position: fixed; inset-inline: 0; bottom: 0; z-index: 20;
@@ -337,8 +374,21 @@ a.st-kpi-card:hover { border-color: var(--st-accent); }
         padding: 8px max(8px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
     }
     .st-tab {
-        flex: 1; text-align: center; text-decoration: none; white-space: nowrap;
+        flex: 1; text-align: center; text-decoration: none; white-space: nowrap; cursor: pointer;
         color: var(--st-ink-2); padding: 8px 4px; border-radius: 10px; font-size: 14px;
     }
     .st-tab.is-active { color: var(--st-accent); background: var(--st-wash); font-weight: 700; }
 }
+@media (prefers-reduced-motion: reduce) { .st-side { transition: none; } }
+
+/* ---------- ورود و خروجِ کالا ---------- */
+.st-io-opts { margin: 4px 0 14px; gap: 8px; }
+.st-badge.is-create { background: var(--st-ok-wash); color: var(--st-ok); border-color: transparent; }
+.st-badge.is-update { background: var(--st-wash); color: var(--st-accent-2); border-color: transparent; }
+.st-badge.is-error  { background: var(--st-err-wash); color: var(--st-err); border-color: transparent; }
+.st-table tr.is-error td { background: color-mix(in srgb, var(--st-err-wash) 45%, transparent); }
+.st-btn[disabled] { opacity: .45; cursor: not-allowed; }
+.st-field input[type="file"] { padding: 8px; }
+.st-head-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.st-head-actions .st-btn { align-self: auto; }
+@media (max-width: 560px) { .st-head-actions .st-btn { padding: 8px 14px; font-size: 14px; } }

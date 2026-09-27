@@ -63,7 +63,10 @@ require __DIR__ . '/../includes/biz_head.php';
         <a class="st-back" href="<?= h(Biz::url('parties.php')) ?>">‹ طرف‌حساب‌ها</a>
         <h1 class="st-h1"><?= h($party ? (string)$party['name'] : 'طرف‌حسابِ تازه') ?></h1>
     </div>
-    <?php if ($party && (int)$party['is_active'] !== 1): ?><span class="st-badge is-out">غیرفعال</span><?php endif; ?>
+    <div class="st-head-actions">
+        <?php if ($party && (int)$party['is_active'] !== 1): ?><span class="st-badge is-out">غیرفعال</span><?php endif; ?>
+        <?php if ($party): ?><a class="st-btn st-btn-ghost" href="<?= h(Biz::url('print.php?doc=party&id=' . (int)$party['id'])) ?>">چاپِ صورت‌حساب</a><?php endif; ?>
+    </div>
 </div>
 
 <?php if ($error !== ''): ?>

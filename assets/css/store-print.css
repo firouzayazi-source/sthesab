@@ -1,0 +1,86 @@
+/* ============================================================
+   برگه‌ی چاپِ محیطِ فروشگاهی
+   ============================================================
+   اندازه‌ی کاغذ، حاشیه و قلم از `BizPrint::geometry()` به‌صورتِ
+   متغیر می‌آید (--pr-w، --pr-m، --pr-font)؛ اینجا فقط شکل است.
+   ⛔ متن راست‌چین، عدد چپ‌چین (.pr-num) — همان قاعده‌ی کلِ اپ.
+   ============================================================ */
+@font-face {
+    font-family: 'Vazirmatn';
+    src: url('../fonts/Vazirmatn.woff2') format('woff2');
+    font-weight: 100 900; font-style: normal; font-display: swap;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body.pr-body {
+    margin: 0; background: #e7e5e4; color: #111;
+    font-family: 'Vazirmatn', Tahoma, sans-serif; font-size: var(--pr-font, 13px); line-height: 1.6;
+    text-align: right;
+}
+
+.pr-bar {
+    position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    padding: 10px 14px; background: #1c1917; color: #fafaf9;
+}
+.pr-btn {
+    font: inherit; font-size: 14px; cursor: pointer; text-decoration: none; white-space: nowrap;
+    color: #fafaf9; background: transparent; border: 1px solid rgba(250,250,249,.3); border-radius: 10px; padding: 6px 14px;
+}
+.pr-btn-main { background: #b45309; border-color: #b45309; font-weight: 700; }
+.pr-bar-note { margin-inline-start: auto; font-size: 12px; opacity: .7; }
+
+/* برگه روی صفحه: کاغذِ سفید به همان عرض، حاشیه = padding */
+.pr-sheet {
+    width: var(--pr-w, 210mm); max-width: 100%; min-height: 60mm;
+    margin: 16px auto; padding: var(--pr-m, 12mm);
+    background: #fff; box-shadow: 0 2px 14px rgba(0,0,0,.14);
+}
+
+.pr-head { text-align: center; border-bottom: 2px solid #111; padding-bottom: 6px; margin-bottom: 8px; }
+.pr-shop { margin: 0; font-size: 1.5em; font-weight: 800; }
+.pr-contact { margin: 2px 0 0; font-size: .9em; color: #333; display: flex; justify-content: center; flex-wrap: wrap; gap: 4px 14px; }
+.pr-titlebar { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin: 6px 0 8px; }
+.pr-title { margin: 0; font-size: 1.2em; font-weight: 800; }
+.pr-date { font-size: .9em; color: #333; white-space: nowrap; }
+.pr-meta { margin: 0 0 10px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 14px; font-size: .95em; }
+.pr-meta div { display: flex; gap: 6px; }
+.pr-meta dt { color: #555; white-space: nowrap; }
+.pr-meta dd { margin: 0; font-weight: 700; overflow-wrap: anywhere; }
+
+.pr-table { width: 100%; border-collapse: collapse; font-size: 1em; }
+.pr-table th, .pr-table td { border: 1px solid #999; padding: 4px 6px; text-align: right; vertical-align: top; overflow-wrap: anywhere; }
+.pr-table th { background: #f1f1f1; font-weight: 700; white-space: nowrap; }
+.pr-table .pr-c-num { text-align: left; white-space: nowrap; }
+.pr-table tfoot td { font-weight: 800; background: #fafafa; }
+.pr-table tr { break-inside: avoid; }
+.pr-table thead { display: table-header-group; }
+.pr-group td { background: #f7f7f7; font-weight: 700; }
+.pr-num { direction: ltr; unicode-bidi: isolate; font-variant-numeric: tabular-nums; }
+.pr-neg { color: #b91c1c; }
+.pr-note { font-size: .85em; color: #555; margin: 6px 0 0; }
+.pr-empty { text-align: center; color: #555; padding: 16px 0; }
+
+.pr-total { display: flex; justify-content: space-between; gap: 10px; border: 2px solid #111; border-radius: 6px; padding: 6px 10px; margin-top: 10px; font-weight: 800; }
+
+.pr-signs { display: flex; gap: 16px; margin-top: 28px; }
+.pr-sign { flex: 1; text-align: center; border-top: 1px dashed #555; padding-top: 4px; font-size: .9em; color: #333; min-height: 44px; }
+.pr-foot { margin-top: 14px; padding-top: 6px; border-top: 1px solid #ccc; font-size: .9em; color: #333; text-align: center; }
+
+/* ---------- رولِ فیش‌پرینتر: ستون‌های پهن حذف، جدول فشرده ---------- */
+.pr-roll .pr-wide { display: none; }
+.pr-roll .pr-table th, .pr-roll .pr-table td { border-width: 0 0 1px; padding: 2px 1px; }
+.pr-roll .pr-meta { grid-template-columns: minmax(0, 1fr); }
+.pr-roll .pr-signs { flex-direction: column; gap: 22px; }
+.pr-roll .pr-head { border-bottom-style: dashed; }
+
+@media print {
+    body.pr-body { background: #fff; }
+    .pr-bar { display: none; }
+    .pr-sheet { width: auto; max-width: none; margin: 0; padding: 0; box-shadow: none; min-height: 0; }
+    a { color: inherit; text-decoration: none; }
+    /* رول: عرض را خودِ برگه نگه می‌دارد، نه اندازه‌ی `@page` */
+    .pr-roll .pr-sheet { width: var(--pr-inner, 74mm); }
+}
+@media screen and (max-width: 640px) {
+    .pr-sheet { margin: 0; box-shadow: none; }
+}
