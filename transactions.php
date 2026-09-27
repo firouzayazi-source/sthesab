@@ -68,7 +68,7 @@ include __DIR__ . '/includes/header.php';
 ?>
 
 <?php if ($backYear !== null): ?>
-<a href="<?= APP_BASE_PATH ?>/dashboard.php?y=<?= $backYear ?>#year" class="page-back js-page-back">
+<a href="<?= APP_BASE_PATH ?>/<?= deskView() ? 'index.php' : 'dashboard.php' ?>?y=<?= $backYear ?>#year" class="page-back js-page-back">
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M11 6l-6 6 6 6"/></svg>
     <span>بازگشت به گزارش سال <?= toPersianDigits((string)$backYear) ?></span>
 </a>

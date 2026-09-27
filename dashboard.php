@@ -21,25 +21,9 @@ $today      = today();
 $monthStart = startOfJalaliMonth();
 
 // جمعِ روزانه‌ی کل تاریخچه — یک بار خوانده می‌شود و همه‌ی بازه‌های این
-// صفحه از رویش ساخته می‌شوند. قبلاً برای امروز/هفته/ماه/سال/بازه‌ی دلخواه
-// پنج کوئری جدا می‌رفت که همگی روی همین جدول همین جمع را می‌گرفتند.
-$dailyStmt = $pdo->prepare('
-    SELECT transaction_date,
-        SUM(CASE WHEN type = "income"  THEN amount ELSE 0 END) AS daily_income,
-        SUM(CASE WHEN type = "expense" THEN amount ELSE 0 END) AS daily_expense,
-        SUM(type = "income")  AS income_count,
-        SUM(type = "expense") AS expense_count
-    FROM transactions
-    WHERE user_id = :user_id
-    GROUP BY transaction_date
-    ORDER BY transaction_date ASC
-');
-$dailyStmt->execute(['user_id' => $userId]);
-$dailyRows = $dailyStmt->fetchAll();
-$dailyRowsMap = [];
-foreach ($dailyRows as $row) {
-    $dailyRowsMap[$row['transaction_date']] = $row;
-}
+// صفحه از رویش ساخته می‌شوند (`dashDailyRows()`، مشترک با خانه‌ی دسکتاپ).
+require_once __DIR__ . '/includes/dash_parts.php';
+$dailyRows = dashDailyRows($userId);
 
 function getPeriodStats(array $dailyRows, string $fromDate, string $toDate): array
 {
@@ -56,22 +40,8 @@ function getPeriodStats(array $dailyRows, string $fromDate, string $toDate): arr
 
 $monthStats = getPeriodStats($dailyRows, $monthStart, $today);
 
-// ---------- کارتِ سالانه‌ی چهارفصل ----------
-// ⛔ جای چهار کارتِ «امروز / این هفته / این ماه / امسال» را گرفت و از همان
-//    `$dailyRows` ساخته می‌شود — هیچ کوئریِ تازه‌ای ندارد.
-[$__ty, , ] = gregorianToJalali((int)date('Y', strtotime($today)), (int)date('m', strtotime($today)), (int)date('d', strtotime($today)));
-$__firstYear = $__ty;
-if ($dailyRows) {
-    [$__fy, $__fm, $__fd] = array_map('intval', explode('-', $dailyRows[0]['transaction_date']));
-    [$__firstYear, , ] = gregorianToJalali($__fy, $__fm, $__fd);
-}
-// سالِ انتخاب‌شده فقط در بازه‌ی «اولین سالِ دارای تراکنش تا امسال» پذیرفته
-// می‌شود؛ هر `?y=` دیگری به امسال برمی‌گردد، نه به صفحه‌ی خالی.
-$reportYear = (int)toLatinDigits((string)getParam('y', (string)$__ty));
-if ($reportYear < min($__firstYear, $__ty) || $reportYear > $__ty) { $reportYear = $__ty; }
-$yearReport = seasonalYearReport($dailyRows, $reportYear, $today);
-$prevYear   = $reportYear > min($__firstYear, $__ty) ? $reportYear - 1 : null;
-$nextYear   = $reportYear < $__ty ? $reportYear + 1 : null;
+// ---------- کارتِ سالانه‌ی چهارفصل ---------- (`dashYearState()`)
+$yearState = dashYearState($dailyRows, $today, getParam('y', ''));
 
 // ---------- بخش گزارش با بازه دلخواه ----------
 $customRangeSubmitted = isset($_GET['from_date']) || isset($_GET['to_date']);
@@ -99,68 +69,6 @@ $rangeDailyRows = array_values(array_filter(
     fn($r) => $r['transaction_date'] >= $fromDate && $r['transaction_date'] <= $toDate
 ));
 
-// تب «هفته»: ۷ روز اخیر
-$weekBuckets = [];
-for ($i = 6; $i >= 0; $i--) {
-    $weekBuckets[date('Y-m-d', strtotime("-$i days"))] = ['income' => 0, 'expense' => 0];
-}
-// تب «ماه»: ۳۰ روز اخیر
-$month30Buckets = [];
-for ($i = 29; $i >= 0; $i--) {
-    $month30Buckets[date('Y-m-d', strtotime("-$i days"))] = ['income' => 0, 'expense' => 0];
-}
-foreach ([&$weekBuckets, &$month30Buckets] as &$bucketSet) {
-    foreach ($bucketSet as $d => &$b) {
-        if (isset($dailyRowsMap[$d])) {
-            $b['income']  = (int)$dailyRowsMap[$d]['daily_income'];
-            $b['expense'] = (int)$dailyRowsMap[$d]['daily_expense'];
-        }
-    }
-    unset($b);
-}
-unset($bucketSet);
-
-[$currentJy, $currentJm, ] = gregorianToJalali((int)date('Y'), (int)date('m'), (int)date('d'));
-
-// تب «سال»: ۱۲ ماه اخیر شمسی (تجمیع ماهانه)
-$monthlyBuckets = [];
-$jy = $currentJy; $jm = $currentJm;
-for ($i = 0; $i < 12; $i++) {
-    $key = sprintf('%04d-%02d', $jy, $jm);
-    $monthlyBuckets[$key] = ['jy' => $jy, 'jm' => $jm, 'income' => 0, 'expense' => 0];
-    $jm--;
-    if ($jm < 1) { $jm = 12; $jy--; }
-}
-$monthlyBuckets = array_reverse($monthlyBuckets, true);
-
-foreach ($dailyRows as $row) {
-    [$gy, $gm, $gd] = array_map('intval', explode('-', $row['transaction_date']));
-    [$ry, $rm, ] = gregorianToJalali($gy, $gm, $gd);
-    $mKey = sprintf('%04d-%02d', $ry, $rm);
-    if (isset($monthlyBuckets[$mKey])) {
-        $monthlyBuckets[$mKey]['income']  += (int)$row['daily_income'];
-        $monthlyBuckets[$mKey]['expense'] += (int)$row['daily_expense'];
-    }
-}
-
-$monthNamesShort = ['', 'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
-
-function bucketsToSeries(array $buckets, bool $isDaily, array $monthNamesShort): array
-{
-    $labels = []; $income = []; $expense = [];
-    foreach ($buckets as $key => $b) {
-        $labels[]  = $isDaily ? toJalali($key) : $monthNamesShort[$b['jm']];
-        $income[]  = $b['income'];
-        $expense[] = $b['expense'];
-    }
-    return [$labels, $income, $expense];
-}
-
-[$weekLabels, $weekIncome, $weekExpense] = bucketsToSeries($weekBuckets, true, $monthNamesShort);
-[$month30Labels, $month30Income, $month30Expense] = bucketsToSeries($month30Buckets, true, $monthNamesShort);
-[$monthlyLabels, $monthlyIncome, $monthlyExpense] = bucketsToSeries($monthlyBuckets, false, $monthNamesShort);
-
-$hasAnyData = !empty($dailyRows);
 
 // ---------- یادآوری طلب/بدهی نزدیک به سررسید یا سررسیدگذشته ----------
 $reminderStmt = $pdo->prepare('
@@ -250,192 +158,12 @@ include __DIR__ . '/includes/header.php';
 
 
 
-<?php /* ⛔ کارتِ سالانه‌ی چهارفصل. هر عدد یک لینک است (سال، فصل، ماه) و
-         مقصدش فهرستِ همان تراکنش‌هایی است که عدد را ساخته‌اند — عددی که
-         نشود دنبالش کرد، کاربر به آن اعتماد نمی‌کند. لینک است نه جاوااسکریپت:
-         با نرسیدنِ app.js هم کار می‌کند. */ ?>
-<div class="card year-report" id="year">
-    <div class="year-report-head">
-        <?php if ($prevYear !== null): ?>
-            <a class="year-nav" href="?y=<?= (int)$prevYear ?>" aria-label="سال قبل">‹ <?= toPersianDigits($prevYear) ?></a>
-        <?php else: ?><span class="year-nav is-off"></span><?php endif; ?>
-        <a class="year-title" href="<?= h(txRangeUrl($yearReport['from'], $yearReport['to'], $yearReport['year'])) ?>">
-            سال <?= toPersianDigits($reportYear) ?>
-        </a>
-        <?php if ($nextYear !== null): ?>
-            <a class="year-nav" href="?y=<?= (int)$nextYear ?>" aria-label="سال بعد"><?= toPersianDigits($nextYear) ?> ›</a>
-        <?php else: ?><span class="year-nav is-off"></span><?php endif; ?>
-    </div>
-    <div class="year-totals">
-        <div><span class="stats-label">درآمد</span><span class="stats-value stats-income ltr-num"><?= formatMoney($yearReport['income']) ?></span></div>
-        <div><span class="stats-label">هزینه</span><span class="stats-value stats-expense ltr-num"><?= formatMoney($yearReport['expense']) ?></span></div>
-        <div><span class="stats-label">خالص</span><span class="stats-value ltr-num <?= $yearReport['net'] >= 0 ? 'stats-net-positive' : 'stats-net-negative' ?>"><?= formatMoney($yearReport['net']) ?></span></div>
-    </div>
-    <div class="season-grid">
-        <?php foreach ($yearReport['seasons'] as $__s): ?>
-        <div class="season-card season-<?= h($__s['key']) ?><?= $__s['current'] ? ' is-current' : '' ?><?= $__s['future'] ? ' is-future' : '' ?>">
-            <a class="season-head" href="<?= h(txRangeUrl($__s['from'], $__s['to'], $yearReport['year'])) ?>">
-                <span class="season-name"><?= h($__s['name']) ?></span>
-                <span class="season-net ltr-num <?= $__s['net'] >= 0 ? 'stats-net-positive' : 'stats-net-negative' ?>"><?= formatMoney($__s['net']) ?></span>
-            </a>
-            <div class="season-sub">
-                <span>درآمد <b class="ltr-num stats-income"><?= formatMoney($__s['income']) ?></b></span>
-                <span>هزینه <b class="ltr-num stats-expense"><?= formatMoney($__s['expense']) ?></b></span>
-            </div>
-            <?php foreach ($__s['months'] as $__m): ?>
-            <a class="season-month<?= $__m['current'] ? ' is-current' : '' ?><?= $__m['future'] ? ' is-future' : '' ?>" href="<?= h(txRangeUrl($__m['from'], $__m['to'], $yearReport['year'])) ?>">
-                <span class="season-month-name"><?= h($__m['name']) ?></span>
-                <span class="season-month-val ltr-num <?= $__m['net'] >= 0 ? 'stats-net-positive' : 'stats-net-negative' ?>"><?= formatMoney($__m['net']) ?></span>
-            </a>
-            <?php endforeach; ?>
-        </div>
-        <?php endforeach; ?>
-    </div>
-    <p class="hint year-hint">مبالغ به تومان · روی سال، فصل یا ماه بزنید تا تراکنش‌های همان بازه را ببینید.</p>
-</div>
-
-<!-- ---------- راه ورود به گزارش دسته‌بندی ----------
-     تا حالا این گزارش فقط از شیت «بیشتر» پیدا می‌شد، در حالی که جایش
-     دقیقاً همین‌جاست: کاربر عددِ کلِ هزینه‌ی ماه را می‌بیند و سؤال بعدی‌اش
-     «این پول کجا رفت؟» است. دو دکمه چون هزینه و درآمد دو گزارش جدا هستند
-     و رنگشان هم همان رنگی است که در خودِ گزارش می‌بیند. -->
-<div class="card">
-    <div class="card-header-row">
-        <h2 class="card-title">گزارش دسته‌بندی</h2>
-        <span class="breakdown-cta-period">این ماه</span>
-    </div>
-    <p class="hint" style="margin:-4px 0 12px;">ببینید پولتان در هر دسته چقدر بوده — با نمودار و سهم درصدی.</p>
-    <div class="breakdown-cta">
-        <a href="<?= APP_BASE_PATH ?>/category-report.php?type=expense&preset=this_month" class="breakdown-cta-btn breakdown-cta-out">
-            <span class="breakdown-cta-icon">
-                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M12 21l-6-6M12 21l6-6"/></svg>
-            </span>
-            <span class="breakdown-cta-text">
-                <span class="breakdown-cta-title">هزینه‌ها</span>
-                <span class="breakdown-cta-amount"><?= formatMoney($monthStats['expense']) ?></span>
-            </span>
-        </a>
-        <a href="<?= APP_BASE_PATH ?>/category-report.php?type=income&preset=this_month" class="breakdown-cta-btn breakdown-cta-in">
-            <span class="breakdown-cta-icon">
-                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V3M12 3L6 9M12 3l6 6"/></svg>
-            </span>
-            <span class="breakdown-cta-text">
-                <span class="breakdown-cta-title">درآمدها</span>
-                <span class="breakdown-cta-amount"><?= formatMoney($monthStats['income']) ?></span>
-            </span>
-        </a>
-    </div>
-</div>
-
-<?php if ($hasAnyData): ?>
-<div class="card">
-    <h2 class="card-title">روند مالی</h2>
-    <div class="chart-range-tabs">
-        <button type="button" class="chart-range-tab active" data-range="week">هفته</button>
-        <button type="button" class="chart-range-tab" data-range="month">ماه</button>
-        <button type="button" class="chart-range-tab" data-range="year">سال</button>
-    </div>
-    <div class="chart-container" style="max-width:100%; height:280px;">
-        <canvas id="trendChart"></canvas>
-    </div>
-</div>
-<?php else: ?>
-<div class="card">
-    <p style="text-align:center; color:var(--color-gray-500); padding:20px 0;">هنوز تراکنشی ثبت نکرده‌اید — نمودار روند بعد از اولین ثبت نمایش داده می‌شود.</p>
-</div>
-<?php endif; ?>
-
-<?php if ($comparison !== null): ?>
-<div class="card collapsible-card collapsed">
-    <div class="collapsible-header">
-        <h2 class="card-title" style="margin-bottom:0;">مقایسه با ماه قبل</h2>
-        <span class="collapse-chevron">▾</span>
-    </div>
-
-    <?php
-    // ⛔ این خط عمداً **بیرون** از بدنه‌ی جمع‌شونده است.
-    //    کارت پیش‌فرض بسته است، پس تنها سیگنالِ «این ماه برای من عادی
-    //    است؟» تا وقتی کاربر بازش نکند دیده نمی‌شد. حالا یک جمله همیشه
-    //    پیداست و — مهم‌تر — صریح می‌گوید مقایسه با چه بازه‌ای است،
-    //    وگرنه «۷٪ بیشتر» معلوم نیست نسبت به چه.
-    $cmpDelta = $comparison['expense_change'];
-    ?>
-    <p class="compare-summary">
-        روز <strong><?= toPersianDigits($comparison['elapsed_days']) ?></strong>
-        از <?= toPersianDigits($comparison['total_days']) ?> —
-        تا همین روزِ <?= h($comparison['prev_label']) ?>
-        <strong><?= formatMoney($comparison['prev_expense']) ?></strong> خرج کرده بودید،
-        این ماه <strong><?= formatMoney($comparison['current_expense']) ?></strong>
-        <?php if ($comparison['prev_expense'] > 0): ?>
-            <span class="compare-summary-delta <?= $cmpDelta <= 0 ? 'delta-up' : 'delta-down' ?>">
-                (<?= $cmpDelta >= 0 ? '▲' : '▼' ?> <?= toPersianDigits(abs($cmpDelta)) ?>٪)
-            </span>
-        <?php endif; ?>
-    </p>
-
-    <div class="collapsible-body">
-        <div class="compare-row">
-            <div class="compare-label">درآمد</div>
-            <div class="compare-bars">
-                <div class="compare-line">
-                    <span class="compare-name"><?= h($comparison['prev_label']) ?></span>
-                    <span class="compare-val"><?= formatMoney($comparison['prev_income']) ?></span>
-                </div>
-                <div class="compare-line">
-                    <span class="compare-name"><?= h($comparison['current_label']) ?></span>
-                    <span class="compare-val stats-income"><?= formatMoney($comparison['current_income']) ?></span>
-                </div>
-            </div>
-            <div class="compare-delta <?= $comparison['income_change'] >= 0 ? 'delta-up' : 'delta-down' ?>">
-                <?= $comparison['income_change'] >= 0 ? '▲' : '▼' ?> <?= toPersianDigits(abs($comparison['income_change'])) ?>٪
-            </div>
-        </div>
-
-        <div class="compare-row">
-            <div class="compare-label">هزینه</div>
-            <div class="compare-bars">
-                <div class="compare-line">
-                    <span class="compare-name"><?= h($comparison['prev_label']) ?></span>
-                    <span class="compare-val"><?= formatMoney($comparison['prev_expense']) ?></span>
-                </div>
-                <div class="compare-line">
-                    <span class="compare-name"><?= h($comparison['current_label']) ?></span>
-                    <span class="compare-val stats-expense"><?= formatMoney($comparison['current_expense']) ?></span>
-                </div>
-            </div>
-            <div class="compare-delta <?= $comparison['expense_change'] <= 0 ? 'delta-up' : 'delta-down' ?>">
-                <?= $comparison['expense_change'] >= 0 ? '▲' : '▼' ?> <?= toPersianDigits(abs($comparison['expense_change'])) ?>٪
-            </div>
-        </div>
-
-        <?php if ($insights !== null && $insights['count'] > 0): ?>
-            <div class="insight-block">
-                <div class="stats-row">
-                    <span class="stats-label">میانگین هزینه روزانه</span>
-                    <span class="stats-value"><?= formatMoney($insights['daily_average']) ?> <small>تومان</small></span>
-                </div>
-                <div class="stats-row">
-                    <span class="stats-label">تعداد هزینه‌های این ماه</span>
-                    <span class="stats-value"><?= toPersianDigits($insights['count']) ?></span>
-                </div>
-            </div>
-
-            <?php if (!empty($insights['top_expenses'])): ?>
-                <h3 class="day-section-title">بزرگ‌ترین هزینه‌های این ماه</h3>
-                <?php foreach ($insights['top_expenses'] as $te): ?>
-                    <div class="event-row">
-                        <span class="event-body">
-                            <span class="event-title"><?= h($te['title']) ?></span>
-                            <span class="event-meta"><?= toJalali($te['transaction_date']) ?><?= !empty($te['category_name']) ? ' · ' . h($te['category_name']) : '' ?></span>
-                        </span>
-                        <span class="event-amount amount-expense"><?= formatMoney($te['amount']) ?></span>
-                    </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
-        <?php endif; ?>
-    </div>
-</div>
-<?php endif; ?>
+<?php
+renderYearReportCard($yearState, 'dashboard.php');
+renderBreakdownCta($monthStats['income'], $monthStats['expense']);
+renderTrendCard($dailyRows);
+renderMonthComparisonCard($comparison, $insights);
+?>
 
 <div class="card collapsible-card <?= $customRangeSubmitted ? '' : 'collapsed' ?>">
     <div class="collapsible-header">
@@ -477,70 +205,5 @@ include __DIR__ . '/includes/header.php';
     <?php endif; ?>
     </div>
 </div>
-
-<?php if ($hasAnyData): ?>
-<?php foreach (assetUrls(['js/chart.umd.js']) as $__u): ?>
-<script defer src="<?= h($__u) ?>"></script>
-<?php endforeach; ?>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    var trendDatasets = {
-        week:  { labels: <?= json_encode($weekLabels, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,   income: <?= json_encode($weekIncome, JSON_HEX_TAG) ?>,   expense: <?= json_encode($weekExpense, JSON_HEX_TAG) ?> },
-        month: { labels: <?= json_encode($month30Labels, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>, income: <?= json_encode($month30Income, JSON_HEX_TAG) ?>, expense: <?= json_encode($month30Expense, JSON_HEX_TAG) ?> },
-        year:  { labels: <?= json_encode($monthlyLabels, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,  income: <?= json_encode($monthlyIncome, JSON_HEX_TAG) ?>,  expense: <?= json_encode($monthlyExpense, JSON_HEX_TAG) ?> }
-    };
-
-    var trendCtx = document.getElementById('trendChart').getContext('2d');
-    var incomeGradient = trendCtx.createLinearGradient(0, 0, 0, 260);
-    incomeGradient.addColorStop(0, 'rgba(21,128,61,0.30)');
-    incomeGradient.addColorStop(1, 'rgba(21,128,61,0)');
-    var expenseGradient = trendCtx.createLinearGradient(0, 0, 0, 260);
-    expenseGradient.addColorStop(0, 'rgba(185,28,28,0.30)');
-    expenseGradient.addColorStop(1, 'rgba(185,28,28,0)');
-
-    var trendChart = new Chart(trendCtx, {
-        type: 'line',
-        data: {
-            labels: trendDatasets.week.labels,
-            datasets: [
-                {
-                    label: 'درآمد', data: trendDatasets.week.income,
-                    borderColor: '#15803d', backgroundColor: incomeGradient,
-                    fill: true, tension: 0.4, pointRadius: 2, pointHoverRadius: 5, borderWidth: 2.5
-                },
-                {
-                    label: 'هزینه', data: trendDatasets.week.expense,
-                    borderColor: '#b91c1c', backgroundColor: expenseGradient,
-                    fill: true, tension: 0.4, pointRadius: 2, pointHoverRadius: 5, borderWidth: 2.5
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            plugins: { legend: { position: 'bottom', labels: { font: { family: 'Vazirmatn' } } } },
-            scales: {
-                y: { beginAtZero: true, ticks: { font: { family: 'Vazirmatn' } } },
-                x: { ticks: { font: { family: 'Vazirmatn' }, autoSkip: true, maxTicksLimit: 8 } }
-            }
-        }
-    });
-
-    document.querySelectorAll('.chart-range-tab').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-            document.querySelectorAll('.chart-range-tab').forEach(function (b) { b.classList.remove('active'); });
-            btn.classList.add('active');
-            var range = btn.getAttribute('data-range');
-            var d = trendDatasets[range];
-            trendChart.data.labels = d.labels;
-            trendChart.data.datasets[0].data = d.income;
-            trendChart.data.datasets[1].data = d.expense;
-            trendChart.update();
-        });
-    });
-});
-</script>
-<?php endif; ?>
 
 <?php include __DIR__ . '/includes/footer.php'; ?>

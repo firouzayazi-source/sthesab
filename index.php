@@ -85,6 +85,9 @@ $desk        = deskView();
 $deskSafe    = null;
 $deskNw      = null;
 $deskWallets = [];
+$deskDaily   = [];
+$deskYear    = null;
+$deskInsights = null;
 $deskDues    = ['rows' => [], 'overdue_n' => 0, 'overdue_sum' => 0, 'soon_n' => 0, 'soon_out' => 0, 'soon_in' => 0];
 if ($desk) {
     try { $deskSafe = safeToSpend($userId, 30, $walletRows); } catch (Throwable $e) { $deskSafe = null; }
@@ -100,6 +103,15 @@ if ($desk) {
     foreach ($walletRows as $__w) {
         if ((int)$__w['is_active'] === 1) { $deskWallets[] = $__w; }
     }
+
+    // ⛔ «داشبورد بیاد ادامه‌ی خانه» (خواسته‌ی مالکِ نصب) — همان تکه‌هایی که
+    //    `dashboard.php` رندر می‌کند، از همان توابع (`includes/dash_parts.php`).
+    //    روی گوشی هیچ‌کدام زده نمی‌شوند. جمعِ ماه از `$monthCmp`ِ همین صفحه
+    //    می‌آید، نه دوباره: همان عددِ کارتِ «مانده این ماه».
+    require_once __DIR__ . '/includes/dash_parts.php';
+    try { $deskDaily = dashDailyRows($userId); } catch (Throwable $e) { $deskDaily = []; }
+    $deskYear = dashYearState($deskDaily, $today, getParam('y', ''));
+    try { $deskInsights = spendingInsights($userId, startOfJalaliMonth(), $today); } catch (Throwable $e) { $deskInsights = null; }
 
     // ⛔ «سررسیدِ نزدیک» = ۱۴ روزِ آینده، به‌علاوه‌ی هر چه **گذشته** و
     //    هنوز باز است — همان پنجره‌ای که `safeToSpend()` از آن تعهد
@@ -508,6 +520,21 @@ include __DIR__ . '/includes/header.php';
     </div>
 </aside>
 </div><?php /* .home-desk */ ?>
+
+<?php /* ⛔ ادامه‌ی خانه = داشبورد، فقط روی دسکتاپ. سه کارتِ یادآوریِ داشبورد
+         (طلب، چک، دوره‌ای) عمداً نیامدند: ستونِ کناری همین حالا «سررسیدهای
+         نزدیک» را دارد. «گزارش با بازه‌ی دلخواه» هم نیامد — ابزار است، نه
+         نما — و در `dashboard.php` می‌ماند. */ ?>
+<section class="home-desk-more desk-only" aria-label="گزارش‌ها">
+    <?php renderYearReportCard($deskYear, 'index.php'); ?>
+    <div class="desk-more-grid">
+        <div class="desk-more-main"><?php renderTrendCard($deskDaily); ?></div>
+        <div class="desk-more-side">
+            <?php renderBreakdownCta($monthIncome, $monthExpense); ?>
+            <?php renderMonthComparisonCard($monthCmp, $deskInsights); ?>
+        </div>
+    </div>
+</section>
 <?php endif; ?>
 
 <meta name="csrf-token" content="<?= Csrf::token() ?>">

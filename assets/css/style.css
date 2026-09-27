@@ -5570,6 +5570,17 @@ html[data-theme="dark"][data-palette="lilac"] {
     }
     .home-main, .home-side { min-width: 0; }
     .home-side .card { margin-bottom: 14px; }
+
+    /* ⛔ ادامه‌ی خانه = داشبورد (`includes/dash_parts.php`). کارتِ سالانه
+       تمام‌عرض؛ زیرش روند (پهن) و دسته‌بندی/مقایسه (باریک) کنارِ هم. */
+    .home-desk-more.desk-only { margin-top: 4px; }
+    .desk-more-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+        gap: 18px;
+        align-items: start;
+    }
+    .desk-more-main, .desk-more-side { min-width: 0; }
 }
 
 .desk-kpi {

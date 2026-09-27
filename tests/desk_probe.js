@@ -93,6 +93,13 @@ if (!bin) { process.stdout.write(JSON.stringify({ ok: false, why: 'no_chromium' 
             side: r(side), main: r(main), pcW: Math.round(pc.width),
             hscroll: document.documentElement.scrollWidth > window.innerWidth,
             ribbon: !!document.querySelector('.balance-ribbon'),
+            // ادامه‌ی خانه = داشبورد (کارتِ سالانه + روند + دسته‌بندی)
+            moreInHtml: !!document.querySelector('.home-desk-more'),
+            moreVisible: vis(document.querySelector('.home-desk-more')),
+            yearVisible: vis(document.querySelector('.home-desk-more .year-report')),
+            trendCanvas: (() => { const c = document.querySelector('.home-desk-more #trendChart'); return c ? Math.round(c.getBoundingClientRect().height) : 0; })(),
+            moreMain: r(document.querySelector('.desk-more-main')), moreSide: r(document.querySelector('.desk-more-side')),
+            moreBelow: (() => { const m = document.querySelector('.home-desk-more'), d = document.querySelector('.home-desk'); return !!m && !!d && m.getBoundingClientRect().top >= d.getBoundingClientRect().bottom - 1; })(),
         };
     })()`);
 

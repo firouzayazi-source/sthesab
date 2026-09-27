@@ -163,7 +163,7 @@ try {
     T::group('⛔ گوشی دست نمی‌خورد');
     [$nPhone, $phone] = $count(false);
     T::ok(str_contains($phone, '</html>') && str_contains($phone, 'balance-ribbon'), 'خانه‌ی بی‌کوکی کامل رندر شد');
-    foreach (['desk-kpis', 'home-side', 'home-desk', ' is-desk'] as $needle) {
+    foreach (['desk-kpis', 'home-side', 'home-desk', ' is-desk', 'home-desk-more', 'season-card', 'trendChart'] as $needle) {
         T::ok(!str_contains($phone, $needle), "بدونِ کوکی «{$needle}» در HTML نیست");
     }
 
@@ -176,6 +176,29 @@ try {
         '⛔ هزینه‌ی دسکتاپ سقف دارد (≤ ۸ کوئریِ بیشتر از گوشی)', "گوشی {$nPhone}، دسکتاپ {$nDesk}");
     T::ok($nDesk > $nPhone, 'و دسکتاپ واقعاً داده‌ی بیشتری می‌خواند (سنجه پوچ نیست)', "گوشی {$nPhone}، دسکتاپ {$nDesk}");
     T::pass("شمارِ کوئریِ خانه: گوشی {$nPhone}، دسکتاپ {$nDesk}");
+
+    // ⛔ «داشبورد بیاد ادامه‌ی خانه» — همان تکه‌های `dashboard.php`، از همان توابع
+    $more = preg_match('/<section class="home-desk-more desk-only"[^>]*>(.*?)<\/section>/s', $deskHtml, $mm) ? $mm[1] : '';
+    T::ok($more !== '', '⛔ ادامه‌ی خانه (داشبورد) روی دسکتاپ رندر شد');
+    T::same(4, substr_count($more, 'class="season-card'), 'کارتِ سالانه: چهار فصل');
+    T::same(12, substr_count($more, '<a class="season-month'), 'کارتِ سالانه: دوازده ماه');
+    T::ok(str_contains($more, 'id="year"'), 'لنگرِ #year روی خانه هم هست (قلمِ «داشبورد» به همین می‌رود)');
+    T::ok(str_contains($more, 'breakdown-cta') && str_contains($more, 'trendChart'), 'گزارشِ دسته‌بندی و نمودارِ روند');
+    T::ok(str_contains($more, 'مقایسه با ماه قبل'), 'مقایسه با ماه قبل');
+    T::ok(!str_contains($more, 'گزارش با بازه دلخواه') && !str_contains($more, 'یادآوری چک'),
+        '⛔ یادآوری‌ها و بازه‌ی دلخواه عمداً نیامدند');
+    $sb = preg_match('#<nav class="sidebar".*?</nav>#s', $deskHtml, $sbm) ? $sbm[0] : '';
+    T::ok($sb !== '' && str_contains($sb, 'index.php#year') && !str_contains($sb, '/dashboard.php"'),
+        '⛔ قلمِ «داشبورد»ِ منوی کناری روی دسکتاپ به همان بخشِ خانه می‌رود');
+    [, $dash] = $get('dashboard.php', null, true);
+    foreach (['class="season-card', 'breakdown-cta', 'trendChart'] as $needle) {
+        T::ok(substr_count($dash, $needle) === substr_count($more, $needle), "⛔ خانه و داشبورد «{$needle}» را یکسان رندر می‌کنند (یک منبع)");
+    }
+    [$cyr, $yrHtml] = $get('index.php?y=abc', null, true);
+    T::ok($cyr === 200 && str_contains($yrHtml, 'سال ' . toPersianDigits((string)gregorianToJalali((int)date('Y'), (int)date('m'), (int)date('d'))[0])),
+        '`?y=` نامعتبر روی خانه هم به امسال برمی‌گردد');
+    T::ok(str_contains($yrHtml, 'index.php?y=') || !str_contains($yrHtml, 'dashboard.php?y='),
+        'ناوبریِ سال روی خانه روی خانه می‌ماند');
 
     $f = formatMoney(7200000);
     T::ok(str_contains($deskHtml, $f), "⛔ «خالص دارایی» روی خانه همان {$f} است");
@@ -231,6 +254,10 @@ try {
                 'ستونِ کناری سمتِ چپِ ستونِ اصلی (RTL)', json_encode([$w['side'], $w['main']]));
             T::ok($w['pcW'] > 900, 'ستونِ محتوا از ۷۲۰ پیکسل باز شد', "عرض {$w['pcW']}");
             T::ok(!$w['hscroll'], 'بدونِ اسکرولِ افقی در ۱۴۴۰');
+            T::ok($w['moreVisible'] && $w['yearVisible'] && $w['moreBelow'], '⛔ داشبورد زیرِ خانه دیده می‌شود');
+            T::ok($w['trendCanvas'] > 200, 'نمودارِ روند واقعاً کشیده شد', "ارتفاع {$w['trendCanvas']}");
+            T::ok($w['moreMain'] && $w['moreSide'] && $w['moreSide']['r'] <= $w['moreMain']['l'] + 1,
+                'روند و دسته‌بندی کنارِ هم (دسته‌بندی سمتِ چپ)', json_encode([$w['moreMain'], $w['moreSide']]));
 
             T::ok($r['midSameLoad']['sideInHtml'] && !$r['midSameLoad']['sideVisible'],
                 'کوچک کردنِ پنجره: همان بارگذاری، ستونِ کناری با CSS پنهان');
@@ -240,6 +267,7 @@ try {
 
             $ph = $r['phone'];
             T::ok(!$ph['cookie'] && !$ph['sideInHtml'] && $ph['ribbon'], '⛔ گوشی (۳۹۰): همان خانه‌ی همیشگی');
+            T::ok(!$ph['moreInHtml'], '⛔ گوشی: داشبورد زیرِ خانه نمی‌آید');
             T::ok($ph['pcW'] <= 390 && !$ph['hscroll'], 'گوشی بدونِ اسکرولِ افقی', "عرض {$ph['pcW']}");
 
             T::ok($r['back']['sideVisible'] && $r['back']['kpiRow'] === 1 && !$r['back']['hscroll'],
