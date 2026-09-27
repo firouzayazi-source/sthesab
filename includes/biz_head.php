@@ -50,6 +50,11 @@ $__bizFlash = getFlash();
                    <?= $__bizPage === $__file ? 'aria-current="page"' : '' ?>><?= h($__label) ?></a>
             <?php endforeach; ?>
         </nav>
+        <?php /* حسابِ «شخصی + فروشگاه» یک راهِ برگشت به حساب لندِ خودش دارد؛
+                 همان نشست است و ورودِ دوباره نمی‌خواهد. */ ?>
+        <?php if (!Biz::isStoreOnly()): ?>
+        <a class="st-switch" href="<?= h(Biz::personalUrl()) ?>" title="برگشت به دفترِ شخصی">دفتر شخصی</a>
+        <?php endif; ?>
         <a class="st-logout" href="<?= h(Biz::url('logout.php')) ?>">خروج</a>
     </div>
 </header>

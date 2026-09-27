@@ -1,6 +1,11 @@
 <?php
 /**
- * ⛔ محیطِ فروشگاهی (Business Mode) — مرحله‌ی ۱: جداسازی.
+ * ⛔ محیطِ فروشگاهی (Business Mode) — جداسازی و سه نوعِ حساب.
+ *
+ * سه نوع: `personal` (فقط حساب لند)، `both` (حساب لند سرِ جایش + `/store`)،
+ * `business` (فقط فروشگاه). **خواسته‌ی دوم:** «وقتی قابلیت فروشگاهی کسی
+ * رو فعال می‌کنم حسابلند قبلی سرجاش باشه، با آدرس store بتونه وارد
+ * فروشگاهی بشه.»
  *
  * **خواسته‌ی مالکِ نصب:** «حسابداری شخصی تغییر نمی‌خوام، کاملاً جدا
  * باشه… برای ورود هم بهتره `/store` باشه، یعنی آدرس‌ها هم با هم قاطی
@@ -37,8 +42,12 @@ const BPASS   = 'Biz12345';
  *    را می‌شکند.
  */
 const STORE_BUDGET = [
-    'store/index.php'    => 7,
-    'store/settings.php' => 5,
+    'store/index.php'    => 10,
+    'store/settings.php' => 7,
+    'store/products.php' => 10,
+    'store/product.php'  => 9,
+    'store/parties.php'  => 9,
+    'store/party.php'    => 7,
 ];
 const STORE_NO_BUDGET = ['store/login.php', 'store/logout.php'];
 
@@ -85,11 +94,13 @@ $bid   = $make('shop');
 $aid   = $make('admin', 'admin');
 $sid   = $make('support', 'support');
 $flip  = $make('flip');
+$wid   = $make('both');
 
 // =================================================================
 T::group('۱ — نوعِ حساب: پیش‌فرض، قاعده‌ی نقش، و تنها نویسنده');
 
-T::same(['personal', 'business'], array_keys(Biz::TYPES), '⛔ فهرستِ نوع‌ها بسته است و `personal` پیش‌فرض');
+T::same(['personal', 'both', 'business'], array_keys(Biz::TYPES), '⛔ فهرستِ نوع‌ها بسته است و `personal` پیش‌فرض');
+T::same(['both', 'business'], Biz::STORE_TYPES, 'فقط `both` و `business` به /store راه دارند');
 T::same('personal', $typeOf($pid), '⛔ حسابِ تازه شخصی ساخته می‌شود — هیچ‌کس بی‌خواست فروشگاهی نمی‌شود');
 T::same('personal', Biz::typeFor(999999999), 'شناسه‌ی نبوده «شخصی» خوانده می‌شود');
 
@@ -99,6 +110,8 @@ T::ok(!Biz::roleAllowed('admin', 'business') && !Biz::roleAllowed('support', 'bu
     '⛔ مدیر و پشتیبان نمی‌توانند فروشگاهی باشند',
     'دروازه آن‌ها را از پنلِ مدیریت بیرون نگه می‌داشت');
 T::ok(Biz::roleAllowed('admin', 'personal'), 'هر نقشی شخصی می‌تواند باشد');
+T::ok(Biz::roleAllowed('admin', 'both') && Biz::roleAllowed('support', 'both'),
+    '⛔ «شخصی + فروشگاه» برای هر نقشی مجاز است — دروازه‌ی شخصی را نمی‌بندد');
 
 $r = Biz::setType($aid, 'business');
 T::ok(!$r['ok'] && $typeOf($aid) === 'personal', '⛔ `setType()` مدیر را فروشگاهی نمی‌کند');
@@ -125,6 +138,19 @@ $detail = (string)$aud->fetchColumn();
 T::ok(str_contains($detail, 'business') && str_contains($detail, 'personal'), 'در دفترِ ممیزی با «از» و «به» ثبت شد', $detail);
 $r = Biz::setType($flip, 'business');
 T::ok($r['ok'] && empty($r['changed']), 'تغییرِ تکراری کاری نمی‌کند');
+
+// ⛔ روشن کردنِ فروشگاه برای حسابِ شخصی (`both`) کاربر را از حساب لندش
+//    بیرون **نمی‌اندازد** — خواسته‌ی صریح همین بود.
+@Auth::trustThisDevice($wid);
+$pdo->prepare('UPDATE users SET access_revoked_at = NULL WHERE id = :id')->execute(['id' => $wid]);
+$r = Biz::setType($wid, 'both', $aid);
+T::ok($r['ok'] && !empty($r['changed']) && empty($r['revoked']), 'حساب «شخصی + فروشگاه» شد', $r['message']);
+T::ok((int)$pdo->query("SELECT COUNT(*) FROM trusted_devices WHERE user_id = {$wid}")->fetchColumn() >= 1
+    && $pdo->query("SELECT access_revoked_at IS NULL FROM users WHERE id = {$wid}")->fetchColumn() == 1,
+    '⛔ personal → both: دستگاهِ مورد اعتماد و نشست دست‌نخورده ماند');
+$r = Biz::setType($aid, 'both');
+T::ok($r['ok'] && $typeOf($aid) === 'both', 'مدیر هم می‌تواند برای خودش فروشگاه روشن کند (`both`)');
+Biz::setType($aid, 'personal');
 
 // حسابِ فروشگاهیِ آزمایشیِ HTTP
 Biz::setType($bid, 'business');
@@ -241,6 +267,7 @@ T::group('۶ — حسابِ فروشگاهی: فقط /store');
 [$asB, $jarB] = $jarFor();
 [$c, , $loc] = $login($asB, 'store/login.php', 'shop');
 T::ok($c === 302 && str_ends_with($loc, '/store/'), 'ورود از پنلِ فروشگاه ← داشبوردِ فروشگاه', "{$c} {$loc}");
+T::ok(!str_contains((string)$asB('store/index.php')[1], 'دفتر شخصی'), '⛔ حسابِ «فقط فروشگاه» لینکِ دفترِ شخصی نمی‌بیند');
 [$c, $dash] = $asB('store/index.php');
 T::ok($c === 200 && str_contains($dash, '</html>'), 'داشبوردِ فروشگاه کامل رندر شد', "کد: {$c}");
 T::ok(str_contains($dash, 'store.css') && !str_contains($dash, 'css/style.css') && !str_contains($dash, 'app.js'),
@@ -271,14 +298,21 @@ T::same(0, (int)$pdo->query("SELECT COUNT(*) FROM transactions WHERE user_id = {
 [$c, , $loc] = $asB('store/settings.php', ['csrf_token' => $tok, 'shop_name' => 'فروشگاهِ آزمایشی',
     'phone' => '0912', 'address' => 'اصفهان', 'invoice_footer' => '']);
 T::ok($c === 302 && str_ends_with($loc, '/store/settings.php'), 'ذخیره‌ی تنظیمات ← ریدایرکت (تازه‌سازی دوباره نمی‌فرستد)', "{$c} {$loc}");
-T::same('فروشگاهِ آزمایشی', Biz::settings($bid)['shop_name'], 'سربرگ واقعاً ذخیره شد');
+// ⚠ از دیتابیس، نه `Biz::settings()`: آن کشِ همین پروسه است و ذخیره در
+//   پروسه‌ی سرورِ آزمایشی رخ داده.
+$shopName = function () use ($pdo, $bid): string {
+    $st = $pdo->prepare('SELECT shop_name FROM biz_settings WHERE user_id = :u');
+    $st->execute(['u' => $bid]);
+    return (string)$st->fetchColumn();
+};
+T::same('فروشگاهِ آزمایشی', $shopName(), 'سربرگ واقعاً ذخیره شد');
 [, $dash2] = $asB('store/index.php');
 T::ok(str_contains($dash2, 'فروشگاهِ آزمایشی') && !str_contains($dash2, 'سربرگِ فروشگاه را کامل کنید'),
     'داشبورد نامِ فروشگاه را نشان می‌دهد و دعوت رفت');
 [$c] = $asB('store/settings.php', ['shop_name' => 'بی‌توکن']);
-T::ok($c === 403 || $c === 419 || Biz::settings($bid)['shop_name'] === 'فروشگاهِ آزمایشی',
+T::ok($c === 403 || $c === 419 || $shopName() === 'فروشگاهِ آزمایشی',
     '⛔ بدونِ CSRF چیزی ذخیره نمی‌شود');
-T::same('فروشگاهِ آزمایشی', Biz::settings($bid)['shop_name'], 'نامِ قبلی سرِ جایش ماند');
+T::same('فروشگاهِ آزمایشی', $shopName(), 'نامِ قبلی سرِ جایش ماند');
 
 // =================================================================
 T::group('۷ — درهای پشتی');
@@ -329,9 +363,12 @@ T::group('۸ — پنلِ مدیر');
 [$asA] = $jarFor();
 $login($asA, 'login.php', 'admin');
 [$c, $up] = $asA('admin/users.php?q=' . urlencode(BPREFIX));
-T::ok($c === 200 && str_contains($up, 'فروشگاهی کردن') && str_contains($up, 'شخصی کردن'),
-    'دکمه‌ی تغییرِ نوع روی کارتِ کاربران دیده می‌شود', "کد: {$c}");
-T::ok(str_contains($up, '>فروشگاهی</span>'), 'نشانِ «فروشگاهی» کنارِ نامِ حسابِ فروشگاهی');
+T::ok($c === 200 && str_contains($up, 'value="set_account_type"') && str_contains($up, 'ذخیره‌ی نوع'),
+    'منوی نوعِ حساب روی کارتِ کاربران دیده می‌شود', "کد: {$c}");
+T::ok(str_contains($up, '>فقط فروشگاه</span>') && str_contains($up, '>فروشگاه</span>'),
+    'نشانِ «فقط فروشگاه» و «فروشگاه» کنارِ نامِ حساب‌ها');
+T::ok(!preg_match('~name="user_id" value="' . $aid . '">\s*<select name="account_type"[^>]*>(?:(?!</select>).)*value="business"~s', $up),
+    '⛔ گزینه‌ی «فقط فروشگاه» برای مدیر رندر نمی‌شود (گزینه‌ای که ذخیره نمی‌شود)');
 $tokA = $csrfOf($up);
 [$c, , $loc] = $asA('admin/users.php', ['csrf_token' => $tokA, 'action' => 'set_account_type',
     'user_id' => $pid, 'account_type' => 'business']);
@@ -339,13 +376,68 @@ T::ok($c === 302 && $typeOf($pid) === 'business', 'مدیر حسابِ کارب�
 $asA('admin/users.php', ['csrf_token' => $tokA, 'action' => 'set_account_type', 'user_id' => $pid, 'account_type' => 'personal']);
 T::same('personal', $typeOf($pid), 'و برگرداند');
 $asA('admin/users.php', ['csrf_token' => $tokA, 'action' => 'set_account_type', 'user_id' => $aid, 'account_type' => 'business']);
-T::same('personal', $typeOf($aid), '⛔ مدیر نمی‌تواند حسابِ خودش را فروشگاهی کند');
+T::same('personal', $typeOf($aid), '⛔ مدیر نمی‌تواند حسابِ خودش را «فقط فروشگاه» کند');
+$asA('admin/users.php', ['csrf_token' => $tokA, 'action' => 'set_account_type', 'user_id' => $aid, 'account_type' => 'both']);
+T::same('both', $typeOf($aid), 'ولی برای خودش فروشگاه روشن می‌کند و…');
+[$c] = $asA('admin/users.php');
+T::same(200, $c, '⛔ …پنلِ مدیریت همچنان باز است (همان نشست، بی‌خروج)');
+[$c] = $asA('store/index.php');
+T::same(200, $c, 'و /store هم با همان نشست باز می‌شود');
+$asA('admin/users.php', ['csrf_token' => $tokA, 'action' => 'set_account_type', 'user_id' => $aid, 'account_type' => 'personal']);
+[$c] = $asA('store/index.php');
+T::same(404, $c, '⛔ خاموش کردنِ فروشگاه همان لحظه به /store می‌رسد (نوع از دیتابیس، نه نشست)');
 $asA('admin/users.php', ['csrf_token' => $tokA, 'action' => 'update', 'user_id' => $bid,
     'full_name' => 'کاربرِ shop', 'username' => BPREFIX . 'shop', 'email' => BPREFIX . 'shop@example.com',
     'role' => 'admin', 'password' => '', 'password_confirm' => '']);
 $rs = $pdo->prepare('SELECT role FROM users WHERE id = :id');
 $rs->execute(['id' => $bid]);
 T::same('user', (string)$rs->fetchColumn(), '⛔ حسابِ فروشگاهی از فرمِ ویرایش هم مدیر نمی‌شود');
+
+// =================================================================
+T::group('۸ب — حسابِ «شخصی + فروشگاه»: دو در، دو دفتر');
+
+// پولِ دفترِ شخصی — نباید روی داشبوردِ فروشگاه دیده شود
+$pdo->prepare("UPDATE wallets SET initial_balance = 7777777 WHERE user_id = :u")->execute(['u' => $wid]);
+[$asW] = $jarFor();
+[$c, , $loc] = $login($asW, 'login.php', 'both');
+T::ok($c === 302 && !str_contains($loc, '/store/'), 'ورود از درِ حساب لند ← خانه‌ی شخصی، نه فروشگاه', "{$c} {$loc}");
+foreach (['index.php', 'transactions.php', 'wallets.php', 'profile.php'] as $pg) {
+    [$c] = $asW($pg);
+    T::same(200, $c, "⛔ «{$pg}» برای حسابِ «شخصی + فروشگاه» سرِ جایش است");
+}
+[$c] = $asW('api/day_detail.php?date=' . date('Y-m-d'), null, ['X-Requested-With: XMLHttpRequest']);
+T::ok($c !== 403, '⛔ اندپوینت‌های شخصی هم برایش باز است', "کد: {$c}");
+[$c, $sd] = $asW('store/index.php');
+T::ok($c === 200 && str_contains($sd, 'store.css'), 'با همان نشست /store هم باز می‌شود — ورودِ دوباره لازم نیست', "کد: {$c}");
+T::ok(!str_contains($sd, formatMoney(7777777)), '⛔ موجودیِ حساب‌های شخصی روی داشبوردِ فروشگاه نیست — دو دفترِ جدا');
+T::ok(str_contains($sd, 'دفتر شخصی'), 'سرآیندِ فروشگاه راهِ برگشت به دفترِ شخصی را دارد');
+[$c, , $loc] = $asW('store/login.php');
+T::ok($c === 302 && str_ends_with($loc, '/store/'), 'درِ فروشگاه برای حسابِ واردشده‌ی «شخصی + فروشگاه» ← داشبوردِ فروشگاه', "{$c} {$loc}");
+[$asW2] = $jarFor();
+[$c, , $loc] = $login($asW2, 'store/login.php', 'both');
+T::ok($c === 302 && str_ends_with($loc, '/store/'), 'ورود از درِ فروشگاه ← داشبوردِ فروشگاه', "{$c} {$loc}");
+
+// API موبایل: حسابِ both همان حساب لندِ شخصی است و توکن می‌گیرد
+$ch = curl_init("http://127.0.0.1:{$port}/api/v1/index.php/auth/login");
+curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_POST => true, CURLOPT_TIMEOUT => 20,
+    CURLOPT_HTTPHEADER => ['Content-Type: application/json', 'Accept: application/json'],
+    CURLOPT_POSTFIELDS => json_encode(['username' => BPREFIX . 'both', 'password' => BPASS])]);
+$raw = (string)curl_exec($ch);
+$code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+T::ok($code === 200 && !str_contains($raw, 'business_account'), 'API موبایل به حسابِ «شخصی + فروشگاه» توکن می‌دهد', "{$code}");
+
+// مدیر نوع را روشن می‌کند در حالی که کاربر وارد است — بدونِ ورودِ دوباره
+[$asP3] = $jarFor();
+$login($asP3, 'login.php', 'personal');
+[$c] = $asP3('store/index.php');
+T::same(404, $c, 'حسابِ شخصی: /store پیدا نمی‌شود');
+Biz::setType($pid, 'both');
+[$c] = $asP3('store/index.php');
+T::same(200, $c, '⛔ مدیر فروشگاه را روشن کرد ← همان نشستِ باز بدونِ خروج به /store می‌رسد');
+[$c] = $asP3('index.php');
+T::same(200, $c, '⛔ و حساب لندش سرِ جایش است');
+Biz::setType($pid, 'personal');
 
 // =================================================================
 T::group('۹ — بودجه‌ی کوئریِ صفحه‌های فروشگاه (فهرستِ بسته)');
@@ -359,13 +451,23 @@ T::same($known, $storeFiles, '⛔ هر صفحه‌ی `store/` یا بودجه د
 
 [$asB3] = $jarFor();
 $login($asB3, 'store/login.php', 'shop');
+// ⚠ بودجه با داده سنجیده می‌شود، نه با فهرستِ خالی — شاخه‌ی «هنوز چیزی
+//   ثبت نکرده‌اید» کوئری‌های ردیف‌ها را اجرا نمی‌کند (درسِ test_page_render).
+require_once __DIR__ . '/../includes/biz_catalog.php';
+$bp = BizProducts::save($bid, ['name' => 'کالای بودجه', 'unit' => 'عدد', 'buy_price' => '100', 'sell_price' => '150',
+    'min_stock' => '5', 'opening_qty' => '3', 'category' => 'آزمایشی']);
+BizStock::adjustTo($bid, (int)$bp['id'], 2, 'شمارش');
+$bpt = BizParties::save($bid, ['name' => 'مشتریِ بودجه', 'kind' => 'customer', 'opening_amount' => '5000']);
+$budgetUrl = ['store/product.php' => 'store/product.php?id=' . (int)$bp['id'],
+              'store/party.php'   => 'store/party.php?id=' . (int)$bpt['id']];
 $questions = fn(): int => (int)$pdo->query("SHOW GLOBAL STATUS LIKE 'Questions'")->fetch()['Value'];
 foreach (STORE_BUDGET as $pg => $cap) {
-    $asB3($pg);   // گرم کردن
+    $url = $budgetUrl[$pg] ?? $pg;
+    $asB3($url);   // گرم کردن
     $best = PHP_INT_MAX;
     for ($k = 0; $k < 3; $k++) {
         $q0 = $questions();
-        [$c] = $asB3($pg);
+        [$c] = $asB3($url);
         $best = min($best, $questions() - $q0 - 1);
     }
     T::ok($c === 200 && $best <= $cap, "«{$pg}» زیرِ سقفِ {$cap} کوئری است", "اندازه‌گیری‌شده: {$best}");

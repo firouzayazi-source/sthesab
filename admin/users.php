@@ -333,13 +333,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         revokeAllAccessFor($targetId);
         redirectWithMessage($backTo, 'success', 'کاربر از همه‌ی دستگاه‌ها و اپ‌ها خارج می‌شود؛ حسابش باز است و با رمزِ خودش دوباره وارد می‌شود.');
     } elseif ($action === 'set_account_type') {
-        // ⛔ حسابِ شخصی ↔ فروشگاهی. همه‌ی قاعده‌ها (نقشِ مجاز، ابطالِ
-        //    دسترسی، ممیزی) در `Biz::setType()` است — تنها نویسنده‌ی این
-        //    ستون؛ اینجا فقط «خودِ مدیر نه» اضافه می‌شود.
+        // ⛔ شخصی / شخصی + فروشگاه / فقط فروشگاه. همه‌ی قاعده‌ها (نقشِ
+        //    مجاز، ابطالِ دسترسی، ممیزی) در `Biz::setType()` است — تنها
+        //    نویسنده‌ی این ستون. مدیر برای **خودش** هم می‌تواند فروشگاه
+        //    روشن کند (`both`)؛ «فقط فروشگاه» او را از پنل بیرون می‌انداخت
+        //    و `roleAllowed()` همان را رد می‌کند.
         $targetId = (int)postParam('user_id');
-        if ($targetId === $currentUserId) {
-            redirectWithMessage($backTo, 'error', 'نوعِ حسابِ خودتان را نمی‌توانید عوض کنید.');
-        }
         $res = Biz::setType($targetId, (string)postParam('account_type'), $currentUserId);
         redirectWithMessage($backTo, $res['ok'] ? 'success' : 'error', $res['message']);
     } elseif ($action === 'unlock_login') {
@@ -665,13 +664,14 @@ include __DIR__ . '/../includes/header.php';
                 /* ⚠ نامِ خالی ممکن است (حساب‌های قدیمی)، و کارتی که فقط
                    یک نشان دارد از بیرون معلوم نیست مالِ کیست. */
                 $title = trim((string)$u['full_name']) !== '' ? (string)$u['full_name'] : (string)$u['username'];
-                $isBiz = ($u['account_type'] ?? 'personal') === 'business';
+                $acctType = isset(Biz::TYPES[$u['account_type'] ?? '']) ? (string)$u['account_type'] : 'personal';
+                $isBiz    = in_array($acctType, Biz::STORE_TYPES, true);
                 ?>
                 <details class="ucard<?= $flags ? ' is-flagged' : '' ?>">
                     <summary class="ucard-head">
                         <span class="ucard-name"><?= h($title) ?></span>
                         <?php if ($isBiz): ?>
-                            <span class="lock-chip" title="این حساب فقط محیطِ فروشگاه (/store) را می‌بیند">فروشگاهی</span>
+                            <span class="lock-chip" title="<?= $acctType === 'business' ? 'این حساب فقط محیطِ فروشگاه (/store) را می‌بیند' : 'دفترِ شخصی سرِ جایش است و از /store هم وارد فروشگاه می‌شود' ?>"><?= $acctType === 'business' ? 'فقط فروشگاه' : 'فروشگاه' ?></span>
                         <?php endif; ?>
                         <?php foreach ($flags as [$flagLabel, $flagClass, $flagTitle]): ?>
                             <span class="lock-chip <?= $flagClass ?>" title="<?= h($flagTitle) ?>"><?= h($flagLabel) ?></span>
@@ -700,7 +700,7 @@ include __DIR__ . '/../includes/header.php';
 <?php if ($hasAccountType): ?>
                         <div class="ucard-row">
                             <span class="ucard-k">نوع حساب</span>
-                            <span class="ucard-v"><?= h(Biz::TYPES[$isBiz ? 'business' : 'personal']) ?></span>
+                            <span class="ucard-v"><?= h(Biz::TYPES[$acctType]) ?></span>
                         </div>
 <?php endif; ?>
                         <div class="ucard-row">
@@ -735,6 +735,27 @@ include __DIR__ . '/../includes/header.php';
                                 </form>
                             <?php endif; ?>
 
+                            <?php if ($hasAccountType): ?>
+                                <?php /* ⛔ نوعِ حساب با یک منو، نه دکمه‌ی دوحالته — سه نوع
+                                         هست. «فقط فروشگاه» فقط برای نقش‌هایی رندر می‌شود که
+                                         `Biz::roleAllowed()` بپذیرد (گزینه‌ای که ذخیره نمی‌شود
+                                         همان دکمه‌ی بی‌کار است). */ ?>
+                                <form method="POST" class="ucard-type-form" onsubmit="return confirm(<?= h(json_encode(
+                                    'نوعِ حساب عوض می‌شود. «شخصی + فروشگاه» دفترِ شخصیِ کاربر را دست نمی‌زند و فقط /store را هم باز می‌کند؛ رفتن به «فقط فروشگاه» یا برگشتن از آن، کاربر را از همه‌ی دستگاه‌ها خارج می‌کند. ادامه؟',
+                                    JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>);">
+                                    <?= Csrf::field() ?>
+                                    <input type="hidden" name="action" value="set_account_type">
+                                    <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
+                                    <select name="account_type" aria-label="نوع حساب">
+                                        <?php foreach (Biz::TYPES as $__tk => $__tl):
+                                            if (!Biz::roleAllowed((string)$u['role'], $__tk) && $__tk !== $acctType) { continue; } ?>
+                                            <option value="<?= h($__tk) ?>"<?= $__tk === $acctType ? ' selected' : '' ?>><?= h($__tl) ?></option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <button type="submit" class="btn btn-secondary btn-sm">ذخیره‌ی نوع</button>
+                                </form>
+                            <?php endif; ?>
+
                             <?php if (!$isSelf): ?>
                                 <form method="POST">
                                     <?= Csrf::field() ?>
@@ -744,18 +765,6 @@ include __DIR__ . '/../includes/header.php';
                                         <?= $isActive ? 'غیرفعال‌سازی' : 'فعال‌سازی' ?>
                                     </button>
                                 </form>
-                                <?php if ($hasAccountType && ($isBiz || Biz::roleAllowed((string)$u['role'], 'business'))): ?>
-                                <form method="POST" onsubmit="return confirm(<?= h(json_encode($isBiz
-                                    ? 'این حساب شخصی می‌شود و دیگر محیطِ فروشگاه را نمی‌بیند. کاربر از همه‌ی دستگاه‌ها خارج می‌شود. ادامه؟'
-                                    : 'این حساب فروشگاهی می‌شود: فقط از /store وارد می‌شود و بخش‌های شخصی را نمی‌بیند. کاربر از همه‌ی دستگاه‌ها خارج می‌شود. ادامه؟',
-                                    JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>);">
-                                    <?= Csrf::field() ?>
-                                    <input type="hidden" name="action" value="set_account_type">
-                                    <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
-                                    <input type="hidden" name="account_type" value="<?= $isBiz ? 'personal' : 'business' ?>">
-                                    <button type="submit" class="btn btn-secondary btn-sm"><?= $isBiz ? 'شخصی کردن' : 'فروشگاهی کردن' ?></button>
-                                </form>
-                                <?php endif; ?>
                                 <?php if ($isActive): ?>
                                 <form method="POST" onsubmit="return confirm('این کاربر از همه‌ی مرورگرها و اپ‌ها خارج می‌شود و باید دوباره وارد شود. ادامه؟');">
                                     <?= Csrf::field() ?>

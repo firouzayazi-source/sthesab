@@ -121,6 +121,7 @@ const NO_BUDGET = [
     //    واقعی‌شان با یک حسابِ **فروشگاهی** در `test_business_mode`
     //    (`STORE_BUDGET`، فهرستِ بسته‌ی خودش) سنجیده می‌شود.
     'store/index.php', 'store/settings.php', 'store/login.php', 'store/logout.php',
+    'store/products.php', 'store/product.php', 'store/parties.php', 'store/party.php',
 ];
 
 // ---------------------------------------------------------------

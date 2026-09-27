@@ -6646,10 +6646,11 @@ if (!preg_match('/function establishSession\((?:(?!\bfunction\b).)*?\$_SESSION\[
 }
 
 // ۲. دروازه برای حسابِ شخصی بی‌کوئری است و پیش‌فرضش بسته
-if (!preg_match('/function isBusiness\(\): bool\s*\{(.*?)\n    \}/s', $biz70, $ib) || preg_match('/Database|prepare|query\(/', $ib[1])) {
-    $bBad[] = 'biz.php — isBusiness() باید فقط از نشست بخواند (صفر کوئری برای حسابِ شخصی)';
+if (!preg_match('/function isStoreOnly\(\): bool\s*\{(.*?)\n    \}/s', $biz70, $ib) || preg_match('/Database|prepare|query\(/', $ib[1])
+    || !str_contains($ib[1], "=== 'business'")) {
+    $bBad[] = 'biz.php — isStoreOnly() باید فقط از نشست بخواند و فقط `business` را «فقط فروشگاه» بداند';
 }
-if (!preg_match("/function gate\(\): void\s*\{\s*if \(PHP_SAPI === 'cli' \|\| !self::isBusiness\(\)\) \{ return; \}/", $biz70)) {
+if (!preg_match("/function gate\(\): void\s*\{\s*if \(PHP_SAPI === 'cli' \|\| !self::isStoreOnly\(\)\) \{ return; \}/", $biz70)) {
     $bBad[] = 'biz.php — اولین خطِ gate() برگشتِ فوری برای حسابِ شخصی نیست';
 }
 if (!preg_match("/public const SHARED = \['logout\.php', 'health\.php'\];/", $biz70)) {
@@ -6659,8 +6660,18 @@ if (!preg_match("~strncmp\(\\\$script, 'api/', 4\) === 0\).*?http_response_code\
     $bBad[] = 'biz.php — اندپوینت‌ها برای حسابِ فروشگاهی ۴۰۳ نمی‌گیرند';
 }
 
-if (!preg_match('/function requirePage\(\): void\s*\{(?:(?!\bfunction\b).)*?if \(!self::isBusiness\(\)\) \{\s*self::notFound\(\);/s', $biz70)) {
-    $bBad[] = 'biz.php — requirePage() حسابِ شخصی را ۴۰۴ نمی‌کند';
+// ⛔ نوع در صفحه‌های store/ از دیتابیس تازه می‌شود، نه از نشست — وگرنه روشن
+//    و خاموش کردنِ فروشگاه برای `personal`↔`both` تا ورودِ دوباره اثر نداشت.
+if (!preg_match('/function requirePage\(\): void\s*\{(?:(?!\bfunction\b).)*?if \(!in_array\(self::refreshType\(\), self::STORE_TYPES, true\)\) \{\s*self::notFound\(\);/s', $biz70)) {
+    $bBad[] = 'biz.php — requirePage() نوع را از دیتابیس تازه نمی‌کند یا حسابِ بی‌فروشگاه را ۴۰۴ نمی‌کند';
+}
+if (!preg_match("/public const TYPES = \[\s*'personal'\s*=> [^\]]*'both'\s*=> [^\]]*'business'\s*=> [^\]]*\];/s", $biz70)
+    || !str_contains($biz70, "public const STORE_TYPES = ['both', 'business'];")) {
+    $bBad[] = 'biz.php — فهرستِ بسته‌ی نوع‌ها (personal/both/business) یا STORE_TYPES عوض شده';
+}
+// ⛔ فقط تغییرِ دروازه (به business یا از آن) ابطال می‌کند؛ personal↔both کاربر را بیرون نمی‌اندازد
+if (!str_contains($biz70, "\$revoke = (\$from === 'business' || \$type === 'business');")) {
+    $bBad[] = 'biz.php — setType() باید فقط برای تغییرِ دروازه (business) دسترسی‌ها را باطل کند';
 }
 if (!str_contains($biz70, "private const BUSINESS_ROLES = ['user', 'colleague'];")
     || !str_contains($biz70, "return \$type !== 'business' || in_array(\$role, self::BUSINESS_ROLES, true);")) {
@@ -6696,7 +6707,7 @@ if (!preg_match("/Biz::typeFor\(.*?=== 'business'.*?Api::fail\(.*?ApiAuth::issue
 
 // ۴. هر صفحه‌ی store/ دروازه‌ی خودش را دارد و هیچ چیزی از پوسته‌ی شخصی لود نمی‌کند
 $storeFiles70 = glob(__DIR__ . '/../store/*.php') ?: [];
-foreach (['login.php', 'logout.php', 'index.php', 'settings.php'] as $must) {
+foreach (['login.php', 'logout.php', 'index.php', 'settings.php', 'products.php', 'product.php', 'parties.php', 'party.php'] as $must) {
     if (!is_file(__DIR__ . '/../store/' . $must)) { $bBad[] = "store/{$must} نیست"; }
 }
 foreach (array_merge($storeFiles70, [__DIR__ . '/../includes/biz_head.php', __DIR__ . '/../includes/biz_foot.php']) as $f) {
@@ -6710,6 +6721,33 @@ foreach (array_merge($storeFiles70, [__DIR__ . '/../includes/biz_head.php', __DI
         $bBad[] = "{$rel} — درست بعد از initSession() دروازه‌ی Biz::requirePage() ندارد";
     }
 }
+// ⛔ دفترِ فروشگاه هیچ جدول یا تابعِ پولِ شخصی را نمی‌خواند — حسابِ «شخصی +
+//    فروشگاه» وگرنه پولِ خانه‌اش را روی داشبوردِ مغازه می‌دید.
+foreach (array_merge($storeFiles70, [__DIR__ . '/../includes/biz_catalog.php']) as $f) {
+    $src = $strip70((string)file_get_contents($f));
+    if (preg_match('/walletBalances|totalBalance|activeWallets|\b(?:FROM|JOIN|INTO|UPDATE)\s+`?(?:transactions|wallets|transfers|debts|debt_payments|cheques|trades|trade_sales|assets)\b/i', $src, $pm)) {
+        $bBad[] = basename(dirname($f)) . '/' . basename($f) . " — به دفترِ شخصی دست می‌زند ({$pm[0]})";
+    }
+}
+// ⛔ تنها نویسنده‌ی موجودیِ مشتق: BizStock::recalc()
+$stockWriters70 = [];
+foreach (array_merge(glob(__DIR__ . '/../*.php') ?: [], glob(__DIR__ . '/../includes/*.php') ?: [],
+                     glob(__DIR__ . '/../store/*.php') ?: [], glob(__DIR__ . '/../deploy/*.php') ?: []) as $f) {
+    $n = preg_match_all('/UPDATE\s+biz_products\s+SET\s+[^;]*\b(?:stock_qty|avg_cost)\s*=/i', $strip70((string)file_get_contents($f)));
+    if ($n) { $stockWriters70[basename($f)] = $n; }
+}
+if ($stockWriters70 !== ['biz_catalog.php' => 1]) {
+    $bBad[] = 'stock_qty/avg_cost جز در BizStock::recalc() نوشته می‌شود: ' . json_encode($stockWriters70);
+}
+$cat70 = $strip70((string)file_get_contents(__DIR__ . '/../includes/biz_catalog.php'));
+if (!preg_match('/if \(\$r\[\'min\'\] < -self::EPS\) \{\s*if \(\$ownTx\) \{ \$pdo->rollBack\(\); \}/', $cat70)) {
+    $bBad[] = 'biz_catalog.php — سدِ «موجودی در هیچ لحظه‌ای منفی نشود» پیش از commit نیست';
+}
+if (!preg_match('/migration_biz_catalog\.sql/', $mig70ForCat = (string)file_get_contents(__DIR__ . '/../deploy/migrate.sh'))
+    || !str_contains($mig70ForCat, '[migration_biz_catalog.sql]="biz_accounts"')) {
+    $bBad[] = 'migrate.sh — migration_biz_catalog.sql در MIGRATIONS یا SENTINEL نیست';
+}
+
 foreach (['biz_head.php', 'biz_foot.php'] as $pt) {
     if (!str_contains((string)file_get_contents(__DIR__ . '/../includes/' . $pt), "if (!defined('APP_BASE_PATH')) { http_response_code(404); exit; }")) {
         $bBad[] = "includes/{$pt} — نگهبانِ partial ندارد";
@@ -6757,6 +6795,6 @@ foreach (array_keys($dirs70) as $d) {
         $bBad[] = "پوشه‌ی {$d} فایلِ PHP دارد ولی هیچ اسکنرِ تستی آن را نمی‌بیند";
     }
 }
-T::bulk(22, $bBad, 'محیطِ فروشگاهی: دروازه‌ی بی‌کوئری، تنها نویسنده، صفحه‌های محافظت‌شده، و طرفِ شخصیِ دست‌نخورده');
+T::bulk(28, $bBad, 'محیطِ فروشگاهی: دروازه‌ی بی‌کوئری، سه نوعِ حساب، تنها نویسنده، دفترِ جدا از پولِ شخصی، و طرفِ شخصیِ دست‌نخورده');
 
 exit(T::report());

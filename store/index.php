@@ -2,10 +2,14 @@
 /**
  * داشبوردِ محیطِ فروشگاهی.
  *
- * مرحله‌ی ۱ فقط چیزی را نشان می‌دهد که **واقعاً وجود دارد**: سربرگِ
- * فروشگاه و موجودیِ صندوق و حساب‌ها. کارت‌های فروش و خرید و سود با
- * خودِ آن بخش‌ها می‌آیند — کارتِ «۰ تومان»ِ ساختگی عددی است که صاحبِ
- * مغازه واقعی می‌خواندش.
+ * فقط چیزی را نشان می‌دهد که **واقعاً وجود دارد**: صندوق‌های فروشگاه،
+ * ارزشِ انبار، طلب و بدهیِ طرف‌حساب‌ها، و کالاهای کم‌موجودی. کارت‌های
+ * فروش و سود با خودِ فاکتور می‌آیند — کارتِ «۰ تومان»ِ ساختگی عددی است که
+ * صاحبِ مغازه واقعی می‌خواندش.
+ *
+ * ⛔ هیچ عددی از حساب لندِ شخصی اینجا نیست: صندوق از `biz_accounts`
+ *    می‌آید، نه `walletBalances()`. حسابِ «شخصی + فروشگاه» وگرنه پولِ
+ *    خانه‌اش را روی داشبوردِ مغازه می‌دید.
  */
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
@@ -13,11 +17,15 @@ require_once __DIR__ . '/../includes/functions.php';
 
 Auth::initSession();
 Biz::requirePage();
+require_once __DIR__ . '/../includes/biz_catalog.php';
 
 $userId   = (int)Auth::userId();
 $settings = Biz::settings($userId);
-$wallets  = array_values(array_filter(walletBalances($userId), fn($w) => (int)$w['is_active'] === 1));
-$total    = totalBalance($userId, $wallets);
+$cash     = BizCash::list($userId);
+$cashSum  = BizCash::total($cash);
+$stock    = BizProducts::summary($userId);
+$low      = $stock['low'] + $stock['out'] > 0 ? BizProducts::lowStock($userId) : [];
+$parties  = BizParties::summary($userId);
 
 $pageTitle = 'داشبورد';
 require __DIR__ . '/../includes/biz_head.php';
@@ -35,25 +43,61 @@ require __DIR__ . '/../includes/biz_head.php';
 </section>
 <?php endif; ?>
 
-<section class="st-card">
-    <div class="st-kpi">
-        <span class="st-kpi-label">موجودیِ صندوق و حساب‌ها</span>
-        <span class="st-kpi-value st-num"><?= formatMoney($total) ?> <small>تومان</small></span>
-    </div>
-    <?php if ($wallets): ?>
-    <ul class="st-list">
-        <?php foreach ($wallets as $w): ?>
-        <li class="st-list-row">
-            <span><?= h($w['name']) ?></span>
-            <span class="st-num<?= (int)$w['balance'] < 0 ? ' is-neg' : '' ?>"><?= formatMoney((int)$w['balance']) ?></span>
-        </li>
-        <?php endforeach; ?>
-    </ul>
-    <?php endif; ?>
-</section>
+<div class="st-kpis">
+    <a class="st-kpi-card" href="<?= h(Biz::url('settings.php')) ?>#cash">
+        <span class="st-kpi-label">موجودیِ صندوق‌ها</span>
+        <span class="st-kpi-value st-num<?= $cashSum < 0 ? ' is-neg' : '' ?>"><?= formatMoney($cashSum) ?></span>
+        <span class="st-kpi-sub"><?= toPersianDigits((string)count(array_filter($cash, fn($a) => (int)$a['is_active'] === 1))) ?> صندوق و حساب</span>
+    </a>
+    <a class="st-kpi-card" href="<?= h(Biz::url('products.php')) ?>">
+        <span class="st-kpi-label">ارزشِ انبار</span>
+        <span class="st-kpi-value st-num"><?= formatMoney($stock['value']) ?></span>
+        <span class="st-kpi-sub"><?= toPersianDigits((string)$stock['count']) ?> کالا · به میانگینِ بهای خرید</span>
+    </a>
+    <a class="st-kpi-card" href="<?= h(Biz::url('parties.php?f=debtor')) ?>">
+        <span class="st-kpi-label">طلب از مشتری‌ها</span>
+        <span class="st-kpi-value st-num is-pos"><?= formatMoney($parties['receivable']) ?></span>
+        <span class="st-kpi-sub"><?= toPersianDigits((string)$parties['debtors']) ?> بدهکار</span>
+    </a>
+    <a class="st-kpi-card" href="<?= h(Biz::url('parties.php?f=creditor')) ?>">
+        <span class="st-kpi-label">بدهی به تأمین‌کننده‌ها</span>
+        <span class="st-kpi-value st-num<?= $parties['payable'] > 0 ? ' is-neg' : '' ?>"><?= formatMoney($parties['payable']) ?></span>
+        <span class="st-kpi-sub"><?= toPersianDigits((string)$parties['creditors']) ?> طلبکار</span>
+    </a>
+</div>
+<p class="st-muted st-unit-note">همه‌ی مبلغ‌ها به تومان.</p>
 
-<section class="st-card st-card-soon">
-    <h2 class="st-h2">در راه</h2>
-    <p class="st-muted">کالا و موجودی، مشتری و تأمین‌کننده، فاکتورِ خرید و فروش با چاپ، دریافت و پرداخت، و گزارشِ فروش و سود.</p>
-</section>
+<div class="st-cols">
+    <section class="st-card">
+        <div class="st-card-head">
+            <h2 class="st-h2">موجودیِ رو به اتمام</h2>
+            <?php if ($low): ?><a href="<?= h(Biz::url('products.php?f=low')) ?>">همه</a><?php endif; ?>
+        </div>
+        <?php if (!$low): ?>
+            <p class="st-empty"><?= $stock['count'] > 0 ? 'همه‌ی کالاها موجودیِ کافی دارند.' : 'هنوز کالایی ثبت نکرده‌اید.' ?></p>
+        <?php else: ?>
+        <ul class="st-list">
+            <?php foreach ($low as $p): ?>
+            <li class="st-list-row">
+                <a href="<?= h(Biz::url('product.php?id=' . (int)$p['id'])) ?>"><?= h($p['name']) ?></a>
+                <span class="st-badge <?= (float)$p['stock_qty'] <= 0 ? 'is-out' : 'is-low' ?>">
+                    <?= (float)$p['stock_qty'] <= 0 ? 'ناموجود' : h(BizView::qty($p['stock_qty'], (string)$p['unit'])) ?>
+                </span>
+            </li>
+            <?php endforeach; ?>
+        </ul>
+        <?php endif; ?>
+    </section>
+
+    <section class="st-card">
+        <h2 class="st-h2">کارِ سریع</h2>
+        <div class="st-quick">
+            <a class="st-quick-btn" href="<?= h(Biz::url('product.php')) ?>">+ کالای تازه</a>
+            <a class="st-quick-btn" href="<?= h(Biz::url('party.php?kind=customer')) ?>">+ مشتریِ تازه</a>
+            <a class="st-quick-btn" href="<?= h(Biz::url('party.php?kind=supplier')) ?>">+ تأمین‌کننده‌ی تازه</a>
+            <a class="st-quick-btn" href="<?= h(Biz::url('settings.php')) ?>#cash">صندوق‌ها</a>
+        </div>
+        <p class="st-muted st-soon">در راه: فاکتورِ خرید و فروش با چاپ، دریافت و پرداخت، و گزارشِ فروش و سود.</p>
+    </section>
+</div>
 <?php require __DIR__ . '/../includes/biz_foot.php'; ?>

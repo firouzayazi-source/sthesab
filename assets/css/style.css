@@ -940,6 +940,9 @@ textarea { resize: vertical; }
 }
 .ucard-actions form { display: inline-flex; margin: 0; }
 .ucard-actions .self-note { font-size: 12px; color: var(--muted); white-space: nowrap; }
+/* منوی نوعِ حساب کنارِ دکمه‌اش، هم‌قدِ دکمه‌های کوچکِ کارت */
+.ucard-actions .ucard-type-form { flex-basis: 100%; gap: 6px; align-items: center; }
+.ucard-actions .ucard-type-form select { width: auto; flex: 1 1 auto; min-width: 0; padding: 6px 10px; font-size: 13px; }
 
 .pager {
     display: flex; align-items: center; justify-content: center;

@@ -131,6 +131,7 @@ a { color: var(--st-accent); }
 /* ⛔ عدد چپ‌چین، برچسب راست‌چین — همان قاعده‌ی حساب لند */
 .st-num { direction: ltr; unicode-bidi: isolate; font-variant-numeric: tabular-nums; }
 .st-num.is-neg { color: var(--st-err); }
+.st-num.is-pos { color: var(--st-ok); }
 
 .st-list { list-style: none; margin: 14px 0 0; padding: 0; border-top: 1px solid var(--st-line); }
 .st-list-row {
@@ -142,12 +143,13 @@ a { color: var(--st-accent); }
 /* ---------- فرم ---------- */
 .st-form { display: flex; flex-direction: column; gap: 14px; }
 .st-field { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 14px; }
-.st-field input, .st-field textarea {
+.st-field input, .st-field textarea, .st-field select {
     font: inherit; font-weight: 400; color: var(--st-ink);
     background: var(--st-bg); border: 1px solid var(--st-line); border-radius: 10px;
     padding: 10px 12px; width: 100%;
 }
-.st-field input:focus, .st-field textarea:focus {
+.st-field input:focus, .st-field textarea:focus, .st-field select:focus,
+.st-filters input:focus, .st-filters select:focus {
     outline: 2px solid var(--st-accent); outline-offset: 1px; border-color: transparent;
 }
 .st-btn {
@@ -177,10 +179,156 @@ a { color: var(--st-accent); }
 .st-auth-box .st-h1 { text-align: center; margin-bottom: 16px; font-size: 19px; }
 .st-auth-note { margin: 14px 0 0; text-align: center; font-size: 13px; }
 
+/* ---------- مرحله‌ی ۲: کالا، طرف‌حساب، صندوق ---------- */
+.st-switch {
+    color: var(--st-accent); text-decoration: none; white-space: nowrap; font-size: 13px;
+    border: 1px solid rgba(245,158,11,.45); border-radius: 999px; padding: 4px 12px;
+}
+.st-h3 { font-size: 15px; margin: 0; font-weight: 700; }
+.st-section-title { margin-top: 10px; }
+.st-page-head {
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
+    flex-wrap: wrap; margin-bottom: 14px;
+}
+.st-back { display: inline-block; font-size: 13px; text-decoration: none; margin-bottom: 2px; }
+.st-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.st-empty { color: var(--st-ink-2); margin: 6px 0 12px; font-size: 14px; }
+.st-empty-card { text-align: center; }
+.st-empty-card .st-btn { align-self: center; }
+.st-muted-i { color: var(--st-ink-2); font-size: 13px; }
+.st-unit-note { font-size: 12px; margin: -6px 0 14px; }
+.st-soon { margin: 14px 0 0; font-size: 13px; }
+
+/* کاشی‌های شاخص — ۱، ۲ یا ۴ ستون، بدونِ auto-fit (همان درسِ کارتِ چهارفصل) */
+.st-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.st-kpis-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.st-kpis-1 { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .st-kpis:not(.st-kpis-3):not(.st-kpis-1) { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .st-kpis-3 { grid-template-columns: minmax(0, 1fr); } }
+.st-kpi-card {
+    display: flex; flex-direction: column; gap: 2px; min-width: 0;
+    background: var(--st-surface); border: 1px solid var(--st-line); border-radius: var(--st-radius);
+    box-shadow: var(--st-shadow); padding: 14px 16px; color: var(--st-ink); text-decoration: none;
+}
+a.st-kpi-card:hover { border-color: var(--st-accent); }
+.st-kpi-card .st-kpi-value { font-size: 22px; overflow-wrap: anywhere; }
+@media (max-width: 560px) { .st-kpi-card .st-kpi-value { font-size: 18px; } .st-kpi-card { padding: 12px; } }
+.st-kpi-sub { font-size: 12px; color: var(--st-ink-2); }
+
+.st-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; align-items: start; }
+@media (min-width: 900px) { .st-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+
+.st-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.st-quick-btn {
+    display: block; text-align: center; text-decoration: none; white-space: nowrap;
+    border: 1px solid var(--st-line); border-radius: 10px; padding: 10px 8px;
+    color: var(--st-ink); background: var(--st-bg); font-weight: 600; font-size: 14px;
+}
+.st-quick-btn:hover { border-color: var(--st-accent); color: var(--st-accent); }
+
+.st-badge {
+    display: inline-block; white-space: nowrap; font-size: 12px; font-weight: 700;
+    border-radius: 999px; padding: 1px 9px; background: var(--st-bg); color: var(--st-ink-2);
+    border: 1px solid var(--st-line);
+}
+.st-badge.is-low { background: var(--st-wash); color: var(--st-accent-2); border-color: transparent; }
+.st-badge.is-out { background: var(--st-err-wash); color: var(--st-err); border-color: transparent; }
+
+.st-chips-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.st-stat {
+    font-size: 13px; background: var(--st-surface); border: 1px solid var(--st-line);
+    border-radius: 999px; padding: 4px 12px; white-space: nowrap;
+}
+.st-stat.is-low { background: var(--st-wash); border-color: transparent; }
+.st-stat.is-out { background: var(--st-err-wash); color: var(--st-err); border-color: transparent; }
+
+.st-filters { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+.st-filters input, .st-filters select {
+    font: inherit; color: var(--st-ink); background: var(--st-surface);
+    border: 1px solid var(--st-line); border-radius: 10px; padding: 9px 12px;
+}
+.st-filters input { flex: 1 1 180px; min-width: 0; width: auto; }
+.st-filters select { flex: 0 1 180px; min-width: 0; width: auto; }
+.st-filters .st-btn { align-self: stretch; }
+.st-btn-ghost { background: transparent; color: var(--st-accent); border: 1px solid var(--st-accent); }
+.st-btn-ghost:hover { background: var(--st-wash); }
+.st-btn-danger { background: var(--st-err); color: #fff; }
+.st-btn-danger:hover { background: var(--st-err); opacity: .9; }
+.st-link-btn {
+    font: inherit; font-size: 13px; background: none; border: 0; padding: 0; cursor: pointer;
+    color: var(--st-accent); text-decoration: none;
+}
+
+.st-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 12px; scrollbar-width: none; }
+.st-tab-chip {
+    flex: 0 0 auto; white-space: nowrap; text-decoration: none; font-size: 13px;
+    color: var(--st-ink-2); border: 1px solid var(--st-line); border-radius: 999px; padding: 5px 14px;
+}
+.st-tab-chip.is-active { background: var(--st-top); color: var(--st-top-ink); border-color: var(--st-top); }
+
+.st-table-wrap {
+    background: var(--st-surface); border: 1px solid var(--st-line); border-radius: var(--st-radius);
+    box-shadow: var(--st-shadow); overflow-x: auto; margin-bottom: 12px;
+}
+.st-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.st-table th {
+    text-align: right; font-size: 12px; font-weight: 700; color: var(--st-ink-2);
+    padding: 10px 14px; border-bottom: 1px solid var(--st-line); white-space: nowrap;
+}
+.st-table td { padding: 10px 14px; border-bottom: 1px solid var(--st-line); vertical-align: middle; }
+/* ⛔ نامِ کالا و دسته را کاربر می‌نویسد و می‌تواند بی‌فاصله و بلند باشد؛
+   `anywhere` (نه `break-word`) کمینه‌ی عرضِ ستون را هم پایین می‌آورد، پس
+   جدول به‌جای اسکرولِ افقی می‌شکند و ستونِ قیمت روی گوشی دیده می‌ماند. */
+.st-table td:not(.st-td-num) { overflow-wrap: anywhere; }
+.st-table td:first-child { min-width: 96px; }
+.st-table tr:last-child td { border-bottom: 0; }
+/* ⛔ ستونِ عدد چپ‌چین، برچسبِ فارسی راست‌چین */
+.st-th-num, .st-td-num { text-align: left !important; white-space: nowrap; }
+.st-td-num .st-badge { display: block; width: fit-content; margin: 3px 0 0 auto; }
+.st-table tr.is-inactive td, .st-list-row.is-inactive { opacity: .55; }
+.st-row-link { color: var(--st-ink); font-weight: 700; text-decoration: none; }
+.st-row-link:hover { color: var(--st-accent); }
+.st-sku { display: block; font-size: 12px; color: var(--st-ink-2); text-align: right; }
+.st-bal-side { display: block; font-size: 11px; color: var(--st-ink-2); }
+@media (max-width: 640px) { .st-hide-sm { display: none; } .st-table td, .st-table th { padding: 10px 8px; } .st-table { font-size: 13px; } }
+
+.st-pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 4px 0 14px; }
+.st-pager-btn {
+    text-decoration: none; border: 1px solid var(--st-line); border-radius: 10px; padding: 6px 14px;
+    color: var(--st-ink); background: var(--st-surface); white-space: nowrap;
+}
+.st-pager-btn.is-off { opacity: .4; }
+.st-pager-info { font-size: 13px; color: var(--st-ink-2); white-space: nowrap; }
+
+.st-row2, .st-row3 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+@media (min-width: 560px) { .st-row2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 720px) { .st-row3 { grid-template-columns: 2fr 1fr 1fr; } }
+.st-form-narrow { max-width: 720px; }
+.st-fieldset { border: 1px dashed var(--st-line); border-radius: 12px; padding: 10px 14px 14px; margin: 0; }
+.st-fieldset legend { font-weight: 700; font-size: 14px; padding: 0 6px; }
+.st-check { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
+.st-check input { width: 18px; height: 18px; accent-color: var(--st-accent); }
+.st-seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.st-seg-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.st-seg-opt span {
+    display: inline-block; cursor: pointer; white-space: nowrap; font-size: 14px;
+    border: 1px solid var(--st-line); border-radius: 999px; padding: 6px 14px; background: var(--st-bg);
+}
+.st-seg-opt input:checked + span { background: var(--st-top); color: var(--st-top-ink); border-color: var(--st-top); }
+.st-seg-opt input:focus-visible + span { outline: 2px solid var(--st-accent); outline-offset: 1px; }
+
+.st-move-end { display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.st-move-end form { margin: 0; }
+.st-danger { box-shadow: none; }
+.st-danger-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.st-subform { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--st-line); }
+
 /* ---------- منوی پایینِ موبایل ---------- */
 .st-tabbar { display: none; }
 @media (max-width: 720px) {
     .st-nav { display: none; }
+    .st-switch { margin-inline-start: auto; }
+    .st-switch + .st-logout { margin-inline-start: 0; }
     .st-logout { margin-inline-start: auto; }
     .st-main { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
     .st-tabbar {

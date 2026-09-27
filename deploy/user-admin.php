@@ -53,7 +53,7 @@ function usage(): void
     out("  $me --set-phone ali 09123456789        ثبت شماره برای ورود با پیامک");
     out("  $me --sms-check 09123456789            چرا کدِ ورود برای این شماره نمی‌رود؟");
     out("  $me --set-role ali support             نقش: admin / support / colleague / user");
-    out("  $me --set-account ali business         نوعِ حساب: personal / business (محیطِ فروشگاه /store)");
+    out("  $me --set-account ali both             نوعِ حساب: personal / both (شخصی + فروشگاه) / business (فقط فروشگاه)");
     out("  $me --mark-colleagues                  چه کسانی به فروشگاه وصل‌اند (فقط نمایش)");
     out("  $me --mark-colleagues --apply          همان‌ها را «همکار» کن");
     out("  $me --stats-check ali                  عددِ «آمار استفاده» این کاربر از کجا می‌آید؟");
@@ -316,7 +316,7 @@ if ($cmd === '--set-role') {
 
     // ⛔ حسابِ فروشگاهی مدیر یا پشتیبان نمی‌شود (`Biz::roleAllowed()`).
     if (!Biz::roleAllowed($roleIn, (string)($user['account_type'] ?? 'personal'))) {
-        fail('این حساب فروشگاهی است و نمی‌تواند مدیر یا پشتیبان باشد؛ اول:  --set-account ' . $username . ' personal');
+        fail('این حساب «فقط فروشگاه» است و نمی‌تواند مدیر یا پشتیبان باشد؛ اول:  --set-account ' . $username . ' both');
     }
 
     if ((string)$user['role'] === $roleIn) {
@@ -352,8 +352,8 @@ if ($cmd === '--set-account') {
     $res  = Biz::setType((int)$user['id'], $typeIn);
     if (!$res['ok']) { fail($res['message']); }
     ok($res['message']);
-    if (!empty($res['changed']) && $typeIn === 'business') {
-        out('ورودِ این حساب از این به بعد:  ' . rtrim((string)(defined('APP_URL') ? APP_URL : ''), '/') . Biz::url());
+    if (!empty($res['changed']) && in_array($typeIn, Biz::STORE_TYPES, true)) {
+        out('ورودِ فروشگاهِ این حساب:  ' . rtrim((string)(defined('APP_URL') ? APP_URL : ''), '/') . Biz::url());
     }
     exit(0);
 }

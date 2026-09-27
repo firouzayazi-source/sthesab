@@ -12,19 +12,29 @@
  *
  * سه قاعده که این فایل را شکل می‌دهند:
  *
- * ۱. **یک حساب، یک تجربه** (`users.account_type`). حسابِ فروشگاهی حسابِ
- *    جداست، نه یک حالت روی حسابِ شخصی — وگرنه پولِ مغازه و خانه در یک
- *    `walletBalances()` قاطی می‌شد و همه‌ی گزارش‌های شخصی دروغ می‌گفتند.
+ * ۱. **سه نوعِ حساب** (`users.account_type`):
+ *    - `personal` — فقط حساب لند (پیش‌فرض).
+ *    - `both` — حساب لند **سرِ جایش می‌ماند** و از `/store` هم وارد
+ *      فروشگاه می‌شود. **خواسته‌ی مالکِ نصب:** «وقتی قابلیت فروشگاهی کسی
+ *      رو فعال می‌کنم حسابلند قبلی سرجاش باشه، با آدرس store بتونه وارد
+ *      فروشگاهی بشه.»
+ *    - `business` — فقط فروشگاه؛ هیچ صفحه‌ی شخصی‌ای را نمی‌بیند.
+ *    ⛔ پولِ مغازه و خانه با این حال قاطی نمی‌شود: فروشگاه دفترِ خودش را
+ *       دارد (`biz_accounts`، `biz_products`، …) و هیچ‌کدام در
+ *       `walletBalances()` نمی‌نشیند. «یک حساب، یک تجربه» که مرحله‌ی ۱
+ *       نوشته بود به همین دلیل بود، و حالا دیوار روی **داده** است نه روی
+ *       حساب.
  *
- * ۲. **⛔ صفر کوئری برای حسابِ شخصی.** نوعِ حساب هنگامِ ساختنِ نشست یک
+ * ۲. **⛔ صفر کوئری برای صفحه‌های شخصی.** نوعِ حساب هنگامِ ساختنِ نشست یک
  *    بار خوانده و در نشست نوشته می‌شود؛ `gate()` فقط همان را می‌خواند.
- *    پس بودجه‌ی کوئریِ هیچ صفحه‌ی شخصی‌ای تکان نمی‌خورد.
- *    - و برای اینکه تغییرِ نوع به نشستِ زنده برسد، `setType()` همه‌ی
- *      دسترسی‌های آن کاربر را باطل می‌کند (`revokeAllAccessFor()`). یعنی
- *      `refreshAccountState()` — تابعی که هر دقیقه روی **همه‌ی** کاربران
- *      اجرا می‌شود — عمداً دست نخورد.
+ *    صفحه‌های `store/` ولی نوع را **هر بار از دیتابیس** تازه می‌کنند
+ *    (`requirePage()`، یک کوئری) — پس روشن و خاموش کردنِ فروشگاه برای یک
+ *    حسابِ `personal`/`both` کاربر را از حساب لندش بیرون نمی‌اندازد.
+ *    - فقط تغییری که **دروازه** را عوض می‌کند (به `business` یا از آن)
+ *      همه‌ی دسترسی‌ها را باطل می‌کند (`revokeAllAccessFor()`)، چون آن
+ *      یکی از نشست خوانده می‌شود.
  *
- * ۳. **⛔ دروازه با پیش‌فرضِ بسته** (`gate()`). حسابِ فروشگاهی فقط به
+ * ۳. **⛔ دروازه با پیش‌فرضِ بسته** (`gate()`). حسابِ «فقط فروشگاه» فقط به
  *    `store/` و فهرستِ بسته‌ی `SHARED` می‌رسد. پیش‌فرضِ باز یعنی هر
  *    قابلیتِ شخصیِ فردا — و بدتر، اندپوینتِ «معاملات» که پول را دو بار
  *    می‌شمرد — بی‌صدا به حسابِ فروشگاهی نشت می‌کرد.
@@ -37,8 +47,12 @@ final class Biz
     /** ⛔ تنها مرجعِ نوع‌های حساب. کلیدِ اول پیش‌فرض است. */
     public const TYPES = [
         'personal' => 'شخصی',
-        'business' => 'فروشگاهی',
+        'both'     => 'شخصی + فروشگاه',
+        'business' => 'فقط فروشگاه',
     ];
+
+    /** ⛔ نوع‌هایی که `/store` را می‌بینند — تنها مرجع. */
+    public const STORE_TYPES = ['both', 'business'];
 
     /** پوشه‌ی محیطِ فروشگاهی، نسبت به `APP_BASE_PATH`. */
     public const DIR = 'store';
@@ -59,7 +73,9 @@ final class Biz
      */
     public const NAV = [
         'index.php'    => 'داشبورد',
-        'settings.php' => 'تنظیمات فروشگاه',
+        'products.php' => 'کالاها',
+        'parties.php'  => 'طرف‌حساب‌ها',
+        'settings.php' => 'تنظیمات',
     ];
 
     /** نقش‌هایی که حسابِ فروشگاهی می‌تواند داشته باشد. */
@@ -106,11 +122,40 @@ final class Biz
         return is_string($v) && isset(self::TYPES[$v]) ? $v : 'personal';
     }
 
-    /** حسابِ همین نشست فروشگاهی است؟ — فقط از نشست، بدونِ کوئری. */
-    public static function isBusiness(): bool
+    /**
+     * حسابِ همین نشست «فقط فروشگاه» است؟ — فقط از نشست، بدونِ کوئری.
+     * تنها چیزی که دروازه‌ی صفحه‌های شخصی می‌پرسد.
+     */
+    public static function isStoreOnly(): bool
     {
         return !empty($_SESSION['user_id'])
             && ($_SESSION['account_type'] ?? '') === 'business';
+    }
+
+    /** نشستِ جاری به فروشگاه راه دارد؟ — از نشست؛ برای نمایش، نه دروازه. */
+    public static function hasStore(): bool
+    {
+        return !empty($_SESSION['user_id'])
+            && in_array($_SESSION['account_type'] ?? '', self::STORE_TYPES, true);
+    }
+
+    /**
+     * نوع را از دیتابیس تازه می‌کند و در نشست می‌نویسد — فقط در صفحه‌های
+     * `store/` (یک کوئری). بدونِ آن، کاربری که مدیر همین حالا برایش
+     * فروشگاه روشن کرده تا ورودِ دوباره ۴۰۴ می‌گرفت.
+     */
+    public static function refreshType(): string
+    {
+        if (empty($_SESSION['user_id'])) { return 'personal'; }
+        $t = self::typeFor((int)$_SESSION['user_id']);
+        $_SESSION['account_type'] = $t;
+        return $t;
+    }
+
+    /** آدرسِ خانه‌ی حساب لند — برای حسابِ `both` در سرآیندِ فروشگاه. */
+    public static function personalUrl(): string
+    {
+        return (defined('APP_BASE_PATH') ? APP_BASE_PATH : '') . '/index.php';
     }
 
     /** آدرسِ مطلقِ یک صفحه‌ی فروشگاهی (قاعده ۱۶: هرگز نسبی). */
@@ -142,7 +187,7 @@ final class Biz
      */
     public static function gate(): void
     {
-        if (PHP_SAPI === 'cli' || !self::isBusiness()) { return; }
+        if (PHP_SAPI === 'cli' || !self::isStoreOnly()) { return; }
 
         $script = self::currentScript();
         if (strncmp($script, self::DIR . '/', strlen(self::DIR) + 1) === 0
@@ -170,8 +215,9 @@ final class Biz
     /**
      * سرِ هر صفحه‌ی `store/` (جز ورود و خروج).
      *
-     * واردنشده ← صفحه‌ی ورودِ فروشگاه. حسابِ شخصی ← ۴۰۴ — کاربرِ عادی
-     * نباید هیچ چیزی از محیطِ فروشگاهی ببیند، حتی اینکه وجود دارد.
+     * واردنشده ← صفحه‌ی ورودِ فروشگاه. حسابِ بی‌فروشگاه ← ۴۰۴ — کاربرِ
+     * عادی نباید هیچ چیزی از محیطِ فروشگاهی ببیند، حتی اینکه وجود دارد.
+     * ⛔ نوع از دیتابیس خوانده می‌شود، نه از نشست (بالای فایل، قاعده‌ی ۲).
      */
     public static function requirePage(): void
     {
@@ -179,7 +225,7 @@ final class Biz
             header('Location: ' . self::url('login.php'));
             exit;
         }
-        if (!self::isBusiness()) {
+        if (!in_array(self::refreshType(), self::STORE_TYPES, true)) {
             self::notFound();
         }
     }
@@ -212,12 +258,14 @@ final class Biz
      * ⛔ تنها نویسنده‌ی `users.account_type` — پنلِ مدیر و در پشتیِ خطِ
      *    فرمان هر دو از همین رد می‌شوند.
      *
-     * - مدیر و پشتیبان نمی‌توانند فروشگاهی شوند: دروازه آن‌ها را از پنلِ
-     *   مدیریت بیرون نگه می‌داشت و آخرین مدیرِ نصب می‌توانست خودش را قفل
-     *   کند.
-     * - ⛔ هر تغییر همه‌ی دسترسی‌های آن کاربر را باطل می‌کند (نشست، کوکیِ
-     *   دستگاه، توکنِ اپ). نوعِ حساب در نشست است؛ بدونِ ابطال، مرورگرِ باز
-     *   با تجربه‌ی قبلی می‌ماند.
+     * - مدیر و پشتیبان نمی‌توانند «فقط فروشگاه» شوند: دروازه آن‌ها را از
+     *   پنلِ مدیریت بیرون نگه می‌داشت و آخرین مدیرِ نصب می‌توانست خودش را
+     *   قفل کند. «شخصی + فروشگاه» برای هر نقشی مجاز است.
+     * - ⛔ فقط تغییری که دروازه را عوض می‌کند (به `business` یا از آن) همه‌ی
+     *   دسترسی‌های آن کاربر را باطل می‌کند (نشست، کوکیِ دستگاه، توکنِ اپ):
+     *   دروازه از نشست می‌خواند و بدونِ ابطال، مرورگرِ باز با تجربه‌ی قبلی
+     *   می‌ماند. روشن/خاموش کردنِ فروشگاه برای `personal`↔`both` کاربر را
+     *   بیرون **نمی‌اندازد** — خواسته‌ی صریح همین بود.
      *
      * @return array{ok:bool, message:string, changed?:bool}
      */
@@ -238,7 +286,7 @@ final class Biz
             return ['ok' => false, 'message' => 'کاربر مورد نظر یافت نشد.'];
         }
         if (!self::roleAllowed((string)$u['role'], $type)) {
-            return ['ok' => false, 'message' => 'حسابِ مدیر یا پشتیبان نمی‌تواند فروشگاهی شود.'];
+            return ['ok' => false, 'message' => 'حسابِ مدیر یا پشتیبان نمی‌تواند «فقط فروشگاه» شود؛ «شخصی + فروشگاه» را انتخاب کنید.'];
         }
         $from = isset(self::TYPES[$u['account_type']]) ? (string)$u['account_type'] : 'personal';
         if ($from === $type) {
@@ -248,8 +296,11 @@ final class Biz
         $pdo->prepare('UPDATE users SET account_type = :t WHERE id = :id')
             ->execute(['t' => $type, 'id' => $targetId]);
 
-        require_once __DIR__ . '/functions.php';
-        revokeAllAccessFor($targetId);
+        $revoke = ($from === 'business' || $type === 'business');
+        if ($revoke) {
+            require_once __DIR__ . '/functions.php';
+            revokeAllAccessFor($targetId);
+        }
 
         if (class_exists('Audit')) {
             Audit::log('user.account_type', 'user', $targetId, ['from' => $from, 'to' => $type], $actorId, $targetId);
@@ -258,7 +309,9 @@ final class Biz
         return [
             'ok'      => true,
             'changed' => true,
-            'message' => 'حساب ' . self::TYPES[$type] . ' شد و از همه‌ی دستگاه‌ها خارج می‌شود.',
+            'revoked' => $revoke,
+            'message' => 'نوعِ حساب «' . self::TYPES[$type] . '» شد'
+                . ($revoke ? ' و کاربر از همه‌ی دستگاه‌ها خارج می‌شود.' : '؛ کاربر از حسابش خارج نمی‌شود.'),
         ];
     }
 
@@ -274,8 +327,12 @@ final class Biz
         'invoice_footer' => 500,
     ];
 
+    /** کشِ همین درخواست — سرآیند و خودِ صفحه هر دو می‌خوانندش. */
+    private static array $settingsCache = [];
+
     public static function settings(int $userId): array
     {
+        if (isset(self::$settingsCache[$userId])) { return self::$settingsCache[$userId]; }
         $out = array_fill_keys(array_keys(self::SETTING_LIMITS), '');
         try {
             $st = Database::getConnection()->prepare(
@@ -289,7 +346,7 @@ final class Biz
         if ($row) {
             foreach ($out as $k => $_) { $out[$k] = (string)($row[$k] ?? ''); }
         }
-        return $out;
+        return self::$settingsCache[$userId] = $out;
     }
 
     /** @return array{ok:bool, message:string} */
@@ -311,6 +368,7 @@ final class Biz
             return ['ok' => false, 'message' => 'نامِ فروشگاه الزامی است.'];
         }
 
+        unset(self::$settingsCache[$userId]);
         Database::getConnection()->prepare(
             'INSERT INTO biz_settings (user_id, shop_name, phone, address, invoice_footer)
              VALUES (:u, :n, :p, :a, :f)

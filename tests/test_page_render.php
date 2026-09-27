@@ -131,6 +131,10 @@ const EXPECT = [
     //    فروشگاه نمی‌بیند. رفتارِ حسابِ فروشگاهی در `test_business_mode`.
     'store/index.php'       => 'blocked',
     'store/settings.php'    => 'blocked',
+    'store/products.php'    => 'blocked',
+    'store/product.php'     => 'blocked',
+    'store/parties.php'     => 'blocked',
+    'store/party.php'       => 'blocked',
     'store/login.php'       => 'away',
     'store/logout.php'      => 'skip',
 ];
