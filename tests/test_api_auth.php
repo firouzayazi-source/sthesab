@@ -109,7 +109,9 @@ T::group('صفحات کاربر بدون ورود به صفحه‌ی ورود م
 
 $pages = ['dashboard.php', 'transactions.php', 'wallets.php', 'budget.php',
           'debts.php', 'cheques.php', 'savings.php', 'my-assets.php',
-          'recurring.php', 'search.php', 'calendar.php', 'profile.php'];
+          'recurring.php', 'search.php', 'calendar.php', 'profile.php',
+          // محیطِ فروشگاهی → ورودِ **فروشگاه**
+          'store/index.php', 'store/settings.php'];
 $bad = [];
 foreach ($pages as $p) {
     [$code, $body] = $req("/$p", 'GET');

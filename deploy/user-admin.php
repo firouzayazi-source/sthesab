@@ -53,6 +53,7 @@ function usage(): void
     out("  $me --set-phone ali 09123456789        ثبت شماره برای ورود با پیامک");
     out("  $me --sms-check 09123456789            چرا کدِ ورود برای این شماره نمی‌رود؟");
     out("  $me --set-role ali support             نقش: admin / support / colleague / user");
+    out("  $me --set-account ali business         نوعِ حساب: personal / business (محیطِ فروشگاه /store)");
     out("  $me --mark-colleagues                  چه کسانی به فروشگاه وصل‌اند (فقط نمایش)");
     out("  $me --mark-colleagues --apply          همان‌ها را «همکار» کن");
     out("  $me --stats-check ali                  عددِ «آمار استفاده» این کاربر از کجا می‌آید؟");
@@ -313,6 +314,11 @@ if ($cmd === '--set-role') {
         fail('این تنها مدیرِ فعالِ سیستم است؛ اول یک مدیرِ دیگر بسازید.');
     }
 
+    // ⛔ حسابِ فروشگاهی مدیر یا پشتیبان نمی‌شود (`Biz::roleAllowed()`).
+    if (!Biz::roleAllowed($roleIn, (string)($user['account_type'] ?? 'personal'))) {
+        fail('این حساب فروشگاهی است و نمی‌تواند مدیر یا پشتیبان باشد؛ اول:  --set-account ' . $username . ' personal');
+    }
+
     if ((string)$user['role'] === $roleIn) {
         ok("نقشِ «{$username}» از قبل «" . Auth::roleLabel($roleIn) . "» است — چیزی عوض نشد.");
         exit(0);
@@ -326,6 +332,29 @@ if ($cmd === '--set-role') {
     //   نقش را از دیتابیس تازه می‌کند (بخشِ «تصمیمِ مدیر باید به نشستِ
     //   زنده برسد»). پس این را می‌گوییم تا کسی فکر نکند کار نکرده.
     out('اگر همین حالا وارد است، تا یک دقیقه‌ی دیگر اعمال می‌شود.');
+    exit(0);
+}
+
+// ---------------------------------------------------------------
+// ⛔ نوعِ حساب (شخصی / فروشگاهی) از خط فرمان — همان `Biz::setType()`ِ
+//    پنلِ مدیر، نه یک `UPDATE` دستی: نقشِ مجاز، ابطالِ دسترسی و ممیزی
+//    همه آنجاست و نسخه‌ی دومش دیر یا زود یکی را جا می‌انداخت.
+if ($cmd === '--set-account') {
+    require_once __DIR__ . '/../includes/auth.php';
+
+    $username = $argvIn[1] ?? fail('استفاده — نمونه:  --set-account ali business');
+    $typeIn   = $argvIn[2] ?? fail('استفاده — نمونه:  --set-account ali business');
+    if (!isset(Biz::TYPES[$typeIn])) {
+        fail('نوعِ نامعتبر. نوع‌های مجاز: ' . implode('، ', array_keys(Biz::TYPES)));
+    }
+
+    $user = $findUser($username);
+    $res  = Biz::setType((int)$user['id'], $typeIn);
+    if (!$res['ok']) { fail($res['message']); }
+    ok($res['message']);
+    if (!empty($res['changed']) && $typeIn === 'business') {
+        out('ورودِ این حساب از این به بعد:  ' . rtrim((string)(defined('APP_URL') ? APP_URL : ''), '/') . Biz::url());
+    }
     exit(0);
 }
 

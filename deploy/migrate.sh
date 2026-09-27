@@ -125,6 +125,7 @@ MIGRATIONS=(
     migration_push.sql
     migration_home_widgets.sql
     migration_trade_credit.sql
+    migration_business_mode.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -313,6 +314,8 @@ declare -A SENTINEL=(
     [migration_home_widgets.sql]="users.home_hidden"
     # ستونِ آخرِ فایل؛ کلیدهای خارجی بعد از آن ساخته می‌شوند.
     [migration_trade_credit.sql]="debts.trade_sale_id"
+    # ستونِ آخرِ فایل؛ جدولِ `biz_settings` پیش از آن ساخته می‌شود.
+    [migration_business_mode.sql]="users.account_type"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

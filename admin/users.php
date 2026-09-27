@@ -200,6 +200,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
          * خطایی، نه هشداری، و تنها راهِ برگشت `deploy/user-admin.php`
          * روی SSH بود.
          */
+        // ⛔ حسابِ فروشگاهی مدیر یا پشتیبان نمی‌شود — دروازه‌ی `Biz::gate()`
+        //    او را از پنلِ مدیریت بیرون نگه می‌داشت. قاعده فقط در
+        //    `Biz::roleAllowed()` است.
+        } elseif (!Biz::roleAllowed($role, (string)($targetUser['account_type'] ?? 'personal'))) {
+            $error = 'حسابِ فروشگاهی نمی‌تواند مدیر یا پشتیبان باشد؛ اول آن را شخصی کنید.';
         } elseif ($targetUser['role'] === 'admin' && $role !== 'admin' && (int)$targetUser['id'] === $currentUserId) {
             $error = 'نمی‌توانید نقش مدیریتی خودتان را تغییر دهید.';
         } elseif ($targetUser['role'] === 'admin' && $role !== 'admin' && countOtherActiveAdmins($pdo, $targetId) < 1) {
@@ -327,6 +332,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         revokeAllAccessFor($targetId);
         redirectWithMessage($backTo, 'success', 'کاربر از همه‌ی دستگاه‌ها و اپ‌ها خارج می‌شود؛ حسابش باز است و با رمزِ خودش دوباره وارد می‌شود.');
+    } elseif ($action === 'set_account_type') {
+        // ⛔ حسابِ شخصی ↔ فروشگاهی. همه‌ی قاعده‌ها (نقشِ مجاز، ابطالِ
+        //    دسترسی، ممیزی) در `Biz::setType()` است — تنها نویسنده‌ی این
+        //    ستون؛ اینجا فقط «خودِ مدیر نه» اضافه می‌شود.
+        $targetId = (int)postParam('user_id');
+        if ($targetId === $currentUserId) {
+            redirectWithMessage($backTo, 'error', 'نوعِ حسابِ خودتان را نمی‌توانید عوض کنید.');
+        }
+        $res = Biz::setType($targetId, (string)postParam('account_type'), $currentUserId);
+        redirectWithMessage($backTo, $res['ok'] ? 'success' : 'error', $res['message']);
     } elseif ($action === 'unlock_login') {
         // ⛔ سدِ حدسِ رمز بین کاربرِ واقعی و مهاجم فرق نمی‌گذارد، پس
         //    کاربری که رمزش را چند بار غلط زده تا پایانِ پنجره بیرون
@@ -391,6 +406,9 @@ $hasPhoneColumn = tableHasColumn('users', 'phone');
 $cols = 'id, full_name, username, role, is_active, created_at';
 if ($hasEmailColumn) { $cols .= ', email'; }
 if ($hasPhoneColumn) { $cols .= ', phone'; }
+// ستونِ نوعِ حساب با `migration_business_mode` آمده.
+$hasAccountType = Biz::available();
+if ($hasAccountType) { $cols .= ', account_type'; }
 
 // ⚠ یک کوئری برای کلِ فهرست، نه یکی به‌ازای هر ردیف. جدولش فقط
 //   تلاش‌های ۱۵ دقیقه‌ی اخیر را دارد، پس با هزار کاربر هم کوچک است.
@@ -647,10 +665,14 @@ include __DIR__ . '/../includes/header.php';
                 /* ⚠ نامِ خالی ممکن است (حساب‌های قدیمی)، و کارتی که فقط
                    یک نشان دارد از بیرون معلوم نیست مالِ کیست. */
                 $title = trim((string)$u['full_name']) !== '' ? (string)$u['full_name'] : (string)$u['username'];
+                $isBiz = ($u['account_type'] ?? 'personal') === 'business';
                 ?>
                 <details class="ucard<?= $flags ? ' is-flagged' : '' ?>">
                     <summary class="ucard-head">
                         <span class="ucard-name"><?= h($title) ?></span>
+                        <?php if ($isBiz): ?>
+                            <span class="lock-chip" title="این حساب فقط محیطِ فروشگاه (/store) را می‌بیند">فروشگاهی</span>
+                        <?php endif; ?>
                         <?php foreach ($flags as [$flagLabel, $flagClass, $flagTitle]): ?>
                             <span class="lock-chip <?= $flagClass ?>" title="<?= h($flagTitle) ?>"><?= h($flagLabel) ?></span>
                         <?php endforeach; ?>
@@ -675,6 +697,12 @@ include __DIR__ . '/../includes/header.php';
                             <span class="ucard-k">نقش</span>
                             <span class="ucard-v"><?= h(Auth::roleLabel((string)$u['role'])) ?></span>
                         </div>
+<?php if ($hasAccountType): ?>
+                        <div class="ucard-row">
+                            <span class="ucard-k">نوع حساب</span>
+                            <span class="ucard-v"><?= h(Biz::TYPES[$isBiz ? 'business' : 'personal']) ?></span>
+                        </div>
+<?php endif; ?>
                         <div class="ucard-row">
                             <span class="ucard-k">وضعیت</span>
                             <span class="ucard-v">
@@ -716,6 +744,18 @@ include __DIR__ . '/../includes/header.php';
                                         <?= $isActive ? 'غیرفعال‌سازی' : 'فعال‌سازی' ?>
                                     </button>
                                 </form>
+                                <?php if ($hasAccountType && ($isBiz || Biz::roleAllowed((string)$u['role'], 'business'))): ?>
+                                <form method="POST" onsubmit="return confirm(<?= h(json_encode($isBiz
+                                    ? 'این حساب شخصی می‌شود و دیگر محیطِ فروشگاه را نمی‌بیند. کاربر از همه‌ی دستگاه‌ها خارج می‌شود. ادامه؟'
+                                    : 'این حساب فروشگاهی می‌شود: فقط از /store وارد می‌شود و بخش‌های شخصی را نمی‌بیند. کاربر از همه‌ی دستگاه‌ها خارج می‌شود. ادامه؟',
+                                    JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT)) ?>);">
+                                    <?= Csrf::field() ?>
+                                    <input type="hidden" name="action" value="set_account_type">
+                                    <input type="hidden" name="user_id" value="<?= (int)$u['id'] ?>">
+                                    <input type="hidden" name="account_type" value="<?= $isBiz ? 'personal' : 'business' ?>">
+                                    <button type="submit" class="btn btn-secondary btn-sm"><?= $isBiz ? 'شخصی کردن' : 'فروشگاهی کردن' ?></button>
+                                </form>
+                                <?php endif; ?>
                                 <?php if ($isActive): ?>
                                 <form method="POST" onsubmit="return confirm('این کاربر از همه‌ی مرورگرها و اپ‌ها خارج می‌شود و باید دوباره وارد شود. ادامه؟');">
                                     <?= Csrf::field() ?>

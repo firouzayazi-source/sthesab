@@ -1,0 +1,196 @@
+/* ============================================================
+   محیطِ فروشگاهی (/store) — استایلِ جدا
+   ============================================================
+   ⛔ فایلِ جداست تا `style.css`ِ حساب لندِ شخصی حتی یک بایت عوض نشود.
+   هیچ کلاسی از آن فایل اینجا نیست و هیچ کلاسی از اینجا آنجا نیست
+   (پیشوندِ `st-`). ظاهر عمداً هیچ نسبتی با حساب لند ندارد: سنگی و
+   کهربایی، سربرگِ تیره، و منوی افقی به‌جای نوارِ کناری.
+   ============================================================ */
+
+@font-face {
+    font-family: 'Vazirmatn';
+    /* نسبت به همین فایل: assets/css/ → assets/fonts/ */
+    src: url('../fonts/Vazirmatn.woff2') format('woff2');
+    font-weight: 100 900; font-style: normal; font-display: swap;
+}
+
+:root {
+    --st-bg:       #f5f3ef;
+    --st-surface:  #ffffff;
+    --st-ink:      #1c1917;
+    --st-ink-2:    #57534e;
+    --st-line:     #e7e5e4;
+    --st-top:      #1c1917;
+    --st-top-ink:  #fafaf9;
+    --st-accent:   #b45309;
+    --st-accent-2: #92400e;
+    --st-accent-ink: #ffffff;
+    --st-wash:     #fef3c7;
+    --st-ok:       #15803d;
+    --st-ok-wash:  #dcfce7;
+    --st-err:      #b91c1c;
+    --st-err-wash: #fee2e2;
+    --st-radius:   14px;
+    --st-shadow:   0 1px 2px rgba(28,25,23,.06), 0 4px 16px rgba(28,25,23,.06);
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --st-bg:       #12110f;
+        --st-surface:  #1c1b19;
+        --st-ink:      #f5f5f4;
+        --st-ink-2:    #a8a29e;
+        --st-line:     #2e2c29;
+        --st-top:      #0c0a09;
+        --st-top-ink:  #fafaf9;
+        --st-accent:   #f59e0b;
+        --st-accent-2: #d97706;
+        --st-accent-ink: #1c1917;
+        --st-wash:     #3a2a0d;
+        --st-ok:       #4ade80;
+        --st-ok-wash:  #13301d;
+        --st-err:      #f87171;
+        --st-err-wash: #3b1414;
+        --st-shadow:   none;
+    }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html { -webkit-text-size-adjust: 100%; }
+body.st-body {
+    margin: 0;
+    background: var(--st-bg);
+    color: var(--st-ink);
+    font-family: 'Vazirmatn', Tahoma, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+}
+a { color: var(--st-accent); }
+
+/* ---------- سربرگ ---------- */
+.st-top {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--st-top); color: var(--st-top-ink);
+    padding-top: env(safe-area-inset-top);
+}
+.st-top-in {
+    max-width: 1100px; margin: 0 auto;
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left));
+}
+.st-brand {
+    display: flex; align-items: center; gap: 10px; min-width: 0;
+    color: inherit; text-decoration: none; font-weight: 800;
+}
+.st-brand-mark {
+    display: grid; place-items: center; flex: 0 0 auto;
+    width: 34px; height: 34px; border-radius: 10px;
+    background: var(--st-accent); color: var(--st-accent-ink);
+}
+.st-brand-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-nav { display: flex; gap: 4px; margin-inline-start: auto; }
+.st-nav-item {
+    color: var(--st-top-ink); opacity: .75; text-decoration: none;
+    padding: 6px 12px; border-radius: 999px; white-space: nowrap;
+}
+.st-nav-item:hover { opacity: 1; }
+.st-nav-item.is-active { opacity: 1; background: rgba(250,250,249,.12); }
+.st-logout {
+    color: var(--st-top-ink); opacity: .7; text-decoration: none; white-space: nowrap;
+    border: 1px solid rgba(250,250,249,.25); border-radius: 999px; padding: 4px 12px; font-size: 13px;
+}
+
+/* ---------- بدنه ---------- */
+.st-main {
+    max-width: 1100px; margin: 0 auto;
+    padding: 20px max(16px, env(safe-area-inset-right)) 32px max(16px, env(safe-area-inset-left));
+}
+.st-h1 { font-size: 22px; margin: 0 0 4px; font-weight: 800; }
+.st-h2 { font-size: 16px; margin: 0 0 6px; font-weight: 700; }
+.st-muted { color: var(--st-ink-2); margin: 0 0 12px; font-size: 14px; }
+.st-date { color: var(--st-ink-2); margin: 0; }
+.st-hello { margin-bottom: 16px; }
+
+.st-card {
+    background: var(--st-surface);
+    border: 1px solid var(--st-line);
+    border-radius: var(--st-radius);
+    box-shadow: var(--st-shadow);
+    padding: 18px;
+    margin-bottom: 14px;
+}
+.st-card-invite { border-color: var(--st-accent); background: var(--st-wash); }
+.st-card-soon { border-style: dashed; box-shadow: none; }
+
+.st-kpi { display: flex; flex-direction: column; gap: 2px; }
+.st-kpi-label { color: var(--st-ink-2); font-size: 14px; }
+.st-kpi-value { font-size: 28px; font-weight: 800; align-self: flex-end; }
+.st-kpi-value small { font-size: 14px; font-weight: 500; color: var(--st-ink-2); }
+
+/* ⛔ عدد چپ‌چین، برچسب راست‌چین — همان قاعده‌ی حساب لند */
+.st-num { direction: ltr; unicode-bidi: isolate; font-variant-numeric: tabular-nums; }
+.st-num.is-neg { color: var(--st-err); }
+
+.st-list { list-style: none; margin: 14px 0 0; padding: 0; border-top: 1px solid var(--st-line); }
+.st-list-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 10px 0; border-bottom: 1px solid var(--st-line);
+}
+.st-list-row:last-child { border-bottom: 0; }
+
+/* ---------- فرم ---------- */
+.st-form { display: flex; flex-direction: column; gap: 14px; }
+.st-field { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 14px; }
+.st-field input, .st-field textarea {
+    font: inherit; font-weight: 400; color: var(--st-ink);
+    background: var(--st-bg); border: 1px solid var(--st-line); border-radius: 10px;
+    padding: 10px 12px; width: 100%;
+}
+.st-field input:focus, .st-field textarea:focus {
+    outline: 2px solid var(--st-accent); outline-offset: 1px; border-color: transparent;
+}
+.st-btn {
+    display: inline-flex; align-items: center; justify-content: center; align-self: flex-start;
+    font: inherit; font-weight: 700; cursor: pointer; text-decoration: none; white-space: nowrap;
+    background: var(--st-accent); color: var(--st-accent-ink);
+    border: 0; border-radius: 10px; padding: 10px 22px;
+}
+.st-btn:hover { background: var(--st-accent-2); }
+.st-btn-block { align-self: stretch; }
+
+.st-flash { border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 14px; }
+.st-flash-ok  { background: var(--st-ok-wash);  color: var(--st-ok); }
+.st-flash-err { background: var(--st-err-wash); color: var(--st-err); }
+
+/* ---------- ورود ---------- */
+.st-auth { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+.st-auth-box {
+    width: 100%; max-width: 380px;
+    background: var(--st-surface); border: 1px solid var(--st-line);
+    border-radius: 18px; box-shadow: var(--st-shadow); padding: 28px 22px;
+}
+.st-auth-mark {
+    display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 12px;
+    border-radius: 16px; background: var(--st-top); color: var(--st-accent);
+}
+.st-auth-box .st-h1 { text-align: center; margin-bottom: 16px; font-size: 19px; }
+.st-auth-note { margin: 14px 0 0; text-align: center; font-size: 13px; }
+
+/* ---------- منوی پایینِ موبایل ---------- */
+.st-tabbar { display: none; }
+@media (max-width: 720px) {
+    .st-nav { display: none; }
+    .st-logout { margin-inline-start: auto; }
+    .st-main { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
+    .st-tabbar {
+        display: flex; position: fixed; inset-inline: 0; bottom: 0; z-index: 20;
+        background: var(--st-surface); border-top: 1px solid var(--st-line);
+        padding: 8px max(8px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
+    }
+    .st-tab {
+        flex: 1; text-align: center; text-decoration: none; white-space: nowrap;
+        color: var(--st-ink-2); padding: 8px 4px; border-radius: 10px; font-size: 14px;
+    }
+    .st-tab.is-active { color: var(--st-accent); background: var(--st-wash); font-weight: 700; }
+}

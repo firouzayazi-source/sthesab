@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/login_throttle.php';
+require_once __DIR__ . '/biz.php';
 
 class Auth
 {
@@ -63,6 +64,11 @@ class Auth
         }
 
         self::captureAppVersion();
+
+        // ⛔ دروازه‌ی محیطِ فروشگاهی. برای حسابِ شخصی فقط یک خواندنِ
+        //    نشست است — بدونِ کوئری — پس هیچ صفحه‌ی شخصی‌ای هزینه‌اش را
+        //    نمی‌دهد. توضیح کامل بالای `includes/biz.php`.
+        Biz::gate();
     }
 
     /** کوکیِ «نسخه‌ی اپِ اندرویدِ نصب‌شده روی این دستگاه». */
@@ -293,6 +299,9 @@ class Auth
         $_SESSION['username']        = $user['username'];
         $_SESSION['role']            = $user['role'];
         $_SESSION['session_minutes'] = self::sessionMinutesFor((int)$user['id']);
+        // ⛔ نوعِ حساب فقط اینجا و در ورودِ خودکار نوشته می‌شود؛ `Biz::gate()`
+        //    فقط همین را می‌خواند، پس صفحه‌ها کوئریِ تازه‌ای نمی‌گیرند.
+        $_SESSION['account_type']    = Biz::typeFor((int)$user['id']);
         $_SESSION['login_time']      = time();
         $_SESSION['last_seen']       = time();
 
@@ -719,6 +728,7 @@ class Auth
         $_SESSION['username']          = $row['username'];
         $_SESSION['role']              = $row['role'];
         $_SESSION['session_minutes']   = $minutes;
+        $_SESSION['account_type']      = Biz::typeFor($userId);
         $_SESSION['login_time']        = time();
         $_SESSION['last_seen']         = time();
         $_SESSION['trusted_device_id'] = (int)$row['id'];
@@ -728,6 +738,12 @@ class Auth
         //    last_used_at به‌روز می‌شد و سررسید دست‌نخورده می‌ماند.
         self::slideTrustedDevice((int)$row['id'], $minutes);
         $_SESSION['trust_slid_at'] = time();
+
+        // ⛔ دروازه دوباره: `initSession()` پیش از این ورودِ خودکار اجرا شده
+        //    و آن موقع نشست خالی بود. بدونِ این خط، صاحبِ مغازه‌ای که فقط
+        //    کوکیِ دستگاه دارد با باز کردنِ `index.php` وسطِ محیطِ شخصی
+        //    فرود می‌آمد — بی‌هیچ خطایی.
+        Biz::gate();
 
         return true;
     }

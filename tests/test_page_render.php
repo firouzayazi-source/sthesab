@@ -125,6 +125,14 @@ const EXPECT = [
     // ⛔ partial است، نه صفحه. nginx مسیرِ `/admin/` را نمی‌بندد، پس
     //    بدونِ نگهبانِ خودش از بیرون ۵۰۰ می‌داد.
     'admin/_nav.php'        => 'blocked',
+
+    // ---- محیطِ فروشگاهی: این تست با نشستِ **مدیرِ شخصی** اجرا می‌شود ----
+    // ⛔ پس صفحه‌های `/store` باید ۴۰۴ بدهند — کاربرِ شخصی هیچ چیزی از
+    //    فروشگاه نمی‌بیند. رفتارِ حسابِ فروشگاهی در `test_business_mode`.
+    'store/index.php'       => 'blocked',
+    'store/settings.php'    => 'blocked',
+    'store/login.php'       => 'away',
+    'store/logout.php'      => 'skip',
 ];
 
 /** آدرس‌های پارامتردار — تا شاخه‌های شرطیِ صفحه‌ها هم اجرا شوند. */
@@ -474,7 +482,10 @@ try {
 
     $onDisk = array_merge(
         array_map('basename', glob($root . '/*.php')),
-        array_map(fn($f) => 'admin/' . basename($f), glob($root . '/admin/*.php'))
+        array_map(fn($f) => 'admin/' . basename($f), glob($root . '/admin/*.php')),
+        // ⛔ محیطِ فروشگاهی پوشه‌ی خودش را دارد؛ بدونِ این خط صفحه‌هایش
+        //    بی‌صدا بیرونِ این فهرستِ بسته می‌ماندند.
+        array_map(fn($f) => 'store/' . basename($f), glob($root . '/store/*.php'))
     );
     $missing = array_values(array_diff($onDisk, array_keys(EXPECT)));
     $stale   = array_values(array_diff(array_keys(EXPECT), $onDisk));

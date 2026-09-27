@@ -56,6 +56,8 @@ final class Audit
         // کاربر (خودش یا مدیر)
         'user.created', 'user.updated', 'user.activated', 'user.deactivated',
         'user.login_unlocked', 'account.deleted',
+        // نوعِ حساب (شخصی / فروشگاهی) — فقط مدیر، از `Biz::setType()`
+        'user.account_type',
         // تنظیماتِ نصب
         'settings.changed',
         // اشتراک و پرداخت (مدیر)

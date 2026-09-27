@@ -117,6 +117,10 @@ const NO_BUDGET = [
     'upcoming.php', 'calendar.php', 'reminders.php',
     // partial، از بیرون ۴۰۴ می‌دهد
     'admin/_nav.php',
+    // ⛔ محیطِ فروشگاهی: برای کاربرِ شخصیِ این تست فقط ۴۰۴ است؛ بودجه‌ی
+    //    واقعی‌شان با یک حسابِ **فروشگاهی** در `test_business_mode`
+    //    (`STORE_BUDGET`، فهرستِ بسته‌ی خودش) سنجیده می‌شود.
+    'store/index.php', 'store/settings.php', 'store/login.php', 'store/logout.php',
 ];
 
 // ---------------------------------------------------------------
@@ -153,7 +157,10 @@ try {
 
     $onDisk = array_merge(
         array_map('basename', glob($root . '/*.php')),
-        array_map(fn($f) => 'admin/' . basename($f), glob($root . '/admin/*.php'))
+        array_map(fn($f) => 'admin/' . basename($f), glob($root . '/admin/*.php')),
+        // ⛔ محیطِ فروشگاهی پوشه‌ی خودش را دارد؛ بدونِ این خط صفحه‌هایش
+        //    بی‌صدا بیرونِ این فهرستِ بسته می‌ماندند.
+        array_map(fn($f) => 'store/' . basename($f), glob($root . '/store/*.php'))
     );
     $covered = array_merge(array_keys(BUDGET), NO_BUDGET);
 

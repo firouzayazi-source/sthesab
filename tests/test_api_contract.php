@@ -293,7 +293,7 @@ T::group('درج متغیر کنار گیومه‌ی فارسی');
 //
 // چاره: {$var} — آکولاد مرز نام را روشن می‌کند.
 $phpFiles = [];
-foreach (['api', 'includes', 'admin', 'deploy', 'config', 'tests', '.'] as $dir) {
+foreach (['api', 'includes', 'admin', 'store', 'deploy', 'config', 'tests', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $phpFiles[realpath($p)] = true; }
 }
 // با توکنایزر خود PHP بررسی می‌شود، نه با regex روی متن خام: این‌طور
@@ -624,7 +624,9 @@ $css = (string)file_get_contents($root . '/assets/css/style.css');
 $usesSafeArea = str_contains($css, 'env(safe-area-inset');
 
 $pages = ['includes/header.php', 'login.php', 'setup.php',
-          'forgot-password.php', 'reset-password.php'];
+          'forgot-password.php', 'reset-password.php',
+          // محیطِ فروشگاهی سرآیندِ خودش را دارد (store.css هم env() دارد)
+          'includes/biz_head.php', 'store/login.php'];
 $missing = [];
 foreach ($pages as $rel) {
     $f = $root . '/' . $rel;
@@ -1203,7 +1205,7 @@ T::ok(
 T::group('قاعده ۱۴ — هر جا رمز نوشته می‌شود، دسترسی‌ها باطل شوند');
 
 $pwWriters = [];
-foreach (['api', 'includes', 'admin', 'deploy', '.'] as $dir) {
+foreach (['api', 'includes', 'admin', 'store', 'deploy', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) {
         $src = php_strip_whitespace($p);
         // فقط نوشتن، نه خواندن: `SET ... password_hash =`
@@ -1260,7 +1262,7 @@ T::group('قاعده ۱۵ — تگِ پایانِ PHP نباید داخل کام
 
 $badTag = [];
 $scanned = 0;
-foreach (['api', 'includes', 'admin', 'deploy', 'tests', 'config', '.'] as $dir) {
+foreach (['api', 'includes', 'admin', 'store', 'deploy', 'tests', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) {
         $scanned++;
         foreach (token_get_all(file_get_contents($p)) as $tk) {
@@ -1398,7 +1400,7 @@ if ($hs === false || $he === false) {
 
 $cardsSeen = 0;
 if ($need) {
-    foreach (['.', 'includes', 'admin'] as $dir) {
+    foreach (['.', 'includes', 'admin', 'store'] as $dir) {
         foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) {
             // ⛔ بلوک‌های PHP **اول** خالی می‌شوند و این نیمه‌ی لازمِ کار
             //    است، نه یک احتیاط: مقدارِ هر `data-*` با یک اکوی PHP
@@ -1723,7 +1725,7 @@ $css = file_get_contents(__DIR__ . '/../assets/css/style.css');
 // ⚠ `includes/` هم باید اسکن شود: شیتِ ثبت تراکنش آنجاست و در **هر**
 //   صفحه رندر می‌شود، پس یک `[hidden]`ِ جامانده آنجا همه‌جا دیده می‌شود.
 $hiddenClasses = [];
-foreach (['admin', 'includes', '.'] as $dir) {
+foreach (['admin', 'store', 'includes', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) {
         $src = file_get_contents($p);
         // تگی که هم `class="…"` دارد هم `hidden` تنها (نه `data-hidden`).
@@ -1798,7 +1800,7 @@ T::group('قاعده ۱۷ — کامنتِ پی‌اچ‌پی داخلِ رشت�
 $badSql  = [];
 $sqlScan = 0;
 $sqlWord = '~\b(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|REPLACE\s+INTO)\b~i';
-foreach (['api', 'api/v1', 'includes', 'admin', 'deploy', 'tests', '.'] as $dir) {
+foreach (['api', 'api/v1', 'includes', 'admin', 'store', 'deploy', 'tests', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) {
         $sqlScan++;
         foreach (token_get_all(file_get_contents($p)) as $tk) {
@@ -1841,7 +1843,7 @@ T::group('قاعده ۱۶ — هر لینک و ریدایرکتِ داخلی ب�
 
 $root      = realpath(__DIR__ . '/..');
 $linkFiles = [];
-foreach (['.', 'admin', 'includes'] as $d) {
+foreach (['.', 'admin', 'store', 'includes'] as $d) {
     foreach (glob($root . '/' . $d . '/*.php') as $p) { $linkFiles[realpath($p)] = true; }
 }
 foreach (glob($root . '/assets/js/*.js') as $p) { $linkFiles[realpath($p)] = true; }
@@ -1931,7 +1933,7 @@ T::ok(count($tabKeys) >= 2, 'فهرستِ DUE_TABS در due.php پیدا شد',
 
 $tabBad = [];
 $tabSeen = 0;
-foreach (['*.php', 'includes/*.php', 'api/*.php', 'admin/*.php'] as $g) {
+foreach (['*.php', 'includes/*.php', 'api/*.php', 'admin/*.php', 'store/*.php'] as $g) {
     foreach (glob(__DIR__ . '/../' . $g) as $p) {
         $src = file_get_contents($p);
         if (!preg_match_all("~due\.php\?t=([a-z_]+)~", $src, $mm)) { continue; }
@@ -1984,7 +1986,7 @@ T::group('قاعده ۲۲ — نامِ برند فقط از APP_NAME');
 
 $brand = 'حساب لند';
 $brandFiles = [];
-foreach (['.', 'includes', 'api', 'admin', 'deploy'] as $dir) {
+foreach (['.', 'includes', 'api', 'admin', 'store', 'deploy'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $brandFiles[realpath($p)] = true; }
 }
 // ⚠ متغیرِ جدا، نه `$bad`: بلوکِ بعدی (بررسیِ نحو) هم `$bad[]` می‌زند
@@ -2035,7 +2037,7 @@ T::group('قاعده ۲۵ — قاعده‌ی نام کاربری فقط در us
 $badUser = [];
 $userScanned = 0;
 $userFiles = [];
-foreach (['.', 'includes', 'api', 'admin'] as $dir) {
+foreach (['.', 'includes', 'api', 'admin', 'store'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $userFiles[realpath($p)] = true; }
 }
 foreach (array_keys($userFiles) as $path) {
@@ -2164,7 +2166,7 @@ $PROXY_KEYS = [
 ];
 $badProxy = [];
 $proxyScanned = 0;
-foreach (['api', 'api/v1', 'includes', 'admin', '.'] as $dir) {
+foreach (['api', 'api/v1', 'includes', 'admin', 'store', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $path) {
         $proxyScanned++;
         $src = (string)@file_get_contents($path);
@@ -2248,7 +2250,7 @@ T::ok(!preg_match('/deny\s+all/', $rendered),
 T::group('قاعده ۲۸ — گیتِ پیامک و نگهبانِ حسابِ بی‌رمز');
 
 $phpFiles = [];
-foreach (['api', 'api/v1', 'includes', 'admin', 'deploy', '.'] as $dir) {
+foreach (['api', 'api/v1', 'includes', 'admin', 'store', 'deploy', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $phpFiles[realpath($p)] = true; }
 }
 $phpFiles = array_keys($phpFiles);
@@ -2386,7 +2388,7 @@ $privRaw  = (string)@file_get_contents($privPath);
 // تنها جای تعریف — نسخه‌ی دوم یعنی صفحه و واقعیت از هم دور می‌افتند.
 foreach (['cdnInFront', 'outboundDataFlows'] as $fn) {
     $defs = 0;
-    foreach (['api', 'api/v1', 'includes', 'admin', '.'] as $dir) {
+    foreach (['api', 'api/v1', 'includes', 'admin', 'store', '.'] as $dir) {
         foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) {
             $defs += preg_match_all('/function\s+' . $fn . '\s*\(/', (string)@file_get_contents($p));
         }
@@ -2423,7 +2425,7 @@ if ($flowStart === false) {
 //   دامی که قاعده ۱۹ و ۳۵ و ۳۸ و ۴۴ هم در آن افتادند، و این بار یک
 //   کامنت در `includes/signup.php` گرفتارش کرد.
 $privConsumers = 0;
-foreach (['api', 'includes', 'admin', '.'] as $dir) {
+foreach (['api', 'includes', 'admin', 'store', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) {
         $src = $stripComments($p);
         if (!str_contains($src, 'outboundDataFlows(')
@@ -2583,7 +2585,7 @@ if ($desktop === '') {
 // و هر صفحه‌ای که ردیفِ عملیات دارد باید ستونش را هم علامت زده باشد —
 // در **هر دو** سر (`th` و `td`)، وگرنه فقط نیمی از رفع اعمال می‌شود.
 $actionPages = 0;
-foreach (['admin', '.'] as $dir) {
+foreach (['admin', 'store', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) {
         $src = (string)@file_get_contents($p);
         if (!str_contains($src, 'table-actions')) { continue; }
@@ -3288,7 +3290,7 @@ if (preg_match('/function\s+categoryRefTables\s*\([^)]*\)\s*:\s*array\s*\{(.*?)\
 
 // ۳ — جابه‌جاییِ category_id فقط در privatizeDefaultCategory()
 $movePat = '/SET\s+category_id\s*=\s*:\w+\s*\n?\s*WHERE\s+category_id/i';
-foreach (['api', 'includes', 'admin', '.'] as $dir) {
+foreach (['api', 'includes', 'admin', 'store', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) {
         $src = $stripComments($p);
         if (!preg_match($movePat, $src)) { continue; }
@@ -3564,7 +3566,7 @@ if (!preg_match('/!==\s*IMPORT_CONFIRM_PHRASE/', $impApi)) {
     $badImp[] = 'api/import_data.php — سدِ عبارتِ تایپ‌شده برداشته شده';
 }
 // و هیچ مصرف‌کننده‌ی دومی نباشد (همان قاعده‌ی «یک مرجع»).
-foreach (glob(__DIR__ . '/../{api,includes,admin,.}/*.php', GLOB_BRACE) as $p) {
+foreach (glob(__DIR__ . '/../{api,includes,admin,store,.}/*.php', GLOB_BRACE) as $p) {
     $base = basename($p);
     if ($base === 'import_data.php' || $base === 'user_import.php') { continue; }
     if (strpos($stripComments($p), 'importUserData(') !== false) {
@@ -3695,7 +3697,7 @@ $fnChunk = static function (string $src, string $sig): string {
 
 // ۱) error_log فقط در دو فایلِ خودِ لایه‌ی لاگ.
 $logAllowed = [realpath($root . '/includes/log.php'), realpath($root . '/includes/app_errors.php')];
-$scanDirs   = ['.', 'api', 'api/v1', 'api/v1/routes', 'includes', 'admin', 'deploy', 'assets'];
+$scanDirs   = ['.', 'api', 'api/v1', 'api/v1/routes', 'includes', 'admin', 'store', 'deploy', 'assets'];
 $scanned    = 0;
 foreach ($scanDirs as $d) {
     foreach (glob($root . '/' . $d . '/*.php') as $p) {
@@ -4691,7 +4693,7 @@ if (!preg_match('~function addMessage\(.*?\n    \}~s', $supSrc, $mAdd)) {
     }
 }
 // و هیچ فایلِ دیگری این ستون‌ها را ننویسد.
-foreach (glob($root . '/{,admin/,api/,includes/}*.php', GLOB_BRACE) as $p) {
+foreach (glob($root . '/{,admin/,store/,api/,includes/}*.php', GLOB_BRACE) as $p) {
     if (realpath($p) === realpath($root . '/includes/support.php')) { continue; }
     $s = $stripComments($p);
     if (preg_match('~UPDATE\s+support_tickets\s+SET[^;]*(last_sender|user_unread)~i', $s)) {
@@ -4944,7 +4946,7 @@ $includesOf = function (string $file): array {
 /* صفحه‌ها = هر `*.php` در ریشه و `admin/`. از هر کدام گرافِ include را
    می‌پیماییم و می‌شماریم هر partial از چند **صفحه** قابل دسترس است. */
 $reach = [];
-foreach (array_merge(glob($root . '/*.php'), glob($root . '/admin/*.php')) as $page) {
+foreach (array_merge(glob($root . '/*.php'), glob($root . '/admin/*.php'), glob($root . '/store/*.php')) as $page) {
     $seen = [];
     $stack = $includesOf($page);
     while ($stack) {
@@ -5381,6 +5383,7 @@ $badHex = [];
 $hexFiles = array_merge(
     glob(__DIR__ . '/../*.php') ?: [],
     glob(__DIR__ . '/../admin/*.php') ?: [],
+    glob(__DIR__ . '/../store/*.php') ?: [],
     glob(__DIR__ . '/../includes/*.php') ?: []
 );
 if (count($hexFiles) < 40) {
@@ -5617,7 +5620,7 @@ if ($ep === '') {
 
 // ⛔ تنها فراخوانِ `mergeWallet(` همان اندپوینت است.
 foreach (array_merge(glob(__DIR__ . '/../*.php'), glob(__DIR__ . '/../api/*.php'),
-                     glob(__DIR__ . '/../admin/*.php'), glob(__DIR__ . '/../includes/*.php')) as $f) {
+                     glob(__DIR__ . '/../admin/*.php'), glob(__DIR__ . '/../store/*.php'), glob(__DIR__ . '/../includes/*.php')) as $f) {
     $rel = substr(realpath($f), strlen(realpath(__DIR__ . '/..')) + 1);
     if (in_array($rel, ['api/merge_wallet.php', 'includes/functions.php'], true)) { continue; }
     // ⚠ فراخوانیِ واقعی آرگومانِ `$` دارد؛ توضیحِ HTML ای مثل
@@ -5713,7 +5716,7 @@ if (preg_match_all('/([^{}]+)\{([^{}]*)\}/s', $brCss, $rules, PREG_SET_ORDER)) {
 }
 
 // ۴) آیکونِ دسته: رنگ از `--cat-bg`، نه `background:` inline.
-foreach (array_merge(glob(__DIR__ . '/../*.php'), glob(__DIR__ . '/../admin/*.php'),
+foreach (array_merge(glob(__DIR__ . '/../*.php'), glob(__DIR__ . '/../admin/*.php'), glob(__DIR__ . '/../store/*.php'),
                      glob(__DIR__ . '/../includes/*.php'), glob(__DIR__ . '/../api/*.php')) as $f) {
     if (preg_match('/class="cat-icon[^"]*"\s+style="background\s*:/', (string)@file_get_contents($f))) {
         $badBr[] = basename($f) . ' — cat-icon با background inline (زیرِ !important سفید می‌شود؛ --cat-bg بنویسید)';
@@ -6026,7 +6029,7 @@ if (!preg_match('/function saveHomeHidden[\s\S]*?homeHiddenParse\(/', $fnSrc)) {
     $badHome[] = 'saveHomeHidden() — ورودی از homeHiddenParse() نمی‌گذرد (کلیدِ ناشناخته ذخیره می‌شد)';
 }
 foreach (array_merge(glob(__DIR__ . '/../*.php'), glob(__DIR__ . '/../api/*.php'), glob(__DIR__ . '/../includes/*.php'),
-                     glob(__DIR__ . '/../admin/*.php'), glob(__DIR__ . '/../deploy/*.php')) as $p) {
+                     glob(__DIR__ . '/../admin/*.php'), glob(__DIR__ . '/../store/*.php'), glob(__DIR__ . '/../deploy/*.php')) as $p) {
     $rel = substr(realpath($p), strlen(realpath(__DIR__ . '/..')) + 1);
     if ($rel === 'includes/functions.php') { continue; }
     if (preg_match('/SET[^;]*\bhome_hidden\s*=/i', $hwCode($rel))) {
@@ -6054,7 +6057,7 @@ if (!preg_match('/^\s+migration_home_widgets\.sql$/m', $migHome) || strpos($migH
 T::bulk(count(HOME_WIDGETS) + 10, $badHome, '⛔ قلم‌های خانه: هر کلید واقعاً چیزی را خاموش کند، یک فهرست، یک نویسنده، کارتِ بی‌ارتفاعِ ثابت');
 
 $all = [];
-foreach (['api', 'includes', 'admin', 'config', '.'] as $dir) {
+foreach (['api', 'includes', 'admin', 'store', 'config', '.'] as $dir) {
     foreach (glob(__DIR__ . '/../' . $dir . '/*.php') as $p) { $all[realpath($p)] = true; }
 }
 foreach (array_keys($all) as $p) {
@@ -6488,7 +6491,8 @@ $skip68 = preg_match("~const PREFETCH_SKIP = \[([^\]]*)\]~", $fx68, $k68) ? $k68
 if (!str_contains($skip68, "'logout.php'")) { $sBad[] = 'PREFETCH_SKIP — logout.php در فهرست نیست'; }
 // ⛔ هر صفحه‌ای که با GET «خوانده» ثبت می‌کند باید در فهرست باشد —
 //    فهرست از خودِ صفحه‌ها کشف می‌شود، نه دستی.
-$pages68 = array_merge(glob(__DIR__ . '/../*.php') ?: [], glob(__DIR__ . '/../admin/*.php') ?: []);
+$pages68 = array_merge(glob(__DIR__ . '/../*.php') ?: [], glob(__DIR__ . '/../admin/*.php') ?: [],
+                       glob(__DIR__ . '/../store/*.php') ?: []);
 $seen68 = 0;
 foreach ($pages68 as $pf) {
     $src = $strip68((string)file_get_contents($pf));
@@ -6606,5 +6610,153 @@ if (!preg_match('/@media \(min-width: 1100px\) \{\s*\.page-content\.is-desk \{ m
     $dBad[] = 'style.css — آستانه‌ی CSS با DESK_MIN_PX یکی نیست';
 }
 T::bulk(13, $dBad, 'داشبوردِ دسکتاپ پشتِ deskView، خالص دارایی از یک منبع، و آستانه‌ی یکسان');
+
+// ---------------------------------------------------------------
+// قاعده ۷۰ — محیطِ فروشگاهی (Business Mode): جداسازیِ دوطرفه
+// ---------------------------------------------------------------
+// ⛔ خواسته‌ی مالکِ نصب: «حسابداری شخصی تغییر نمی‌خوام، کاملاً جدا باشه…
+//    آدرس‌ها هم با هم قاطی نشه.» تستِ رفتاری (`test_business_mode`) به
+//    دیتابیس نیاز دارد؛ این قاعده *شکل* را روی ماشینِ بی‌دیتابیس هم نگه
+//    می‌دارد — همان استدلالِ قاعده ۴۸ و ۵۱.
+T::group('قاعده ۷۰ — محیطِ فروشگاهی جدا از حساب لندِ شخصی');
+
+$bBad = [];
+$strip70 = function (string $src): string {
+    $out = '';
+    foreach (token_get_all($src) as $t) {
+        if (is_array($t) && in_array($t[0], [T_COMMENT, T_DOC_COMMENT], true)) { continue; }
+        $out .= is_array($t) ? $t[1] : $t;
+    }
+    return $out;
+};
+$auth70 = $strip70((string)file_get_contents(__DIR__ . '/../includes/auth.php'));
+$biz70  = $strip70((string)file_get_contents(__DIR__ . '/../includes/biz.php'));
+
+// ۱. دروازه در initSession و بعد از ورودِ خودکار؛ نوعِ حساب در هر دو نویسنده‌ی نشست
+if (!preg_match('/function initSession\(\).*?Biz::gate\(\);\s*\}/s', $auth70)) {
+    $bBad[] = 'auth.php — initSession() دروازه‌ی Biz::gate() را صدا نمی‌زند';
+}
+if (!preg_match('/function loginFromTrustedDevice\(\).*?\$_SESSION\[\'account_type\'\]\s*=\s*Biz::typeFor\(.*?Biz::gate\(\);\s*return true;/s', $auth70)) {
+    $bBad[] = 'auth.php — ورودِ خودکار با کوکیِ دستگاه نوعِ حساب را نمی‌نویسد یا بعدش دروازه را صدا نمی‌زند';
+}
+// ⚠ بدنه تا **تابعِ بعدی** بریده می‌شود؛ با `.*?` آزاد، الگو در
+//   loginFromTrustedDevice پیدا می‌شد و جهشِ «نشست همیشه شخصی» زنده ماند.
+if (!preg_match('/function establishSession\((?:(?!\bfunction\b).)*?\$_SESSION\[\'account_type\'\]\s*=\s*Biz::typeFor\(/s', $auth70)) {
+    $bBad[] = 'auth.php — establishSession() نوعِ حساب را در نشست نمی‌نویسد';
+}
+
+// ۲. دروازه برای حسابِ شخصی بی‌کوئری است و پیش‌فرضش بسته
+if (!preg_match('/function isBusiness\(\): bool\s*\{(.*?)\n    \}/s', $biz70, $ib) || preg_match('/Database|prepare|query\(/', $ib[1])) {
+    $bBad[] = 'biz.php — isBusiness() باید فقط از نشست بخواند (صفر کوئری برای حسابِ شخصی)';
+}
+if (!preg_match("/function gate\(\): void\s*\{\s*if \(PHP_SAPI === 'cli' \|\| !self::isBusiness\(\)\) \{ return; \}/", $biz70)) {
+    $bBad[] = 'biz.php — اولین خطِ gate() برگشتِ فوری برای حسابِ شخصی نیست';
+}
+if (!preg_match("/public const SHARED = \['logout\.php', 'health\.php'\];/", $biz70)) {
+    $bBad[] = 'biz.php — فهرستِ بسته‌ی SHARED عوض شده؛ هر درِ تازه باید عمدی و با تست باشد';
+}
+if (!preg_match("~strncmp\(\\\$script, 'api/', 4\) === 0\).*?http_response_code\(403\)~s", $biz70)) {
+    $bBad[] = 'biz.php — اندپوینت‌ها برای حسابِ فروشگاهی ۴۰۳ نمی‌گیرند';
+}
+
+if (!preg_match('/function requirePage\(\): void\s*\{(?:(?!\bfunction\b).)*?if \(!self::isBusiness\(\)\) \{\s*self::notFound\(\);/s', $biz70)) {
+    $bBad[] = 'biz.php — requirePage() حسابِ شخصی را ۴۰۴ نمی‌کند';
+}
+if (!str_contains($biz70, "private const BUSINESS_ROLES = ['user', 'colleague'];")
+    || !str_contains($biz70, "return \$type !== 'business' || in_array(\$role, self::BUSINESS_ROLES, true);")) {
+    $bBad[] = 'biz.php — roleAllowed() دیگر مدیر و پشتیبان را از حسابِ فروشگاهی دور نگه نمی‌دارد';
+}
+
+// ۳. تنها نویسنده‌ی نوعِ حساب، با ابطال و ممیزی و قاعده‌ی نقش
+$writers70 = [];
+foreach (array_merge(glob(__DIR__ . '/../*.php') ?: [], glob(__DIR__ . '/../api/*.php') ?: [],
+                     glob(__DIR__ . '/../includes/*.php') ?: [], glob(__DIR__ . '/../admin/*.php') ?: [],
+                     glob(__DIR__ . '/../store/*.php') ?: [], glob(__DIR__ . '/../deploy/*.php') ?: []) as $f) {
+    if (preg_match('/UPDATE\s+users\s+SET\s+account_type/i', $strip70((string)file_get_contents($f)))) {
+        $writers70[] = basename(dirname($f)) . '/' . basename($f);
+    }
+}
+if ($writers70 !== ['includes/biz.php']) {
+    $bBad[] = 'نوعِ حساب جز در Biz::setType() نوشته می‌شود: ' . implode('، ', $writers70);
+}
+if (!preg_match('/function setType\(.*?roleAllowed\(.*?UPDATE users SET account_type.*?revokeAllAccessFor\(\$targetId\).*?Audit::log\(\'user\.account_type\'/s', $biz70)) {
+    $bBad[] = 'biz.php — setType() باید نقش را بسنجد، دسترسی‌ها را باطل کند و ممیزی بنویسد';
+}
+$users70 = $strip70((string)file_get_contents(__DIR__ . '/../admin/users.php'));
+if (!str_contains($users70, '!Biz::roleAllowed($role,') || !str_contains($users70, 'Biz::setType(')) {
+    $bBad[] = 'admin/users.php — فرمِ ویرایش قاعده‌ی نقش را نمی‌سنجد یا تغییرِ نوع از Biz::setType نمی‌رود';
+}
+if (!str_contains($strip70((string)file_get_contents(__DIR__ . '/../deploy/user-admin.php')), '!Biz::roleAllowed($roleIn,')) {
+    $bBad[] = 'deploy/user-admin.php — --set-role حسابِ فروشگاهی را مدیر می‌کند';
+}
+$v170 = $strip70((string)file_get_contents(__DIR__ . '/../api/v1/routes/auth.php'));
+if (!preg_match("/Biz::typeFor\(.*?=== 'business'.*?Api::fail\(.*?ApiAuth::issue\(/s", $v170)) {
+    $bBad[] = 'api/v1 — به حسابِ فروشگاهی پیش از صدورِ توکن امتناع نمی‌کند';
+}
+
+// ۴. هر صفحه‌ی store/ دروازه‌ی خودش را دارد و هیچ چیزی از پوسته‌ی شخصی لود نمی‌کند
+$storeFiles70 = glob(__DIR__ . '/../store/*.php') ?: [];
+foreach (['login.php', 'logout.php', 'index.php', 'settings.php'] as $must) {
+    if (!is_file(__DIR__ . '/../store/' . $must)) { $bBad[] = "store/{$must} نیست"; }
+}
+foreach (array_merge($storeFiles70, [__DIR__ . '/../includes/biz_head.php', __DIR__ . '/../includes/biz_foot.php']) as $f) {
+    $src = $strip70((string)file_get_contents($f));
+    $rel = basename(dirname($f)) . '/' . basename($f);
+    if (preg_match('~(header|sidebar|footer|add_tx_sheet|edit_tx_modal)\.php|js/app\.js|css/style\.css~', $src)) {
+        $bBad[] = "{$rel} — چیزی از پوسته‌ی شخصی لود می‌کند";
+    }
+    if (str_starts_with($rel, 'store/') && !in_array(basename($f), ['login.php', 'logout.php'], true)
+        && !preg_match('/Auth::initSession\(\);\s*Biz::requirePage\(\);/', $src)) {
+        $bBad[] = "{$rel} — درست بعد از initSession() دروازه‌ی Biz::requirePage() ندارد";
+    }
+}
+foreach (['biz_head.php', 'biz_foot.php'] as $pt) {
+    if (!str_contains((string)file_get_contents(__DIR__ . '/../includes/' . $pt), "if (!defined('APP_BASE_PATH')) { http_response_code(404); exit; }")) {
+        $bBad[] = "includes/{$pt} — نگهبانِ partial ندارد";
+    }
+}
+
+// ۵. طرفِ شخصی هیچ نشانی از فروشگاه ندارد
+$personal70 = array_merge(glob(__DIR__ . '/../*.php') ?: [], [
+    __DIR__ . '/../includes/header.php', __DIR__ . '/../includes/sidebar.php', __DIR__ . '/../includes/footer.php',
+    __DIR__ . '/../assets/js/app.js', __DIR__ . '/../assets/css/style.css',
+]);
+foreach ($personal70 as $f) {
+    $src = (string)file_get_contents($f);
+    if (preg_match('~/store/|store\.css|Biz::url|\.st-[a-z]~', $src)) {
+        $bBad[] = basename($f) . ' — نشانی از محیطِ فروشگاه در طرفِ شخصی';
+    }
+}
+foreach (array_merge(glob(__DIR__ . '/../*.php') ?: [], glob(__DIR__ . '/../api/*.php') ?: [],
+                     glob(__DIR__ . '/../admin/*.php') ?: [], glob(__DIR__ . '/../includes/*.php') ?: []) as $f) {
+    $b = basename($f);
+    if (str_starts_with($b, 'biz') || $b === 'admin_insights.php') { continue; }
+    if (preg_match('/\bbiz_[a-z_]+\b/', $strip70((string)file_get_contents($f)), $bm)) {
+        $bBad[] = "{$b} — جدولِ فروشگاهی ({$bm[0]}) را از طرفِ شخصی می‌خواند";
+    }
+}
+
+// ۶. migration ثبت شده، و هیچ پوشه‌ی PHPِ تازه‌ای بیرونِ پوششِ تست‌ها نمانده
+$mig70 = (string)file_get_contents(__DIR__ . '/../deploy/migrate.sh');
+if (!preg_match('/^\s+migration_business_mode\.sql$/m', $mig70) || !str_contains($mig70, '[migration_business_mode.sql]="users.account_type"')) {
+    $bBad[] = 'migrate.sh — migration_business_mode.sql در MIGRATIONS یا SENTINEL نیست';
+}
+$knownDirs70 = ['.', 'admin', 'api', 'api/v1', 'api/v1/routes', 'assets', 'config', 'deploy', 'includes', 'store', 'tests', 'tests/lib'];
+$rootReal = realpath(__DIR__ . '/..');
+$it70 = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($rootReal, FilesystemIterator::SKIP_DOTS));
+$dirs70 = [];
+foreach ($it70 as $fi) {
+    if ($fi->getExtension() !== 'php') { continue; }
+    $rel = ltrim(substr($fi->getPath(), strlen($rootReal)), '/');
+    $rel = $rel === '' ? '.' : $rel;
+    if (preg_match('~^(\.git|mobile|uploads|var|node_modules)(/|$)~', $rel)) { continue; }
+    $dirs70[$rel] = true;
+}
+foreach (array_keys($dirs70) as $d) {
+    if (!in_array($d, $knownDirs70, true)) {
+        $bBad[] = "پوشه‌ی {$d} فایلِ PHP دارد ولی هیچ اسکنرِ تستی آن را نمی‌بیند";
+    }
+}
+T::bulk(22, $bBad, 'محیطِ فروشگاهی: دروازه‌ی بی‌کوئری، تنها نویسنده، صفحه‌های محافظت‌شده، و طرفِ شخصیِ دست‌نخورده');
 
 exit(T::report());

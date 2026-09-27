@@ -55,6 +55,15 @@ function v1AuthLogin(array $params): void
     }
 
     $user  = $result['user'];
+
+    // ⛔ API موبایل در این مرحله فقط برای حسابِ شخصی است: همه‌ی مسیرهای
+    //    v1 (تراکنش، حساب، دسته‌بندی) تجربه‌ی شخصی‌اند، و حسابِ فروشگاهی
+    //    عمداً فقط `/store` را می‌بیند. تغییرِ نوعِ حساب همه‌ی توکن‌ها را
+    //    باطل می‌کند (`Biz::setType()`)، پس توکنِ فروشگاهیِ کهنه‌ای نمی‌ماند.
+    if (Biz::typeFor((int)$user['id']) === 'business') {
+        Api::fail('business_account', 'این حساب فروشگاهی است و از پنلِ فروشگاه (/store) وارد می‌شود.', 403);
+    }
+
     $token = ApiAuth::issue(
         (int)$user['id'],
         Api::input('device_name'),
