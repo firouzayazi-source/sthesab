@@ -26,7 +26,7 @@ $self  = Biz::url('product.php' . ($id > 0 ? '?id=' . $id : ''));
 $error = '';
 $form  = $product ?? [
     'name' => '', 'sku' => '', 'category' => '', 'unit' => 'عدد', 'buy_price' => '', 'sell_price' => '',
-    'min_stock' => '', 'track_stock' => 1, 'note' => '',
+    'min_stock' => '', 'track_stock' => 1, 'has_serial' => 0, 'note' => '',
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -40,7 +40,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $error = $res['message'];
         $form  = array_merge($form, array_intersect_key($_POST, $form));
-        $form['track_stock'] = empty($_POST['is_service']) ? 1 : 0;
+        $t = (string)postParam('type');
+        $form['track_stock'] = $t === 'service' ? 0 : 1;
+        $form['has_serial']  = $t === 'phone' ? 1 : 0;
     } elseif ($product && $action === 'opening') {
         $cost = trim(postParam('opening_cost')) === '' ? (int)$product['buy_price'] : sanitizeAmount(postParam('opening_cost'));
         $res  = BizStock::setOpening($userId, $id, sanitizeQty(postParam('opening_qty')), $cost);
@@ -68,6 +70,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $cats    = BizProducts::categories($userId);
 $tracked = $product && (int)$product['track_stock'] === 1;
+$ptype   = BizProducts::typeOf($form);
+// گوشی: فهرستِ دستگاه‌های در انبار با IMEI (فقط برای همین نوع — یک کوئری)
+$units   = null;
+if ($product && BizProducts::typeOf($product) === 'phone') {
+    require_once __DIR__ . '/../includes/biz_docs.php';
+    $units = BizSerial::inStock($userId, $id, 500);
+}
 $moves   = $tracked ? BizStock::moves($userId, $id) : [];
 $opening = null;
 foreach ($moves as $m) { if ($m['kind'] === 'opening') { $opening = $m; } }
@@ -179,10 +188,15 @@ require __DIR__ . '/../includes/biz_head.php';
     </fieldset>
     <?php endif; ?>
 
-    <label class="st-check">
-        <input type="checkbox" name="is_service" value="1"<?= (int)$form['track_stock'] === 1 ? '' : ' checked' ?>>
-        <span>خدمت است (مثل نصب یا تعمیر) — موجودی ندارد</span>
-    </label>
+    <fieldset class="st-fieldset">
+        <legend>نوعِ کالا</legend>
+        <div class="st-seg st-seg-sm" role="radiogroup" aria-label="نوعِ کالا">
+            <?php foreach (BizProducts::TYPES as $tk => $tl): ?>
+            <label class="st-seg-opt"><input type="radio" name="type" value="<?= h($tk) ?>"<?= $ptype === $tk ? ' checked' : '' ?>><span><?= h($tl) ?></span></label>
+            <?php endforeach; ?>
+        </div>
+        <p class="st-muted">گوشی: هر دستگاه با IMEIِ خودش خرید و فروش می‌شود (فاکتورِ خرید، یک ردیف برای هر گوشی). خدمت موجودی ندارد.</p>
+    </fieldset>
     <label class="st-field">
         <span>یادداشت <small class="st-muted">(اختیاری)</small></span>
         <textarea name="note" rows="2" maxlength="<?= BizProducts::LIMITS['note'] ?>"><?= h((string)$form['note']) ?></textarea>
@@ -230,6 +244,28 @@ require __DIR__ . '/../includes/biz_head.php';
 </div>
 <?php endif; ?>
 </div>
+
+<?php if ($units !== null): ?>
+<section class="st-card" id="imei">
+    <div class="st-card-head">
+        <h2 class="st-h2">گوشی‌های در انبار <small class="st-muted">(<?= toPersianDigits((string)count($units['rows'])) ?>)</small></h2>
+        <a href="<?= h(Biz::url('invoice-edit.php?k=purchase')) ?>">+ خریدِ گوشیِ تازه</a>
+    </div>
+    <?php if (!$units['rows']): ?>
+        <p class="st-empty">هیچ گوشیِ IMEIداری از این مدل در انبار نیست. گوشی با فاکتورِ خرید وارد می‌شود (یک ردیف برای هر دستگاه، با IMEI ۱ و ۲).</p>
+    <?php else: ?>
+    <ul class="st-unit-list">
+        <?php foreach ($units['rows'] as $u): ?>
+        <li><span class="st-num" dir="ltr"><?= h($u['imei1']) ?></span><?php if ($u['imei2'] !== null): ?><span class="st-num st-muted" dir="ltr"><?= h($u['imei2']) ?></span><?php endif; ?></li>
+        <?php endforeach; ?>
+    </ul>
+    <?php if ($units['capped']): ?><p class="st-muted">فهرست بریده شده است.</p><?php endif; ?>
+    <?php endif; ?>
+    <?php if ((float)$product['stock_qty'] > count($units['rows'])): ?>
+        <p class="st-muted">موجودیِ انبار <?= h(formatQty($product['stock_qty'])) ?> است ولی <?= toPersianDigits((string)count($units['rows'])) ?> گوشی IMEIِ ثبت‌شده دارد — بقیه پیش از ثبتِ IMEI (موجودیِ اول دوره یا انبارگردانی) وارد شده‌اند و هنگامِ فروش IMEIشان نوشته می‌شود.</p>
+    <?php endif; ?>
+</section>
+<?php endif; ?>
 
 <?php if ($tracked): ?>
 <section class="st-card">

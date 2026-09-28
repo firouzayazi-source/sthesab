@@ -9,6 +9,15 @@
  * ⛔ فرمِ سادهٔ HTML است و بی‌جاوااسکریپت کار می‌کند: «افزودنِ ردیف» یک
  *    دکمه‌ی فرم است که فقط دوباره رندر می‌کند، و جمع‌ها را همیشه سرور حساب
  *    می‌کند؛ `store.js` فقط جمعِ زنده و پر کردنِ قیمت را اضافه می‌کند.
+ *
+ * فروشگاهِ موبایل و لوازم جانبی:
+ * - ⛔ سررسید ندارد (خواسته‌ی مالکِ نصب) — فیلدش رفت و `BizInvoices::state()`
+ *   هم دیگر «سررسید گذشته» نمی‌سازد.
+ * - «+» کنارِ خانه‌ی کالا پنلِ «کالای تازه» را باز می‌کند (نوع: کالا/گوشی/
+ *   خدمت، قیمت، و برای گوشی IMEI ۱ و ۲). ثبتش از همان `BizProducts::save()`
+ *   است و ردیف را پر می‌کند؛ پیش‌نویس ذخیره نمی‌شود و چیزی از فاکتورِ
+ *   نیمه‌کاره گم نمی‌شود، چون پنل داخلِ همین فرم است.
+ * - IMEI در خانه‌ی کالا (تایپ، اسکن یا انتخاب از فهرست) گوشی را پیدا می‌کند.
  */
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
@@ -38,7 +47,6 @@ $accounts = BizDocView::accounts($userId);
 $form = [
     'party_id' => $inv ? (int)$inv['party_id'] : (int)getParam('party', '0'),
     'inv_date' => BizDocView::jDate($inv ? (string)$inv['inv_date'] : date('Y-m-d')),
-    'due_date' => BizDocView::jDate($inv['due_date'] ?? null),
     'discount' => $inv && (int)$inv['discount'] > 0 ? (string)(int)$inv['discount'] : '',
     'extra'    => $inv && (int)$inv['extra'] > 0 ? (string)(int)$inv['extra'] : '',
     'note'     => (string)($inv['note'] ?? ''),
@@ -47,6 +55,9 @@ $form = [
 ];
 $blank = $inv ? 2 : 4;
 $error = '';
+$notice = '';
+// پنلِ «کالای تازه» — `row` اندیسِ ردیف در فهرستِ پُرشده، یا -1 = ردیفِ تازه
+$np = ['open' => false, 'row' => -1, 'type' => 'goods', 'name' => '', 'sku' => '', 'buy' => '', 'sell' => '', 'imei1' => '', 'imei2' => '', 'error' => ''];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Csrf::verifyOrFail(postParam('csrf_token'));
@@ -58,22 +69,76 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $in = [
         'party_id' => (int)postParam('party_id'),
         'inv_date' => BizDocView::gDate(postParam('inv_date')),
-        'due_date' => BizDocView::gDate(postParam('due_date')),
         'discount' => postParam('discount'), 'extra' => postParam('extra'), 'note' => postParam('note'),
         'lines'    => is_array($_POST['lines'] ?? null) ? $_POST['lines'] : [],
     ];
+    $rawLines = array_values(array_filter($in['lines'], 'is_array'));
+    $filled   = fn($l) => trim((string)($l['item'] ?? '')) !== '' || trim((string)($l['price'] ?? '')) !== ''
+                          || trim((string)($l['imei1'] ?? '')) !== '';
+    // اندیسِ ردیفِ جدولِ فرستاده‌شده → اندیس در فهرستِ پُرشده (ردیفِ خالی = ردیفِ تازه)
+    $rowAt = function (int $i) use ($rawLines, $filled): int {
+        if (!isset($rawLines[$i]) || !$filled($rawLines[$i])) { return -1; }
+        $n = 0;
+        for ($k = 0; $k < $i; $k++) { if ($filled($rawLines[$k])) { $n++; } }
+        return $n;
+    };
     $form = array_merge($form, [
-        'party_id' => $in['party_id'], 'inv_date' => postParam('inv_date'), 'due_date' => postParam('due_date'),
+        'party_id' => $in['party_id'], 'inv_date' => postParam('inv_date'),
         'discount' => $in['discount'], 'extra' => $in['extra'], 'note' => $in['note'], 'lines' => array_values($in['lines']),
         'pay_mode' => in_array(postParam('pay_mode'), ['none', 'full', 'part'], true) ? postParam('pay_mode') : 'none',
         'pay_amount' => postParam('pay_amount'), 'account_id' => (int)postParam('account_id'),
         'method' => isset(BizPay::METHODS[postParam('method')]) ? postParam('method') : 'cash',
     ]);
     // ردیف‌های خالیِ فرم دوباره نشان داده نمی‌شوند؛ «افزودنِ ردیف» پنج تای تازه می‌گذارد
-    $form['lines'] = array_values(array_filter($form['lines'], fn($l) => is_array($l)
-        && (trim((string)($l['item'] ?? '')) !== '' || trim((string)($l['price'] ?? '')) !== '')));
+    $form['lines'] = array_values(array_filter($rawLines, $filled));
 
-    if ($action === 'addrows') {
+    if (isset($_POST['np_open'])) {
+        // «+» بی‌جاوااسکریپت: همان صفحه با پنلِ باز. متنِ ردیف نامِ پیشنهادی
+        // است؛ اگر خودش IMEI بود، گوشی با همان IMEI.
+        $ri    = (int)postParam('np_open');
+        $typed = trim((string)($rawLines[$ri]['item'] ?? ''));
+        $asImei = BizSerial::valid(BizSerial::norm($typed));
+        $np = array_merge($np, ['open' => true, 'row' => $rowAt($ri), 'type' => $asImei ? 'phone' : 'goods',
+                                'name' => $asImei ? '' : $typed, 'imei1' => $asImei ? BizSerial::norm($typed) : '']);
+    } elseif ($action === 'np_save') {
+        $raw = is_array($_POST['np'] ?? null) ? $_POST['np'] : [];
+        $np  = array_merge($np, ['open' => true, 'row' => $rowAt((int)($raw['row'] ?? -1)),
+            'type' => isset(BizProducts::TYPES[$raw['type'] ?? '']) ? (string)$raw['type'] : 'goods',
+            'name' => (string)($raw['name'] ?? ''), 'sku' => (string)($raw['sku'] ?? ''),
+            'buy' => (string)($raw['buy'] ?? ''), 'sell' => (string)($raw['sell'] ?? ''),
+            'imei1' => BizSerial::norm((string)($raw['imei1'] ?? '')), 'imei2' => BizSerial::norm((string)($raw['imei2'] ?? ''))]);
+        if ($np['type'] !== 'phone') { $np['imei1'] = $np['imei2'] = ''; }
+        // IMEI پیش از ساختِ کالا سنجیده می‌شود، وگرنه کالا ساخته می‌شد و ردیف نه
+        foreach (['imei1', 'imei2'] as $c) {
+            if ($np[$c] !== '' && !BizSerial::valid($np[$c])) { $np['error'] = 'IMEI «' . $np[$c] . '» معتبر نیست (۱۴ تا ۱۷ رقم).'; }
+        }
+        if ($np['error'] === '') {
+            $res = BizProducts::save($userId, [
+                'type' => $np['type'], 'name' => $np['name'], 'sku' => $np['sku'],
+                'unit' => $np['type'] === 'phone' ? 'دستگاه' : 'عدد',
+                'buy_price' => $np['buy'], 'sell_price' => $np['sell'],
+            ]);
+            if (!$res['ok']) {
+                $np['error'] = $res['message'];
+            } else {
+                $prod = BizProducts::get($userId, (int)$res['id']);
+                $line = ['item' => (string)$prod['name'], 'product_id' => (int)$prod['id'], 'qty' => '1',
+                         'price' => (string)(int)($kind === 'sale' ? $prod['sell_price'] : $prod['buy_price']),
+                         'imei1' => $np['imei1'], 'imei2' => $np['imei2'], 'serial' => $np['type'] === 'phone'];
+                if ($np['row'] >= 0 && isset($form['lines'][$np['row']])) {
+                    $form['lines'][$np['row']] = $line;
+                    $at = $np['row'];
+                } else {
+                    $form['lines'][] = $line;
+                    $at = count($form['lines']) - 1;
+                }
+                $notice = '«' . $prod['name'] . '» به فهرستِ کالا اضافه شد و در ردیفِ ' . toPersianDigits((string)($at + 1)) . ' نشست.';
+                $np = ['open' => false, 'row' => -1, 'type' => 'goods', 'name' => '', 'sku' => '', 'buy' => '', 'sell' => '', 'imei1' => '', 'imei2' => '', 'error' => ''];
+            }
+        }
+    } elseif ($action === 'np_cancel') {
+        // فقط بستنِ پنل — فرم همان‌طور که بود دوباره نشان داده می‌شود
+    } elseif ($action === 'addrows') {
         $blank = 6;
     } else {
         $res = BizInvoices::saveDraft($userId, $kind, $in, $id);
@@ -108,7 +173,9 @@ $parsed = BizInvoices::parseLines($userId, array_map(fn($l) => [
     'item' => $l['item'] ?? $l['description'] ?? '', 'product_id' => $l['product_id'] ?? '',
     'qty' => isset($l['qty']) ? (string)$l['qty'] : '', 'price' => $l['price'] ?? (isset($l['unit_price']) ? (string)$l['unit_price'] : ''),
     'disc' => $l['disc'] ?? (isset($l['line_discount']) ? (string)$l['line_discount'] : ''),
+    'imei1' => (string)($l['imei1'] ?? ''), 'imei2' => (string)($l['imei2'] ?? ''),
 ], $form['lines']));
+$form['lines'] = BizDocView::mergeMeta($form['lines'], $parsed['meta']);
 $tot = BizInvoices::totals($parsed['lines'], sanitizeAmount($form['discount']), sanitizeAmount($form['extra']));
 // جمعِ هر ردیف کنارِ خودش (فرمِ ردشده جمع ندارد)
 foreach ($form['lines'] as $k => $l) {
@@ -142,6 +209,7 @@ require __DIR__ . '/../includes/biz_head.php';
 </div>
 
 <?php if ($error !== ''): ?><div class="st-flash st-flash-err" role="alert"><?= h($error) ?></div><?php endif; ?>
+<?php if ($notice !== ''): ?><div class="st-flash st-flash-ok" role="status"><?= h($notice) ?></div><?php endif; ?>
 <?php if ($stockWarn): ?>
 <div class="st-flash st-flash-warn" role="status">بیش از موجودی — صدور انجام نمی‌شود تا موجودی برسد: <?= h(implode('، ', $stockWarn)) ?></div>
 <?php endif; ?>
@@ -149,7 +217,7 @@ require __DIR__ . '/../includes/biz_head.php';
 <form method="post" class="st-docform" action="<?= h($self) ?>" data-invoice data-price="<?= $isSale ? 'sell' : 'buy' ?>">
     <?= Csrf::field() ?>
     <section class="st-card st-doc-head">
-        <div class="st-row3">
+        <div class="st-row2">
             <label class="st-field">
                 <span><?= h($partyLbl) ?></span>
                 <select name="party_id" data-party>
@@ -164,10 +232,6 @@ require __DIR__ . '/../includes/biz_head.php';
                 <span>تاریخ</span>
                 <input type="text" name="inv_date" value="<?= h((string)$form['inv_date']) ?>" dir="ltr" placeholder="۱۴۰۵/۰۷/۰۵" inputmode="numeric">
             </label>
-            <label class="st-field">
-                <span>سررسید <small class="st-muted">(اختیاری)</small></span>
-                <input type="text" name="due_date" value="<?= h((string)$form['due_date']) ?>" dir="ltr" placeholder="—" inputmode="numeric">
-            </label>
         </div>
     </section>
 
@@ -178,13 +242,41 @@ require __DIR__ . '/../includes/biz_head.php';
                     <th class="st-line-no">#</th><th>کالا یا شرح</th><th class="st-th-num">مقدار</th>
                     <th class="st-th-num">بهای واحد</th><th class="st-th-num st-hide-sm">تخفیف</th><th class="st-th-num">جمع</th>
                 </tr></thead>
-                <tbody data-lines><?= BizDocView::lineRows($form['lines'], $blank) ?></tbody>
+                <tbody data-lines><?= BizDocView::lineRows($form['lines'], $blank, true) ?></tbody>
             </table>
         </div>
         <div class="st-lines-tools">
             <button type="submit" name="action" value="addrows" class="st-link-btn" formnovalidate data-add-rows>+ ردیفِ بیشتر</button>
-            <span class="st-muted-i">کالا را با نام، کد یا بارکد بنویسید؛ چیزی که در فهرستِ کالا نیست «شرحِ آزاد» می‌شود و به موجودی دست نمی‌زند.</span>
+            <span class="st-muted-i">کالا را با نام، کد، بارکد یا IMEI پیدا کنید؛ کالای تازه را با «+» کنارِ همان خانه تعریف کنید. گوشی هر ردیف یک دستگاه است با IMEIِ خودش. چیزی که در فهرستِ کالا نیست «شرحِ آزاد» می‌شود و به موجودی دست نمی‌زند.</span>
         </div>
+    </section>
+
+    <section class="st-card st-np" id="np" data-np<?= $np['open'] ? '' : ' hidden' ?> aria-labelledby="npTitle">
+        <div class="st-np-head">
+            <h2 class="st-h3" id="npTitle">تعریفِ کالای تازه</h2>
+            <button type="submit" name="action" value="np_cancel" class="st-link-btn" formnovalidate data-np-close>بستن</button>
+        </div>
+        <?php if ($np['error'] !== ''): ?><div class="st-flash st-flash-err" role="alert"><?= h($np['error']) ?></div><?php endif; ?>
+        <input type="hidden" name="np[row]" value="<?= (int)$np['row'] ?>" data-np-row>
+        <div class="st-seg st-seg-sm st-np-types" role="radiogroup" aria-label="نوعِ کالا">
+            <?php foreach (BizProducts::TYPES as $tk => $tl): ?>
+            <label class="st-seg-opt"><input type="radio" name="np[type]" value="<?= h($tk) ?>"<?= $np['type'] === $tk ? ' checked' : '' ?> data-np-type><span><?= h($tl) ?></span></label>
+            <?php endforeach; ?>
+        </div>
+        <div class="st-row2">
+            <label class="st-field"><span>نام <small class="st-muted">(مثلاً «آیفون ۱۵ — ۱۲۸ گیگ»)</small></span><input type="text" name="np[name]" value="<?= h($np['name']) ?>" maxlength="<?= BizProducts::LIMITS['name'] ?>" data-np-name></label>
+            <label class="st-field"><span>کد یا بارکد <small class="st-muted">(اختیاری)</small></span><input type="text" name="np[sku]" value="<?= h($np['sku']) ?>" dir="ltr" maxlength="<?= BizProducts::LIMITS['sku'] ?>"></label>
+        </div>
+        <div class="st-row2">
+            <label class="st-field"><span>قیمتِ خرید</span><input type="text" name="np[buy]" value="<?= h($np['buy']) ?>" inputmode="numeric" dir="ltr"></label>
+            <label class="st-field"><span>قیمتِ فروش</span><input type="text" name="np[sell]" value="<?= h($np['sell']) ?>" inputmode="numeric" dir="ltr"></label>
+        </div>
+        <div class="st-row2" data-np-imei>
+            <label class="st-field"><span>IMEI ۱ <small class="st-muted">(فقط گوشی)</small></span><input type="text" name="np[imei1]" value="<?= h($np['imei1']) ?>" inputmode="numeric" dir="ltr" autocomplete="off"></label>
+            <label class="st-field"><span>IMEI ۲ <small class="st-muted">(گوشیِ دوسیم‌کارت)</small></span><input type="text" name="np[imei2]" value="<?= h($np['imei2']) ?>" inputmode="numeric" dir="ltr" autocomplete="off"></label>
+        </div>
+        <p class="st-muted">کالا در فهرستِ کالاها ثبت می‌شود و همین‌جا در ردیفِ فاکتور می‌نشیند (قیمتِ <?= $isSale ? 'فروش' : 'خرید' ?>، مقدارِ ۱). موجودی فقط با صدورِ فاکتور عوض می‌شود.</p>
+        <button type="submit" name="action" value="np_save" class="st-btn" formnovalidate>ثبتِ کالا و افزودن به فاکتور</button>
     </section>
 
     <div class="st-doc-foot">
@@ -235,5 +327,5 @@ require __DIR__ . '/../includes/biz_head.php';
     <button type="submit" class="st-link-btn st-link-danger">حذفِ پیش‌نویس</button>
 </form>
 <?php endif; ?>
-<?= BizDocView::productDatalist($userId) ?>
+<?= BizDocView::productDatalist($userId, 'bizProducts', 2000, $isSale) ?>
 <?php require __DIR__ . '/../includes/biz_foot.php'; ?>

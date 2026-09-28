@@ -49,7 +49,6 @@ final class BizInvoices
         ''        => 'همه',
         'draft'   => 'پیش‌نویس',
         'open'    => 'تسویه‌نشده',
-        'overdue' => 'سررسید گذشته',
         'paid'    => 'تسویه‌شده',
         'void'    => 'باطل',
     ];
@@ -60,7 +59,6 @@ final class BizInvoices
         'open'    => 'صادرشده',
         'partial' => 'پرداختِ جزئی',
         'paid'    => 'تسویه',
-        'overdue' => 'سررسید گذشته',
         'void'    => 'باطل',
     ];
 
@@ -69,15 +67,19 @@ final class BizInvoices
     public const NOTE_MAX  = 300;
     public const DESC_MAX  = 200;
 
-    /** وضعیتِ نمایشیِ یک سند (برای نشان و صافی). */
-    public static function state(array $inv, ?string $today = null): string
+    /**
+     * وضعیتِ نمایشیِ یک سند (برای نشان و صافی).
+     * ⛔ «سررسید گذشته» نیست: فاکتور به خواسته‌ی مالکِ نصب سررسید ندارد
+     *    («سررسید رو پاک کن نمی‌خوام»). ستونِ `due_date` برای سندهای قدیمی
+     *    مانده و صفحه‌ی سند و چاپ فقط اگر پر باشد نشانش می‌دهند؛ گزارشِ
+     *    سنِ بدهی با `COALESCE(due_date, inv_date)` از تاریخِ فاکتور می‌شمارد.
+     */
+    public static function state(array $inv): string
     {
         if ($inv['status'] === 'draft') { return 'draft'; }
         if ($inv['status'] === 'void')  { return 'void'; }
         $total = (int)$inv['total']; $paid = (int)$inv['paid'];
         if ($paid >= $total) { return 'paid'; }
-        $today = $today ?? date('Y-m-d');
-        if (!empty($inv['due_date']) && (string)$inv['due_date'] < $today) { return 'overdue'; }
         return $paid > 0 ? 'partial' : 'open';
     }
 
@@ -113,7 +115,7 @@ final class BizInvoices
         $inv = $st->fetch();
         if (!$inv) { return null; }
         $st = $pdo->prepare(
-            'SELECT l.*, pr.name AS product_name, pr.sku, pr.track_stock, pr.stock_qty
+            'SELECT l.*, pr.name AS product_name, pr.sku, pr.track_stock, pr.has_serial, pr.stock_qty
              FROM biz_invoice_lines l
              LEFT JOIN biz_products pr ON pr.id = l.product_id AND pr.user_id = l.user_id
              WHERE l.invoice_id = :id AND l.user_id = :u ORDER BY l.line_no, l.id'
@@ -141,11 +143,17 @@ final class BizInvoices
             case 'void':    $where[] = "i.status = 'void'"; break;
             case 'paid':    $where[] = "i.status = 'issued' AND i.paid >= i.total"; break;
             case 'open':    $where[] = "i.status = 'issued' AND i.paid < i.total"; break;
-            case 'overdue': $where[] = "i.status = 'issued' AND i.paid < i.total AND i.due_date IS NOT NULL AND i.due_date < CURDATE()"; break;
         }
         if ($q !== '') {
             $qq = toLatinDigits($q);
-            if (preg_match('/^\s*#?(\d{1,9})\s*$/', $qq, $m)) {
+            $qi = BizSerial::norm($q);
+            if (BizSerial::valid($qi)) {
+                // ⛔ «این گوشی کِی و به چه کسی فروخته/از چه کسی خریده شد؟» —
+                //    IMEI در هر کدام از دو ستونِ ردیف
+                $where[] = 'EXISTS (SELECT 1 FROM biz_invoice_lines ql WHERE ql.invoice_id = i.id AND ql.user_id = i.user_id
+                                     AND (ql.imei1 = :qi1 OR ql.imei2 = :qi2))';
+                $params['qi1'] = $params['qi2'] = $qi;
+            } elseif (preg_match('/^\s*#?(\d{1,9})\s*$/', $qq, $m)) {
                 $where[] = '(i.number = :qn OR p.name LIKE :qp ESCAPE \'!\')';
                 $params['qn'] = (int)$m[1];
                 $params['qp'] = BizCommon::like($q);
@@ -211,25 +219,34 @@ final class BizInvoices
      * (بی‌اثر بر موجودی — صفحه‌ی سند همین را صریح نشان می‌دهد).
      * ردیفِ کاملاً خالی نادیده گرفته می‌شود.
      *
-     * @return array{lines:array, errors:array<int,string>}
+     * `meta` (کلید = اندیسِ ورودی) کالای پیدا‌شده و IMEIِ هر ردیف را حتی
+     * برای ردیفِ خطادار می‌گوید — صفحه با آن ردیف را دوباره می‌چیند (IMEIِ
+     * تایپ‌شده در خانه‌ی کالا بی‌جاوااسکریپت هم به نامِ گوشی تبدیل می‌شود).
+     *
+     * @return array{lines:array, errors:array<int,string>, meta:array<int,array>}
      */
     public static function parseLines(int $userId, array $raw): array
     {
         $pdo = Database::getConnection();
-        $byId = $pdo->prepare('SELECT id, name, unit, track_stock, is_active FROM biz_products WHERE id = :id AND user_id = :u');
-        $bySku = $pdo->prepare('SELECT id, name, unit, track_stock, is_active FROM biz_products WHERE sku = :s AND user_id = :u LIMIT 1');
-        $byName = $pdo->prepare('SELECT id, name, unit, track_stock, is_active FROM biz_products WHERE name = :n AND user_id = :u ORDER BY is_active DESC, id LIMIT 1');
+        $cols = 'id, name, unit, track_stock, has_serial, is_active';
+        $byId = $pdo->prepare("SELECT {$cols} FROM biz_products WHERE id = :id AND user_id = :u");
+        $bySku = $pdo->prepare("SELECT {$cols} FROM biz_products WHERE sku = :s AND user_id = :u LIMIT 1");
+        $byName = $pdo->prepare("SELECT {$cols} FROM biz_products WHERE name = :n AND user_id = :u ORDER BY is_active DESC, id LIMIT 1");
 
-        $lines = []; $errors = []; $no = 0;
+        $lines = []; $errors = []; $meta = []; $seen = []; $no = 0;
         foreach (array_values($raw) as $i => $r) {
             if (!is_array($r)) { continue; }
             $item  = BizCommon::line((string)($r['item'] ?? ''));
             $pid   = (int)($r['product_id'] ?? 0);
             $qtyIn = trim((string)($r['qty'] ?? ''));
             $prIn  = trim((string)($r['price'] ?? ''));
-            if ($item === '' && $pid === 0 && $prIn === '') { continue; }
+            $imei1 = BizSerial::norm((string)($r['imei1'] ?? ''));
+            $imei2 = BizSerial::norm((string)($r['imei2'] ?? ''));
+            if ($imei1 === '' && $imei2 !== '') { [$imei1, $imei2] = [$imei2, '']; }
+            if ($item === '' && $pid === 0 && $prIn === '' && $imei1 === '') { continue; }
             $no++;
             if ($no > self::MAX_LINES) { $errors[$i] = 'حداکثر ' . self::MAX_LINES . ' ردیف.'; break; }
+            $tag = 'ردیف ' . toPersianDigits((string)$no) . ': ';
 
             $prod = null;
             if ($pid > 0) { $byId->execute(['id' => $pid, 'u' => $userId]); $prod = $byId->fetch() ?: null; }
@@ -241,6 +258,24 @@ final class BizInvoices
                 $bySku->execute(['s' => toLatinDigits($item), 'u' => $userId]); $prod = $bySku->fetch() ?: null;
                 if (!$prod) { $byName->execute(['n' => $item, 'u' => $userId]); $prod = $byName->fetch() ?: null; }
             }
+            // ⛔ جست‌وجوی هوشمند: متنِ ردیف خودش یک IMEI است (اسکن یا تایپِ
+            //    شماره‌ی روی جعبه) → گوشیِ همان IMEI از اسنادِ صادرشده.
+            $typedImei = BizSerial::norm($item);
+            if (!$prod && BizSerial::valid($typedImei)) {
+                $unit = BizSerial::lookup($userId, $typedImei);
+                if ($unit !== null && $unit['product_id'] !== null) {
+                    $byId->execute(['id' => $unit['product_id'], 'u' => $userId]); $prod = $byId->fetch() ?: null;
+                    if ($prod && $imei1 === '') { $imei1 = $unit['imei1']; $imei2 = (string)($unit['imei2'] ?? ''); }
+                }
+            }
+            if (!$prod && BizSerial::valid($typedImei) && $imei1 === '') {
+                $meta[$i] = ['product_id' => null, 'name' => null, 'serial' => false, 'imei1' => '', 'imei2' => ''];
+                $errors[$i] = $tag . 'گوشی با IMEI «' . $typedImei . '» پیدا نشد. نامِ گوشی را بنویسید و IMEI را در خانه‌ی خودش، یا با «+» گوشیِ تازه تعریف کنید.';
+                continue;
+            }
+            $serial = $prod && (int)$prod['has_serial'] === 1 && (int)$prod['track_stock'] === 1;
+            $meta[$i] = ['product_id' => $prod ? (int)$prod['id'] : null, 'name' => $prod ? (string)$prod['name'] : null,
+                         'serial' => $serial, 'imei1' => $imei1, 'imei2' => $imei2];
             $qty   = $qtyIn === '' ? 1.0 : sanitizeQty($qtyIn);
             $price = sanitizeAmount($prIn);
             $disc  = sanitizeAmount($r['disc'] ?? '');
@@ -254,6 +289,25 @@ final class BizInvoices
                 $errors[$i] = 'ردیف ' . toPersianDigits((string)$no) . ': مقدارِ «' . $desc . '» برای واحدِ «' . $unit . '» باید عددِ صحیح باشد.';
                 continue;
             }
+            // ⛔ گوشی: هر ردیف دقیقاً یک دستگاه با IMEIِ خودش. IMEI فقط روی
+            //    کالای «گوشی» معنا دارد، و یک IMEI در یک سند دو بار نمی‌آید.
+            foreach ([$imei1, $imei2] as $v) {
+                if ($v !== '' && !BizSerial::valid($v)) { $errors[$i] = $tag . 'IMEI «' . $v . '» معتبر نیست (۱۴ تا ۱۷ رقم).'; continue 2; }
+            }
+            if ($imei1 !== '' && $imei1 === $imei2) { $errors[$i] = $tag . 'IMEI ۱ و ۲ یکی‌اند.'; continue; }
+            if ($serial) {
+                if ($imei1 === '') { $errors[$i] = $tag . 'برای گوشیِ «' . $desc . '» IMEI را بنویسید (هر گوشی یک ردیف).'; continue; }
+                if (abs($qty - 1.0) > 0.0005) { $errors[$i] = $tag . 'هر گوشی یک ردیف است؛ مقدارِ ردیفِ IMEIدار ۱ است.'; continue; }
+            } elseif ($imei1 !== '') {
+                $errors[$i] = $tag . ($prod ? '«' . $desc . '» گوشی نیست؛ IMEI فقط روی کالای نوعِ «گوشی» ثبت می‌شود.'
+                                            : 'IMEI فقط روی گوشیِ ثبت‌شده می‌نشیند؛ اول کالا را با «+» تعریف کنید.');
+                continue;
+            }
+            foreach ([$imei1, $imei2] as $v) {
+                if ($v === '') { continue; }
+                if (isset($seen[$v])) { $errors[$i] = $tag . 'IMEI «' . $v . '» در این سند تکراری است.'; continue 2; }
+                $seen[$v] = true;
+            }
             $gross = (int)round($qty * $price);
             if ($disc > $gross) { $errors[$i] = 'ردیف ' . toPersianDigits((string)$no) . ': تخفیف از مبلغِ ردیف بیشتر است.'; continue; }
             $lines[] = [
@@ -261,9 +315,10 @@ final class BizInvoices
                 'description' => $desc, 'unit' => $unit, 'qty' => round($qty, 3), 'unit_price' => $price,
                 'line_discount' => $disc, 'line_total' => $gross - $disc, 'ref_line_id' => null, 'unit_cost' => null,
                 'inactive' => $prod && (int)$prod['is_active'] !== 1,
+                'imei1' => $imei1 === '' ? null : $imei1, 'imei2' => $imei2 === '' ? null : $imei2,
             ];
         }
-        return ['lines' => $lines, 'errors' => $errors];
+        return ['lines' => $lines, 'errors' => $errors, 'meta' => $meta];
     }
 
     /**
@@ -364,13 +419,14 @@ final class BizInvoices
     {
         $pdo->prepare('DELETE FROM biz_invoice_lines WHERE invoice_id = :id AND user_id = :u')->execute(['id' => $id, 'u' => $userId]);
         $ins = $pdo->prepare(
-            'INSERT INTO biz_invoice_lines (user_id, invoice_id, line_no, product_id, ref_line_id, description, unit, qty,
+            'INSERT INTO biz_invoice_lines (user_id, invoice_id, line_no, product_id, ref_line_id, description, unit, imei1, imei2, qty,
                                             unit_price, line_discount, line_total, net_total, unit_cost)
-             VALUES (:u, :i, :no, :p, :r, :d, :un, :q, :pr, :di, :lt, :nt, :c)'
+             VALUES (:u, :i, :no, :p, :r, :d, :un, :m1, :m2, :q, :pr, :di, :lt, :nt, :c)'
         );
         foreach (array_values($lines) as $n => $l) {
             $ins->execute(['u' => $userId, 'i' => $id, 'no' => $n + 1, 'p' => $l['product_id'], 'r' => $l['ref_line_id'],
-                           'd' => $l['description'], 'un' => $l['unit'], 'q' => $l['qty'], 'pr' => $l['unit_price'],
+                           'd' => $l['description'], 'un' => $l['unit'], 'm1' => $l['imei1'] ?? null, 'm2' => $l['imei2'] ?? null,
+                           'q' => $l['qty'], 'pr' => $l['unit_price'],
                            'di' => $l['line_discount'], 'lt' => $l['line_total'], 'nt' => $l['net_total'] ?? $l['line_total'],
                            'c' => $l['unit_cost']]);
         }
@@ -459,6 +515,10 @@ final class BizInvoices
         }
         $post = BizStock::postDoc($userId, $kind, $id, $moves);
         if (!$post['ok']) { return $post; }
+        // ⛔ IMEI پس از قفلِ ردیفِ کالا (همان postDoc) سنجیده می‌شود: دو صدورِ
+        //    هم‌زمانِ یک گوشی پشتِ هم می‌افتند، نه کنارِ هم.
+        $imeiErr = BizSerial::check($pdo, $userId, $kind, $id, $lines);
+        if ($imeiErr !== null) { return ['ok' => false, 'message' => $imeiErr]; }
 
         // بهای تمام‌شده‌ی هر ردیف — برای سودِ ناخالص. فروش: میانگینِ همان لحظه.
         $up = $pdo->prepare('UPDATE biz_invoice_lines SET unit_cost = :c WHERE id = :id AND user_id = :u');
@@ -648,7 +708,7 @@ final class BizInvoices
             $lines[] = ['product_id' => $o['product_id'] !== null ? (int)$o['product_id'] : null, 'ref_line_id' => $lineId,
                         'description' => (string)$o['description'], 'unit' => (string)$o['unit'], 'qty' => round($q, 3),
                         'unit_price' => (int)round($unitNet), 'line_discount' => 0, 'line_total' => $lt, 'net_total' => $lt,
-                        'unit_cost' => null];
+                        'unit_cost' => null, 'imei1' => $o['imei1'] ?? null, 'imei2' => $o['imei2'] ?? null];
         }
         if (!$lines) { return ['ok' => false, 'message' => 'مقدارِ برگشت را دست‌کم برای یک ردیف بنویسید.']; }
         $total = array_sum(array_column($lines, 'line_total'));
@@ -682,19 +742,13 @@ final class BizInvoices
        خلاصه‌ها — داشبورد و گزارش
        ------------------------------------------------------------ */
 
-    /** شمارِ پیش‌نویس‌ها و سررسیدگذشته‌ها (کارتِ «نیازمندِ اقدام»). */
+    /** شمارِ پیش‌نویس‌ها (کارتِ «نیازمندِ اقدام»؛ سررسید دیگر نیست — `state()`). */
     public static function attention(int $userId): array
     {
-        $st = Database::getConnection()->prepare(
-            "SELECT COALESCE(SUM(status = 'draft'), 0) AS drafts,
-                    COALESCE(SUM(status = 'issued' AND paid < total AND due_date IS NOT NULL AND due_date < CURDATE() AND kind = 'sale'), 0) AS overdue_sale,
-                    COALESCE(SUM(CASE WHEN status = 'issued' AND paid < total AND due_date IS NOT NULL AND due_date < CURDATE() AND kind = 'sale' THEN total - paid ELSE 0 END), 0) AS overdue_sum,
-                    COALESCE(SUM(status = 'issued' AND paid < total AND due_date IS NOT NULL AND due_date < CURDATE() AND kind = 'purchase'), 0) AS overdue_purchase
-             FROM biz_invoices WHERE user_id = :u"
-        );
+        $st = Database::getConnection()->prepare("SELECT COALESCE(SUM(status = 'draft'), 0) AS drafts FROM biz_invoices WHERE user_id = :u");
         $st->execute(['u' => $userId]);
         $r = $st->fetch() ?: [];
-        return array_map('intval', $r + ['drafts' => 0, 'overdue_sale' => 0, 'overdue_sum' => 0, 'overdue_purchase' => 0]);
+        return array_map('intval', $r + ['drafts' => 0]);
     }
 
     /** آخرین اسناد (همه‌ی نوع‌ها). */
@@ -1026,5 +1080,139 @@ final class BizPay
         if ($p['kind'] === 'transfer') { return 'از ' . ($p['account_name'] ?? '') . ' به ' . ($p['to_account_name'] ?? ''); }
         if (in_array($p['kind'], ['expense', 'income'], true)) { return (string)($p['title'] ?? ''); }
         return (string)($p['party_name'] ?? 'گذری');
+    }
+}
+
+/* =================================================================
+   گوشی با IMEI (migration_biz_serials)
+   ================================================================= */
+final class BizSerial
+{
+    /** سندهایی که گوشی را وارد انبار می‌کنند؛ دو نوعِ دیگر بیرون می‌برند. */
+    public const IN_KINDS = ['purchase', 'sale_return'];
+
+    /** ارقامِ فارسی → لاتین، فاصله و خط‌تیره حذف (IMEIِ روی جعبه با فاصله چاپ می‌شود). */
+    public static function norm(string $s): string
+    {
+        return (string)preg_replace('/[\s\x{200c}\-\/.]+/u', '', toLatinDigits(trim($s)));
+    }
+
+    /** IMEI: فقط رقم، ۱۴ تا ۱۷ (۱۵ معمول، ۱۶ برای IMEISV، ۱۴ بی‌رقمِ کنترل). */
+    public static function valid(string $imei): bool
+    {
+        return (bool)preg_match('/^\d{14,17}$/', $imei);
+    }
+
+    /**
+     * ⛔ تنها جای «این IMEI الان کجاست؟»: آخرین ردیفِ یک سندِ **صادرشده** با
+     *    آن شماره (در هر کدام از دو ستون)، به ترتیبِ صدور. پیش‌نویس اثری ندارد
+     *    و سندِ باطل خودبه‌خود بیرون است — پس ابطال هیچ کدِ «برگرداندن» نمی‌خواهد.
+     *
+     * @param string[] $imeis
+     * @return array<string,array{dir:string, product_id:?int, imei1:string, imei2:?string, kind:string, invoice_id:int}>
+     */
+    public static function states(PDO $pdo, int $userId, array $imeis, int $exceptInvoice = 0, bool $lock = false): array
+    {
+        $imeis = array_values(array_unique(array_filter(array_map('strval', $imeis), fn($x) => $x !== '')));
+        if (!$imeis) { return []; }
+        $a = []; $b = []; $params = ['u' => $userId, 'x' => $exceptInvoice];
+        foreach ($imeis as $n => $v) { $a[] = ':a' . $n; $b[] = ':b' . $n; $params['a' . $n] = $v; $params['b' . $n] = $v; }
+        // ⚠ قفلِ اشتراکی: درونِ صدور، خواندنِ عادی عکسِ ابتدای تراکنش را می‌دید
+        //    و صدورِ هم‌زمانِ دیگری که همین حالا کامیت شده پنهان می‌ماند.
+        $st = $pdo->prepare(
+            "SELECT l.imei1, l.imei2, l.product_id, i.kind, i.id AS invoice_id
+             FROM biz_invoice_lines l JOIN biz_invoices i ON i.id = l.invoice_id AND i.user_id = l.user_id
+             WHERE l.user_id = :u AND i.status = 'issued' AND i.id <> :x
+               AND (l.imei1 IN (" . implode(',', $a) . ') OR l.imei2 IN (' . implode(',', $b) . '))
+             ORDER BY i.issued_at, i.id, l.id' . ($lock ? ' LOCK IN SHARE MODE' : '')
+        );
+        $st->execute($params);
+        $out = [];
+        foreach ($st->fetchAll() as $r) {
+            $row = ['dir' => in_array($r['kind'], self::IN_KINDS, true) ? 'in' : 'out',
+                    'product_id' => $r['product_id'] !== null ? (int)$r['product_id'] : null,
+                    'imei1' => (string)$r['imei1'], 'imei2' => $r['imei2'] !== null ? (string)$r['imei2'] : null,
+                    'kind' => (string)$r['kind'], 'invoice_id' => (int)$r['invoice_id']];
+            foreach ([$r['imei1'], $r['imei2']] as $v) {
+                if ($v !== null && in_array((string)$v, $imeis, true)) { $out[(string)$v] = $row; }
+            }
+        }
+        return $out;
+    }
+
+    /** یک IMEI → آخرین ردیفِ صادرشده‌اش (برای جست‌وجوی هوشمندِ فاکتور). */
+    public static function lookup(int $userId, string $imei): ?array
+    {
+        $imei = self::norm($imei);
+        if (!self::valid($imei)) { return null; }
+        return self::states(Database::getConnection(), $userId, [$imei])[$imei] ?? null;
+    }
+
+    /**
+     * ⛔ سدِ صدور — داخلِ تراکنشِ `issueTx`. ورود (خرید، برگشت از فروش):
+     *    گوشیِ همان IMEI نباید همین حالا در انبار باشد. خروج (فروش، برگشت
+     *    از خرید): نباید از قبل بیرون رفته باشد، و اگر در انبار است باید
+     *    همان کالا باشد. IMEIِ دیده‌نشده در خروج پذیرفته است: گوشی‌ای که
+     *    پیش از این قابلیت (موجودیِ اول دوره) وارد شده IMEIِ ثبت‌شده ندارد.
+     *
+     * @param array $lines ردیف‌های سند (`product_id`, `imei1`, `imei2`)
+     */
+    public static function check(PDO $pdo, int $userId, string $kind, int $invoiceId, array $lines): ?string
+    {
+        $nums = [];
+        foreach ($lines as $l) {
+            foreach (['imei1', 'imei2'] as $c) { if (!empty($l[$c])) { $nums[] = (string)$l[$c]; } }
+        }
+        if (!$nums) { return null; }
+        $states = self::states($pdo, $userId, $nums, $invoiceId, true);
+        $in = in_array($kind, self::IN_KINDS, true);
+        foreach ($lines as $l) {
+            foreach (['imei1', 'imei2'] as $c) {
+                $v = (string)($l[$c] ?? '');
+                if ($v === '' || !isset($states[$v])) { continue; }
+                $s = $states[$v];
+                if ($in && $s['dir'] === 'in') {
+                    return 'گوشی با IMEI ' . $v . ' همین حالا در انبار است؛ یک گوشی دو بار وارد نمی‌شود.';
+                }
+                if (!$in && $s['dir'] === 'out') {
+                    return 'گوشی با IMEI ' . $v . ' در انبار نیست؛ پیش‌تر فروخته یا برگشت داده شده است.';
+                }
+                if (!$in && $s['product_id'] !== null && (int)($l['product_id'] ?? 0) !== $s['product_id']) {
+                    return 'IMEI ' . $v . ' مالِ کالای دیگری است؛ ردیفِ «' . ($l['description'] ?? '') . '» را درست کنید.';
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * گوشی‌های همین حالا در انبار — برای جست‌وجوی فاکتورِ فروش و صفحه‌ی کالا.
+     * وضعیت از حرکت‌ها «تا» می‌شود؛ دو شماره‌ی یک گوشی یک کلید دارند (اگر
+     * جایی IMEI ۱ و ۲ جابه‌جا نوشته شده باشند، باز همان گوشی است).
+     *
+     * @return array{rows:array<int,array{imei1:string, imei2:?string, product_id:int}>, capped:bool}
+     */
+    public static function inStock(int $userId, int $productId = 0, int $cap = 2000): array
+    {
+        $sql = "SELECT l.imei1, l.imei2, l.product_id, i.kind
+                FROM biz_invoice_lines l JOIN biz_invoices i ON i.id = l.invoice_id AND i.user_id = l.user_id
+                WHERE l.user_id = :u AND i.status = 'issued' AND l.imei1 IS NOT NULL AND l.product_id IS NOT NULL"
+             . ($productId > 0 ? ' AND l.product_id = :p' : '') . ' ORDER BY i.issued_at, i.id, l.id';
+        $st = Database::getConnection()->prepare($sql);
+        $st->execute($productId > 0 ? ['u' => $userId, 'p' => $productId] : ['u' => $userId]);
+        $alias = []; $units = [];
+        foreach ($st->fetchAll() as $r) {
+            $n1 = (string)$r['imei1']; $n2 = $r['imei2'] !== null ? (string)$r['imei2'] : null;
+            $key = $alias[$n1] ?? ($n2 !== null ? ($alias[$n2] ?? null) : null) ?? $n1;
+            $alias[$n1] = $key;
+            if ($n2 !== null) { $alias[$n2] = $key; }
+            $units[$key] = ['imei1' => $n1, 'imei2' => $n2, 'product_id' => (int)$r['product_id'],
+                            'in' => in_array($r['kind'], self::IN_KINDS, true)];
+        }
+        $rows = [];
+        foreach ($units as $u) {
+            if ($u['in']) { unset($u['in']); $rows[] = $u; }
+        }
+        return ['rows' => array_slice($rows, 0, $cap), 'capped' => count($rows) > $cap];
     }
 }

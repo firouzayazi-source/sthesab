@@ -48,7 +48,7 @@ require __DIR__ . '/../includes/biz_head.php';
 </div>
 
 <form class="st-filters" method="get" action="<?= h(Biz::url('products.php')) ?>" role="search">
-    <input type="search" name="q" value="<?= h($q) ?>" placeholder="جست‌وجوی نام یا کد…" aria-label="جست‌وجو">
+    <input type="search" name="q" value="<?= h($q) ?>" placeholder="جست‌وجوی نام، کد یا IMEI…" aria-label="جست‌وجو">
     <?php if ($cats): ?>
     <select name="c" aria-label="دسته">
         <option value="">همه‌ی دسته‌ها</option>

@@ -94,17 +94,11 @@ require __DIR__ . '/../includes/biz_head.php';
 </div>
 <p class="st-muted st-unit-note">همه‌ی مبلغ‌ها به تومان.</p>
 
-<?php $attnRows = ($attn['overdue_sale'] > 0 ? 1 : 0) + ($low ? 1 : 0) + ($attn['drafts'] > 0 ? 1 : 0) + ($attn['overdue_purchase'] > 0 ? 1 : 0); ?>
+<?php $attnRows = ($low ? 1 : 0) + ($attn['drafts'] > 0 ? 1 : 0); ?>
 <?php if ($attnRows > 0): ?>
 <section class="st-card st-attn">
     <h2 class="st-h2">نیازمندِ اقدام</h2>
     <ul class="st-list">
-        <?php if ($attn['overdue_sale'] > 0): ?>
-        <li class="st-list-row"><a href="<?= h(Biz::url('sales.php?f=overdue')) ?>"><span class="st-pill is-overdue">سررسید گذشته</span> <?= toPersianDigits((string)$attn['overdue_sale']) ?> فاکتورِ فروش</a><?= BizDocView::money($attn['overdue_sum']) ?></li>
-        <?php endif; ?>
-        <?php if ($attn['overdue_purchase'] > 0): ?>
-        <li class="st-list-row"><a href="<?= h(Biz::url('purchases.php?f=overdue')) ?>"><span class="st-pill is-overdue">سررسید گذشته</span> <?= toPersianDigits((string)$attn['overdue_purchase']) ?> فاکتورِ خرید برای پرداخت</a></li>
-        <?php endif; ?>
         <?php if ($attn['drafts'] > 0): ?>
         <li class="st-list-row"><a href="<?= h(Biz::url('sales.php?f=draft')) ?>"><span class="st-pill is-draft">پیش‌نویس</span> <?= toPersianDigits((string)$attn['drafts']) ?> سندِ صادرنشده</a></li>
         <?php endif; ?>

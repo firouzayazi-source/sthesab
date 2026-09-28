@@ -408,7 +408,6 @@ a.st-kpi-card:hover { border-color: var(--st-accent); }
 .st-pill.is-open    { background: #dbeafe; color: #1d4ed8; }
 .st-pill.is-partial { background: var(--st-wash); color: var(--st-accent-2); }
 .st-pill.is-paid    { background: var(--st-ok-wash); color: var(--st-ok); }
-.st-pill.is-overdue { background: var(--st-err-wash); color: var(--st-err); }
 .st-pill.is-void    { text-decoration: line-through; opacity: .7; }
 @media (prefers-color-scheme: dark) { .st-pill.is-open { background: #172554; color: #93c5fd; } }
 
@@ -623,3 +622,29 @@ a.st-kpi-card:hover { border-color: var(--st-accent); }
 .st-pill.is-k-receipt, .st-pill.is-k-income { background: var(--st-ok-wash); color: var(--st-ok); }
 .st-pill.is-k-payment, .st-pill.is-k-expense { background: var(--st-err-wash); color: var(--st-err); }
 .st-pill.is-k-transfer { border-color: var(--st-line); }
+
+/* ============================================================
+   فروشگاهِ موبایل: «+» کنارِ خانه‌ی کالا، IMEIِ ردیف، پنلِ کالای تازه
+   ============================================================ */
+/* «+» داخلِ خودِ خانه، در انتهای آن (سمتِ چپ در راست‌به‌چپ) */
+.st-item-wrap { position: relative; display: flex; align-items: stretch; }
+.st-item-wrap input[data-item] { padding-inline-end: 38px; }
+.st-plus {
+    position: absolute; inset-inline-end: 3px; top: 3px; bottom: 3px; width: 30px;
+    border: 0; border-radius: 6px; cursor: pointer; font: inherit; font-size: 18px; line-height: 1; font-weight: 700;
+    background: var(--st-wash); color: var(--st-accent-2);
+}
+.st-plus:hover, .st-plus:focus-visible { background: var(--st-accent); color: #fff; outline: none; }
+.st-line-imei { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; margin-top: 6px; }
+.st-line-imei[hidden] { display: none; }
+.st-line-imei input { font-size: 13px; letter-spacing: .02em; }
+.st-np { border: 1px solid var(--st-accent); display: flex; flex-direction: column; gap: 12px; }
+.st-np > * { margin-bottom: 0; }
+.st-np[hidden] { display: none; }
+.st-np-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.st-np .st-row2[hidden] { display: none; }
+/* شماره‌ی گوشی در سند و چاپ */
+.st-imei { display: block; font-size: 12px; color: var(--st-ink-2); text-align: right; }
+.st-unit-list { display: flex; flex-direction: column; gap: 0; list-style: none; margin: 0; padding: 0; }
+.st-unit-list li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--st-line); }
+.st-unit-list li:last-child { border-bottom: 0; }

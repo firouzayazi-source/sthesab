@@ -72,7 +72,7 @@ require __DIR__ . '/../includes/biz_head.php';
                 <tbody>
                 <?php foreach ($left as $lid => $x): $o = $x['line']; $unitNet = (float)$o['qty'] > 0 ? (int)round((int)$o['net_total'] / (float)$o['qty']) : 0; ?>
                     <tr class="<?= $x['left'] <= 0 ? 'is-inactive' : '' ?>">
-                        <td><?= h((string)$o['description']) ?></td>
+                        <td><?= h((string)$o['description']) ?><?= BizDocView::imeiLine($o) ?></td>
                         <td class="st-td-num st-hide-sm"><span class="st-num"><?= h(formatQty($o['qty'])) ?></span> <?= h((string)$o['unit']) ?></td>
                         <td class="st-td-num"><span class="st-num"><?= h(formatQty($x['left'])) ?></span></td>
                         <td class="st-td-num st-hide-sm"><?= BizDocView::money($unitNet) ?></td>

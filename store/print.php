@@ -32,6 +32,7 @@ $qty    = static fn($v): string => '<span class="pr-num">' . h(formatQty($v)) . 
 
 switch ($doc) {
 case 'invoice':
+    require_once __DIR__ . '/../includes/biz_docview.php';
     $inv = BizInvoices::get($userId, $id);
     if (!$inv || $inv['status'] === 'draft') { Biz::notFound(); }
     $isSaleSide = in_array($inv['kind'], ['sale', 'sale_return'], true);
@@ -50,7 +51,7 @@ case 'invoice':
         <?php foreach ($inv['lines'] as $n => $l): ?>
             <tr>
                 <td><span class="pr-num"><?= toPersianDigits((string)($n + 1)) ?></span></td>
-                <td><?= h((string)$l['description']) ?></td>
+                <td><?= h((string)$l['description']) ?><?= BizDocView::imeiLine($l, 'pr-imei') ?></td>
                 <td class="pr-c-num"><?= $qty($l['qty']) ?></td>
                 <td class="pr-c-num"><?= $money($l['unit_price']) ?></td>
                 <td class="pr-c-num pr-wide"><?= (int)$l['line_discount'] > 0 ? $money($l['line_discount']) : '' ?></td>

@@ -66,17 +66,41 @@ final class BizDocView
         return array_values(array_filter(BizCash::list($userId), fn($a) => (int)$a['is_active'] === 1));
     }
 
-    /** `<datalist>`ِ کالاها — مقدار = نام، و کد و قیمت‌ها در data-* برای `store.js`. */
-    public static function productDatalist(int $userId, string $id = 'bizProducts', int $cap = 2000): string
+    /**
+     * `<datalist>`ِ کالاها — مقدار = نام، و کد و قیمت‌ها در data-* برای `store.js`.
+     *
+     * با `$units` (فاکتورِ فروش و فروشِ سریع) گوشی‌های **همین حالا در انبار**
+     * هم هر کدام یک گزینه می‌شوند: مقدار = IMEI و برچسب = نامِ گوشی. پس
+     * جست‌وجوی مرورگر هم با تکه‌ای از IMEI پیدایش می‌کند هم با نامِ گوشی
+     * (کروم برچسب را هم می‌گردد)، و انتخابش ردیف را با کالا و هر دو IMEI پر
+     * می‌کند. ⛔ فهرستِ گوشی‌ها از `BizSerial::inStock()` است — تنها تعریفِ
+     * «در انبار».
+     */
+    public static function productDatalist(int $userId, string $id = 'bizProducts', int $cap = 2000, bool $units = false): string
     {
         $rows = BizProducts::all($userId, '', '', $cap)['rows'];
         $out = '<datalist id="' . h($id) . '">';
+        $byId = [];
+        $attrs = function (array $p): string {
+            return ' data-id="' . (int)$p['id'] . '" data-sku="' . h((string)$p['sku']) . '" data-sell="' . (int)$p['sell_price']
+                 . '" data-buy="' . (int)$p['buy_price'] . '" data-unit="' . h((string)$p['unit']) . '" data-stock="'
+                 . h((string)(float)$p['stock_qty']) . '" data-track="' . (int)$p['track_stock'] . '" data-serial="'
+                 . (BizProducts::typeOf($p) === 'phone' ? 1 : 0) . '"';
+        };
         foreach ($rows as $p) {
+            $byId[(int)$p['id']] = $p;
             $label = trim(((string)$p['sku'] !== '' ? $p['sku'] . ' · ' : '') . formatMoney((int)$p['sell_price'])
                    . ((int)$p['track_stock'] === 1 ? ' · موجودی ' . formatQty($p['stock_qty']) : ''));
-            $out .= '<option value="' . h((string)$p['name']) . '" label="' . h($label) . '" data-id="' . (int)$p['id']
-                  . '" data-sku="' . h((string)$p['sku']) . '" data-sell="' . (int)$p['sell_price'] . '" data-buy="' . (int)$p['buy_price']
-                  . '" data-unit="' . h((string)$p['unit']) . '" data-stock="' . h((string)(float)$p['stock_qty']) . '" data-track="' . (int)$p['track_stock'] . '"></option>';
+            $out .= '<option value="' . h((string)$p['name']) . '" label="' . h($label) . '"' . $attrs($p) . '></option>';
+        }
+        if ($units) {
+            foreach (BizSerial::inStock($userId, 0, $cap)['rows'] as $u) {
+                $p = $byId[$u['product_id']] ?? null;
+                if ($p === null) { continue; }                       // کالای غیرفعال: از فهرستِ جست‌وجو بیرون
+                $out .= '<option value="' . h($u['imei1']) . '" label="' . h((string)$p['name'] . ' · گوشیِ در انبار'
+                      . ($u['imei2'] !== null ? ' · ' . $u['imei2'] : '')) . '"' . $attrs($p) . ' data-name="' . h((string)$p['name'])
+                      . '" data-imei1="' . h($u['imei1']) . '" data-imei2="' . h((string)$u['imei2']) . '"></option>';
+            }
         }
         return $out . '</datalist>';
     }
@@ -85,9 +109,15 @@ final class BizDocView
      * ردیف‌های ویرایشگرِ فاکتور — فرمِ ساده‌ی HTML؛ `store.js` فقط جمعِ زنده و
      * «افزودنِ ردیف» را بهتر می‌کند. ⛔ هر ردیف `product_id`ِ پنهان دارد ولی
      * سرور بدونِ آن هم با کد یا نامِ دقیق تطبیق می‌دهد.
+     *
+     * هر ردیف دو خانه‌ی IMEI دارد که فقط برای گوشی دیده می‌شوند (`serial` یا
+     * IMEIِ پر؛ `store.js` با انتخابِ گوشی بازشان می‌کند). با `$plus` کنارِ
+     * خانه‌ی کالا دکمه‌ی «+» می‌آید: یک دکمه‌ی **فرم** که همان صفحه را با
+     * پنلِ «کالای تازه» برمی‌گرداند — بی‌جاوااسکریپت هم کار می‌کند و هیچ
+     * چیزی از فاکتورِ نیمه‌کاره گم نمی‌شود (کلِ فرم با آن فرستاده می‌شود).
      * @param array<int,array> $lines ردیف‌های موجود (از سند یا فرمِ ردشده)
      */
-    public static function lineRows(array $lines, int $blank = 3): string
+    public static function lineRows(array $lines, int $blank = 3, bool $plus = false): string
     {
         $rows = array_values($lines);
         for ($i = 0; $i < $blank; $i++) { $rows[] = []; }
@@ -100,10 +130,20 @@ final class BizDocView
             $disc  = $l['disc'] ?? (isset($l['line_discount']) && (int)$l['line_discount'] > 0 ? (string)(int)$l['line_discount'] : '');
             $lt    = isset($l['line_total']) ? formatMoney((int)$l['line_total']) : '';
             $free  = $item !== '' && $pid === 0 && !empty($l['description']);
+            $im1   = (string)($l['imei1'] ?? '');
+            $im2   = (string)($l['imei2'] ?? '');
+            $showImei = !empty($l['serial']) || !empty($l['has_serial']) || $im1 !== '' || $im2 !== '';
             $out .= '<tr class="st-line" data-row>'
                   . '<td class="st-line-no st-num">' . toPersianDigits((string)($i + 1)) . '</td>'
-                  . '<td class="st-line-item"><input type="text" name="lines[' . $i . '][item]" value="' . h($item) . '" list="bizProducts" autocomplete="off" placeholder="نام، کد یا بارکد" data-item>'
+                  . '<td class="st-line-item"><div class="st-item-wrap">'
+                  . '<input type="text" name="lines[' . $i . '][item]" value="' . h($item) . '" list="bizProducts" autocomplete="off" placeholder="نام، کد، بارکد یا IMEI" data-item>'
+                  . ($plus ? '<button type="submit" name="np_open" value="' . $i . '" class="st-plus" formnovalidate data-np-open title="تعریفِ کالای تازه" aria-label="تعریفِ کالای تازه">+</button>' : '')
+                  . '</div>'
                   . '<input type="hidden" name="lines[' . $i . '][product_id]" value="' . ($pid ?: '') . '" data-pid>'
+                  . '<div class="st-line-imei" data-imei-box' . ($showImei ? '' : ' hidden') . '>'
+                  . '<input type="text" name="lines[' . $i . '][imei1]" value="' . h($im1) . '" inputmode="numeric" dir="ltr" autocomplete="off" placeholder="IMEI ۱" aria-label="IMEI ۱" data-imei1>'
+                  . '<input type="text" name="lines[' . $i . '][imei2]" value="' . h($im2) . '" inputmode="numeric" dir="ltr" autocomplete="off" placeholder="IMEI ۲ (اختیاری)" aria-label="IMEI ۲" data-imei2>'
+                  . '</div>'
                   . ($free ? '<span class="st-line-note">شرحِ آزاد — بی‌اثر بر موجودی</span>' : '') . '</td>'
                   . '<td><input type="text" name="lines[' . $i . '][qty]" value="' . h($qty) . '" inputmode="decimal" dir="ltr" placeholder="۱" data-qty></td>'
                   . '<td><input type="text" name="lines[' . $i . '][price]" value="' . h((string)$price) . '" inputmode="numeric" dir="ltr" data-price></td>'
@@ -112,6 +152,35 @@ final class BizDocView
                   . '</tr>';
         }
         return $out;
+    }
+
+    /** IMEIِ یک ردیفِ سند زیرِ شرح — سند، برگشت و چاپ همه از همین. */
+    public static function imeiLine(array $l, string $class = 'st-imei'): string
+    {
+        $n = array_values(array_filter([(string)($l['imei1'] ?? ''), (string)($l['imei2'] ?? '')], fn($v) => $v !== ''));
+        return $n ? '<span class="' . h($class) . '" dir="ltr">IMEI ' . h(implode(' / ', $n)) . '</span>' : '';
+    }
+
+    /**
+     * ردیف‌های فرمِ ردشده را با آنچه سرور فهمید هم‌تراز می‌کند: کالای
+     * پیدا‌شده (مثلاً از IMEIِ تایپ‌شده در خانه‌ی کالا)، «گوشی است؟» و IMEIها.
+     * ⛔ فقط نمایش؛ ذخیره همیشه دوباره از `parseLines` می‌گذرد.
+     * @param array<int,array> $formLines
+     * @param array<int,array> $meta `parseLines()['meta']`
+     */
+    public static function mergeMeta(array $formLines, array $meta): array
+    {
+        foreach ($formLines as $k => $l) {
+            $m = $meta[$k] ?? null;
+            if ($m === null) { continue; }
+            $formLines[$k]['serial'] = $m['serial'];
+            if ($m['product_id'] !== null) {
+                $formLines[$k]['product_id'] = $m['product_id'];
+                if (BizSerial::valid(BizSerial::norm((string)($l['item'] ?? '')))) { $formLines[$k]['item'] = $m['name']; }
+            }
+            if ($m['imei1'] !== '') { $formLines[$k]['imei1'] = $m['imei1']; $formLines[$k]['imei2'] = $m['imei2']; }
+        }
+        return $formLines;
     }
 
     /**
@@ -151,7 +220,7 @@ final class BizDocView
 <form class="st-filters" method="get" action="<?= h(Biz::url($cfg['page'])) ?>" role="search">
     <?php if ($tab === 'returns'): ?><input type="hidden" name="t" value="returns"><?php endif; ?>
     <?php if ($filter !== ''): ?><input type="hidden" name="f" value="<?= h($filter) ?>"><?php endif; ?>
-    <input type="search" name="q" value="<?= h($q) ?>" placeholder="شماره یا نامِ <?= h($cfg['party']) ?>…" aria-label="جست‌وجو">
+    <input type="search" name="q" value="<?= h($q) ?>" placeholder="شماره، نامِ <?= h($cfg['party']) ?> یا IMEI…" aria-label="جست‌وجو">
     <input type="text" name="from" value="<?= h($keep['from']) ?>" placeholder="از تاریخ ۱۴۰۵/۰۱/۰۱" dir="ltr" class="st-date-in" aria-label="از تاریخ">
     <input type="text" name="to" value="<?= h($keep['to']) ?>" placeholder="تا تاریخ" dir="ltr" class="st-date-in" aria-label="تا تاریخ">
     <button type="submit" class="st-btn st-btn-ghost">بگرد</button>

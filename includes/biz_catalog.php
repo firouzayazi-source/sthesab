@@ -71,6 +71,25 @@ final class BizProducts
 
     public const LIMITS = ['name' => 150, 'sku' => 60, 'category' => 80, 'note' => 300];
 
+    /**
+     * ⛔ تنها مرجعِ نوعِ کالا (فروشگاهِ موبایل و لوازم جانبی). نوع ستونِ
+     *    جدایی ندارد و از دو ستون ساخته می‌شود — `typeOf()`:
+     *    خدمت = `track_stock = 0`، گوشی = `has_serial = 1` (هر واحد IMEI
+     *    دارد و جداگانه خرید و فروش می‌شود)، بقیه = کالا و لوازم جانبی.
+     */
+    public const TYPES = [
+        'goods'   => 'کالا / لوازم جانبی',
+        'phone'   => 'گوشی (با IMEI)',
+        'service' => 'خدمت (تعمیر، نصب…)',
+    ];
+
+    /** نوعِ یک ردیفِ کالا — تنها جای خواندنِ این تصمیم از دو ستون. */
+    public static function typeOf(array $p): string
+    {
+        if ((int)($p['track_stock'] ?? 1) !== 1) { return 'service'; }
+        return (int)($p['has_serial'] ?? 0) === 1 ? 'phone' : 'goods';
+    }
+
     /** صافی‌های فهرست — تنها مرجع؛ ناشناخته به «همه» برمی‌گردد. */
     public const FILTERS = [
         ''         => 'همه',
@@ -114,8 +133,17 @@ final class BizProducts
         }
         if ($q !== '') {
             // ⛔ دو پارامترِ جدا، نه یک نامِ تکراری (EMULATE_PREPARES = false)
-            $where[] = "(p.name LIKE :q1 ESCAPE '!' OR p.sku LIKE :q2 ESCAPE '!')";
-            $params['q1'] = $params['q2'] = BizCommon::like($q);
+            $qi = (string)preg_replace('/[\s\x{200c}\-\/.]+/u', '', toLatinDigits(trim($q)));
+            if (preg_match('/^\d{14,17}$/', $qi)) {
+                // IMEI (همان قاعده‌ی `BizSerial::valid`) → مدلِ همان گوشی، از ردیف‌های اسناد
+                $where[] = '(p.sku = :qs OR p.id IN (SELECT ql.product_id FROM biz_invoice_lines ql
+                              WHERE ql.user_id = :qu AND (ql.imei1 = :qi1 OR ql.imei2 = :qi2)))';
+                $params['qs'] = $params['qi1'] = $params['qi2'] = $qi;
+                $params['qu'] = $userId;
+            } else {
+                $where[] = "(p.name LIKE :q1 ESCAPE '!' OR p.sku LIKE :q2 ESCAPE '!')";
+                $params['q1'] = $params['q2'] = BizCommon::like($q);
+            }
         }
         if ($category !== '') {
             $where[] = 'c.name = :c';
@@ -200,7 +228,12 @@ final class BizProducts
         $buy      = sanitizeAmount($in['buy_price'] ?? '');
         $sell     = sanitizeAmount($in['sell_price'] ?? '');
         $minStock = sanitizeQty($in['min_stock'] ?? '');
-        $track    = empty($in['is_service']) ? 1 : 0;
+        // نوع: فرمِ تازه `type` می‌فرستد؛ مسیرهای قدیمی (ورود از فایل) فقط
+        // `is_service` — آن‌وقت «گوشی بودنِ» کالای موجود دست نمی‌خورد.
+        $type     = isset($in['type']) ? (string)$in['type'] : null;
+        if ($type !== null && !isset(self::TYPES[$type])) { return ['ok' => false, 'message' => 'نوعِ کالا معتبر نیست.']; }
+        $track    = $type !== null ? ($type === 'service' ? 0 : 1) : (empty($in['is_service']) ? 1 : 0);
+        $serial   = $type !== null ? ($type === 'phone' ? 1 : 0) : null;
 
         if ($name === '') { return ['ok' => false, 'message' => 'نامِ کالا الزامی است.']; }
         foreach (['name' => $name, 'sku' => $sku, 'category' => $category, 'note' => $note] as $k => $v) {
@@ -211,6 +244,10 @@ final class BizProducts
         if (!isset(self::UNITS[$unit])) { return ['ok' => false, 'message' => 'واحدِ کالا معتبر نیست.']; }
         if (!self::qtyFits($unit, $minStock)) {
             return ['ok' => false, 'message' => 'حداقلِ موجودی برای واحدِ «' . $unit . '» باید عددِ صحیح باشد.'];
+        }
+        // ⛔ هر گوشی یک واحدِ کامل با IMEI خودش است؛ «۲٫۵ گوشی» معنا ندارد.
+        if ($serial === 1 && self::UNITS[$unit]) {
+            return ['ok' => false, 'message' => 'گوشی با واحدِ «' . $unit . '» ثبت نمی‌شود؛ «دستگاه» یا «عدد» را انتخاب کنید.'];
         }
 
         $openQty  = sanitizeQty($in['opening_qty'] ?? '');
@@ -234,27 +271,30 @@ final class BizProducts
             if (!self::qtyFits($unit, (float)$cur['stock_qty'])) {
                 return ['ok' => false, 'message' => 'موجودیِ فعلی اعشاری است و با واحدِ «' . $unit . '» جور نیست.'];
             }
+            if ($serial === null) { $serial = (int)($cur['has_serial'] ?? 0) === 1 && $track === 1 ? 1 : 0; }
         }
+        $serial = $track === 1 ? (int)$serial : 0;
 
         // ⛔ دسته با نام می‌آید (فرم، ورود از فایل) و به شناسه تبدیل می‌شود؛
         //    نامِ تازه دسته‌ی تازه می‌سازد. ستونِ متنیِ قدیمی همیشه NULL.
         $catId = $category === '' ? null : BizCategories::resolve($userId, $category);
         $row = [
             'u' => $userId, 'n' => $name, 's' => $sku === '' ? null : $sku, 'c' => $catId,
-            'un' => $unit, 'b' => $buy, 'sp' => $sell, 'm' => $minStock, 't' => $track, 'no' => $note === '' ? null : $note,
+            'un' => $unit, 'b' => $buy, 'sp' => $sell, 'm' => $minStock, 't' => $track, 'hs' => $serial,
+            'no' => $note === '' ? null : $note,
         ];
         try {
             $pdo->beginTransaction();
             if ($id > 0) {
                 $pdo->prepare(
                     'UPDATE biz_products SET name = :n, sku = :s, category_id = :c, category = NULL, unit = :un, buy_price = :b,
-                            sell_price = :sp, min_stock = :m, track_stock = :t, note = :no
+                            sell_price = :sp, min_stock = :m, track_stock = :t, has_serial = :hs, note = :no
                      WHERE id = :id AND user_id = :u'
                 )->execute($row + ['id' => $id]);
             } else {
                 $pdo->prepare(
-                    'INSERT INTO biz_products (user_id, name, sku, category_id, unit, buy_price, sell_price, min_stock, track_stock, note)
-                     VALUES (:u, :n, :s, :c, :un, :b, :sp, :m, :t, :no)'
+                    'INSERT INTO biz_products (user_id, name, sku, category_id, unit, buy_price, sell_price, min_stock, track_stock, has_serial, note)
+                     VALUES (:u, :n, :s, :c, :un, :b, :sp, :m, :t, :hs, :no)'
                 )->execute($row);
                 $id = (int)$pdo->lastInsertId();
                 if ($openQty > 0) {

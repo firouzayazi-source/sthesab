@@ -98,6 +98,7 @@ require __DIR__ . '/../includes/biz_head.php';
                     <td>
                         <?php if ($l['product_id'] !== null): ?><a class="st-row-link" href="<?= h(Biz::url('product.php?id=' . (int)$l['product_id'])) ?>"><?= h((string)$l['description']) ?></a>
                         <?php else: ?><?= h((string)$l['description']) ?> <span class="st-line-note">شرحِ آزاد</span><?php endif; ?>
+                        <?= BizDocView::imeiLine($l) ?>
                     </td>
                     <td class="st-td-num"><span class="st-num"><?= h(formatQty($l['qty'])) ?></span> <?= h((string)$l['unit']) ?></td>
                     <td class="st-td-num"><?= BizDocView::money((int)$l['unit_price']) ?></td>

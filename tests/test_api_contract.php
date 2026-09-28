@@ -6917,6 +6917,42 @@ foreach (['fk_biz_invoices_ref', 'fk_biz_lines_ref'] as $fk) {
     }
 }
 
-T::bulk(57, $bBad, 'محیطِ فروشگاهی: دروازه‌ی بی‌کوئری، سه نوعِ حساب، تنها نویسنده، دفترِ جدا از پولِ شخصی، و طرفِ شخصیِ دست‌نخورده');
+// ---------- فروشگاهِ موبایل: IMEI، «+»ِ کالای تازه، فاکتورِ بی‌سررسید ----------
+if (!str_contains($mig70, "    migration_biz_serials.sql\n") || !str_contains($mig70, '[migration_biz_serials.sql]="biz_invoice_lines:idx_biz_lines_imei2"')) {
+    $bBad[] = 'migrate.sh — migration_biz_serials.sql در MIGRATIONS یا SENTINEL نیست';
+}
+// ⛔ وضعیتِ هر IMEI فقط از اسنادِ صادرشده‌ی همین فروشگاه — سندِ باطل خودبه‌خود بیرون است
+if (!preg_match("/function states\(.*?WHERE l\.user_id = :u AND i\.status = 'issued' AND i\.id <> :x/s", $docs70)) {
+    $bBad[] = 'biz_docs.php — BizSerial::states() باید فقط اسنادِ صادرشده‌ی همین کاربر را بخواند';
+}
+// ⛔ IMEI پس از قفلِ کالا (postDoc) و داخلِ همان تراکنشِ صدور سنجیده می‌شود
+if (!preg_match('/function issueTx\(.*?BizStock::postDoc\(.*?BizSerial::check\(\$pdo, \$userId, \$kind, \$id, \$lines\)/s', $docs70)) {
+    $bBad[] = 'biz_docs.php — issueTx() باید بعد از postDoc() سدِ IMEI (BizSerial::check) را بزند';
+}
+if (!str_contains($docs70, "'imei1' => \$o['imei1'] ?? null")) {
+    $bBad[] = 'biz_docs.php — ردیفِ برگشت IMEIِ ردیفِ اصلی را نمی‌برد';
+}
+if (!preg_match('/if \(\$serial\) \{\s*if \(\$imei1 === \'\'\) \{/', $docs70)) {
+    $bBad[] = 'biz_docs.php — parseLines() باید برای گوشی IMEI بخواهد';
+}
+// ⛔ سررسید از فاکتور رفت (خواسته‌ی مالکِ نصب)
+$ie70 = $strip70((string)file_get_contents(__DIR__ . '/../store/invoice-edit.php'));
+$state70 = preg_match('/function state\([^{]*\{(.*?)\n    \}/s', $docs70, $sm70) ? $sm70[1] : 'due_date';
+if (str_contains($ie70, 'due_date') || preg_match("/'overdue'\s*=>/", $docs70) || str_contains($state70, 'due_date')) {
+    $bBad[] = 'فاکتور نباید سررسید داشته باشد: فیلدِ ویرایشگر، صافیِ overdue یا state() با due_date';
+}
+// ⛔ «+» یک دکمه‌ی فرم است (بی‌جاوااسکریپت کار می‌کند) و جاوااسکریپت فرم را نمی‌فرستد
+if (!str_contains($strip70((string)file_get_contents(__DIR__ . '/../includes/biz_docview.php')), '<button type="submit" name="np_open" value="\' . $i . \'" class="st-plus" formnovalidate data-np-open')) {
+    $bBad[] = 'biz_docview.php — «+» باید دکمه‌ی submit با formnovalidate باشد';
+}
+if (!preg_match("/closest\('\[data-np-open\]'\);\s*if \(!btn\) \{ return; \}\s*e\.preventDefault\(\);/", (string)file_get_contents(__DIR__ . '/../assets/js/store.js'))) {
+    $bBad[] = 'store.js — «+» باید با preventDefault پنل را درجا باز کند، نه فرم را بفرستد';
+}
+// ⛔ کالای تازه‌ی پنل فقط از BizProducts::save() — نسخه‌ی دومی از قاعده‌های کالا نیست
+if (!str_contains($ie70, '$res = BizProducts::save($userId, [') || preg_match('/INSERT\s+INTO\s+biz_products/i', $ie70)) {
+    $bBad[] = 'store/invoice-edit.php — کالای تازه باید از BizProducts::save() ساخته شود';
+}
+
+T::bulk(66, $bBad, 'محیطِ فروشگاهی: دروازه‌ی بی‌کوئری، سه نوعِ حساب، تنها نویسنده، دفترِ جدا از پولِ شخصی، و طرفِ شخصیِ دست‌نخورده');
 
 exit(T::report());

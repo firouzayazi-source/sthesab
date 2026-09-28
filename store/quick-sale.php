@@ -68,6 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $parsed = BizInvoices::parseLines($userId, $form['lines']);
+$form['lines'] = BizDocView::mergeMeta($form['lines'], $parsed['meta']);
 $tot = BizInvoices::totals($parsed['lines'], sanitizeAmount($form['discount']), 0);
 if (count($parsed['lines']) === count($form['lines'])) {
     foreach ($form['lines'] as $k => $l) { $form['lines'][$k]['line_total'] = $parsed['lines'][$k]['line_total']; }
@@ -91,7 +92,7 @@ require __DIR__ . '/../includes/biz_head.php';
     <section class="st-card st-scan">
         <label class="st-field">
             <span>بارکد یا نامِ کالا <small class="st-muted">— با Enter به فهرست اضافه می‌شود</small></span>
-            <input type="text" list="bizProducts" autocomplete="off" autofocus data-scan placeholder="اسکن کنید یا بنویسید…">
+            <input type="text" list="bizProducts" autocomplete="off" autofocus data-scan placeholder="بارکد، IMEI یا نام — اسکن کنید یا بنویسید…">
         </label>
     </section>
 
@@ -143,5 +144,5 @@ require __DIR__ . '/../includes/biz_head.php';
         <button type="submit" name="action" value="sale" class="st-btn st-btn-ghost">ثبت</button>
     </div>
 </form>
-<?= BizDocView::productDatalist($userId) ?>
+<?= BizDocView::productDatalist($userId, 'bizProducts', 2000, true) ?>
 <?php require __DIR__ . '/../includes/biz_foot.php'; ?>
