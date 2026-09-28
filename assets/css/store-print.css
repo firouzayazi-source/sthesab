@@ -99,3 +99,6 @@ body.pr-body {
 .pr-totals .pr-bal.is-prev { margin-top: 6px; border-top: 1px dashed #999; padding-top: 6px; }
 .pr-totals .pr-bal.is-after { font-weight: 800; }
 .pr-totals .pr-bal small { font-weight: 400; color: #555; }
+
+/* زیرسطرِ کم‌رنگ (IMEI دوم، طرفِ سند در گزارش IMEI) */
+.pr-sub { color: #555; font-size: .88em; }

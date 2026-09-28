@@ -223,12 +223,17 @@ $gid = (int)$pdo->lastInsertId();
 
 $g1 = grantPro($gid, 3, $adminId ?: $gid);
 T::ok(!empty($g1['ok']), 'هدیه‌ی سه‌ماهه ثبت شد', $g1['error'] ?? '');
-$exp3 = (new DateTime('today'))->modify('+3 month')->format('Y-m-d');
+// ⚠ انتظار با حسابِ خودِ دیتابیس ساخته می‌شود، نه `DateTime::modify()`: روزِ ۲۹ تا ۳۱ِ
+//    ماه، PHP «+۲ ماه» را به ماهِ بعد سرریز می‌کند (۲۹ بهمن ← ۱ اسفند) و MySQL به آخرِ
+//    همان ماه می‌بُرد — `planExtendUntil()` عمداً در دیتابیس حساب می‌کند، پس تست روی
+//    همان روزها بی‌دلیل قرمز می‌شد.
+$dbAdd = fn(string $expr): string => (string)$pdo->query("SELECT {$expr}")->fetchColumn();
+$exp3 = $dbAdd('DATE_ADD(CURDATE(), INTERVAL 3 MONTH)');
 T::same($exp3, userPlan($gid)['pro_until'], 'سه ماه از امروز');
 T::ok(userPlan($gid)['is_pro'], 'کاربر حالا Pro است');
 
 grantPro($gid, 2, $adminId ?: $gid);
-$exp5 = (new DateTime('today'))->modify('+3 month')->modify('+2 month')->format('Y-m-d');
+$exp5 = $dbAdd('DATE_ADD(DATE_ADD(CURDATE(), INTERVAL 3 MONTH), INTERVAL 2 MONTH)');
 T::same($exp5, userPlan($gid)['pro_until'],
     '⛔ تمدید از انقضای فعلی جلو می‌رود، نه از امروز — وگرنه کاربرِ خوش‌حساب روزهایش را از دست می‌داد');
 

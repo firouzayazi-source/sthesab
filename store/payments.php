@@ -43,6 +43,7 @@ require __DIR__ . '/../includes/biz_head.php';
         <a class="st-btn st-btn-ghost" href="<?= h(Biz::url('payment.php?k=payment')) ?>">+ پرداخت</a>
         <a class="st-btn st-btn-ghost" href="<?= h(Biz::url('payment.php?k=expense')) ?>">+ هزینه</a>
         <a class="st-btn st-btn-ghost" href="<?= h(Biz::url('payment.php?k=transfer')) ?>">انتقال</a>
+        <?php if ($accName !== ''): ?><a class="st-btn st-btn-ghost" href="<?= h(BizPrint::url('account', ['id' => $acc] + BizDocView::periodParams($from, $to))) ?>">چاپِ گردش</a><?php endif; ?>
     </div>
 </div>
 

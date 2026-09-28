@@ -865,3 +865,20 @@ a.st-kpi-card.st-kpi-hero:hover { border-color: transparent; box-shadow: 0 10px 
 .st-pal-swatch[data-pal="ocean"]    { background: linear-gradient(135deg, #0891b2, #0369a1 55%, #1e3a8a); }
 .st-pal-swatch[data-pal="lilac"]    { background: linear-gradient(135deg, #d946ef, #9333ea 55%, #4c1d95); }
 .st-pal-swatch[data-pal="graphite"] { background: linear-gradient(135deg, #4b5260, #22262d 55%, #0e1013); }
+
+/* ==================================================================
+   «همه‌ی گزارش‌ها» — گروه‌ها کنارِ هم، هر گزارش یک ردیفِ فرم
+   (عنوان و توضیح راست، انتخاب و «نمایش» چپ؛ روی گوشی زیرِ هم).
+   ================================================================== */
+.st-hub { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(440px, 100%), 1fr)); gap: 14px; align-items: start; }
+.st-hub-list { list-style: none; margin: 0; padding: 0; }
+.st-hub-list li + li { border-top: 1px solid var(--st-line); }
+.st-hub-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 0; }
+.st-hub-text { display: flex; flex-direction: column; gap: 2px; flex: 1 1 200px; min-width: 0; }
+.st-hub-label { font-weight: 600; color: var(--st-ink); }
+.st-hub-ctl { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.st-hub-ctl select {
+    font: inherit; color: var(--st-ink); background: var(--st-surface); max-width: 190px; min-width: 0;
+    border: 1px solid var(--st-line); border-radius: 8px; padding: 7px 10px;
+}
+.st-hub-ctl .st-btn { padding-block: 7px; }

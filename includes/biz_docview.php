@@ -8,6 +8,7 @@
 if (!defined('APP_BASE_PATH')) { http_response_code(404); exit; }
 
 require_once __DIR__ . '/biz_docs.php';
+require_once __DIR__ . '/biz_print.php';
 
 final class BizDocView
 {
@@ -42,6 +43,20 @@ final class BizDocView
         [$y, $m, $d] = array_map('intval', explode('-', $g));
         [$jy, $jm, $jd] = gregorianToJalali($y, $m, $d);
         return sprintf('%04d/%02d/%02d', $jy, $jm, $jd);
+    }
+
+    /**
+     * ⛔ بازه‌ی یک فهرست → پارامترهای چاپِ گزارشِ دوره‌ای. فهرستِ بی‌صافیِ
+     *    تاریخ «از ابتدا» است، پس چاپش هم «از ابتدا» (`p=all`) — نه «این ماه»؛
+     *    وگرنه برگه چیزی کمتر از صفحه نشان می‌داد. صافیِ یک‌طرفه سرِ دیگرش را
+     *    باز می‌گذارد.
+     * @return array<string,string>
+     */
+    public static function periodParams(string $from, string $to): array
+    {
+        if ($from === '' && $to === '') { return ['p' => 'all']; }
+        return ['p' => 'custom', 'from' => self::jDate($from !== '' ? $from : '2000-01-01'),
+                'to' => self::jDate($to !== '' ? $to : '2099-12-31')];
     }
 
     /** ورودیِ تاریخِ شمسی («۱۴۰۵/۷/۵» یا «1405-07-05») → میلادی؛ خالی یا نامعتبر → ''. */
@@ -251,6 +266,7 @@ final class BizDocView
 <div class="st-page-head">
     <h1 class="st-h1"><?= h($cfg['title']) ?></h1>
     <div class="st-head-actions">
+        <a class="st-btn st-btn-ghost" href="<?= h(BizPrint::url('by_invoice', ['k' => $cfg['doc']] + self::periodParams($from, $to))) ?>">چاپِ فهرست</a>
         <?php if ($side === 'sale'): ?><a class="st-btn st-btn-ghost" href="<?= h(Biz::url('quick-sale.php')) ?>">فروشِ سریع</a><?php endif; ?>
         <a class="st-btn" href="<?= h(Biz::url('invoice-edit.php?k=' . $cfg['doc'])) ?>">+ <?= h(BizInvoices::KINDS[$cfg['doc']]) ?></a>
     </div>

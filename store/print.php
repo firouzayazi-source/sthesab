@@ -29,8 +29,174 @@ $filter = getParam('f');
 $cat    = mb_substr(trim(getParam('c')), 0, 80);
 $money  = static fn($v): string => '<span class="pr-num">' . formatMoney((int)$v) . '</span>';
 $qty    = static fn($v): string => '<span class="pr-num">' . h(formatQty($v)) . '</span>';
+// مبلغِ علامت‌دار — منفی با «−» جلوی عدد، نه با پرانتز
+$signed = static fn($v): string => ((int)$v < 0 ? '−' : '') . '<span class="pr-num">' . formatMoney(abs((int)$v)) . '</span>';
+
+// ⛔ بازه‌ی گزارش‌های دوره‌ای — همان `BizReports::range()` که صفحه‌ی گزارش دارد
+require_once __DIR__ . '/../includes/biz_docview.php';
+$period = getParam('p');
+$period = isset(BizReports::PERIODS[$period]) ? $period : 'month';
+[$rf, $rt] = BizReports::range($period, BizDocView::gDate(getParam('from')), BizDocView::gDate(getParam('to')));
+$periodBack = Biz::url('reports.php') . '?' . http_build_query(array_filter([
+    'p' => $period, 'from' => $period === 'custom' ? BizDocView::jDate($rf) : '', 'to' => $period === 'custom' ? BizDocView::jDate($rt) : '',
+], fn($v) => $v !== ''));
+$side = getParam('k') === 'purchase' ? 'purchase' : 'sale';
 
 switch ($doc) {
+case 'by_product':
+    $bp = BizReports::byProduct($userId, $side, $rf, $rt);
+    $isSale = $side === 'sale';
+    BizPrint::head($userId, BizPrint::SIDE_TITLES['by_product'][$side], $periodBack, ['بازه' => BizReports::rangeLabel($rf, $rt)]);
+    $cols = $isSale ? 6 : 4; ?>
+    <table class="pr-table">
+        <thead><tr><th>کالا</th><th class="pr-wide">کد</th><th class="pr-c-num">تعداد</th><th class="pr-c-num">مبلغ</th>
+            <?php if ($isSale): ?><th class="pr-c-num pr-wide">بهای تمام‌شده</th><th class="pr-c-num">سود</th><?php endif; ?></tr></thead>
+        <tbody>
+        <?php if (!$bp['rows']): ?><tr><td colspan="<?= $cols ?>" class="pr-empty">در این بازه سندِ صادرشده‌ای نیست.</td></tr><?php endif; ?>
+        <?php foreach ($bp['rows'] as $r): ?>
+            <tr>
+                <td><?= h((string)$r['name']) ?></td>
+                <td class="pr-wide"><span class="pr-num"><?= h((string)($r['sku'] ?? '')) ?></span></td>
+                <td class="pr-c-num"><?= $qty($r['qty']) ?> <?= h((string)$r['unit']) ?></td>
+                <td class="pr-c-num"><?= $signed($r['amount']) ?></td>
+                <?php if ($isSale): ?><td class="pr-c-num pr-wide"><?= $signed($r['cost']) ?></td><td class="pr-c-num"><?= $signed($r['profit']) ?></td><?php endif; ?>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+        <tfoot><tr><td colspan="3">جمع</td><td class="pr-c-num"><?= $signed($bp['amount']) ?></td>
+            <?php if ($isSale): ?><td class="pr-c-num pr-wide"><?= $signed($bp['cost']) ?></td><td class="pr-c-num"><?= $signed($bp['profit']) ?></td><?php endif; ?></tr></tfoot>
+    </table>
+    <p class="pr-note">مبلغ‌ها به تومان و خالصِ برگشت‌اند؛ فقط اسنادِ صادرشده.<?= $isSale ? ' سود = مبلغ − بهای تمام‌شده‌ی لحظه‌ی فروش.' : '' ?></p>
+    <?php if ($bp['capped']): ?><p class="pr-note">فهرست بریده شده است؛ بازه را کوتاه‌تر کنید.</p><?php endif; ?>
+    <?php BizPrint::foot($userId);
+    break;
+
+case 'by_invoice':
+    $bi = BizReports::byInvoice($userId, $side, $rf, $rt);
+    $isSale = $side === 'sale';
+    BizPrint::head($userId, BizPrint::SIDE_TITLES['by_invoice'][$side], $periodBack, ['بازه' => BizReports::rangeLabel($rf, $rt)]);
+    $cols = $isSale ? 7 : 6; ?>
+    <table class="pr-table">
+        <thead><tr><th>سند</th><th>تاریخ</th><th><?= $isSale ? 'مشتری' : 'فروشنده' ?></th><th class="pr-c-num">مبلغ</th>
+            <th class="pr-c-num pr-wide"><?= $isSale ? 'دریافت‌شده' : 'پرداخت‌شده' ?></th><th class="pr-c-num">مانده</th>
+            <?php if ($isSale): ?><th class="pr-c-num">سود</th><?php endif; ?></tr></thead>
+        <tbody>
+        <?php if (!$bi['rows']): ?><tr><td colspan="<?= $cols ?>" class="pr-empty">در این بازه سندِ صادرشده‌ای نیست.</td></tr><?php endif; ?>
+        <?php foreach ($bi['rows'] as $r): $s = (int)$r['sign']; ?>
+            <tr>
+                <td><?= h(BizInvoices::title($r)) ?></td>
+                <td><span class="pr-num"><?= h(toJalali((string)$r['inv_date'])) ?></span></td>
+                <td><?= $r['party_name'] !== null ? h((string)$r['party_name']) : 'گذری' ?></td>
+                <td class="pr-c-num"><?= $signed($s * (int)$r['total']) ?></td>
+                <td class="pr-c-num pr-wide"><?= $signed($s * (int)$r['paid']) ?></td>
+                <td class="pr-c-num"><?= $r['due'] > 0 ? $signed($s * $r['due']) : '' ?></td>
+                <?php if ($isSale): ?><td class="pr-c-num"><?= $signed($r['profit']) ?></td><?php endif; ?>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+        <tfoot><tr><td colspan="3">جمع (خالصِ برگشت)</td><td class="pr-c-num"><?= $signed($bi['total']) ?></td>
+            <td class="pr-c-num pr-wide"><?= $signed($bi['paid']) ?></td><td class="pr-c-num"><?= $signed($bi['due']) ?></td>
+            <?php if ($isSale): ?><td class="pr-c-num"><?= $signed($bi['profit']) ?></td><?php endif; ?></tr></tfoot>
+    </table>
+    <p class="pr-note">مبلغ‌ها به تومان؛ برگشتی‌ها با علامتِ منفی. فقط اسنادِ صادرشده.</p>
+    <?php if ($bi['capped']): ?><p class="pr-note">فهرست بریده شده است؛ بازه را کوتاه‌تر کنید.</p><?php endif; ?>
+    <?php BizPrint::foot($userId);
+    break;
+
+case 'by_party':
+    $bpa = BizReports::byParty($userId, $rf, $rt);
+    BizPrint::head($userId, BizPrint::DOCS['by_party'], $periodBack, ['بازه' => BizReports::rangeLabel($rf, $rt)]);
+    $sm = $bpa['sums']; ?>
+    <table class="pr-table">
+        <thead><tr><th>نام</th><th class="pr-c-num">فروش</th><th class="pr-c-num pr-wide">برگشت از فروش</th><th class="pr-c-num">خرید</th>
+            <th class="pr-c-num pr-wide">برگشت از خرید</th><th class="pr-c-num">دریافت</th><th class="pr-c-num">پرداخت</th><th class="pr-c-num">مانده‌ی امروز</th></tr></thead>
+        <tbody>
+        <?php if (!$bpa['rows']): ?><tr><td colspan="8" class="pr-empty">در این بازه گردشی نیست.</td></tr><?php endif; ?>
+        <?php foreach ($bpa['rows'] as $r): $b = (int)$r['balance']; ?>
+            <tr>
+                <td><?= h($r['name']) ?></td>
+                <td class="pr-c-num"><?= $r['sale'] ? $money($r['sale']) : '' ?></td>
+                <td class="pr-c-num pr-wide"><?= $r['sale_return'] ? $money($r['sale_return']) : '' ?></td>
+                <td class="pr-c-num"><?= $r['purchase'] ? $money($r['purchase']) : '' ?></td>
+                <td class="pr-c-num pr-wide"><?= $r['purchase_return'] ? $money($r['purchase_return']) : '' ?></td>
+                <td class="pr-c-num"><?= $r['receipt'] ? $money($r['receipt']) : '' ?></td>
+                <td class="pr-c-num"><?= $r['payment'] ? $money($r['payment']) : '' ?></td>
+                <td class="pr-c-num"><?= $money(abs($b)) ?> <?= $b > 0 ? 'بد' : ($b < 0 ? 'بس' : '') ?></td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+        <tfoot><tr><td>جمع</td><td class="pr-c-num"><?= $money($sm['sale']) ?></td><td class="pr-c-num pr-wide"><?= $money($sm['sale_return']) ?></td>
+            <td class="pr-c-num"><?= $money($sm['purchase']) ?></td><td class="pr-c-num pr-wide"><?= $money($sm['purchase_return']) ?></td>
+            <td class="pr-c-num"><?= $money($sm['receipt']) ?></td><td class="pr-c-num"><?= $money($sm['payment']) ?></td><td></td></tr></tfoot>
+    </table>
+    <p class="pr-note">ستون‌ها گردشِ همین بازه‌اند و «مانده» وضعیتِ امروز: «بد» یعنی او به فروشگاه بدهکار است، «بس» یعنی فروشگاه به او. مبلغ‌ها به تومان.</p>
+    <?php if ($bpa['capped']): ?><p class="pr-note">فهرست بریده شده است.</p><?php endif; ?>
+    <?php BizPrint::foot($userId);
+    break;
+
+case 'serials':
+    $sf = isset(BizSerial::REPORT_FILTERS[$filter]) ? $filter : '';
+    $sr = BizSerial::report($userId, $sf, $id);
+    $sp = $id > 0 ? BizProducts::get($userId, $id) : null;
+    if ($id > 0 && !$sp) { Biz::notFound(); }
+    BizPrint::head($userId, BizPrint::DOCS['serials'] . ($sf !== '' ? ' — ' . BizSerial::REPORT_FILTERS[$sf] : ''),
+        $sp ? Biz::url('product.php?id=' . $id) : Biz::url('reports.php'), [
+        'کالا'     => $sp ? (string)$sp['name'] : '',
+        'در انبار' => toPersianDigits((string)$sr['in']) . ' گوشی',
+        'بیرون'    => toPersianDigits((string)$sr['out']) . ' گوشی',
+    ]); ?>
+    <table class="pr-table">
+        <thead><tr><th>IMEI</th><th>کالا</th><th>ورود</th><th class="pr-c-num pr-wide">بهای خرید</th><th>وضعیت</th><th class="pr-c-num pr-wide">بهای فروش</th></tr></thead>
+        <tbody>
+        <?php if (!$sr['rows']): ?><tr><td colspan="6" class="pr-empty">هیچ گوشیِ IMEIداری با این صافی نیست.</td></tr><?php endif; ?>
+        <?php foreach ($sr['rows'] as $u): $f = $u['first']; $l = $u['last']; $out = $u['state'] === 'out'; ?>
+            <tr>
+                <td><span class="pr-num" dir="ltr"><?= h($u['imei1']) ?></span><?php if ($u['imei2'] !== null): ?><br><span class="pr-num pr-sub" dir="ltr"><?= h($u['imei2']) ?></span><?php endif; ?></td>
+                <td><?= h($u['product']) ?></td>
+                <td><?= h(BizInvoices::KINDS[$f['kind']] ?? '') ?> <span class="pr-num"><?= toPersianDigits((string)$f['number']) ?></span> · <span class="pr-num"><?= h(toJalali($f['date'])) ?></span><br><span class="pr-sub"><?= h($f['party']) ?></span></td>
+                <td class="pr-c-num pr-wide"><?= in_array($f['kind'], BizSerial::IN_KINDS, true) ? $money($f['price']) : '' ?></td>
+                <td><?php if ($out): ?><?= h(BizInvoices::KINDS[$l['kind']] ?? '') ?> <span class="pr-num"><?= toPersianDigits((string)$l['number']) ?></span> · <span class="pr-num"><?= h(toJalali($l['date'])) ?></span><br><span class="pr-sub"><?= h($l['party']) ?></span><?php else: ?>در انبار<?php endif; ?></td>
+                <td class="pr-c-num pr-wide"><?= $out ? $money($l['price']) : '' ?></td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+    <p class="pr-note">وضعیتِ هر گوشی از آخرین سندِ صادرشده با همان IMEI می‌آید؛ سندِ باطل اثری ندارد. گوشی‌ای که پیش از ثبتِ IMEI (موجودی اول دوره) وارد شده اینجا نیست.</p>
+    <?php if ($sr['capped']): ?><p class="pr-note">فهرست بریده شده است؛ با صافیِ وضعیت یا کالا چاپ کنید.</p><?php endif; ?>
+    <?php BizPrint::foot($userId, ['انباردار', 'تأیید']);
+    break;
+
+case 'account':
+    $as = BizReports::accountStatement($userId, $id, $rf, $rt);
+    if (!$as) { Biz::notFound(); }
+    $acc = $as['account'];
+    BizPrint::head($userId, BizPrint::DOCS['account'] . ' — ' . $acc['name'], Biz::url('payments.php?acc=' . $id), [
+        'حساب'  => (string)$acc['name'],
+        'نوع'   => BizCash::KINDS[$acc['kind']] ?? '',
+        'بازه'  => BizReports::rangeLabel($rf, $rt),
+    ]); ?>
+    <table class="pr-table">
+        <thead><tr><th>تاریخ</th><th>شرح</th><th class="pr-c-num">ورود</th><th class="pr-c-num">خروج</th><th class="pr-c-num">مانده</th></tr></thead>
+        <tbody>
+            <tr class="pr-group"><td colspan="4">مانده‌ی ابتدای بازه</td><td class="pr-c-num"><?= $signed($as['opening']) ?></td></tr>
+        <?php if (!$as['lines']): ?><tr><td colspan="5" class="pr-empty">در این بازه گردشی نیست.</td></tr><?php endif; ?>
+        <?php foreach ($as['lines'] as $l): ?>
+            <tr>
+                <td><span class="pr-num"><?= h(toJalali($l['date'])) ?></span></td>
+                <td><?= h($l['desc']) ?></td>
+                <td class="pr-c-num"><?= $l['in'] ? $money($l['in']) : '' ?></td>
+                <td class="pr-c-num"><?= $l['out'] ? $money($l['out']) : '' ?></td>
+                <td class="pr-c-num"><?= $signed($l['balance']) ?></td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+        <tfoot><tr><td colspan="2">جمع</td><td class="pr-c-num"><?= $money($as['in']) ?></td><td class="pr-c-num"><?= $money($as['out']) ?></td><td class="pr-c-num"><?= $signed($as['closing']) ?></td></tr></tfoot>
+    </table>
+    <p class="pr-note">مبلغ‌ها به تومان؛ فقط دریافت و پرداخت‌های باطل‌نشده.</p>
+    <?php if ($as['capped']): ?><p class="pr-note">فقط ردیف‌های آخر آمده‌اند؛ بازه را کوتاه‌تر کنید.</p><?php endif; ?>
+    <?php BizPrint::foot($userId, ['صندوق‌دار', 'تأیید']);
+    break;
+
 case 'invoice':
     require_once __DIR__ . '/../includes/biz_docview.php';
     $inv = BizInvoices::get($userId, $id);
@@ -105,14 +271,10 @@ case 'payment':
     break;
 
 case 'sales':
-    $period = getParam('p');
-    $period = isset(BizReports::PERIODS[$period]) ? $period : 'month';
-    require_once __DIR__ . '/../includes/biz_docview.php';
-    [$rf, $rt] = BizReports::range($period, BizDocView::gDate(getParam('from')), BizDocView::gDate(getParam('to')));
     $sa = BizReports::sales($userId, $rf, $rt);
     $ca = BizReports::cash($userId, $rf, $rt);
-    BizPrint::head($userId, BizPrint::DOCS['sales'], Biz::url('reports.php?p=' . $period), [
-        'از' => toJalali($rf), 'تا' => toJalali($rt),
+    BizPrint::head($userId, BizPrint::DOCS['sales'], $periodBack, [
+        'بازه' => BizReports::rangeLabel($rf, $rt),
     ]); ?>
     <table class="pr-table">
         <tbody>
@@ -127,9 +289,16 @@ case 'sales':
             <tr class="pr-group"><td>سود پس از هزینه</td><td class="pr-c-num"><?= $afterExp < 0 ? '−' : '' ?><?= $money(abs($afterExp)) ?></td></tr>
         </tbody>
     </table>
+    <?php $ex = BizReports::expenses($userId, $rf, $rt, 100); if ($ex): ?>
+    <table class="pr-table">
+        <thead><tr><th>هزینه‌ها به تفکیکِ شرح</th><th class="pr-c-num pr-wide">دفعات</th><th class="pr-c-num">مبلغ</th></tr></thead>
+        <tbody><?php foreach ($ex as $e): ?><tr><td><?= h((string)$e['title']) ?></td><td class="pr-c-num pr-wide"><span class="pr-num"><?= toPersianDigits((string)$e['n']) ?></span></td><td class="pr-c-num"><?= $money($e['s']) ?></td></tr><?php endforeach; ?></tbody>
+        <tfoot><tr><td>جمعِ هزینه‌ها</td><td class="pr-wide"></td><td class="pr-c-num"><?= $money($ca['expense']) ?></td></tr></tfoot>
+    </table>
+    <?php endif; ?>
     <?php $tp = BizReports::topProducts($userId, $rf, $rt, 20); if ($tp): ?>
     <table class="pr-table">
-        <thead><tr><th>کالا</th><th class="pr-c-num">مقدار</th><th class="pr-c-num">فروش</th><th class="pr-c-num pr-wide">سود</th></tr></thead>
+        <thead><tr><th>کالا</th><th class="pr-c-num">تعداد</th><th class="pr-c-num">فروش</th><th class="pr-c-num pr-wide">سود</th></tr></thead>
         <tbody><?php foreach ($tp as $t): ?><tr><td><?= h((string)$t['name']) ?></td><td class="pr-c-num"><?= $qty($t['qty']) ?></td><td class="pr-c-num"><?= $money($t['rev']) ?></td><td class="pr-c-num pr-wide"><?= $money($t['profit']) ?></td></tr><?php endforeach; ?></tbody>
     </table>
     <?php endif; ?>

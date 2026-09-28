@@ -1,7 +1,8 @@
 <?php
 /**
  * گزارش و چاپ — بالای صفحه گزارشِ فروش و سود (`BizReports`) برای یک بازه،
- * پایینش درِ ورودِ همه‌ی برگه‌های چاپی (`BizPrint::DOCS`).
+ * پایینش «همه‌ی گزارش‌ها» — گروه‌بندی‌شده مثلِ نرم‌افزارهای حسابداری، از
+ * `BizPrint::HUB` (تنها مرجع).
  *
  * ⛔ بازه با پیوندِ GET عوض می‌شود (`?p=`)، نه جاوااسکریپت؛ `custom` از/تا
  *    را شمسی می‌گیرد. همه‌ی عددها از اسنادِ **صادرشده** و خالصِ برگشت‌اند.
@@ -36,6 +37,11 @@ $parties  = BizParties::all($userId, '', 500);
 $products = BizProducts::all($userId, '', '', 500);
 $prefs    = Biz::printPrefs($userId);
 $printUrl = Biz::url('print.php');
+$accounts = BizCash::list($userId);
+$stockProducts = array_values(array_filter($products['rows'], fn($r) => (int)$r['track_stock'] === 1));
+// ⛔ بازه‌ی گزارش‌های دوره‌ای همان بازه‌ی بالای صفحه است — پنهان در هر فرم
+$periodHidden = array_filter(['p' => $period, 'from' => $period === 'custom' ? BizDocView::jDate($rFrom) : '',
+                              'to' => $period === 'custom' ? BizDocView::jDate($rTo) : ''], fn($v) => $v !== '');
 
 $pageTitle = 'گزارش و چاپ';
 require __DIR__ . '/../includes/biz_head.php';
@@ -43,9 +49,9 @@ require __DIR__ . '/../includes/biz_head.php';
 <div class="st-page-head">
     <div>
         <h1 class="st-h1">گزارش فروش و سود</h1>
-        <p class="st-muted"><span class="st-num"><?= h(toJalali($rFrom)) ?></span> تا <span class="st-num"><?= h(toJalali($rTo)) ?></span></p>
+        <p class="st-muted"><span class="st-num"><?= h(BizReports::rangeLabel($rFrom, $rTo)) ?></span></p>
     </div>
-    <div class="st-head-actions"><a class="st-btn st-btn-ghost" href="<?= h($rPrint) ?>">چاپِ این گزارش</a></div>
+    <div class="st-head-actions"><a class="st-btn st-btn-ghost" href="#all">همه‌ی گزارش‌ها</a><a class="st-btn st-btn-ghost" href="<?= h($rPrint) ?>">چاپِ سود و زیان</a></div>
 </div>
 <nav class="st-tabs" aria-label="بازه">
     <?php foreach (BizReports::PERIODS as $pk => $pl): if ($pk === 'custom') { continue; } ?>
@@ -88,7 +94,7 @@ require __DIR__ . '/../includes/biz_head.php';
         <h2 class="st-h2">پرفروش‌ترین کالاها</h2>
         <?php if (!$rTop): ?><p class="st-empty">در این بازه فروشی صادر نشده است.</p><?php else: ?>
         <div class="st-table-wrap st-flat"><table class="st-table">
-            <thead><tr><th>کالا</th><th class="st-th-num">مقدار</th><th class="st-th-num">فروش</th><th class="st-th-num">سود</th></tr></thead>
+            <thead><tr><th>کالا</th><th class="st-th-num">تعداد</th><th class="st-th-num">فروش</th><th class="st-th-num">سود</th></tr></thead>
             <tbody><?php foreach ($rTop as $t): ?><tr>
                 <td><?php if ($t['product_id'] !== null): ?><a class="st-row-link" href="<?= h(Biz::url('product.php?id=' . (int)$t['product_id'])) ?>"><?= h((string)$t['name']) ?></a><?php else: ?><?= h((string)$t['name']) ?><?php endif; ?></td>
                 <td class="st-td-num"><span class="st-num"><?= h(formatQty($t['qty'])) ?></span></td>
@@ -130,79 +136,55 @@ require __DIR__ . '/../includes/biz_head.php';
     </section>
 </div>
 
-<h2 class="st-h2 st-section-title">برگه‌های چاپی</h2>
-<p class="st-muted">کاغذ: <?= h(Biz::PRINT_OPTIONS['paper'][$prefs['paper']]) ?> —
+<h2 class="st-h2 st-section-title" id="all">همه‌ی گزارش‌ها</h2>
+<p class="st-muted">گزارش‌های دوره‌ای بازه‌ی بالای همین صفحه را می‌گیرند (<b><?= h(BizReports::rangeLabel($rFrom, $rTo)) ?></b>). کاغذ: <?= h(Biz::PRINT_OPTIONS['paper'][$prefs['paper']]) ?> —
     <a href="<?= h(Biz::url('print-settings.php')) ?>">تنظیماتِ چاپ</a></p>
 
-<div class="st-cols">
-    <?php foreach (['stock', 'prices'] as $d): ?>
-    <form class="st-card st-form" method="get" action="<?= h($printUrl) ?>">
-        <input type="hidden" name="doc" value="<?= h($d) ?>">
-        <h2 class="st-h2"><?= h(BizPrint::DOCS[$d]) ?></h2>
-        <p class="st-muted"><?= $d === 'stock' ? 'موجودی، میانگینِ بهای خرید و ارزشِ هر کالا، به تفکیکِ دسته، با جمعِ کل.' : 'نام، کد، واحد و قیمتِ فروشِ همه‌ی کالاها و خدمت‌ها.' ?></p>
-        <div class="st-row2">
-            <label class="st-field"><span>صافی</span>
-                <select name="f">
-                    <?php foreach (BizProducts::FILTERS as $k => $l): ?><option value="<?= h($k) ?>"><?= h($l) ?></option><?php endforeach; ?>
-                </select>
-            </label>
-            <label class="st-field"><span>دسته</span>
-                <select name="c">
-                    <option value="">همه‌ی دسته‌ها</option>
-                    <?php foreach ($cats as $c): ?><option value="<?= h($c) ?>"><?= h($c) ?></option><?php endforeach; ?>
-                </select>
-            </label>
-        </div>
-        <button type="submit" class="st-btn">نمایش برای چاپ</button>
-    </form>
-    <?php endforeach; ?>
-
-    <form class="st-card st-form" method="get" action="<?= h($printUrl) ?>">
-        <input type="hidden" name="doc" value="parties">
-        <h2 class="st-h2"><?= h(BizPrint::DOCS['parties']) ?></h2>
-        <p class="st-muted">فهرستِ مشتری‌ها و تأمین‌کننده‌ها با مانده‌ی بدهکار و بستانکارِ هر کدام.</p>
-        <label class="st-field"><span>صافی</span>
-            <select name="f">
-                <?php foreach (BizParties::FILTERS as $k => $l): ?><option value="<?= h($k) ?>"><?= h($l) ?></option><?php endforeach; ?>
-            </select>
-        </label>
-        <button type="submit" class="st-btn">نمایش برای چاپ</button>
-    </form>
-
-    <form class="st-card st-form" method="get" action="<?= h($printUrl) ?>">
-        <input type="hidden" name="doc" value="party">
-        <h2 class="st-h2"><?= h(BizPrint::DOCS['party']) ?></h2>
-        <p class="st-muted">گردش و مانده‌ی یک طرف‌حساب، با جای امضا — برای دادن به خودِ مشتری یا تأمین‌کننده.</p>
-        <?php if ($parties['rows']): ?>
-        <label class="st-field"><span>طرف‌حساب</span>
-            <select name="id" required>
-                <?php foreach ($parties['rows'] as $r): ?><option value="<?= (int)$r['id'] ?>"><?= h((string)$r['name']) ?></option><?php endforeach; ?>
-            </select>
-        </label>
-        <?php if ($parties['capped']): ?><p class="st-muted-i">فقط ۵۰۰ طرف‌حسابِ اول آمده‌اند؛ بقیه از صفحه‌ی خودِ طرف‌حساب چاپ می‌شوند.</p><?php endif; ?>
-        <button type="submit" class="st-btn">نمایش برای چاپ</button>
-        <?php else: ?>
-        <p class="st-empty">هنوز طرف‌حسابی ثبت نشده است.</p>
-        <?php endif; ?>
-    </form>
-
-    <form class="st-card st-form" method="get" action="<?= h($printUrl) ?>">
-        <input type="hidden" name="doc" value="kardex">
-        <h2 class="st-h2"><?= h(BizPrint::DOCS['kardex']) ?></h2>
-        <p class="st-muted">همه‌ی ورود و خروج‌های یک کالا با مانده‌ی بعد از هر حرکت.</p>
-        <?php if ($products['rows']): ?>
-        <label class="st-field"><span>کالا</span>
-            <select name="id" required>
-                <?php foreach ($products['rows'] as $r): if ((int)$r['track_stock'] !== 1) { continue; } ?>
-                <option value="<?= (int)$r['id'] ?>"><?= h((string)$r['name']) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </label>
-        <?php if ($products['capped']): ?><p class="st-muted-i">فقط ۵۰۰ کالای اول آمده‌اند؛ بقیه از صفحه‌ی خودِ کالا چاپ می‌شوند.</p><?php endif; ?>
-        <button type="submit" class="st-btn">نمایش برای چاپ</button>
-        <?php else: ?>
-        <p class="st-empty">هنوز کالایی ثبت نشده است.</p>
-        <?php endif; ?>
-    </form>
+<div class="st-hub">
+<?php foreach (BizPrint::HUB as $group => $items): ?>
+    <section class="st-card st-hub-group">
+        <h2 class="st-h2"><?= h($group) ?></h2>
+        <ul class="st-hub-list">
+        <?php foreach ($items as $it): $in = $it['input']; ?>
+            <li>
+                <form class="st-hub-item" method="get" action="<?= h($printUrl) ?>">
+                    <input type="hidden" name="doc" value="<?= h($it['doc']) ?>">
+                    <?php if (isset($it['k'])): ?><input type="hidden" name="k" value="<?= h($it['k']) ?>"><?php endif; ?>
+                    <?php if ($in === 'period' || $in === 'account'): foreach ($periodHidden as $hk => $hv): ?>
+                        <input type="hidden" name="<?= h($hk) ?>" value="<?= h($hv) ?>">
+                    <?php endforeach; endif; ?>
+                    <div class="st-hub-text">
+                        <span class="st-hub-label"><?= h($it['label']) ?></span>
+                        <span class="st-muted-i"><?= h($it['desc']) ?></span>
+                    </div>
+                    <div class="st-hub-ctl">
+                    <?php if ($in === 'pfilter'): ?>
+                        <select name="f" aria-label="صافی"><?php foreach (BizProducts::FILTERS as $k => $l): ?><option value="<?= h($k) ?>"><?= h($l) ?></option><?php endforeach; ?></select>
+                        <?php if ($cats): ?><select name="c" aria-label="دسته"><option value="">همه‌ی دسته‌ها</option><?php foreach ($cats as $c): ?><option value="<?= h($c) ?>"><?= h($c) ?></option><?php endforeach; ?></select><?php endif; ?>
+                    <?php elseif ($in === 'cfilter'): ?>
+                        <select name="f" aria-label="صافی"><?php foreach (BizParties::FILTERS as $k => $l): ?><option value="<?= h($k) ?>"><?= h($l) ?></option><?php endforeach; ?></select>
+                    <?php elseif ($in === 'sfilter'): ?>
+                        <select name="f" aria-label="وضعیت"><?php foreach (BizSerial::REPORT_FILTERS as $k => $l): ?><option value="<?= h($k) ?>"><?= h($l) ?></option><?php endforeach; ?></select>
+                    <?php elseif ($in === 'party'): ?>
+                        <?php if (!$parties['rows']): ?><span class="st-muted-i">هنوز طرف‌حسابی نیست.</span><?php else: ?>
+                        <select name="id" required aria-label="طرف‌حساب"><?php foreach ($parties['rows'] as $r): ?><option value="<?= (int)$r['id'] ?>"><?= h((string)$r['name']) ?></option><?php endforeach; ?></select>
+                        <?php endif; ?>
+                    <?php elseif ($in === 'product'): ?>
+                        <?php if (!$stockProducts): ?><span class="st-muted-i">هنوز کالای انبارداری نیست.</span><?php else: ?>
+                        <select name="id" required aria-label="کالا"><?php foreach ($stockProducts as $r): ?><option value="<?= (int)$r['id'] ?>"><?= h((string)$r['name']) ?></option><?php endforeach; ?></select>
+                        <?php endif; ?>
+                    <?php elseif ($in === 'account'): ?>
+                        <select name="id" required aria-label="صندوق یا حساب"><?php foreach ($accounts as $a): ?><option value="<?= (int)$a['id'] ?>"><?= h((string)$a['name']) ?></option><?php endforeach; ?></select>
+                    <?php endif; ?>
+                    <?php $blocked = ($in === 'party' && !$parties['rows']) || ($in === 'product' && !$stockProducts); ?>
+                        <button type="submit" class="st-btn st-btn-ghost"<?= $blocked ? ' disabled' : '' ?>>نمایش</button>
+                    </div>
+                </form>
+            </li>
+        <?php endforeach; ?>
+        </ul>
+    </section>
+<?php endforeach; ?>
 </div>
+<?php if ($parties['capped'] || $products['capped']): ?><p class="st-muted-i">در فهرستِ انتخاب فقط ۵۰۰ قلمِ اول آمده‌اند؛ بقیه از صفحه‌ی خودِ طرف‌حساب یا کالا چاپ می‌شوند.</p><?php endif; ?>
 <?php require __DIR__ . '/../includes/biz_foot.php'; ?>

@@ -1208,6 +1208,54 @@ final class BizSerial
         return null;
     }
 
+    /** ⛔ تنها مرجعِ صافیِ گزارشِ IMEI (صفحه و چاپ). */
+    public const REPORT_FILTERS = ['' => 'همه', 'in' => 'در انبار', 'out' => 'فروخته / بیرون رفته'];
+
+    /**
+     * گزارشِ شماره سریال — سرگذشتِ هر گوشی: اولین ورود (سند، طرف، بها) و
+     * آخرین رخداد. «کجاست» با همان قاعده‌ی `inStock()` تا می‌شود (آخرین
+     * سندِ صادرشده، دو شماره یک کلید)؛ این تابع فقط ستون‌های نمایش را اضافه
+     * می‌کند و تصمیمِ دومی نمی‌سازد.
+     *
+     * @return array{rows:array, in:int, out:int, capped:bool}
+     */
+    public static function report(int $userId, string $filter = '', int $productId = 0, int $cap = 2000): array
+    {
+        $sql = "SELECT l.imei1, l.imei2, l.product_id, l.unit_price, i.kind, i.id AS invoice_id, i.number, i.inv_date,
+                       COALESCE(p.name, l.description) AS product_name, pa.name AS party_name
+                FROM biz_invoice_lines l
+                JOIN biz_invoices i ON i.id = l.invoice_id AND i.user_id = l.user_id
+                LEFT JOIN biz_products p ON p.id = l.product_id AND p.user_id = l.user_id
+                LEFT JOIN biz_parties pa ON pa.id = i.party_id AND pa.user_id = i.user_id
+                WHERE l.user_id = :u AND i.status = 'issued' AND l.imei1 IS NOT NULL"
+             . ($productId > 0 ? ' AND l.product_id = :p' : '') . ' ORDER BY i.issued_at, i.id, l.id';
+        $st = Database::getConnection()->prepare($sql);
+        $st->execute($productId > 0 ? ['u' => $userId, 'p' => $productId] : ['u' => $userId]);
+        $alias = []; $units = [];
+        foreach ($st->fetchAll() as $r) {
+            $n1 = (string)$r['imei1']; $n2 = $r['imei2'] !== null ? (string)$r['imei2'] : null;
+            $key = $alias[$n1] ?? ($n2 !== null ? ($alias[$n2] ?? null) : null) ?? $n1;
+            $alias[$n1] = $key;
+            if ($n2 !== null) { $alias[$n2] = $key; }
+            $ev = ['kind' => (string)$r['kind'], 'invoice_id' => (int)$r['invoice_id'], 'number' => $r['number'],
+                   'date' => (string)$r['inv_date'], 'party' => $r['party_name'] !== null ? (string)$r['party_name'] : 'گذری',
+                   'price' => (int)$r['unit_price']];
+            if (!isset($units[$key])) {
+                $units[$key] = ['imei1' => $n1, 'imei2' => $n2, 'product_id' => $r['product_id'] !== null ? (int)$r['product_id'] : null,
+                                'product' => (string)$r['product_name'], 'first' => $ev];
+            }
+            $units[$key]['last']  = $ev;
+            $units[$key]['state'] = in_array($r['kind'], self::IN_KINDS, true) ? 'in' : 'out';
+        }
+        $rows = []; $in = 0; $out = 0;
+        foreach ($units as $u) {
+            $u['state'] === 'in' ? $in++ : $out++;
+            if ($filter !== '' && $u['state'] !== $filter) { continue; }
+            $rows[] = $u;
+        }
+        return ['rows' => array_slice($rows, 0, $cap), 'in' => $in, 'out' => $out, 'capped' => count($rows) > $cap];
+    }
+
     /**
      * گوشی‌های همین حالا در انبار — برای جست‌وجوی فاکتورِ فروش و صفحه‌ی کالا.
      * وضعیت از حرکت‌ها «تا» می‌شود؛ دو شماره‌ی یک گوشی یک کلید دارند (اگر

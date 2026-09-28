@@ -14,6 +14,7 @@ require_once __DIR__ . '/../includes/functions.php';
 Auth::initSession();
 Biz::requirePage();
 require_once __DIR__ . '/../includes/biz_catalog.php';
+require_once __DIR__ . '/../includes/biz_print.php';
 
 $userId   = (int)Auth::userId();
 $self     = Biz::url('accounts.php');
@@ -69,6 +70,7 @@ require __DIR__ . '/../includes/biz_head.php';
         <p class="st-acc-bal"><span class="st-num<?= $b < 0 ? ' is-neg' : '' ?>"><?= ($b < 0 ? '−' : '') . formatMoney(abs($b)) ?></span> <small>تومان</small></p>
         <div class="st-move-end">
             <a class="st-link-btn" href="<?= h(Biz::url('payments.php?acc=' . (int)$a['id'])) ?>">گردش</a>
+            <a class="st-link-btn" href="<?= h(BizPrint::url('account', ['id' => (int)$a['id'], 'p' => 'month'])) ?>">چاپ</a>
             <a class="st-link-btn" href="<?= h(Biz::url('accounts.php?acc=' . (int)$a['id'])) ?>#edit">ویرایش</a>
             <form method="post" action="<?= h($self) ?>">
                 <?= Csrf::field() ?>
