@@ -385,14 +385,58 @@ final class Biz
 
     /** کشِ همین درخواست — سرآیند و خودِ صفحه هر دو می‌خوانندش. */
     private static array $settingsCache = [];
+    /** پالتِ خامِ همان ردیف — در همان کوئریِ `settings()` خوانده می‌شود. */
+    private static array $paletteCache = [];
+
+    /**
+     * ⛔ تنها مرجعِ رنگ‌های فروشگاه («همین استایل» — منوی کناریِ طیف‌دار).
+     * **اولین کلید پیش‌فرض است** و در `store.css` خودِ `:root` است (بلوکِ
+     * `data-st-palette` ندارد). `theme` رنگِ نوارِ وضعیتِ گوشی است و باید
+     * همان `--st-rb3`ِ روزِ همان پالت باشد (`test_store_theme` می‌سنجد).
+     * ⚠ کهربایی پیش‌فرض ماند تا فروشگاه و حساب لند با هم قاطی نشوند.
+     */
+    public const PALETTES = [
+        'amber'    => ['label' => 'کهربایی', 'theme' => '#431407'],
+        'indigo'   => ['label' => 'نیلی',    'theme' => '#2f2a6b'],
+        'emerald'  => ['label' => 'زمرد',    'theme' => '#073f2c'],
+        'ocean'    => ['label' => 'اقیانوس', 'theme' => '#1e3a8a'],
+        'lilac'    => ['label' => 'یاس',     'theme' => '#4c1d95'],
+        'graphite' => ['label' => 'شب',      'theme' => '#0e1013'],
+    ];
+
+    /** پالتِ این فروشگاه؛ ناشناخته یا خالی → اولین کلید. صفر کوئریِ اضافه. */
+    public static function palette(int $userId): string
+    {
+        self::settings($userId);
+        $p = (string)(self::$paletteCache[$userId] ?? '');
+        return isset(self::PALETTES[$p]) ? $p : (string)array_key_first(self::PALETTES);
+    }
+
+    /** @return array{ok:bool, message:string} */
+    public static function savePalette(int $userId, string $key): array
+    {
+        if (!isset(self::PALETTES[$key])) {
+            return ['ok' => false, 'message' => 'این رنگ شناخته نشد.'];
+        }
+        // ⛔ پیش‌فرض NULL ذخیره می‌شود نه نامش — تا پیش‌فرضِ فردا به همه برسد.
+        $val = $key === array_key_first(self::PALETTES) ? null : $key;
+        unset(self::$settingsCache[$userId], self::$paletteCache[$userId]);
+        Database::getConnection()->prepare(
+            'INSERT INTO biz_settings (user_id, palette) VALUES (:u, :p)
+             ON DUPLICATE KEY UPDATE palette = VALUES(palette)'
+        )->execute(['u' => $userId, 'p' => $val]);
+        return ['ok' => true, 'message' => 'رنگِ فروشگاه «' . self::PALETTES[$key]['label'] . '» شد.'];
+    }
 
     public static function settings(int $userId): array
     {
         if (isset(self::$settingsCache[$userId])) { return self::$settingsCache[$userId]; }
         $out = array_fill_keys(array_keys(self::SETTING_LIMITS), '');
         try {
+            // ⚠ `*` نه فهرستِ ستون: ستونِ `palette` (migration_biz_theme) روی
+            //    نصبِ عقب‌مانده نیست و نبودنش نباید سربرگ را هم خالی کند.
             $st = Database::getConnection()->prepare(
-                'SELECT shop_name, phone, address, invoice_footer FROM biz_settings WHERE user_id = :u LIMIT 1'
+                'SELECT * FROM biz_settings WHERE user_id = :u LIMIT 1'
             );
             $st->execute(['u' => $userId]);
             $row = $st->fetch();
@@ -402,6 +446,7 @@ final class Biz
         if ($row) {
             foreach ($out as $k => $_) { $out[$k] = (string)($row[$k] ?? ''); }
         }
+        self::$paletteCache[$userId] = $row ? (string)($row['palette'] ?? '') : '';
         return self::$settingsCache[$userId] = $out;
     }
 

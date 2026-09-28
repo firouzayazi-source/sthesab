@@ -149,6 +149,35 @@ foreach ($pal as $k => [$L, $D]) {
 }
 T::bulk($n, $badC, 'تضادِ رنگ‌های متن و تعامل در هر پالت و هر دو حالت کافی است');
 
+// ⛔ منوی کناریِ دسکتاپ طیفِ همان پالت است (`--rb2 → --rb3`)، پس خوانایی‌اش
+//    به هر شش پالت بند است. اعداد از **خودِ** قاعده خوانده می‌شوند (درصدِ
+//    آمیختن، پرده‌ی تیره، شفافیتِ متن)، نه از یک کپیِ محلی — وگرنه با عوض
+//    شدنِ CSS این سنجه همان عددهای قدیمی را می‌سنجید و سبز می‌ماند.
+$sbPos  = strrpos($cssNc, 'html[data-theme="dark"] .sidebar {');
+$sbBody = $sbPos === false ? '' : (string)substr($cssNc, $sbPos, (int)strpos($cssNc, '}', $sbPos) - $sbPos);
+$okMix  = preg_match('/color-mix\(in srgb,\s*var\(--rb2\)\s*(\d+)%,\s*var\(--rb3\)\)/', $sbBody, $mm);
+$okVeil = preg_match('/rgba\(0,\s*0,\s*0,\s*(\.\d+|0\.\d+)\)/', $sbBody, $vm);
+$okTxt  = preg_match('/\.sidebar-nav a,\s*\.logout-link\s*\{[^}]*?(?<![\w-])color:\s*rgba\(255,\s*255,\s*255,\s*(\.\d+|0\.\d+)\)/', $cssNc, $tm);
+T::ok($okMix && $okVeil && $okTxt, 'منوی کناری از --rb2/--rb3 می‌سازد و پرده و شفافیتِ متنش پیدا شد',
+    $okMix ? '' : 'color-mix(--rb2, --rb3) پیدا نشد');
+if ($okMix && $okVeil && $okTxt) {
+    $hex = static fn (string $h): array => array_map('hexdec', str_split(ltrim($h, '#'), 2));
+    $mix = static fn (array $a, array $b, float $t): array => [$a[0]*$t + $b[0]*(1-$t), $a[1]*$t + $b[1]*(1-$t), $a[2]*$t + $b[2]*(1-$t)];
+    $toHex = static fn (array $c): string => sprintf('#%02x%02x%02x', (int)round($c[0]), (int)round($c[1]), (int)round($c[2]));
+    $badSb = []; $nSb = 0;
+    foreach ($pal as $k => [$L, $D]) {
+        foreach (['روز' => $L, 'شب' => $D + $L] as $mode => $T) {
+            $nSb++;
+            if (!isset($T['rb2'], $T['rb3'])) { $badSb[] = "{$k} ({$mode}): --rb2/--rb3 پیدا نشد"; continue; }
+            $bg  = $mix([0, 0, 0], $mix($hex($T['rb2']), $hex($T['rb3']), (float)$mm[1] / 100), (float)$vm[1]);
+            $fg  = $mix([255, 255, 255], $bg, (float)$tm[1]);
+            $r = palContrast($toHex($fg), $toHex($bg));
+            if ($r < 4.5) { $badSb[] = sprintf('%s (%s): متنِ منو روی طیف = %.2f', $k, $mode, $r); }
+        }
+    }
+    T::bulk($nSb, $badSb, 'متنِ منوی کناری روی طیفِ هر پالت (روز و شب) دست‌کم ۴٫۵ تضاد دارد');
+}
+
 // ---------------------------------------------------------------
 T::group('در مرورگر — پالت واقعاً برنده می‌شود، و خانه بی‌سرِ روز است');
 // ---------------------------------------------------------------

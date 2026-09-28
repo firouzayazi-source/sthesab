@@ -22,6 +22,10 @@ $__bizSet   = Biz::settings($__bizUid);
 $__bizShop  = $__bizSet['shop_name'] !== '' ? $__bizSet['shop_name'] : Auth::fullName();
 $__bizPage  = Biz::navCurrent(basename((string)($_SERVER['SCRIPT_NAME'] ?? '')));
 $__bizFlash = getFlash();
+// ⛔ رنگِ فروشگاه از `biz_settings` (همان کوئریِ `settings()` — صفر کوئریِ اضافه).
+//    پیش‌فرض ویژگی نمی‌گیرد: خودِ `:root`ِ `store.css` است.
+$__bizPal   = Biz::palette($__bizUid);
+$__bizPalA  = $__bizPal === array_key_first(Biz::PALETTES) ? '' : ' data-st-palette="' . h($__bizPal) . '"';
 // آیکونِ هر قلمِ منو — فقط شکل، نه فهرستِ صفحه‌ها (آن `Biz::NAV` است)
 $__bizIcons = [
     'index.php'          => '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
@@ -40,7 +44,7 @@ $__bizIcons = [
 ];
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl">
+<html lang="fa" dir="rtl"<?= $__bizPalA ?>>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -54,7 +58,7 @@ $__bizIcons = [
     <?php foreach (assetUrls(['js/store.js']) as $__u): ?>
     <script defer src="<?= h($__u) ?>"></script>
     <?php endforeach; ?>
-    <meta name="theme-color" content="#1c1917">
+    <meta name="theme-color" content="<?= h(Biz::PALETTES[$__bizPal]['theme']) ?>">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="<?= h($__bizShop) ?>">

@@ -449,3 +449,22 @@
         recalc();
     });
 })();
+
+/* رنگِ فروشگاه: پیش‌نمایشِ فوری و ذخیره با همان فرم (بهبودِ تدریجی — بی‌اسکریپت
+   هم دکمه‌ی «ذخیره‌ی رنگ» کار می‌کند). نام فقط از میانِ رادیوهای خودِ صفحه
+   است، پس هیچ مقدارِ دلخواهی روی ویژگی نمی‌نشیند. */
+(function () {
+    'use strict';
+    document.addEventListener('DOMContentLoaded', function () {
+        var radios = document.querySelectorAll('.st-pal input[name="palette"]');
+        if (!radios.length) { return; }
+        var first = radios[0].value;
+        Array.prototype.forEach.call(radios, function (r) {
+            r.addEventListener('change', function () {
+                if (r.value === first) { document.documentElement.removeAttribute('data-st-palette'); }
+                else { document.documentElement.setAttribute('data-st-palette', r.value); }
+                if (r.form && r.form.requestSubmit) { r.form.requestSubmit(); }
+            });
+        });
+    });
+})();

@@ -131,6 +131,7 @@ MIGRATIONS=(
     migration_biz_docs.sql
     migration_biz_serials.sql
     migration_biz_search.sql
+    migration_biz_theme.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -329,6 +330,7 @@ declare -A SENTINEL=(
     # ایندکسِ آخرِ فایل؛ دو ستونِ IMEI و `has_serial` پیش از آن ساخته می‌شوند.
     [migration_biz_serials.sql]="biz_invoice_lines:idx_biz_lines_imei2"
     [migration_biz_search.sql]="biz_invoice_lines.note"
+    [migration_biz_theme.sql]="biz_settings.palette"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

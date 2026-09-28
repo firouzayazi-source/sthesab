@@ -5692,35 +5692,49 @@ html[data-theme="dark"][data-theme] {
 }
 .page-title { font-size: 15px; font-weight: 600; letter-spacing: -.2px; }
 
-/* ---------- منوی کناری: Linear ---------- */
-.sidebar {
-    background: var(--paper); color: var(--ink);
-    border-inline-end: 1px solid var(--line); padding: 14px 10px;
+/* ---------- منوی کناری: طیفِ همان پالت ----------
+   ⛔ رنگ از `--rb1..3` می‌آید — همان سه رنگی که کارتِ ماه را می‌سازند —
+   پس با عوض شدنِ پالت، منو هم عوض می‌شود و هیچ پالتی قاعده‌ی جدا ندارد.
+   پایه `--rb2 (۵۵٪) → --rb3` زیرِ یک پرده‌ی تیره‌ی ۱۰٪ است و `--rb1` فقط
+   یک درخششِ نرم پشتِ نامِ برنامه: `--rb1` در «غروب» نارنجیِ روشن است و
+   متنِ سفید رویش خوانده نمی‌شد. با این اعداد تضادِ متنِ منو (سفیدِ ۸۴٪)
+   در بدترین پالت («غروب»ِ روز) ۴٫۹ است — `test_palette` می‌سنجدش.
+   ⚠ بخشِ ۴۲ توکن تعریف نمی‌کند (قاعده ۵۸)، فقط مصرف می‌کند. */
+.sidebar,
+html[data-theme="dark"] .sidebar {
+    background:
+        radial-gradient(120% 34% at 100% 0%, color-mix(in srgb, var(--rb1) 55%, transparent) 0%, transparent 70%),
+        linear-gradient(180deg, rgba(0,0,0,.1) 0%, rgba(0,0,0,.1) 45%, rgba(0,0,0,.26) 100%),
+        linear-gradient(172deg, color-mix(in srgb, var(--rb2) 55%, var(--rb3)) 0%, var(--rb3) 100%);
+    color: #fff; border-inline-end: 0; padding: 14px 10px;
+    box-shadow: inset 1px 0 0 rgba(255,255,255,.06);
 }
-.sidebar-brand { color: var(--ink); font-size: 14.5px; padding: 2px 8px 14px; }
+.sidebar-brand { color: #fff; font-size: 14.5px; padding: 2px 8px 14px; }
 .sidebar-nav a, .logout-link {
-    color: var(--muted); font-size: 13.5px; font-weight: 500;
+    color: rgba(255,255,255,.84); font-size: 13.5px; font-weight: 500;
     padding: 7px 10px; border-radius: 8px; gap: 10px;
 }
 .sidebar-nav a svg, .logout-link svg { width: 17px; height: 17px; }
-.sidebar-nav a:hover, .logout-link:hover { background: var(--rml-hover); color: var(--ink); }
+.sidebar-nav a:hover, .logout-link:hover { background: rgba(255,255,255,.09); color: #fff; }
 .sidebar-nav a.active,
 html[data-theme="dark"] .sidebar-nav a.active {
-    background: var(--surface); color: var(--ink); font-weight: 600;
-    box-shadow: 0 0 0 1px var(--line), 0 1px 2px var(--rml-ring);
+    background: rgba(255,255,255,.17); color: #fff; font-weight: 600;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.2), 0 6px 14px -8px rgba(0,0,0,.45);
 }
 .sidebar-nav .sidebar-action,
 .sidebar-nav .sidebar-action:hover {
-    background: var(--surface); color: var(--ink); filter: none;
-    box-shadow: 0 0 0 1px var(--line), 0 1px 2px var(--rml-ring);
+    background: rgba(255,255,255,.96); color: var(--rb3); filter: none; font-weight: 600;
+    box-shadow: 0 8px 18px -10px rgba(0,0,0,.55);
     padding: 8px 10px; margin-bottom: 12px; font-size: 13.5px;
 }
-.sidebar-nav .sidebar-action:hover { box-shadow: 0 0 0 1px var(--muted-2), 0 1px 2px var(--rml-ring); }
-.sidebar-nav .sidebar-action svg { color: var(--brand-fg); }
-.nav-divider { color: var(--muted-2); font-size: 11px; font-weight: 600; padding: 14px 10px 4px; letter-spacing: 0; }
-.sidebar-footer { border-top-color: var(--line); }
-.sidebar-nav::-webkit-scrollbar-thumb, .sidebar-nav:hover::-webkit-scrollbar-thumb { background: var(--line); }
-.sidebar-nav { scrollbar-color: var(--line) transparent; }
+.sidebar-nav .sidebar-action:hover { background: #fff; box-shadow: 0 10px 22px -10px rgba(0,0,0,.6); }
+.sidebar-nav .sidebar-action svg { color: var(--rb2); }
+.nav-divider { color: rgba(255,255,255,.52); font-size: 11px; font-weight: 600; padding: 14px 10px 4px; letter-spacing: 0; }
+.sidebar .lock-badge { opacity: .7; }
+.sidebar .nav-badge { box-shadow: 0 0 0 2px rgba(255,255,255,.18); }
+.sidebar-footer { border-top-color: rgba(255,255,255,.14); }
+.sidebar-nav::-webkit-scrollbar-thumb, .sidebar-nav:hover::-webkit-scrollbar-thumb { background: rgba(255,255,255,.22); }
+.sidebar-nav { scrollbar-color: rgba(255,255,255,.22) transparent; }
 
 /* ---------- عدد: Mercury ---------- */
 .ltr-num:not(.bank-card-number):not(.pay-number) { letter-spacing: -.2px; }

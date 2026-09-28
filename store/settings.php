@@ -19,6 +19,11 @@ $values   = Biz::settings($userId);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Csrf::verifyOrFail(postParam('csrf_token'));
+    // رنگِ فروشگاه فرمِ خودش را دارد تا ذخیره‌ی رنگ به سربرگ دست نزند.
+    if (postParam('action') === 'palette') {
+        $res = Biz::savePalette($userId, (string)postParam('palette'));
+        redirectWithMessage(Biz::url('settings.php') . '#palette', $res['ok'] ? 'success' : 'error', $res['message']);
+    }
     $in = [];
     foreach (array_keys(Biz::SETTING_LIMITS) as $k) {
         $in[$k] = (string)($_POST[$k] ?? '');
@@ -35,6 +40,23 @@ $pageTitle = 'تنظیمات فروشگاه';
 require __DIR__ . '/../includes/biz_head.php';
 ?>
 <h1 class="st-h1">تنظیمات فروشگاه</h1>
+
+<h2 class="st-h2 st-section-title" id="palette">رنگِ فروشگاه</h2>
+<form method="post" class="st-card st-form" action="<?= h(Biz::url('settings.php')) ?>">
+    <?= Csrf::field() ?>
+    <input type="hidden" name="action" value="palette">
+    <p class="st-muted">منوی کناری، دکمه‌ها و کارتِ «فروشِ امروز» با همین رنگ طیف می‌گیرند — روی همه‌ی دستگاه‌ها.</p>
+    <div class="st-palettes" role="radiogroup" aria-label="رنگِ فروشگاه">
+        <?php $__cur = Biz::palette($userId); foreach (Biz::PALETTES as $__k => $__p): ?>
+        <label class="st-pal">
+            <input type="radio" name="palette" value="<?= h($__k) ?>"<?= $__k === $__cur ? ' checked' : '' ?>>
+            <span class="st-pal-swatch" data-pal="<?= h($__k) ?>" aria-hidden="true"></span>
+            <span class="st-pal-name"><?= h($__p['label']) ?></span>
+        </label>
+        <?php endforeach; ?>
+    </div>
+    <button type="submit" class="st-btn">ذخیره‌ی رنگ</button>
+</form>
 <h2 class="st-h2 st-section-title">سربرگِ فاکتور</h2>
 
 <?php if ($error !== ''): ?>

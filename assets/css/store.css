@@ -415,7 +415,7 @@ a.st-kpi-card:hover { border-color: var(--st-accent); }
 /* منوی «+ ثبت» در نوارِ کناری — `<details>`، بی‌جاوااسکریپت */
 .st-new { margin: 0 0 10px; flex-shrink: 0; }
 .st-new-btn {
-    list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;
     background: var(--st-accent); color: var(--st-accent-ink); font-weight: 700;
     border-radius: 10px; padding: 9px 12px; user-select: none;
 }
@@ -733,3 +733,135 @@ a.st-kpi-card:hover, .st-action:hover { border-color: var(--st-ink-2); color: in
 .st-side-item.is-active .st-side-ico { color: #fcd34d; }
 .st-side-title { font-size: 11px; font-weight: 600; }
 .st-side-nav { scrollbar-width: thin; scrollbar-color: rgba(250,250,249,.14) transparent; }
+
+/* ============================================================
+   رنگِ فروشگاه — منوی کناریِ طیف‌دار (همان زبانِ حساب لند)
+   ============================================================
+   **خواسته‌ی مالکِ نصب:** «ساید بار با تغییرِ رنگ تغییر کنه، طیف‌طور و
+   خوشگل… در بخشِ فروشگاهی هم همین استایل.»
+   ⛔ `Biz::PALETTES` تنها مرجعِ نام‌هاست و **اولین کلید (کهربایی) همین
+   `:root` است** — بلوکِ `data-st-palette` ندارد. سرور ویژگی را روی `<html>`
+   رندر می‌کند (`biz_settings.palette`)، پس نه اسکریپتی لازم است نه چشمکی.
+   ⛔ هر پالت فقط توکن عوض می‌کند (`--st-rb1..3` و لهجه)؛ قاعده‌ها یکی‌اند.
+   ⚠ پایه `--st-rb2 (۵۵٪) → --st-rb3` زیرِ پرده‌ی تیره‌ی ۱۰٪ است و `--st-rb1`
+   فقط درخششِ پشتِ نام: همان اعدادی که `test_store_theme` تضادشان را
+   می‌سنجد (متنِ منو ≥ ۴٫۵ در هر پالت، روز و شب). */
+:root { --st-rb1: #f59e0b; --st-rb2: #b45309; --st-rb3: #431407; }
+@media (prefers-color-scheme: dark) {
+    :root { --st-rb1: #d97706; --st-rb2: #92400e; --st-rb3: #1c0f06; }
+}
+html[data-st-palette="indigo"] {
+    --st-rb1: #6d5dfc; --st-rb2: #4a3fb5; --st-rb3: #2f2a6b;
+    --st-accent: #4a3fb5; --st-accent-2: #3b2f8f; --st-accent-ink: #ffffff; --st-wash: #ecebfd;
+}
+html[data-st-palette="emerald"] {
+    --st-rb1: #10b981; --st-rb2: #0b5d41; --st-rb3: #073f2c;
+    --st-accent: #047857; --st-accent-2: #065f46; --st-accent-ink: #ffffff; --st-wash: #d1fae5;
+}
+html[data-st-palette="ocean"] {
+    --st-rb1: #0891b2; --st-rb2: #0369a1; --st-rb3: #1e3a8a;
+    --st-accent: #0369a1; --st-accent-2: #075985; --st-accent-ink: #ffffff; --st-wash: #e0f2fe;
+}
+html[data-st-palette="lilac"] {
+    --st-rb1: #d946ef; --st-rb2: #9333ea; --st-rb3: #4c1d95;
+    --st-accent: #7e22ce; --st-accent-2: #6b21a8; --st-accent-ink: #ffffff; --st-wash: #f3e8ff;
+}
+html[data-st-palette="graphite"] {
+    --st-rb1: #4b5260; --st-rb2: #22262d; --st-rb3: #0e1013;
+    --st-accent: #1f2937; --st-accent-2: #111827; --st-accent-ink: #ffffff; --st-wash: #eef0f3;
+}
+/* ⚠ شب بعد از روز می‌آید و هم‌وزن است: بدونِ تکرارِ هر توکن، رنگِ روزِ همان
+   پالت در شب می‌ماند (همان درسِ بخشِ ۴۱ـِ style.css). */
+@media (prefers-color-scheme: dark) {
+    html[data-st-palette="indigo"] {
+        --st-rb1: #5b4ee0; --st-rb2: #3a318f; --st-rb3: #1e1a4d;
+        --st-accent: #8b83ff; --st-accent-2: #a59fff; --st-accent-ink: #0f0d24; --st-wash: #211d4a;
+    }
+    html[data-st-palette="emerald"] {
+        --st-rb1: #0f8a5f; --st-rb2: #0f4130; --st-rb3: #0a2c20;
+        --st-accent: #34d399; --st-accent-2: #10b981; --st-accent-ink: #052e1f; --st-wash: #0f2e22;
+    }
+    html[data-st-palette="ocean"] {
+        --st-rb1: #0b6f86; --st-rb2: #0a4f7a; --st-rb3: #152a66;
+        --st-accent: #38bdf8; --st-accent-2: #0ea5e9; --st-accent-ink: #062033; --st-wash: #0c2a3d;
+    }
+    html[data-st-palette="lilac"] {
+        --st-rb1: #a21caf; --st-rb2: #6d28d9; --st-rb3: #3b0d6e;
+        --st-accent: #c084fc; --st-accent-2: #a855f7; --st-accent-ink: #1e0736; --st-wash: #2a1245;
+    }
+    html[data-st-palette="graphite"] {
+        --st-rb1: #3a3f4a; --st-rb2: #1c1f24; --st-rb3: #0a0b0d;
+        --st-accent: #f0c05a; --st-accent-2: #d9a93f; --st-accent-ink: #1a1405; --st-wash: #2a2414;
+    }
+}
+
+/* منوی کناری (و سربرگِ گوشی): طیفِ همان پالت */
+.st-side {
+    background:
+        radial-gradient(120% 34% at 100% 0%, color-mix(in srgb, var(--st-rb1) 55%, transparent) 0%, transparent 70%),
+        linear-gradient(180deg, rgba(0,0,0,.1) 0%, rgba(0,0,0,.1) 45%, rgba(0,0,0,.26) 100%),
+        linear-gradient(172deg, color-mix(in srgb, var(--st-rb2) 55%, var(--st-rb3)) 0%, var(--st-rb3) 100%);
+    color: #fff;
+}
+.st-top {
+    background:
+        linear-gradient(0deg, rgba(0,0,0,.1), rgba(0,0,0,.1)),
+        linear-gradient(100deg, color-mix(in srgb, var(--st-rb2) 55%, var(--st-rb3)) 0%, var(--st-rb3) 100%);
+    color: #fff;
+}
+.st-side-brand, .st-side-foot { border-color: rgba(255,255,255,.14); }
+.st-side .st-brand-mark, .st-top .st-brand-mark {
+    background: rgba(255,255,255,.16); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.22);
+}
+.st-side-title { color: rgba(255,255,255,.55); opacity: 1; }
+.st-side-item { color: rgba(255,255,255,.84); opacity: 1; }
+.st-side-item:hover { background: rgba(255,255,255,.09); color: #fff; }
+.st-side-item.is-active {
+    background: rgba(255,255,255,.17); color: #fff; font-weight: 600;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.2), 0 6px 14px -8px rgba(0,0,0,.45);
+}
+.st-side-item.is-active .st-side-ico { color: #fff; }
+.st-side .st-new-btn {
+    background: rgba(255,255,255,.96); color: var(--st-rb3);
+    box-shadow: 0 8px 18px -10px rgba(0,0,0,.55);
+}
+.st-side .st-new-btn:hover { background: #fff; }
+.st-side .st-new-menu { background: rgba(255,255,255,.1); }
+.st-side .st-new-menu a { color: #fff; }
+.st-side .st-new-menu a:hover { background: rgba(255,255,255,.12); }
+.st-side .st-switch, .st-side .st-logout, .st-top .st-switch, .st-top .st-logout {
+    color: #fff; opacity: 1; border-color: rgba(255,255,255,.3);
+}
+.st-side .st-switch:hover, .st-side .st-logout:hover { background: rgba(255,255,255,.1); }
+.st-menu-btn:hover { background: rgba(255,255,255,.12); }
+.st-side-nav { scrollbar-color: rgba(255,255,255,.22) transparent; }
+
+/* کارتِ «فروشِ امروز» (Mercury): همان طیف، عددِ سفید */
+.st-kpi-card.st-kpi-hero {
+    background:
+        radial-gradient(90% 120% at 100% 0%, color-mix(in srgb, var(--st-rb1) 60%, transparent) 0%, transparent 65%),
+        linear-gradient(135deg, color-mix(in srgb, var(--st-rb2) 70%, var(--st-rb3)) 0%, var(--st-rb3) 100%);
+    color: #fff;
+}
+.st-kpi-card.st-kpi-hero .st-kpi-value { color: #fff; }
+.st-kpi-card.st-kpi-hero .st-kpi-label, .st-kpi-card.st-kpi-hero .st-kpi-sub { color: rgba(255,255,255,.78); }
+a.st-kpi-card.st-kpi-hero:hover { border-color: transparent; box-shadow: 0 10px 24px -14px var(--st-rb3); }
+
+/* انتخابگرِ رنگ در «تنظیمات فروشگاه» — رادیو، بی‌جاوااسکریپت */
+.st-palettes { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(120px, 100%), 1fr)); gap: 10px; }
+.st-pal { position: relative; display: block; cursor: pointer; }
+.st-pal input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.st-pal-swatch {
+    display: block; height: 56px; border-radius: 10px;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.08);
+}
+.st-pal-name { display: block; text-align: center; font-size: 13px; margin-top: 6px; color: var(--st-ink-2); }
+.st-pal input:checked ~ .st-pal-swatch { box-shadow: 0 0 0 2px var(--st-surface), 0 0 0 4px var(--st-accent); }
+.st-pal input:checked ~ .st-pal-name { color: var(--st-ink); font-weight: 700; }
+.st-pal input:focus-visible ~ .st-pal-swatch { outline: 2px solid var(--st-accent); outline-offset: 3px; }
+.st-pal-swatch[data-pal="amber"]    { background: linear-gradient(135deg, #f59e0b, #b45309 55%, #431407); }
+.st-pal-swatch[data-pal="indigo"]   { background: linear-gradient(135deg, #6d5dfc, #4a3fb5 55%, #2f2a6b); }
+.st-pal-swatch[data-pal="emerald"]  { background: linear-gradient(135deg, #10b981, #0b5d41 55%, #073f2c); }
+.st-pal-swatch[data-pal="ocean"]    { background: linear-gradient(135deg, #0891b2, #0369a1 55%, #1e3a8a); }
+.st-pal-swatch[data-pal="lilac"]    { background: linear-gradient(135deg, #d946ef, #9333ea 55%, #4c1d95); }
+.st-pal-swatch[data-pal="graphite"] { background: linear-gradient(135deg, #4b5260, #22262d 55%, #0e1013); }
