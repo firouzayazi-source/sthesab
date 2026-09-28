@@ -5823,7 +5823,22 @@ if (strpos($plIdx, 'renderTransactionsGrouped(') !== false) { $badPl[] = 'index.
 if (!preg_match('/foreach\s*\(\s*\$recentTransactions\s+as\s+\$\w+\)\s*\{\s*renderTransactionRow\(/', $plIdx)) { $badPl[] = 'index.php — ردیف‌ها از renderTransactionRow() رندر نمی‌شوند'; }
 if (strpos($plTx, 'renderTransactionsGrouped(') === false) { $badPl[] = 'transactions.php گروه‌بندیِ روزانه را از دست داده'; }
 
-T::bulk(22, $badPl, '⛔ پالت از یک فهرست، طیف از توکن، theme-color از --brand، و خانه بی‌سرِ روز');
+// ⛔ Ramp × Mercury × Linear (بخشِ ۴۲): پایه‌ی خنثی برای همه‌ی پالت‌ها، ولی
+//    هرگز لهجه‌ی پالت — برند، کارتِ ماه، دکمه‌ی + — را بازتعریف نمی‌کند.
+$css42 = (string)@file_get_contents(__DIR__ . '/../assets/css/style.css');
+$sec42 = ($p42 = strpos($css42, '۴۲ — Ramp × Mercury × Linear')) !== false ? substr($css42, $p42) : '';
+if ($sec42 === '') {
+    $badPl[] = 'style.css — بخشِ «۴۲ — Ramp × Mercury × Linear» نیست';
+} else {
+    $body42 = preg_replace('#/\*.*?\*/#s', '', $sec42);
+    if (preg_match('/--(brand|brand-fg|brand-deep|rb[0-9a-z-]*|fab[0-9a-z-]*|tint|nav-mark|gold[a-z-]*|in|out)\s*:/', $body42, $m42)) {
+        $badPl[] = "بخشِ ۴۲ لهجه‌ی پالت را بازتعریف می‌کند: --{$m42[1]}";
+    }
+    if (!str_contains($body42, 'html[data-theme="dark"][data-theme] {') || !str_contains($body42, 'html:not([data-theme="dark"]) {')) {
+        $badPl[] = 'بخشِ ۴۲ — پایه‌ی خنثی باید برای روز و شب هر دو باشد (با وزنِ درست)';
+    }
+}
+T::bulk(24, $badPl, '⛔ پالت از یک فهرست، طیف از توکن، theme-color از --brand، و خانه بی‌سرِ روز');
 
 // ---------------------------------------------------------------
 // ⛔ قاعده ۵۹ — هیچ آدرسِ blob: ای برای تصویر، وقتی CSP آن را نمی‌پذیرد.

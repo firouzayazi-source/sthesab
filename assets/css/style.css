@@ -5644,39 +5644,110 @@ a.desk-row:hover .desk-row-name { color: var(--brand-fg); }
 .desk-comp .cat-breakdown-bar-track { margin: 0; }
 
 /* ============================================================
-   ۴۲ — لایه‌ی مینیمال («قوی‌تر، مینیمال‌تر، باحال‌تر»)
+   ۴۲ — Ramp × Mercury × Linear
    ============================================================
-   **خواسته‌ی مالکِ نصب:** «ظاهر برنامه هنوز دلچسب من نیست — قوی‌تر
-   گرافیکی، مینیمال‌تر و باحال‌ترش کن.»
+   **خواسته‌ی مالکِ نصب:** «از این فورمول برای ساختِ ظاهر: Ramp × Mercury ×
+   Linear.» سه اصل، از هر کدام یکی:
+   - **Linear — پایه:** بومِ خنثی، پنلِ سفید، **خطِ مو به‌جای سایه**، منوی
+     کناریِ روشن و بی‌رنگ با قلمِ فعالِ «کارت‌مانند»، تایپِ ریز و دقیق.
+   - **Mercury — عدد:** عددِ پولیِ قهرمان درشت و آرام (وزنِ ۶۰۰، فشرده)،
+     برچسب کوچک و خاکستری؛ رنگ فقط روی کارتِ ماه.
+   - **Ramp — ابزار:** دکمه و فیلدِ ۸ پیکسلیِ تخت، فهرستِ ردیف‌به‌ردیف با
+     جداکننده‌ی مو، و رنگ **فقط برای معنا** (درآمد/هزینه/هشدار).
 
-   ⛔ فقط شکل، هیچ رنگی: هیچ توکنِ رنگی اینجا تعریف یا بازتعریف نمی‌شود،
-      پس شش پالت، تضادهای سنجیده‌شده‌ی `test_palette` و حالت شب دست
-      نخوردند. چهار حرکت، هر چهار «کم کردن» است نه «افزودن»:
-   ۱. کارت‌ها در روز **بی‌خط**اند و عمقشان از یک سایه‌ی نرمِ هم‌رنگِ پالت
-      (`--tint`) می‌آید — خط + سایه دو بار همان مرز را می‌کشیدند. در **شب**
-      خط می‌ماند: سایه روی زمینه‌ی تیره دیده نمی‌شود و کارت محو می‌شد.
-   ۲. عددِ پولی فشرده (`letter-spacing` منفی): ارقامِ فارسیِ جدول‌عرض با
-      فاصله‌ی مثبت «۱ ۰ ۲ ۰ ۴ ۰» خوانده می‌شدند. شماره‌ی کارت و کدِ پرداخت
-      فاصله‌ی خودشان را نگه می‌دارند (آن‌ها را تکه‌تکه می‌خوانیم).
-   ۳. کارت‌های فصل: خطِ کناریِ ۴ پیکسلی ۳ شد و حلقه‌ی فصلِ جاری به یک
-      سایه‌ی نرم — وگرنه کارتِ سالانه پررنگ‌ترین چیزِ صفحه بود.
-   ۴. سرآیندِ بالا شیشه‌ای (blur) — محتوا زیرش محو می‌شود نه بریده.
-      ⚠ ۸۸٪ مات، نه شفاف‌تر: همین نوار پشتِ ساعتِ آیفونِ نصب‌شده هم
-      زمینه می‌گذارد (بخشِ `.topbar`) و متنِ زیرش نباید خوانده شود.
+   ⛔ پایه‌ی خنثی (`--paper/--surface/--line/--ink/--muted`) برای **هر شش
+      پالت یکی است** و بعد از بخشِ ۴۱ می‌نشیند؛ پالت فقط لهجه را رنگ
+      می‌کند: `--brand`/`--brand-fg`، کارتِ ماه (`--rb*`)، دکمه‌ی +
+      (`--fab*`)، نشانگرِ نوارِ پایین. پس سه جای «رنگِ برند» (مانیفست،
+      `theme-color`، APK — قاعده ۵۷) و طیفِ کارتِ ماه (`test_palette`)
+      دست نخوردند.
+   ⚠ وزن‌ها عمدی‌اند: روز `html:not([data-theme="dark"])` (۰،۱،۱) بعد از
+     `html[data-palette]` (۰،۱،۱) است، پس با ترتیب می‌برد؛ شب
+     `html[data-theme="dark"][data-theme]` (۰،۲،۱) — ویژگیِ تکراری فقط
+     برای رسیدن به وزنِ `html[data-theme="dark"][data-palette="x"]`.
    ============================================================ */
-html:not([data-theme="dark"]) .card,
-html:not([data-theme="dark"]) .stats-card,
-html:not([data-theme="dark"]) .summary-box {
-    border-color: transparent;
-    box-shadow: 0 1px 1px rgba(var(--tint), .04), 0 12px 32px -20px rgba(var(--tint), .38);
+html:not([data-theme="dark"]) {
+    --paper: #f6f7f9; --surface: #ffffff; --line: #e6e8ec; --line-soft: #f1f2f5;
+    --ink: #0f1115; --ink-soft: #2b2f38; --muted: #697080; --muted-2: #9aa0ab;
+    --rml-hover: rgba(15,17,21,.045); --rml-ring: rgba(15,17,21,.06);
 }
-.ltr-num:not(.bank-card-number):not(.pay-number) { letter-spacing: -.3px; }
-/* عددِ «قهرمان» (کاشی و کارتِ ماه) تنها است و ستون نمی‌سازد، پس رقمِ
-   متناسب — جدول‌عرض فقط جایی لازم است که اعداد زیرِ هم تراز شوند. */
-.desk-kpi-value, .desk-kpi-value .ltr-num, .bv-num { letter-spacing: -.6px; font-variant-numeric: proportional-nums; }
-.season-card { border-inline-start-width: 3px; }
-.season-card.is-current { box-shadow: 0 10px 26px -16px var(--season-c); }
+html[data-theme="dark"][data-theme] {
+    --paper: #0b0c0e; --surface: #131418; --line: #24262c; --line-soft: #1a1b20;
+    --ink: #eceef1; --ink-soft: #c8ccd3; --muted: #8e939d; --muted-2: #646a75;
+    --rml-hover: rgba(255,255,255,.045); --rml-ring: rgba(0,0,0,.4);
+}
+
+/* ---------- سطح: خطِ مو، بی‌سایه، ۱۲ پیکسل ---------- */
+.card, .stats-card, .summary-box, .desk-kpi {
+    border: 1px solid var(--line); box-shadow: none; border-radius: 12px;
+}
+.card-title { font-size: 13.5px; font-weight: 600; letter-spacing: -.1px; margin-bottom: 12px; }
+.desk-kpi:hover { transform: none; border-color: var(--muted-2); }
+
+/* ---------- سرآیند: شیشه‌ای، عنوانِ ریز ---------- */
 .topbar {
     background: color-mix(in srgb, var(--surface) 88%, transparent);
     -webkit-backdrop-filter: saturate(1.4) blur(14px); backdrop-filter: saturate(1.4) blur(14px);
+    border-bottom: 1px solid var(--line);
 }
+.page-title { font-size: 15px; font-weight: 600; letter-spacing: -.2px; }
+
+/* ---------- منوی کناری: Linear ---------- */
+.sidebar {
+    background: var(--paper); color: var(--ink);
+    border-inline-end: 1px solid var(--line); padding: 14px 10px;
+}
+.sidebar-brand { color: var(--ink); font-size: 14.5px; padding: 2px 8px 14px; }
+.sidebar-nav a, .logout-link {
+    color: var(--muted); font-size: 13.5px; font-weight: 500;
+    padding: 7px 10px; border-radius: 8px; gap: 10px;
+}
+.sidebar-nav a svg, .logout-link svg { width: 17px; height: 17px; }
+.sidebar-nav a:hover, .logout-link:hover { background: var(--rml-hover); color: var(--ink); }
+.sidebar-nav a.active,
+html[data-theme="dark"] .sidebar-nav a.active {
+    background: var(--surface); color: var(--ink); font-weight: 600;
+    box-shadow: 0 0 0 1px var(--line), 0 1px 2px var(--rml-ring);
+}
+.sidebar-nav .sidebar-action,
+.sidebar-nav .sidebar-action:hover {
+    background: var(--surface); color: var(--ink); filter: none;
+    box-shadow: 0 0 0 1px var(--line), 0 1px 2px var(--rml-ring);
+    padding: 8px 10px; margin-bottom: 12px; font-size: 13.5px;
+}
+.sidebar-nav .sidebar-action:hover { box-shadow: 0 0 0 1px var(--muted-2), 0 1px 2px var(--rml-ring); }
+.sidebar-nav .sidebar-action svg { color: var(--brand-fg); }
+.nav-divider { color: var(--muted-2); font-size: 11px; font-weight: 600; padding: 14px 10px 4px; letter-spacing: 0; }
+.sidebar-footer { border-top-color: var(--line); }
+.sidebar-nav::-webkit-scrollbar-thumb, .sidebar-nav:hover::-webkit-scrollbar-thumb { background: var(--line); }
+.sidebar-nav { scrollbar-color: var(--line) transparent; }
+
+/* ---------- عدد: Mercury ---------- */
+.ltr-num:not(.bank-card-number):not(.pay-number) { letter-spacing: -.2px; }
+.bv-num { font-size: 38px; font-weight: 600; letter-spacing: -1.2px; font-variant-numeric: proportional-nums; }
+.desk-kpi-value, .desk-kpi-value .ltr-num { font-size: 24px; font-weight: 600; letter-spacing: -.8px; font-variant-numeric: proportional-nums; }
+.desk-kpi-label { font-size: 12.5px; font-weight: 500; color: var(--muted); }
+
+/* ---------- ابزار: Ramp ---------- */
+.btn { border-radius: 8px; font-weight: 600; }
+.btn-secondary { background: var(--surface); border: 1px solid var(--line); color: var(--ink); }
+.btn-secondary:hover { border-color: var(--muted-2); }
+input[type="text"], input[type="password"], input[type="email"], input[type="number"], input[type="date"],
+input[type="tel"], input[type="search"], select, textarea {
+    border-radius: 8px; border-color: var(--line); background: var(--surface);
+}
+input:focus-visible, select:focus-visible, textarea:focus-visible {
+    border-color: var(--brand-fg); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-fg) 16%, transparent); outline: none;
+}
+/* فهرستِ تراکنش: آیکونِ گوشه‌گردِ کوچک‌تر، جداکننده‌ی مو */
+.cat-icon { width: 34px; height: 34px; border-radius: 9px; }
+.cat-icon svg { width: 17px; height: 17px; }
+
+/* ---------- کارتِ سالانه: فصل یک نشانه است، نه یک رنگِ تمام‌کارت ---------- */
+.season-card { background: var(--surface); border: 1px solid var(--line); border-inline-start: 1px solid var(--line); }
+.season-card .season-name::before {
+    content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--season-c); margin-inline-end: 7px; vertical-align: middle;
+}
+.season-card .season-name { color: var(--ink); }
+.season-card.is-current { box-shadow: none; border-color: var(--season-c); }

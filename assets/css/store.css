@@ -15,12 +15,13 @@
 }
 
 :root {
-    --st-bg:       #f5f3ef;
+    /* Ramp × Mercury × Linear: بومِ خنثی، پنلِ سفید، خطِ مو؛ کهربایی فقط لهجه */
+    --st-bg:       #f6f7f9;
     --st-surface:  #ffffff;
-    --st-ink:      #1c1917;
-    --st-ink-2:    #57534e;
-    --st-line:     #e7e5e4;
-    --st-top:      #1c1917;
+    --st-ink:      #0f1115;
+    --st-ink-2:    #626978;
+    --st-line:     #e6e8ec;
+    --st-top:      #0f1012;
     --st-top-ink:  #fafaf9;
     --st-accent:   #b45309;
     --st-accent-2: #92400e;
@@ -30,17 +31,17 @@
     --st-ok-wash:  #dcfce7;
     --st-err:      #b91c1c;
     --st-err-wash: #fee2e2;
-    --st-radius:   14px;
-    --st-shadow:   0 1px 2px rgba(28,25,23,.06), 0 4px 16px rgba(28,25,23,.06);
+    --st-radius:   12px;
+    --st-shadow:   none;   /* خطِ مو به‌جای سایه — Linear */
 }
 @media (prefers-color-scheme: dark) {
     :root {
-        --st-bg:       #12110f;
-        --st-surface:  #1c1b19;
-        --st-ink:      #f5f5f4;
-        --st-ink-2:    #a8a29e;
-        --st-line:     #2e2c29;
-        --st-top:      #0c0a09;
+        --st-bg:       #0b0c0e;
+        --st-surface:  #131418;
+        --st-ink:      #eceef1;
+        --st-ink-2:    #8e939d;
+        --st-line:     #24262c;
+        --st-top:      #08090a;
         --st-top-ink:  #fafaf9;
         --st-accent:   #f59e0b;
         --st-accent-2: #d97706;
@@ -685,32 +686,50 @@ a.st-kpi-card:hover { border-color: var(--st-accent); }
 .st-line-desc .st-line-imei:not([hidden]) + .st-line-notein:not([hidden]) { margin-top: 4px; }
 
 /* ============================================================
-   لایه‌ی مینیمال — «قوی‌تر، مینیمال‌تر، باحال‌تر»
+   Ramp × Mercury × Linear
    ============================================================
-   ⛔ فقط شکل؛ هیچ توکنِ رنگی عوض نشد. هر حرکت «کم کردن» است:
-   - کارت‌ها در روز بی‌خط‌اند و عمقشان از یک سایه‌ی نرم می‌آید (خط + سایه
-     همان مرز را دو بار می‌کشید). در شب خط می‌ماند: سایه آنجا دیده نمی‌شود.
-   - یک کارتِ «قهرمان» روی پیشخوان (`.st-kpi-hero`): فروشِ امروز، تیره با
-     عددِ کهربایی — چشم اول همان‌جا می‌نشیند، نه روی چهار کارتِ هم‌وزن.
-   - عددِ درشت با رقمِ متناسب و فشرده؛ ستون‌های جدول همان جدول‌عرض می‌مانند.
-   - نوارِ اسکرولِ منوی کناری باریک و هم‌رنگِ نوار. */
-@media (prefers-color-scheme: light) {
-    .st-card, .st-kpi-card, .st-action:not(.is-primary), .st-table-wrap:not(.st-lines-wrap) {
-        border-color: transparent;
-        box-shadow: 0 1px 1px rgba(28,25,23,.04), 0 14px 32px -22px rgba(28,25,23,.45);
-    }
-    .st-card-invite, .st-np { border-color: var(--st-accent); }
-}
-.st-card, .st-kpi-card { border-radius: 18px; }
-.st-h1 { font-size: 25px; letter-spacing: -.4px; }
-.st-kpi-value { font-variant-numeric: proportional-nums; letter-spacing: -.6px; }
+   **خواسته‌ی مالکِ نصب:** «از این فورمول برای ساختِ ظاهر: Ramp × Mercury ×
+   Linear.» همان سه اصلِ حساب لند (بخشِ ۴۲ـِ `style.css`)، با لهجه‌ی خودِ
+   فروشگاه — کهربایی و نوارِ کناریِ تیره — تا دو محصول با هم قاطی نشوند:
+   - Linear: بومِ خنثی، پنلِ سفید با خطِ مو (توکن‌ها بالا)، منوی تیره با
+     قلمِ فعالِ آرام، تایپِ ریز.
+   - Mercury: عددِ درشتِ آرام و فشرده؛ یک کارتِ «قهرمان» (فروشِ امروز).
+   - Ramp: فیلد و دکمه‌ی ۸ پیکسلیِ تخت، جدولِ ردیف‌به‌ردیف، رنگ فقط برای معنا.
+   ============================================================ */
+.st-card, .st-kpi-card, .st-table-wrap { border-radius: 12px; }
+.st-h1 { font-size: 22px; font-weight: 700; letter-spacing: -.4px; }
+.st-h2 { font-size: 15px; font-weight: 600; }
+.st-kpi-label { font-size: 12.5px; font-weight: 500; }
+.st-kpi-value, .st-kpi-card .st-kpi-value { font-weight: 600; font-variant-numeric: proportional-nums; letter-spacing: -.7px; }
 .st-kpi-card.st-kpi-hero {
-    background: radial-gradient(120% 140% at 100% 0%, #44300f 0%, #1c1917 58%);
+    background: radial-gradient(120% 150% at 100% 0%, #3b2a10 0%, #121316 55%);
     border-color: transparent; color: #fafaf9;
 }
-.st-kpi-card.st-kpi-hero .st-kpi-label, .st-kpi-card.st-kpi-hero .st-kpi-sub { color: rgba(250,250,249,.72); }
+.st-kpi-card.st-kpi-hero .st-kpi-label, .st-kpi-card.st-kpi-hero .st-kpi-sub { color: rgba(250,250,249,.7); }
 .st-kpi-card.st-kpi-hero .st-kpi-value { color: #fcd34d; }
 a.st-kpi-card.st-kpi-hero:hover { border-color: #fcd34d; }
-.st-table th { font-size: 12px; font-weight: 600; color: var(--st-ink-2); }
+a.st-kpi-card:hover, .st-action:hover { border-color: var(--st-ink-2); color: inherit; }
+/* فیلد و دکمه: ۸ پیکسل، تخت؛ فیلد روی پنل (نه بوم) با حلقه‌ی فوکوسِ نرم */
+.st-field input, .st-field textarea, .st-field select, .st-filters input, .st-filters select {
+    border-radius: 8px; background: var(--st-surface);
+}
+.st-field input:focus, .st-field textarea:focus, .st-field select:focus,
+.st-filters input:focus, .st-filters select:focus {
+    outline: none; border-color: var(--st-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--st-accent) 18%, transparent);
+}
+.st-btn { border-radius: 8px; font-weight: 600; padding: 9px 18px; }
+.st-btn-ghost { color: var(--st-ink); border-color: var(--st-line); background: var(--st-surface); }
+.st-btn-ghost:hover { background: var(--st-surface); border-color: var(--st-ink-2); }
+.st-action { border-radius: 10px; font-weight: 600; }
+/* جدول: سرآیندِ ریز و خاکستری، ردیفِ آرام با رنگِ hover */
+.st-table th { font-size: 12px; font-weight: 500; }
+.st-table tbody tr:hover td { background: color-mix(in srgb, var(--st-ink) 2.5%, transparent); }
+.st-lines tbody tr:hover td { background: transparent; }
 .st-bar { border-radius: 4px 4px 1px 1px; }
-.st-side-nav { scrollbar-width: thin; scrollbar-color: rgba(250,250,249,.16) transparent; }
+/* منوی کناری: Linear تیره — قلمِ فعال سفیدِ کم‌رنگ با آیکونِ کهربایی */
+.st-side-item { font-size: 13.5px; padding: 7px 10px; border-radius: 8px; }
+.st-side-item.is-active { background: rgba(250,250,249,.08); color: #fafaf9; font-weight: 600; }
+.st-side-item.is-active .st-side-ico { color: #fcd34d; }
+.st-side-title { font-size: 11px; font-weight: 600; }
+.st-side-nav { scrollbar-width: thin; scrollbar-color: rgba(250,250,249,.14) transparent; }
