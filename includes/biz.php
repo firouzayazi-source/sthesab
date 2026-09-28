@@ -75,7 +75,7 @@ final class Biz
         'پیشخوان'      => ['index.php' => 'داشبورد'],
         'فروش'         => ['quick-sale.php' => 'فروش سریع', 'sales.php' => 'فاکتورهای فروش'],
         'خرید'         => ['purchases.php' => 'فاکتورهای خرید'],
-        'خزانه'        => ['payments.php' => 'دریافت و پرداخت', 'accounts.php' => 'صندوق و بانک'],
+        'خزانه'        => ['payments.php' => 'دریافت و پرداخت', 'cheques.php' => 'چک‌ها', 'accounts.php' => 'صندوق و بانک'],
         'انبار و کالا' => ['products.php' => 'کالاها', 'categories.php' => 'دسته‌بندی‌ها', 'products-io.php' => 'ورود و خروجِ اکسل'],
         'اشخاص'        => ['parties.php' => 'مشتری و تأمین‌کننده'],
         'گزارش و چاپ'  => ['reports.php' => 'گزارش و چاپ'],

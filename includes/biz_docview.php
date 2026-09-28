@@ -78,7 +78,8 @@ final class BizDocView
     /** صندوق‌های فعال. */
     public static function accounts(int $userId): array
     {
-        return array_values(array_filter(BizCash::list($userId), fn($a) => (int)$a['is_active'] === 1));
+        // ⛔ صندوقِ چک انتخاب‌شدنی نیست؛ چک فقط از روشِ «چک» به آن می‌رسد
+        return array_values(array_filter(BizCash::list($userId), fn($a) => (int)$a['is_active'] === 1 && !BizCash::isCheque($a)));
     }
 
     /**

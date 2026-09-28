@@ -42,7 +42,7 @@ const BPASS   = 'Biz12345';
  *    را می‌شکند.
  */
 const STORE_BUDGET = [
-    'store/index.php'    => 14,
+    'store/index.php'    => 15,   // +۱: چک‌های سررسیدِ نزدیک در «نیازمندِ اقدام»
     'store/settings.php' => 5,
     'store/products.php' => 10,
     'store/product.php'  => 9,
@@ -61,6 +61,7 @@ const STORE_BUDGET = [
     'store/payments.php'       => 7,
     'store/payment.php'        => 6,
     'store/accounts.php'       => 5,
+    'store/cheques.php'        => 9,
     'store/categories.php'     => 5,
 ];
 const STORE_NO_BUDGET = ['store/login.php', 'store/logout.php'];

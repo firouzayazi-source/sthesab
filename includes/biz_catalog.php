@@ -1141,9 +1141,45 @@ final class BizCash
         'cash' => 'صندوق نقدی',
         'bank' => 'حساب بانکی',
         'pos'  => 'کارت‌خوان',
+        'cheque_in'  => 'چک‌های دریافتیِ در جریان',
+        'cheque_out' => 'چک‌های پرداختیِ در جریان',
     ];
 
+    /**
+     * ⛔ نوع‌هایی که کاربر خودش می‌سازد. دو نوعِ چک را فقط
+     *    `chequeAccount()` می‌سازد: «پولی» که در آن‌هاست هنوز نقد نیست — در
+     *    جمعِ نقدِ فروشگاه نمی‌آید و در فهرستِ انتخابِ صندوق هم نیست.
+     */
+    public const USER_KINDS = ['cash', 'bank', 'pos'];
+    public const CHEQUE_KINDS = ['in' => 'cheque_in', 'out' => 'cheque_out'];
+
     public const NAME_MAX = 80;
+
+    /**
+     * صندوقِ نگه‌دارنده‌ی چک — `in` دریافتی، `out` پرداختی. اگر نیست ساخته و
+     * اگر غیرفعال شده دوباره فعال می‌شود (دریافتِ چک به صندوقِ غیرفعال رد می‌شد).
+     */
+    public static function chequeAccount(PDO $pdo, int $userId, string $dir): int
+    {
+        $kind = self::CHEQUE_KINDS[$dir] ?? 'cheque_in';
+        $st = $pdo->prepare('SELECT id, is_active FROM biz_accounts WHERE user_id = :u AND kind = :k ORDER BY id LIMIT 1 FOR UPDATE');
+        $st->execute(['u' => $userId, 'k' => $kind]);
+        $row = $st->fetch();
+        if ($row) {
+            if ((int)$row['is_active'] !== 1) {
+                $pdo->prepare('UPDATE biz_accounts SET is_active = 1 WHERE id = :id AND user_id = :u')->execute(['id' => (int)$row['id'], 'u' => $userId]);
+            }
+            return (int)$row['id'];
+        }
+        $pdo->prepare('INSERT INTO biz_accounts (user_id, name, kind, sort_order) VALUES (:u, :n, :k, 90)')
+            ->execute(['u' => $userId, 'n' => self::KINDS[$kind], 'k' => $kind]);
+        return (int)$pdo->lastInsertId();
+    }
+
+    public static function isCheque(array $a): bool
+    {
+        return in_array((string)$a['kind'], self::CHEQUE_KINDS, true);
+    }
 
     /**
      * ⛔ تنها تعریفِ «موجودیِ یک صندوق» — داشبورد، فهرستِ صندوق‌ها و گردشِ
@@ -1195,10 +1231,16 @@ final class BizCash
         $ob   = sanitizeAmount($in['opening_balance'] ?? '');
         if ($name === '') { return ['ok' => false, 'message' => 'نامِ صندوق یا حساب الزامی است.']; }
         if (mb_strlen($name) > self::NAME_MAX) { return ['ok' => false, 'message' => 'نام بیش از ' . self::NAME_MAX . ' نویسه است.']; }
-        if (!isset(self::KINDS[$kind])) { return ['ok' => false, 'message' => 'نوعِ حساب معتبر نیست.']; }
+        if (!in_array($kind, self::USER_KINDS, true)) { return ['ok' => false, 'message' => 'نوعِ حساب معتبر نیست.']; }
 
         $pdo = Database::getConnection();
         if ($id > 0) {
+            // ⛔ صندوقِ چک از فرم ویرایش نمی‌شود — نوعش تنها نشانه‌ی آن است
+            $ck = $pdo->prepare('SELECT kind FROM biz_accounts WHERE id = :id AND user_id = :u');
+            $ck->execute(['id' => $id, 'u' => $userId]);
+            if (in_array((string)$ck->fetchColumn(), self::CHEQUE_KINDS, true)) {
+                return ['ok' => false, 'message' => 'صندوقِ چک را خودِ برنامه نگه می‌دارد و ویرایش نمی‌شود.'];
+            }
             $st = $pdo->prepare('UPDATE biz_accounts SET name = :n, kind = :k, opening_balance = :o WHERE id = :id AND user_id = :u');
             $st->execute(['n' => $name, 'k' => $kind, 'o' => $ob, 'id' => $id, 'u' => $userId]);
             $chk = $pdo->prepare('SELECT COUNT(*) FROM biz_accounts WHERE id = :id AND user_id = :u');
@@ -1216,8 +1258,14 @@ final class BizCash
     public static function setActive(int $userId, int $id, bool $active): array
     {
         $pdo = Database::getConnection();
+        $ck  = $pdo->prepare('SELECT kind FROM biz_accounts WHERE id = :id AND user_id = :u');
+        $ck->execute(['id' => $id, 'u' => $userId]);
+        if (in_array((string)$ck->fetchColumn(), self::CHEQUE_KINDS, true)) {
+            return ['ok' => false, 'message' => 'صندوقِ چک را خودِ برنامه نگه می‌دارد.'];
+        }
         if (!$active) {
-            $st = $pdo->prepare('SELECT COUNT(*) FROM biz_accounts WHERE user_id = :u AND is_active = 1 AND id <> :id');
+            // ⛔ صندوقِ چک «صندوق» نیست — با شمردنش آخرین صندوقِ نقدی غیرفعال‌شدنی می‌شد
+            $st = $pdo->prepare("SELECT COUNT(*) FROM biz_accounts WHERE user_id = :u AND is_active = 1 AND id <> :id AND kind NOT IN ('cheque_in','cheque_out')");
             $st->execute(['u' => $userId, 'id' => $id]);
             if ((int)$st->fetchColumn() === 0) {
                 return ['ok' => false, 'message' => 'فروشگاه دست‌کم یک صندوقِ فعال لازم دارد.'];
@@ -1230,11 +1278,12 @@ final class BizCash
             : ['ok' => false, 'message' => 'حساب پیدا نشد.'];
     }
 
+    /** ⛔ جمعِ **نقد** — چکِ در جریان هنوز پول نیست و اینجا نمی‌آید. */
     public static function total(array $rows): int
     {
         $t = 0;
         foreach ($rows as $r) {
-            if ((int)$r['is_active'] === 1) { $t += (int)$r['balance']; }
+            if ((int)$r['is_active'] === 1 && !self::isCheque($r)) { $t += (int)$r['balance']; }
         }
         return $t;
     }

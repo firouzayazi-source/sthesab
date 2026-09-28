@@ -166,6 +166,38 @@ case 'serials':
     <?php BizPrint::foot($userId, ['انباردار', 'تأیید']);
     break;
 
+case 'cheques':
+    if (!BizCheques::ready()) { Biz::notFound(); }
+    $cf = getParam('k');
+    $cf = isset(BizCheques::FILTERS[$cf]) ? $cf : '';
+    $cl = BizCheques::list($userId, $cf, 1, 2000);
+    BizPrint::head($userId, BizPrint::DOCS['cheques'] . ' — ' . BizCheques::FILTERS[$cf], Biz::url('cheques.php' . ($cf !== '' ? '?f=' . $cf : '')), [
+        'دریافتیِ در جریان' => formatMoney($cl['in']) . ' تومان',
+        'پرداختیِ در جریان' => formatMoney($cl['out']) . ' تومان',
+        'سررسید گذشته'     => toPersianDigits((string)$cl['overdue']) . ' چک',
+    ]);
+    $chSum = 0; ?>
+    <table class="pr-table">
+        <thead><tr><th>سررسید</th><th>نوع</th><th>چک</th><th>طرف‌حساب</th><th>وضعیت</th><th class="pr-c-num">مبلغ</th></tr></thead>
+        <tbody>
+        <?php if (!$cl['rows']): ?><tr><td colspan="6" class="pr-empty">چکی با این وضعیت نیست.</td></tr><?php endif; ?>
+        <?php foreach ($cl['rows'] as $r): $chSum += (int)$r['amount']; ?>
+            <tr>
+                <td><span class="pr-num"><?= h(toJalali((string)$r['cheque_due'])) ?></span></td>
+                <td><?= $r['kind'] === 'receipt' ? 'دریافتی' : 'پرداختی' ?></td>
+                <td><?= h(BizCheques::label($r)) ?></td>
+                <td><?= h((string)($r['party_name'] ?? '')) ?></td>
+                <td><?= h(BizCheques::STATUSES[$r['cheque_status']] ?? '') ?><?php if ($r['cheque_status'] === 'cleared' && $r['settle_date'] !== null): ?><br><span class="pr-sub"><?= h((string)$r['settle_account']) ?> · <span class="pr-num"><?= h(toJalali((string)$r['settle_date'])) ?></span></span><?php endif; ?></td>
+                <td class="pr-c-num"><?= $money($r['amount']) ?></td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+        <?php if ($cl['rows']): ?><tfoot><tr><th colspan="5">جمع</th><th class="pr-c-num"><?= $money($chSum) ?></th></tr></tfoot><?php endif; ?>
+    </table>
+    <?php if ($cl['total'] > count($cl['rows'])): ?><p class="pr-note">فهرست بریده شده است؛ با صافیِ وضعیت چاپ کنید.</p><?php endif; ?>
+    <?php BizPrint::foot($userId, ['حسابدار', 'تأیید']);
+    break;
+
 case 'account':
     $as = BizReports::accountStatement($userId, $id, $rf, $rt);
     if (!$as) { Biz::notFound(); }

@@ -323,7 +323,7 @@ $pages = ['store/index.php', 'store/sales.php', 'store/sales.php?t=returns', 'st
           'store/invoice.php?id=' . $s1, 'store/invoice.php?id=' . $rt1, 'store/invoice-edit.php?k=sale', 'store/invoice-edit.php?k=purchase',
           'store/invoice-edit.php?id=' . $draft, 'store/return.php?inv=' . $s1, 'store/payments.php', 'store/payments.php?f=receipt',
           'store/payment.php?k=receipt', 'store/payment.php?k=expense', 'store/payment.php?k=transfer', 'store/payment.php?id=' . $payId,
-          'store/accounts.php', 'store/categories.php', 'store/reports.php', 'store/reports.php?p=year',
+          'store/accounts.php', 'store/cheques.php', 'store/categories.php', 'store/reports.php', 'store/reports.php?p=year',
           'store/print.php?doc=invoice&id=' . $s1, 'store/party.php?id=' . $cus];
 $bad = [];
 foreach ($pages as $pg) {
@@ -371,7 +371,7 @@ if ($node === '') {
 } else {
     $probePages = ['store/index.php', 'store/sales.php', 'store/invoice.php?id=' . $s1, 'store/invoice-edit.php?id=' . $longDraft,
                    'store/quick-sale.php', 'store/return.php?inv=' . $s1, 'store/payments.php', 'store/payment.php?k=receipt&party=' . $cus,
-                   'store/accounts.php', 'store/categories.php', 'store/reports.php'];
+                   'store/accounts.php', 'store/cheques.php', 'store/categories.php', 'store/reports.php'];
     $out = (string)shell_exec(sprintf('%s %s %s %s %s %s 2>/dev/null', escapeshellarg($node),
         escapeshellarg(__DIR__ . '/store_probe.js'), escapeshellarg("http://127.0.0.1:{$port}/"),
         escapeshellarg(DPREFIX . 'a'), escapeshellarg(DPASS), escapeshellarg(json_encode($probePages)))

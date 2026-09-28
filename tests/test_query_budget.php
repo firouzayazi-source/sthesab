@@ -123,7 +123,7 @@ const NO_BUDGET = [
     'store/index.php', 'store/settings.php', 'store/login.php', 'store/logout.php',
     'store/products.php', 'store/product.php', 'store/parties.php', 'store/party.php',
     'store/products-io.php', 'store/reports.php', 'store/print-settings.php', 'store/print.php',
-    'store/accounts.php', 'store/categories.php', 'store/invoice-edit.php', 'store/invoice.php',
+    'store/accounts.php', 'store/cheques.php', 'store/categories.php', 'store/invoice-edit.php', 'store/invoice.php',
     'store/payment.php', 'store/payments.php', 'store/purchases.php', 'store/quick-sale.php',
     'store/return.php', 'store/sales.php',
 ];

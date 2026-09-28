@@ -94,7 +94,7 @@ require __DIR__ . '/../includes/biz_head.php';
 </div>
 <p class="st-muted st-unit-note">همه‌ی مبلغ‌ها به تومان.</p>
 
-<?php $attnRows = ($low ? 1 : 0) + ($attn['drafts'] > 0 ? 1 : 0); ?>
+<?php $cheqDue = BizCheques::due($userId); $attnRows = ($low ? 1 : 0) + ($attn['drafts'] > 0 ? 1 : 0) + ($cheqDue ? 1 : 0); ?>
 <?php if ($attnRows > 0): ?>
 <section class="st-card st-attn">
     <h2 class="st-h2">نیازمندِ اقدام</h2>
@@ -102,6 +102,13 @@ require __DIR__ . '/../includes/biz_head.php';
         <?php if ($attn['drafts'] > 0): ?>
         <li class="st-list-row"><a href="<?= h(Biz::url('sales.php?f=draft')) ?>"><span class="st-pill is-draft">پیش‌نویس</span> <?= toPersianDigits((string)$attn['drafts']) ?> سندِ صادرنشده</a></li>
         <?php endif; ?>
+        <?php foreach ($cheqDue as $c): $cd = (int)$c['days']; ?>
+        <li class="st-list-row">
+            <a href="<?= h(Biz::url('cheques.php' . ($cd < 0 ? '?f=overdue' : ''))) ?>"><span class="st-badge <?= $cd < 0 ? 'is-out' : 'is-low' ?>"><?= $cd < 0 ? 'چکِ گذشته' : ($cd === 0 ? 'چکِ امروز' : 'چک · ' . toPersianDigits((string)$cd) . ' روز') ?></span>
+                <?= $c['kind'] === 'receipt' ? 'دریافتی از' : 'پرداختی به' ?> <?= h((string)($c['party_name'] ?? '')) ?></a>
+            <?= BizDocView::money((int)$c['amount']) ?>
+        </li>
+        <?php endforeach; ?>
         <?php foreach ($low as $p): ?>
         <li class="st-list-row">
             <a href="<?= h(Biz::url('product.php?id=' . (int)$p['id'])) ?>"><span class="st-badge <?= (float)$p['stock_qty'] <= 0 ? 'is-out' : 'is-low' ?>"><?= (float)$p['stock_qty'] <= 0 ? 'ناموجود' : 'کم' ?></span> <?= h($p['name']) ?></a>

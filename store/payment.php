@@ -50,6 +50,10 @@ if ($id > 0) {
         <?php endif; ?>
         <?php if ($pay['party_id'] !== null): ?><div><dt>طرف‌حساب</dt><dd><a href="<?= h(Biz::url('party.php?id=' . (int)$pay['party_id'])) ?>"><?= h((string)$pay['party_name']) ?></a></dd></div><?php endif; ?>
         <?php if ((string)$pay['title'] !== ''): ?><div><dt>شرح</dt><dd><?= h((string)$pay['title']) ?></dd></div><?php endif; ?>
+        <?php if (($pay['cheque_status'] ?? null) !== null): ?>
+            <div><dt>چک</dt><dd><?= h(BizCheques::label($pay)) ?> · سررسید <span class="st-num"><?= h(toJalali((string)$pay['cheque_due'])) ?></span></dd></div>
+            <div><dt>وضعیتِ چک</dt><dd><a href="<?= h(Biz::url('cheques.php?f=all')) ?>"><?= h(BizCheques::STATUSES[$pay['cheque_status']] ?? '') ?></a></dd></div>
+        <?php endif; ?>
     </dl>
     <?php if (in_array($pay['kind'], ['receipt', 'payment'], true)): ?>
     <h2 class="st-h3">تسویه‌ی اسناد</h2>
@@ -94,7 +98,9 @@ $form = [
     'amount' => $inv ? (string)BizInvoices::remaining($inv) : '', 'account_id' => (int)($accounts[0]['id'] ?? 0),
     'to_account_id' => (int)($accounts[1]['id'] ?? 0), 'method' => 'cash',
     'pay_date' => BizDocView::jDate(date('Y-m-d')), 'title' => '', 'note' => '',
+    'cheque_no' => '', 'cheque_bank' => '', 'cheque_due' => '',
 ];
+$chequeReady = in_array($kind, ['receipt', 'payment'], true) && BizCheques::ready();
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Csrf::verifyOrFail(postParam('csrf_token'));
@@ -103,6 +109,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'kind' => $kind, 'party_id' => (int)$form['party_id'], 'invoice_id' => $invId, 'amount' => $form['amount'],
         'account_id' => (int)$form['account_id'], 'to_account_id' => (int)$form['to_account_id'], 'method' => $form['method'],
         'pay_date' => BizDocView::gDate((string)$form['pay_date']), 'title' => $form['title'], 'note' => $form['note'],
+        'cheque_no' => $form['cheque_no'], 'cheque_bank' => $form['cheque_bank'],
+        'cheque_due' => trim((string)$form['cheque_due']) === '' ? '' : BizDocView::gDate((string)$form['cheque_due']),
     ]);
     if ($r['ok']) {
         redirectWithMessage($invId ? Biz::url('invoice.php?id=' . $invId) : Biz::url('payment.php?id=' . (int)$r['id']), 'success', $r['message']);
@@ -164,10 +172,21 @@ require __DIR__ . '/../includes/biz_head.php';
         </label>
         <?php else: ?>
         <label class="st-field"><span>روش</span>
-            <select name="method"><?php foreach (BizPay::METHODS as $mk => $ml): ?><option value="<?= h($mk) ?>"<?= $mk === $form['method'] ? ' selected' : '' ?>><?= h($ml) ?></option><?php endforeach; ?></select>
+            <select name="method" data-cheque-method><?php foreach (BizPay::METHODS as $mk => $ml): ?><option value="<?= h($mk) ?>"<?= $mk === $form['method'] ? ' selected' : '' ?>><?= h($ml) ?></option><?php endforeach; ?></select>
         </label>
         <?php endif; ?>
     </div>
+    <?php if ($chequeReady): /* بی‌جاوااسکریپت همیشه دیده می‌شود؛ store.js برای روشِ غیرِچک پنهانش می‌کند */ ?>
+    <fieldset class="st-fieldset" data-cheque-fields>
+        <legend>مشخصاتِ چک <small class="st-muted">(فقط وقتی روش «چک» است)</small></legend>
+        <div class="st-row3">
+            <label class="st-field"><span>سررسید</span><input type="text" name="cheque_due" dir="ltr" inputmode="numeric" placeholder="۱۴۰۵/۰۸/۱۵" value="<?= h((string)$form['cheque_due']) ?>"></label>
+            <label class="st-field"><span>شماره‌ی چک</span><input type="text" name="cheque_no" dir="ltr" inputmode="numeric" maxlength="30" value="<?= h((string)$form['cheque_no']) ?>"></label>
+            <label class="st-field"><span>بانک</span><input type="text" name="cheque_bank" maxlength="60" value="<?= h((string)$form['cheque_bank']) ?>" placeholder="مثلاً ملت"></label>
+        </div>
+        <p class="st-muted">چک تا وصول نشده در صندوقِ «<?= h(BizCash::KINDS[$kind === 'receipt' ? 'cheque_in' : 'cheque_out']) ?>» می‌ماند و در جمعِ نقدِ فروشگاه نیست؛ وصول و برگشت از صفحه‌ی <a href="<?= h(Biz::url('cheques.php')) ?>">چک‌ها</a>.</p>
+    </fieldset>
+    <?php endif; ?>
     <?php if ($kind === 'transfer' && count($accounts) < 2): ?>
         <p class="st-flash st-flash-warn">برای انتقال دست‌کم دو صندوقِ فعال لازم است — <a href="<?= h(Biz::url('accounts.php')) ?>">افزودنِ صندوق</a>.</p>
     <?php endif; ?>

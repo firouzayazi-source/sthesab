@@ -133,6 +133,7 @@ MIGRATIONS=(
     migration_biz_search.sql
     migration_biz_theme.sql
     migration_biz_business_info.sql
+    migration_biz_cheques.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -333,6 +334,7 @@ declare -A SENTINEL=(
     [migration_biz_search.sql]="biz_invoice_lines.note"
     [migration_biz_theme.sql]="biz_settings.palette"
     [migration_biz_business_info.sql]="biz_parties.economic_code"
+    [migration_biz_cheques.sql]="biz_payments.cheque_status"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

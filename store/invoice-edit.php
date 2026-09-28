@@ -89,7 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'discount' => $in['discount'], 'extra' => $in['extra'], 'note' => $in['note'], 'lines' => array_values($in['lines']),
         'pay_mode' => in_array(postParam('pay_mode'), ['none', 'full', 'part'], true) ? postParam('pay_mode') : 'none',
         'pay_amount' => postParam('pay_amount'), 'account_id' => (int)postParam('account_id'),
-        'method' => isset(BizPay::METHODS[postParam('method')]) ? postParam('method') : 'cash',
+        'method' => isset(BizPay::quickMethods()[postParam('method')]) ? postParam('method') : 'cash',
     ]);
     // ردیف‌های خالیِ فرم دوباره نشان داده نمی‌شوند؛ «افزودنِ ردیف» پنج تای تازه می‌گذارد
     $form['lines'] = array_values(array_filter($rawLines, $filled));
@@ -317,7 +317,7 @@ require __DIR__ . '/../includes/biz_head.php';
             <div class="st-row2">
                 <label class="st-field"><span>مبلغ (برای «بخشی»)</span><input type="text" name="pay_amount" value="<?= h((string)$form['pay_amount']) ?>" inputmode="numeric" dir="ltr" data-payamount></label>
                 <label class="st-field"><span>روش</span>
-                    <select name="method"><?php foreach (BizPay::METHODS as $mk => $ml): ?><option value="<?= h($mk) ?>"<?= $mk === $form['method'] ? ' selected' : '' ?>><?= h($ml) ?></option><?php endforeach; ?></select>
+                    <select name="method"><?php foreach (BizPay::quickMethods() as $mk => $ml): ?><option value="<?= h($mk) ?>"<?= $mk === $form['method'] ? ' selected' : '' ?>><?= h($ml) ?></option><?php endforeach; ?></select>
                 </label>
             </div>
             <label class="st-field"><span>صندوق</span>

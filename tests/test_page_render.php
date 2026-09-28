@@ -140,6 +140,7 @@ const EXPECT = [
     'store/print-settings.php' => 'blocked',
     'store/print.php'       => 'blocked',
     'store/accounts.php'        => 'blocked',
+    'store/cheques.php'         => 'blocked',
     'store/categories.php'      => 'blocked',
     'store/invoice-edit.php'    => 'blocked',
     'store/invoice.php'         => 'blocked',

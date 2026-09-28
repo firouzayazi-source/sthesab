@@ -6727,7 +6727,7 @@ if (!preg_match("/Biz::typeFor\(.*?=== 'business'.*?Api::fail\(.*?ApiAuth::issue
 $storeFiles70 = glob(__DIR__ . '/../store/*.php') ?: [];
 foreach (['login.php', 'logout.php', 'index.php', 'settings.php', 'products.php', 'product.php', 'parties.php', 'party.php',
           'products-io.php', 'reports.php', 'print-settings.php', 'print.php', 'sales.php', 'purchases.php', 'quick-sale.php',
-          'invoice.php', 'invoice-edit.php', 'return.php', 'payments.php', 'payment.php', 'accounts.php', 'categories.php'] as $must) {
+          'invoice.php', 'invoice-edit.php', 'return.php', 'payments.php', 'payment.php', 'accounts.php', 'cheques.php', 'categories.php'] as $must) {
     if (!is_file(__DIR__ . '/../store/' . $must)) { $bBad[] = "store/{$must} نیست"; }
 }
 foreach (array_merge($storeFiles70, [__DIR__ . '/../includes/biz_head.php', __DIR__ . '/../includes/biz_foot.php']) as $f) {
@@ -6953,7 +6953,9 @@ if (!preg_match('/if \(\$serial\) \{\s*if \(\$imei1 === \'\'\) \{/', $docs70)) {
 // ⛔ سررسید از فاکتور رفت (خواسته‌ی مالکِ نصب)
 $ie70 = $strip70((string)file_get_contents(__DIR__ . '/../store/invoice-edit.php'));
 $state70 = preg_match('/function state\([^{]*\{(.*?)\n    \}/s', $docs70, $sm70) ? $sm70[1] : 'due_date';
-if (str_contains($ie70, 'due_date') || preg_match("/'overdue'\s*=>/", $docs70) || str_contains($state70, 'due_date')) {
+// ⚠ فقط صافی‌های **فاکتور**: `BizCheques::FILTERS` صافیِ «سررسید گذشته»ی چک را عمداً دارد
+$docsNoChq70 = (string)preg_replace('/final class BizCheques\s*\{.*?\n\}/s', '', $docs70);
+if (str_contains($ie70, 'due_date') || preg_match("/'overdue'\s*=>/", $docsNoChq70) || str_contains($state70, 'due_date')) {
     $bBad[] = 'فاکتور نباید سررسید داشته باشد: فیلدِ ویرایشگر، صافیِ overdue یا state() با due_date';
 }
 // ⛔ «+» یک دکمه‌ی فرم است (بی‌جاوااسکریپت کار می‌کند) و جاوااسکریپت فرم را نمی‌فرستد
@@ -7020,5 +7022,73 @@ if (!str_contains((string)file_get_contents(__DIR__ . '/../store/print.php'), "B
 }
 
 T::bulk(81, $bBad, 'محیطِ فروشگاهی: دروازه‌ی بی‌کوئری، سه نوعِ حساب، تنها نویسنده، دفترِ جدا از پولِ شخصی، و طرفِ شخصیِ دست‌نخورده');
+
+// =================================================================
+// قاعده ۷۰ب — دفترِ چکِ فروشگاه (`BizCheques`). رفتار در test_store_cheques
+// است و بی‌دیتابیس blocked می‌شود؛ این شکل را برای ماشینِ بی‌دیتابیس نگه می‌دارد.
+// =================================================================
+T::group('قاعده ۷۰ب — دفترِ چکِ فروشگاه');
+$cBad = [];
+$chqCls = preg_match('/final class BizCheques\s*\{.*?\n\}/s', $docs70, $cm70) ? $cm70[0] : '';
+if ($chqCls === '') { $cBad[] = 'biz_docs.php — کلاسِ BizCheques نیست'; }
+// ⛔ تنها نویسنده‌ی وضعیتِ چک: BizPay::createTx (pending) و BizCheques (بقیه)
+foreach (array_merge(glob(__DIR__ . '/../store/*.php') ?: [], glob(__DIR__ . '/../includes/*.php') ?: []) as $f) {
+    if (basename($f) === 'biz_docs.php') { continue; }
+    if (preg_match('/SET[^;]*cheque_(status|settle_id)\s*=/i', (string)file_get_contents($f))) {
+        $cBad[] = basename($f) . ' — وضعیتِ چک فقط در biz_docs.php نوشته می‌شود';
+    }
+}
+if (!str_contains($docs70, "\$acc = BizCash::chequeAccount(\$pdo, \$userId, \$kind === 'receipt' ? 'in' : 'out');")) {
+    $cBad[] = 'biz_docs.php — چک باید به صندوقِ «چک‌های در جریان» برود، نه صندوقِ فرم';
+}
+if (substr_count($docs70, '!$settle') < 2) {
+    $cBad[] = 'biz_docs.php — createTx() باید دریافت/پرداخت و انتقالِ دستی به/از صندوقِ چک را رد کند';
+}
+if (!str_contains($docs70, "if (\$chq !== null && \$party === 0) {")) {
+    $cBad[] = 'biz_docs.php — چک برای فاکتورِ گذری (بی‌طرف‌حساب) پذیرفته می‌شود';
+}
+if (!preg_match("/function bounce\(.*?cheque_status = 'bounced'.*?BizPay::reallocateTx\(/s", $chqCls)) {
+    $cBad[] = 'BizCheques::bounce() — باید سند را باطل و تخصیص‌ها را از نو بسازد';
+}
+if (!preg_match("/function unclear\(.*?SET status = 'void'.*?cheque_status = 'pending'/s", $chqCls)) {
+    $cBad[] = 'BizCheques::unclear() — باید انتقالِ وصول را باطل کند';
+}
+if (!preg_match("/function clear\(.*?BizCash::isCheque\(\\\$b\).*?BizPay::createTx\(/s", $chqCls)) {
+    $cBad[] = 'BizCheques::clear() — بانکِ مقصد نباید صندوقِ چک باشد و وصول باید از createTx بگذرد';
+}
+if (!preg_match("/function lock\(.*?user_id = :u/s", $chqCls)) {
+    $cBad[] = 'BizCheques — قفلِ چک باید شرطِ user_id داشته باشد';
+}
+if (!str_contains($cat70, "!self::isCheque(\$r)) { \$t += (int)\$r['balance']; }")) {
+    $cBad[] = 'biz_catalog.php — BizCash::total() نباید چکِ در جریان را جزوِ نقد بشمارد';
+}
+foreach (['store/invoice-edit.php', 'store/quick-sale.php', 'store/return.php'] as $f70) {
+    $src70 = (string)file_get_contents(__DIR__ . '/../' . $f70);
+    if (str_contains($src70, 'BizPay::METHODS') || substr_count($src70, 'BizPay::quickMethods()') < 2) {
+        $cBad[] = "{$f70} — روشِ پرداخت باید از BizPay::quickMethods() بیاید (بی‌چک)";
+    }
+}
+$cp70 = (string)file_get_contents(__DIR__ . '/../store/cheques.php');
+if (!str_contains($cp70, "Csrf::verifyOrFail(postParam('csrf_token'));") || !str_contains($cp70, 'redirectWithMessage(')) {
+    $cBad[] = 'store/cheques.php — هر نوشتن POST + CSRF و بعد ریدایرکت';
+}
+if (!str_contains((string)file_get_contents(__DIR__ . '/../includes/biz.php'), "'cheques.php' => 'چک‌ها'")) {
+    $cBad[] = 'biz.php — «چک‌ها» در منوی خزانه نیست';
+}
+$pay70 = (string)file_get_contents(__DIR__ . '/../store/payment.php');
+if (!str_contains($pay70, 'data-cheque-fields') || preg_match('/data-cheque-fields[^>]*\bhidden\b/', $pay70)) {
+    $cBad[] = 'store/payment.php — فیلدهای چک باید بی‌جاوااسکریپت دیده شوند (نه hidden)';
+}
+$mig70 = (string)file_get_contents(__DIR__ . '/../deploy/migrate.sh');
+if (!preg_match('/^\s*migration_biz_cheques\.sql\s*$/m', $mig70) || !str_contains($mig70, '[migration_biz_cheques.sql]="biz_payments.cheque_status"')) {
+    $cBad[] = 'migrate.sh — migration_biz_cheques.sql در MIGRATIONS یا SENTINEL نیست';
+}
+// ⛔ پیوندِ وصول رو به عقب و با کلیدِ خارجی — وگرنه بازگرداندنِ بکاپ آن را به ردیفِ دیگری وصل می‌کرد
+$mc70 = (string)file_get_contents(__DIR__ . '/../migration_biz_cheques.sql');
+if (!preg_match('/FOREIGN KEY IF NOT EXISTS \(`cheque_settle_id`\)\s*REFERENCES `biz_payments` \(`id`\) ON DELETE SET NULL/', $mc70)
+    || !str_contains($chqCls, "SET cheque_settle_id = :c WHERE id = :t")) {
+    $cBad[] = 'cheque_settle_id باید روی انتقالِ وصول، رو به چک، با کلیدِ خارجیِ SET NULL باشد';
+}
+T::bulk(17, $cBad, 'دفترِ چک: صندوقِ جدا از نقد، تنها نویسنده، وصول/برگشتِ سازگار، و فرم‌های سریعِ بی‌چک');
 
 exit(T::report());

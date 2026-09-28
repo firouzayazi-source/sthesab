@@ -165,6 +165,8 @@ require __DIR__ . '/../includes/biz_head.php';
                         <select name="f" aria-label="صافی"><?php foreach (BizParties::FILTERS as $k => $l): ?><option value="<?= h($k) ?>"><?= h($l) ?></option><?php endforeach; ?></select>
                     <?php elseif ($in === 'sfilter'): ?>
                         <select name="f" aria-label="وضعیت"><?php foreach (BizSerial::REPORT_FILTERS as $k => $l): ?><option value="<?= h($k) ?>"><?= h($l) ?></option><?php endforeach; ?></select>
+                    <?php elseif ($in === 'chfilter'): ?>
+                        <select name="k" aria-label="وضعیتِ چک"><?php foreach (BizCheques::FILTERS as $k => $l): ?><option value="<?= h($k) ?>"><?= h($l) ?></option><?php endforeach; ?></select>
                     <?php elseif ($in === 'party'): ?>
                         <?php if (!$parties['rows']): ?><span class="st-muted-i">هنوز طرف‌حسابی نیست.</span><?php else: ?>
                         <select name="id" required aria-label="طرف‌حساب"><?php foreach ($parties['rows'] as $r): ?><option value="<?= (int)$r['id'] ?>"><?= h((string)$r['name']) ?></option><?php endforeach; ?></select>

@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $accounts = BizCash::list($userId);
 if ($editAcc > 0 && $error === '') {
     foreach ($accounts as $a) {
-        if ((int)$a['id'] === $editAcc) {
+        if ((int)$a['id'] === $editAcc && !BizCash::isCheque($a)) {
             $form = ['name' => $a['name'], 'kind' => $a['kind'], 'opening_balance' => (string)(int)$a['opening_balance']];
         }
     }
@@ -61,7 +61,7 @@ require __DIR__ . '/../includes/biz_head.php';
 </div>
 
 <div class="st-acc-grid">
-    <?php foreach ($accounts as $a): $on = (int)$a['is_active'] === 1; $b = (int)$a['balance']; ?>
+    <?php foreach ($accounts as $a): $on = (int)$a['is_active'] === 1; $b = (int)$a['balance']; $chq = BizCash::isCheque($a); ?>
     <section class="st-card st-acc<?= $on ? '' : ' is-inactive' ?>">
         <div class="st-card-head">
             <h2 class="st-h3"><?= h($a['name']) ?></h2>
@@ -71,6 +71,9 @@ require __DIR__ . '/../includes/biz_head.php';
         <div class="st-move-end">
             <a class="st-link-btn" href="<?= h(Biz::url('payments.php?acc=' . (int)$a['id'])) ?>">گردش</a>
             <a class="st-link-btn" href="<?= h(BizPrint::url('account', ['id' => (int)$a['id'], 'p' => 'month'])) ?>">چاپ</a>
+            <?php if ($chq): /* حسابِ نگه‌داریِ چک را برنامه می‌سازد؛ ویرایش و غیرفعال ندارد */ ?>
+            <a class="st-link-btn" href="<?= h(Biz::url('cheques.php')) ?>">چک‌ها</a>
+            <?php else: ?>
             <a class="st-link-btn" href="<?= h(Biz::url('accounts.php?acc=' . (int)$a['id'])) ?>#edit">ویرایش</a>
             <form method="post" action="<?= h($self) ?>">
                 <?= Csrf::field() ?>
@@ -79,7 +82,9 @@ require __DIR__ . '/../includes/biz_head.php';
                 <input type="hidden" name="on" value="<?= $on ? '0' : '1' ?>">
                 <button type="submit" class="st-link-btn"><?= $on ? 'غیرفعال' : 'فعال' ?></button>
             </form>
+            <?php endif; ?>
         </div>
+        <?php if ($chq): ?><p class="st-muted st-acc-note">چک‌های در جریان؛ در جمعِ موجودی نیست تا وصول شود.</p><?php endif; ?>
     </section>
     <?php endforeach; ?>
 </div>
@@ -100,7 +105,7 @@ require __DIR__ . '/../includes/biz_head.php';
             <label class="st-field">
                 <span>نوع</span>
                 <select name="kind">
-                    <?php foreach (BizCash::KINDS as $k => $l): ?>
+                    <?php foreach (BizCash::USER_KINDS as $k): $l = BizCash::KINDS[$k]; ?>
                         <option value="<?= h($k) ?>"<?= $k === $form['kind'] ? ' selected' : '' ?>><?= h($l) ?></option>
                     <?php endforeach; ?>
                 </select>

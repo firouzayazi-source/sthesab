@@ -882,3 +882,23 @@ a.st-kpi-card.st-kpi-hero:hover { border-color: transparent; box-shadow: 0 10px 
     border: 1px solid var(--st-line); border-radius: 8px; padding: 7px 10px;
 }
 .st-hub-ctl .st-btn { padding-block: 7px; }
+
+/* ---------- چک‌ها ---------- */
+.st-cheques { display: grid; gap: 10px; }
+@media (min-width: 900px) { .st-cheques { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
+.st-cheque { padding: 14px 16px; display: grid; gap: 8px; }
+.st-cheque.is-late { border-color: var(--st-err); }
+.st-cheque.is-bounced { opacity: .75; }
+.st-cheque-head { display: flex; gap: 10px; justify-content: space-between; align-items: flex-start; }
+.st-cheque-head > div { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+.st-cheque-title { font-weight: 600; overflow-wrap: anywhere; }
+.st-cheque-amount { white-space: nowrap; font-weight: 600; }
+.st-cheque-meta { margin: 0; font-size: 13px; color: var(--st-ink-2); }
+.st-cheque-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.st-cheque-clear { margin: 0; flex: 1 1 auto; }
+.st-cheque-clear select { flex: 1 1 9rem; }
+.st-cheque-clear .st-date-in { flex: 0 1 7.5rem; }
+.st-late { color: var(--st-err); }
+.st-btn-sm { padding: 6px 12px; font-size: 13px; }
+.st-kpi-card.is-warn { border-color: var(--st-err); }
+.st-acc-note { margin: 4px 0 0; font-size: 12px; }

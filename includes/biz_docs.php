@@ -873,6 +873,20 @@ final class BizPay
         'cheque'   => 'چک',
     ];
 
+    /**
+     * روش‌های پرداختِ همراهِ فاکتور، فروشِ سریع و برگشت. ⛔ «چک» اینجا نیست:
+     * چک شماره و سررسید می‌خواهد و آن فرم‌ها جایش را ندارند؛ چک از
+     * «دریافت/پرداخت» ثبت می‌شود و خودش به فاکتورِ باز می‌خورد.
+     * ⚠ بی‌قید است (نه «اگر migration آمده») تا این سه صفحه کوئریِ
+     *   `schemaMap()` نگیرند.
+     */
+    public static function quickMethods(): array
+    {
+        $m = self::METHODS;
+        unset($m['cheque']);
+        return $m;
+    }
+
     /** نوعِ سندی که هر دریافت/پرداخت تسویه می‌کند — وارونه‌ی `BizInvoices::SETTLED_BY`. */
     public const SETTLES = ['receipt' => ['sale', 'purchase_return'], 'payment' => ['purchase', 'sale_return']];
 
@@ -924,15 +938,40 @@ final class BizPay
         if (!isValidDate($date)) { $date = date('Y-m-d'); }
         if (mb_strlen($title) > self::TITLE_MAX) { return ['ok' => false, 'message' => 'شرح بیش از ' . self::TITLE_MAX . ' نویسه است.']; }
 
-        $accOk = $pdo->prepare('SELECT is_active FROM biz_accounts WHERE id = :id AND user_id = :u');
+        // ⛔ چکِ دریافتی/پرداختی: پول به صندوقِ «چک‌های در جریان» می‌رود نه
+        //    صندوقی که کاربر انتخاب کرده — تا وصول نشده نقد نیست. مانده‌ی
+        //    طرف‌حساب همین حالا کم می‌شود (چک را گرفته‌ایم)؛ اگر برگشت خورد،
+        //    `BizCheques::bounce()` سند را باطل می‌کند و بدهی برمی‌گردد.
+        $chq = null;
+        if ($method === 'cheque' && in_array($kind, ['receipt', 'payment'], true) && BizCheques::ready()) {
+            $due  = (string)($in['cheque_due'] ?? '');
+            $cno  = BizCommon::line(toLatinDigits((string)($in['cheque_no'] ?? '')));
+            $cbnk = BizCommon::line((string)($in['cheque_bank'] ?? ''));
+            if (!isValidDate($due)) { return ['ok' => false, 'message' => 'تاریخِ سررسیدِ چک را وارد کنید.']; }
+            if (mb_strlen($cno) > 30)  { return ['ok' => false, 'message' => 'شماره‌ی چک بیش از ۳۰ نویسه است.']; }
+            if (mb_strlen($cbnk) > 60) { return ['ok' => false, 'message' => 'نامِ بانک بیش از ۶۰ نویسه است.']; }
+            $acc = BizCash::chequeAccount($pdo, $userId, $kind === 'receipt' ? 'in' : 'out');
+            $chq = ['no' => $cno === '' ? null : $cno, 'bank' => $cbnk === '' ? null : $cbnk, 'due' => $due];
+        }
+        $settle = !empty($in['_cheque_settle']);
+
+        $accOk = $pdo->prepare('SELECT is_active, kind FROM biz_accounts WHERE id = :id AND user_id = :u');
         $accOk->execute(['id' => $acc, 'u' => $userId]);
-        $a = $accOk->fetchColumn();
+        $a = $accOk->fetch();
         if ($a === false) { return ['ok' => false, 'message' => 'صندوق یا حساب را انتخاب کنید.']; }
-        if ((int)$a !== 1) { return ['ok' => false, 'message' => 'این صندوق غیرفعال است.']; }
+        if ((int)$a['is_active'] !== 1) { return ['ok' => false, 'message' => 'این صندوق غیرفعال است.']; }
+        // ⛔ صندوقِ چک فقط از دو راه پول می‌گیرد یا می‌دهد: ثبتِ چک و وصولش
+        if (BizCash::isCheque($a) && $chq === null && !$settle) {
+            return ['ok' => false, 'message' => 'صندوقِ چک را خودِ برنامه پر و خالی می‌کند — از صفحه‌ی «چک‌ها» وصول کنید.'];
+        }
 
         if ($kind === 'transfer') {
             $accOk->execute(['id' => $to, 'u' => $userId]);
-            if ($to === $acc || (int)$accOk->fetchColumn() !== 1) { return ['ok' => false, 'message' => 'صندوقِ مقصد باید فعال و متفاوت باشد.']; }
+            $t = $accOk->fetch();
+            if ($to === $acc || $t === false || (int)$t['is_active'] !== 1) { return ['ok' => false, 'message' => 'صندوقِ مقصد باید فعال و متفاوت باشد.']; }
+            if (BizCash::isCheque($t) && !$settle) {
+                return ['ok' => false, 'message' => 'صندوقِ چک را خودِ برنامه پر و خالی می‌کند — از صفحه‌ی «چک‌ها» وصول کنید.'];
+            }
             $party = 0; $invId = 0;
         } else {
             $to = 0;
@@ -956,6 +995,10 @@ final class BizPay
         if (in_array($kind, ['receipt', 'payment'], true) && $party === 0 && $invId === 0) {
             return ['ok' => false, 'message' => 'برای دریافت/پرداخت، طرف‌حساب را انتخاب کنید (یا از صفحه‌ی خودِ فاکتور ثبت کنید).'];
         }
+        // ⛔ چکِ برگشتی باید به کسی برگردد؛ فاکتورِ گذری طرف‌حسابی ندارد
+        if ($chq !== null && $party === 0) {
+            return ['ok' => false, 'message' => 'چک فقط از طرف‌حسابِ ثبت‌شده پذیرفته می‌شود؛ برای فاکتورِ گذری نقد یا کارت ثبت کنید.'];
+        }
 
         $n = $pdo->prepare('SELECT COALESCE(MAX(number), 0) + 1 FROM biz_payments WHERE user_id = :u AND kind = :k FOR UPDATE');
         $n->execute(['u' => $userId, 'k' => $kind]);
@@ -967,6 +1010,11 @@ final class BizPay
                        'i' => $invId ?: null, 'o' => !empty($in['origin_invoice']) ? 1 : 0, 'am' => $amount, 'd' => $date,
                        'm' => $method, 'ti' => $title === '' ? null : $title, 'n' => $note === '' ? null : $note]);
         $id = (int)$pdo->lastInsertId();
+        if ($chq !== null) {
+            $pdo->prepare("UPDATE biz_payments SET cheque_no = :no, cheque_bank = :b, cheque_due = :d, cheque_status = 'pending'
+                           WHERE id = :id AND user_id = :u")
+                ->execute(['no' => $chq['no'], 'b' => $chq['bank'], 'd' => $chq['due'], 'id' => $id, 'u' => $userId]);
+        }
         if (in_array($kind, ['receipt', 'payment'], true)) {
             self::reallocateTx($pdo, $userId, $party ?: null, $invId ?: null);
         }
@@ -993,6 +1041,20 @@ final class BizPay
             if ($p['invoice_id'] !== null && $p['inv_party'] === null && $p['inv_status'] === 'issued') {
                 $pdo->rollBack();
                 return ['ok' => false, 'message' => 'این دریافت/پرداختِ یک فاکتورِ گذری است؛ خودِ فاکتور را باطل کنید.'];
+            }
+            // ⛔ چکِ وصول‌شده و انتقالِ وصولش جدا باطل نمی‌شوند: یکی بی‌دیگری
+            //    یعنی پولی که یا دو بار در بانک است یا هیچ‌جا
+            if (BizCheques::ready()) {
+                if (($p['cheque_status'] ?? null) === 'cleared') {
+                    $pdo->rollBack();
+                    return ['ok' => false, 'message' => 'این چک وصول شده؛ اول از صفحه‌ی «چک‌ها» وصول را برگردانید.'];
+                }
+                $ref = $pdo->prepare("SELECT COUNT(*) FROM biz_payments WHERE user_id = :u AND id = :c AND cheque_status = 'cleared'");
+                $ref->execute(['u' => $userId, 'c' => (int)($p['cheque_settle_id'] ?? 0)]);
+                if ($p['kind'] === 'transfer' && (int)$ref->fetchColumn() > 0) {
+                    $pdo->rollBack();
+                    return ['ok' => false, 'message' => 'این انتقال وصولِ یک چک است؛ از صفحه‌ی «چک‌ها» برگردانید.'];
+                }
             }
             $pdo->prepare("UPDATE biz_payments SET status = 'void', voided_at = NOW() WHERE id = :id AND user_id = :u")
                 ->execute(['id' => $id, 'u' => $userId]);
@@ -1166,6 +1228,227 @@ final class BizPay
         if ($p['kind'] === 'transfer') { return 'از ' . ($p['account_name'] ?? '') . ' به ' . ($p['to_account_name'] ?? ''); }
         if (in_array($p['kind'], ['expense', 'income'], true)) { return (string)($p['title'] ?? ''); }
         return (string)($p['party_name'] ?? 'گذری');
+    }
+}
+
+/* =================================================================
+   دفترِ چک (migration_biz_cheques)
+   ================================================================= */
+/**
+ * ⛔ چک یک ردیفِ جدا نیست؛ همان دریافت/پرداختی است که روشش «چک» است و
+ *    چهار ستونِ `cheque_*` دارد. پس مانده‌ی طرف‌حساب، تسویه‌ی فاکتور و
+ *    رسیدِ چاپی بی‌هیچ کدِ تازه‌ای درست‌اند؛ فقط **صندوقش** فرق دارد:
+ *    «چک‌های دریافتی/پرداختیِ در جریان» (`BizCash::chequeAccount()`).
+ *
+ *    چرخه: `pending` → `cleared` (یک انتقالِ صندوقِ چک ↔ بانک؛ **انتقال** با
+ *                    `cheque_settle_id` به چک اشاره می‌کند — ارجاعِ رو به عقب)
+ *                    → `bounced` (خودِ سند باطل؛ بدهیِ طرف‌حساب برمی‌گردد).
+ *    وصول برگشت‌پذیر است (`unclear()`)؛ برگشتی نه — چکِ تازه ثبت کنید.
+ */
+final class BizCheques
+{
+    public const FILTERS = [
+        ''        => 'در جریان',
+        'in'      => 'دریافتی',
+        'out'     => 'پرداختی',
+        'overdue' => 'سررسید گذشته',
+        'cleared' => 'وصول‌شده',
+        'bounced' => 'برگشتی',
+        'all'     => 'همه',
+    ];
+    public const STATUSES = ['pending' => 'در جریان', 'cleared' => 'وصول‌شده', 'bounced' => 'برگشتی'];
+    public const PAGE_SIZE = 25;
+    public const DUE_DAYS  = 7;
+
+    /** ستون‌ها آمده‌اند؟ (بدون migration، «چک» همان برچسبِ قدیمی است.) */
+    public static function ready(): bool
+    {
+        return function_exists('tableHasColumn') && tableHasColumn('biz_payments', 'cheque_status');
+    }
+
+    /** ⛔ تنها تعریفِ صافی‌ها — فهرست، چاپ و داشبورد همه از همین. */
+    private static function where(string $filter): string
+    {
+        $pend = "y.status = 'ok' AND y.cheque_status = 'pending'";
+        switch ($filter) {
+            case 'in':      return "{$pend} AND y.kind = 'receipt'";
+            case 'out':     return "{$pend} AND y.kind = 'payment'";
+            case 'overdue': return "{$pend} AND y.cheque_due < CURDATE()";
+            case 'cleared': return "y.cheque_status = 'cleared'";
+            case 'bounced': return "y.cheque_status = 'bounced'";
+            case 'all':     return 'y.cheque_status IS NOT NULL';
+            default:        return $pend;
+        }
+    }
+
+    private const JOIN = "FROM biz_payments y
+        LEFT JOIN biz_parties p ON p.id = y.party_id AND p.user_id = y.user_id
+        LEFT JOIN biz_payments s ON s.cheque_settle_id = y.id AND s.user_id = y.user_id AND s.kind = 'transfer' AND s.status = 'ok'
+        LEFT JOIN biz_accounts b ON b.user_id = y.user_id
+             AND b.id = (CASE WHEN y.kind = 'receipt' THEN s.to_account_id ELSE s.account_id END)";
+
+    /** @return array{rows:array, total:int, page:int, pages:int, in:int, out:int, overdue:int} */
+    public static function list(int $userId, string $filter = '', int $page = 1, int $cap = 0): array
+    {
+        $filter = isset(self::FILTERS[$filter]) ? $filter : '';
+        $pdo = Database::getConnection();
+        // جمع‌های بالای صفحه همیشه از «در جریان» اند، مستقل از صافی
+        $st = $pdo->prepare("SELECT
+                COALESCE(SUM(CASE WHEN y.kind = 'receipt' THEN y.amount ELSE 0 END), 0) AS i,
+                COALESCE(SUM(CASE WHEN y.kind = 'payment' THEN y.amount ELSE 0 END), 0) AS o,
+                COALESCE(SUM(y.cheque_due < CURDATE()), 0) AS od
+            FROM biz_payments y WHERE y.user_id = :u AND y.status = 'ok' AND y.cheque_status = 'pending'");
+        $st->execute(['u' => $userId]);
+        $sum = $st->fetch() ?: ['i' => 0, 'o' => 0, 'od' => 0];
+
+        $w = 'y.user_id = :u AND ' . self::where($filter);
+        $st = $pdo->prepare("SELECT COUNT(*) FROM biz_payments y WHERE {$w}");
+        $st->execute(['u' => $userId]);
+        $n = (int)$st->fetchColumn();
+        $size = $cap > 0 ? $cap : self::PAGE_SIZE;
+        [$page, $pages, $offset] = $cap > 0 ? [1, 1, 0] : BizCommon::window($n, $page, $size);
+        $order = in_array($filter, ['cleared', 'bounced', 'all'], true) ? 'y.cheque_due DESC, y.id DESC' : 'y.cheque_due, y.id';
+        $st = $pdo->prepare("SELECT y.*, p.name AS party_name, s.pay_date AS settle_date, b.name AS settle_account
+                             " . self::JOIN . " WHERE {$w} ORDER BY {$order} LIMIT :lim OFFSET :off");
+        $st->bindValue('u', $userId, PDO::PARAM_INT);
+        $st->bindValue('lim', $size, PDO::PARAM_INT);
+        $st->bindValue('off', $offset, PDO::PARAM_INT);
+        $st->execute();
+        return ['rows' => $st->fetchAll(), 'total' => $n, 'page' => $page, 'pages' => $pages,
+                'in' => (int)$sum['i'], 'out' => (int)$sum['o'], 'overdue' => (int)$sum['od']];
+    }
+
+    /** چک‌های در جریانی که تا `$days` روزِ دیگر (یا گذشته) سررسیدند — برای داشبورد. */
+    public static function due(int $userId, int $days = self::DUE_DAYS, int $limit = 6): array
+    {
+        // ⚠ نبودِ ستون با 42S22 شناخته می‌شود نه `ready()`: داشبورد کوئریِ
+        //   `schemaMap()` نمی‌گیرد
+        $st = Database::getConnection()->prepare(
+            "SELECT y.id, y.kind, y.amount, y.cheque_no, y.cheque_due, p.name AS party_name,
+                    DATEDIFF(y.cheque_due, CURDATE()) AS days
+             FROM biz_payments y LEFT JOIN biz_parties p ON p.id = y.party_id AND p.user_id = y.user_id
+             WHERE y.user_id = :u AND y.status = 'ok' AND y.cheque_status = 'pending'
+               AND y.cheque_due <= DATE_ADD(CURDATE(), INTERVAL :d DAY)
+             ORDER BY y.cheque_due, y.id LIMIT :lim"
+        );
+        $st->bindValue('u', $userId, PDO::PARAM_INT);
+        $st->bindValue('d', max(0, $days), PDO::PARAM_INT);
+        $st->bindValue('lim', $limit, PDO::PARAM_INT);
+        try {
+            $st->execute();
+        } catch (PDOException $e) {
+            if ($e->getCode() === '42S22') { return []; }
+            throw $e;
+        }
+        return $st->fetchAll();
+    }
+
+    /** برچسبِ کوتاهِ یک چک: «چکِ ۱۲۳۴ بانکِ ملت». */
+    public static function label(array $p): string
+    {
+        $t = 'چک';
+        if ((string)($p['cheque_no'] ?? '') !== '') { $t .= ' ' . toPersianDigits((string)$p['cheque_no']); }
+        if ((string)($p['cheque_bank'] ?? '') !== '') { $t .= ' — ' . $p['cheque_bank']; }
+        return $t;
+    }
+
+    private static function lock(PDO $pdo, int $userId, int $id): ?array
+    {
+        $st = $pdo->prepare('SELECT * FROM biz_payments WHERE id = :id AND user_id = :u AND cheque_status IS NOT NULL FOR UPDATE');
+        $st->execute(['id' => $id, 'u' => $userId]);
+        return $st->fetch() ?: null;
+    }
+
+    /**
+     * وصول — دریافتی: صندوقِ چک → بانک؛ پرداختی: بانک → صندوقِ چک.
+     * ⛔ از همان `BizPay::createTx()` می‌گذرد (انتقال)، پس موجودیِ هر دو صندوق
+     *    از `BALANCE_SQL` می‌آید و نسخه‌ی دومی از «موجودی» ساخته نمی‌شود.
+     * @return array{ok:bool, message:string}
+     */
+    public static function clear(int $userId, int $id, int $bankAcc, string $date = ''): array
+    {
+        if (!self::ready()) { return ['ok' => false, 'message' => 'دفترِ چک هنوز راه نیفتاده است.']; }
+        $pdo = Database::getConnection();
+        $pdo->beginTransaction();
+        try {
+            $p = self::lock($pdo, $userId, $id);
+            if (!$p || $p['status'] !== 'ok' || $p['cheque_status'] !== 'pending') {
+                $pdo->rollBack();
+                return ['ok' => false, 'message' => 'این چک در جریان نیست.'];
+            }
+            $bk = $pdo->prepare('SELECT kind, is_active FROM biz_accounts WHERE id = :id AND user_id = :u');
+            $bk->execute(['id' => $bankAcc, 'u' => $userId]);
+            $b = $bk->fetch();
+            if (!$b || (int)$b['is_active'] !== 1 || BizCash::isCheque($b)) {
+                $pdo->rollBack();
+                return ['ok' => false, 'message' => 'حسابی را که چک در آن وصول شد انتخاب کنید.'];
+            }
+            $in = $p['kind'] === 'receipt';
+            $r = BizPay::createTx($pdo, $userId, [
+                'kind' => 'transfer', 'amount' => (int)$p['amount'], 'pay_date' => isValidDate($date) ? $date : date('Y-m-d'),
+                'account_id' => $in ? (int)$p['account_id'] : $bankAcc, 'to_account_id' => $in ? $bankAcc : (int)$p['account_id'],
+                'title' => 'وصولِ ' . self::label($p), '_cheque_settle' => 1,
+            ]);
+            if (!$r['ok']) { $pdo->rollBack(); return $r; }
+            $pdo->prepare("UPDATE biz_payments SET cheque_settle_id = :c WHERE id = :t AND user_id = :u AND kind = 'transfer'")
+                ->execute(['c' => $id, 't' => (int)$r['id'], 'u' => $userId]);
+            $pdo->prepare("UPDATE biz_payments SET cheque_status = 'cleared' WHERE id = :id AND user_id = :u")
+                ->execute(['id' => $id, 'u' => $userId]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            throw $e;
+        }
+        return ['ok' => true, 'message' => self::label($p) . ' وصول شد.'];
+    }
+
+    /** برگشتِ وصول (اشتباهِ ثبت) — انتقال باطل، چک دوباره در جریان. */
+    public static function unclear(int $userId, int $id): array
+    {
+        if (!self::ready()) { return ['ok' => false, 'message' => 'دفترِ چک هنوز راه نیفتاده است.']; }
+        $pdo = Database::getConnection();
+        $pdo->beginTransaction();
+        try {
+            $p = self::lock($pdo, $userId, $id);
+            if (!$p || $p['cheque_status'] !== 'cleared') { $pdo->rollBack(); return ['ok' => false, 'message' => 'این چک وصول‌شده نیست.']; }
+            $pdo->prepare("UPDATE biz_payments SET status = 'void', voided_at = NOW()
+                           WHERE cheque_settle_id = :id AND user_id = :u AND kind = 'transfer' AND status = 'ok'")
+                ->execute(['id' => $id, 'u' => $userId]);
+            $pdo->prepare("UPDATE biz_payments SET cheque_status = 'pending' WHERE id = :id AND user_id = :u")
+                ->execute(['id' => $id, 'u' => $userId]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            throw $e;
+        }
+        return ['ok' => true, 'message' => 'وصول برگشت خورد؛ چک دوباره در جریان است.'];
+    }
+
+    /**
+     * برگشتی — خودِ دریافت/پرداخت باطل می‌شود، پس مانده‌ی طرف‌حساب و
+     * تسویه‌ی فاکتورها (`reallocateTx()`) به پیش از چک برمی‌گردند.
+     */
+    public static function bounce(int $userId, int $id): array
+    {
+        if (!self::ready()) { return ['ok' => false, 'message' => 'دفترِ چک هنوز راه نیفتاده است.']; }
+        $pdo = Database::getConnection();
+        $pdo->beginTransaction();
+        try {
+            $p = self::lock($pdo, $userId, $id);
+            if (!$p || $p['status'] !== 'ok' || $p['cheque_status'] !== 'pending') {
+                $pdo->rollBack();
+                return ['ok' => false, 'message' => 'فقط چکِ در جریان برگشت می‌خورد (چکِ وصول‌شده را اول برگردانید).'];
+            }
+            $pdo->prepare("UPDATE biz_payments SET status = 'void', voided_at = NOW(), cheque_status = 'bounced' WHERE id = :id AND user_id = :u")
+                ->execute(['id' => $id, 'u' => $userId]);
+            BizPay::reallocateTx($pdo, $userId, $p['party_id'] !== null ? (int)$p['party_id'] : null,
+                                 $p['invoice_id'] !== null ? (int)$p['invoice_id'] : null);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            throw $e;
+        }
+        return ['ok' => true, 'message' => self::label($p) . ' برگشتی ثبت شد؛ مبلغش دوباره به حسابِ طرف‌حساب برگشت.'];
     }
 }
 

@@ -468,3 +468,18 @@
         });
     });
 })();
+
+/* مشخصاتِ چک در «دریافت/پرداخت»: فقط وقتی روش «چک» است دیده می‌شود.
+   ⛔ بی‌اسکریپت همیشه دیده می‌شود (نه `hidden` در HTML)، پس نرسیدنِ این
+   فایل فرمِ چک را بی‌صدا نمی‌بندد. */
+(function () {
+    'use strict';
+    document.addEventListener('DOMContentLoaded', function () {
+        var sel = document.querySelector('[data-cheque-method]');
+        var box = document.querySelector('[data-cheque-fields]');
+        if (!sel || !box) { return; }
+        var sync = function () { box.style.display = sel.value === 'cheque' ? '' : 'none'; };
+        sel.addEventListener('change', sync);
+        sync();
+    });
+})();

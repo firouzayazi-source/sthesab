@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $form['note']   = postParam('note');
     $form['refund'] = postParam('refund') === 'full' ? 'full' : 'none';
     $form['account_id'] = (int)postParam('account_id');
-    $form['method'] = isset(BizPay::METHODS[postParam('method')]) ? postParam('method') : 'cash';
+    $form['method'] = isset(BizPay::quickMethods()[postParam('method')]) ? postParam('method') : 'cash';
 
     $r = BizInvoices::createReturn($userId, $origId, $form['qty'],
         ['account_id' => $form['account_id'], 'full' => $form['refund'] === 'full', 'method' => $form['method']],
@@ -102,7 +102,7 @@ require __DIR__ . '/../includes/biz_head.php';
                     <select name="account_id"><?php foreach ($accounts as $a): ?><option value="<?= (int)$a['id'] ?>"<?= (int)$a['id'] === (int)$form['account_id'] ? ' selected' : '' ?>><?= h($a['name']) ?></option><?php endforeach; ?></select>
                 </label>
                 <label class="st-field"><span>روش</span>
-                    <select name="method"><?php foreach (BizPay::METHODS as $mk => $ml): ?><option value="<?= h($mk) ?>"<?= $mk === $form['method'] ? ' selected' : '' ?>><?= h($ml) ?></option><?php endforeach; ?></select>
+                    <select name="method"><?php foreach (BizPay::quickMethods() as $mk => $ml): ?><option value="<?= h($mk) ?>"<?= $mk === $form['method'] ? ' selected' : '' ?>><?= h($ml) ?></option><?php endforeach; ?></select>
                 </label>
             </div>
             <?php if ($orig['party_id'] === null): ?><p class="st-muted">فاکتورِ اصلی گذری است، پس پول همین حالا برمی‌گردد.</p><?php endif; ?>

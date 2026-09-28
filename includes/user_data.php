@@ -117,7 +117,10 @@ function exportUserData(int $userId): array
         // ⚠ نامِ جدول از information_schema همین دیتابیس می‌آید، نه از
         //   ورودی کاربر — پس درج مستقیمش در SQL امن است. مقدارِ
         //   `user_id` همیشه bind می‌شود.
-        $st = $pdo->prepare("SELECT * FROM `{$t}` WHERE user_id = :u");
+        // ⛔ به ترتیبِ شناسه: بازگرداندن شناسه‌ها را به ترتیبِ درج نگاشت می‌کند،
+        //    پس ارجاعِ یک جدول به خودش (برگشت ← فاکتورِ اصلی، وصول ← چک) فقط
+        //    وقتی درست وصل می‌شود که پدر زودتر از فرزند بیاید.
+        $st = $pdo->prepare("SELECT * FROM `{$t}` WHERE user_id = :u" . (tableHasColumn($t, 'id') ? ' ORDER BY id' : ''));
         $st->execute(['u' => $userId]);
         $rows = $st->fetchAll();
 

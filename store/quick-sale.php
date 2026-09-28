@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             && (trim((string)($l['item'] ?? '')) !== '' || trim((string)($l['price'] ?? '')) !== ''))),
         'pay_mode' => in_array(postParam('pay_mode'), ['none', 'full', 'part'], true) ? postParam('pay_mode') : 'full',
         'pay_amount' => postParam('pay_amount'), 'account_id' => (int)postParam('account_id'),
-        'method' => isset(BizPay::METHODS[postParam('method')]) ? postParam('method') : 'cash',
+        'method' => isset(BizPay::quickMethods()[postParam('method')]) ? postParam('method') : 'cash',
     ]);
     if ($action === 'addrows') {
         $blank = 6;
@@ -127,7 +127,7 @@ require __DIR__ . '/../includes/biz_head.php';
                 </label>
             </div>
             <div class="st-seg st-seg-sm">
-                <?php foreach (BizPay::METHODS as $mk => $ml): ?>
+                <?php foreach (BizPay::quickMethods() as $mk => $ml): ?>
                 <label class="st-seg-opt"><input type="radio" name="method" value="<?= h($mk) ?>"<?= $mk === $form['method'] ? ' checked' : '' ?>><span><?= h($ml) ?></span></label>
                 <?php endforeach; ?>
             </div>
