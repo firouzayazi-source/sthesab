@@ -45,7 +45,9 @@ $self = Biz::url('invoice-edit.php' . ($id > 0 ? '?id=' . $id : '?k=' . $kind));
 
 $accounts = BizDocView::accounts($userId);
 $form = [
-    'party_id' => $inv ? (int)$inv['party_id'] : (int)getParam('party', '0'),
+    // مشتریِ پیش‌فرض (گزینه‌ی فاکتور) فقط برای فاکتورِ فروشِ تازه‌ای که طرفی نگرفته
+    'party_id' => $inv ? (int)$inv['party_id']
+        : ((int)getParam('party', '0') ?: ($kind === 'sale' ? Biz::invoicePrefs($userId)['default_party'] : 0)),
     'inv_date' => BizDocView::jDate($inv ? (string)$inv['inv_date'] : date('Y-m-d')),
     'discount' => $inv && (int)$inv['discount'] > 0 ? (string)(int)$inv['discount'] : '',
     'extra'    => $inv && (int)$inv['extra'] > 0 ? (string)(int)$inv['extra'] : '',
@@ -197,6 +199,10 @@ if ($isSale && $inv) {
     }
 }
 
+// ⛔ گزینه‌ی «هشدار زیرِ بهای خرید» — فقط هشدار؛ صدور را نمی‌بندد
+$invPrefs = Biz::invoicePrefs($userId);
+$costWarn = $inv && $invPrefs['warn_below_cost'] ? BizInvoices::belowCost($inv) : [];
+
 $pageTitle = $inv ? BizInvoices::title($inv) : BizInvoices::KINDS[$kind] . 'ِ تازه';
 require __DIR__ . '/../includes/biz_head.php';
 ?>
@@ -212,6 +218,9 @@ require __DIR__ . '/../includes/biz_head.php';
 <?php if ($notice !== ''): ?><div class="st-flash st-flash-ok" role="status"><?= h($notice) ?></div><?php endif; ?>
 <?php if ($stockWarn): ?>
 <div class="st-flash st-flash-warn" role="status">بیش از موجودی — صدور انجام نمی‌شود تا موجودی برسد: <?= h(implode('، ', $stockWarn)) ?></div>
+<?php endif; ?>
+<?php if ($costWarn): ?>
+<div class="st-flash st-flash-warn" role="status">زیرِ بهای خرید: <?= h(implode('، ', array_map(fn($w) => '«' . $w['desc'] . '» ' . formatMoney($w['per']) . ' (بها ' . formatMoney($w['cost']) . ')', $costWarn))) ?></div>
 <?php endif; ?>
 
 <form method="post" class="st-docform" action="<?= h($self) ?>" data-invoice data-price="<?= $isSale ? 'sell' : 'buy' ?>">

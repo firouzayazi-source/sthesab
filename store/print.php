@@ -209,6 +209,9 @@ case 'invoice':
         ($isSaleSide ? 'خریدار' : 'فروشنده') => $inv['party_id'] !== null ? (string)$inv['party_name'] : 'گذری',
         'تلفن'                               => (string)($inv['party_phone'] ?? ''),
         'نشانی'                              => (string)($inv['party_address'] ?? ''),
+        'کد اقتصادی'                          => (string)($inv['party_economic_code'] ?? ''),
+        'شناسه‌ی ملی'                         => (string)($inv['party_national_id'] ?? ''),
+        'کد پستی'                             => (string)($inv['party_postal_code'] ?? ''),
         'فاکتورِ اصلی'                       => $inv['ref_invoice_id'] !== null ? toPersianDigits((string)$inv['ref_number']) : '',
     ]); ?>
     <table class="pr-table">

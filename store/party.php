@@ -30,7 +30,12 @@ $form = [
     'note'           => $party['note'] ?? '',
     'opening_amount' => $party ? (string)abs((int)$party['opening_balance']) : '',
     'opening_side'   => $party && (int)$party['opening_balance'] < 0 ? 'we' : 'they',
+    'national_id'    => (string)($party['national_id'] ?? ''),
+    'economic_code'  => (string)($party['economic_code'] ?? ''),
+    'postal_code'    => (string)($party['postal_code'] ?? ''),
 ];
+// ردیفِ موجود (`p.*`) خودش می‌گوید ستون‌ها آمده‌اند — بی‌کوئریِ نقشه‌ی ساختار
+$hasCodes = $party ? array_key_exists('economic_code', $party) : BizParties::hasCodes();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Csrf::verifyOrFail(postParam('csrf_token'));
@@ -149,6 +154,19 @@ require __DIR__ . '/../includes/biz_head.php';
             <input type="text" name="address" maxlength="<?= BizParties::LIMITS['address'] ?>" value="<?= h((string)$form['address']) ?>">
         </label>
     </div>
+    <?php if ($hasCodes): ?>
+    <fieldset class="st-fieldset">
+        <legend>اطلاعاتِ رسمی <small class="st-muted">(اختیاری — روی فاکتورِ رسمی زیرِ نامِ خریدار)</small></legend>
+        <div class="st-row3">
+            <?php foreach (BizParties::CODE_KEYS as $ck): ?>
+            <label class="st-field">
+                <span><?= h(BizCommon::CODES[$ck][2]) ?></span>
+                <input type="text" name="<?= h($ck) ?>" dir="ltr" inputmode="numeric" maxlength="24" value="<?= h((string)$form[$ck]) ?>">
+            </label>
+            <?php endforeach; ?>
+        </div>
+    </fieldset>
+    <?php endif; ?>
     <fieldset class="st-fieldset">
         <legend>مانده‌ی اول دوره <small class="st-muted">(اختیاری)</small></legend>
         <div class="st-row2">

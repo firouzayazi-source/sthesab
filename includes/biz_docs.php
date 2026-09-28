@@ -105,19 +105,29 @@ final class BizInvoices
     public static function get(int $userId, int $id): ?array
     {
         $pdo = Database::getConnection();
-        $st  = $pdo->prepare(
-            'SELECT i.*, p.name AS party_name, p.phone AS party_phone, p.address AS party_address,
+        // کدهای رسمیِ خریدار (migration_biz_business_info). ⚠ با امتحان، نه با
+        //    `tableHasColumn()`: آن یک کوئریِ نقشه‌ی ساختار به هر صفحه‌ی سند اضافه
+        //    می‌کرد؛ نصبِ عقب‌مانده خطای «ستون نیست» (42S22) می‌گیرد و بی‌آن‌ها
+        //    دوباره می‌خواند.
+        $sql = fn(string $codes): string =>
+            'SELECT i.*, p.name AS party_name, p.phone AS party_phone, p.address AS party_address' . $codes . ',
                     r.number AS ref_number, r.kind AS ref_kind
              FROM biz_invoices i
              LEFT JOIN biz_parties p ON p.id = i.party_id AND p.user_id = i.user_id
              LEFT JOIN biz_invoices r ON r.id = i.ref_invoice_id AND r.user_id = i.user_id
-             WHERE i.id = :id AND i.user_id = :u LIMIT 1'
-        );
-        $st->execute(['id' => $id, 'u' => $userId]);
+             WHERE i.id = :id AND i.user_id = :u LIMIT 1';
+        try {
+            $st = $pdo->prepare($sql(', p.national_id AS party_national_id, p.economic_code AS party_economic_code, p.postal_code AS party_postal_code'));
+            $st->execute(['id' => $id, 'u' => $userId]);
+        } catch (PDOException $e) {
+            if ((string)$e->getCode() !== '42S22') { throw $e; }
+            $st = $pdo->prepare($sql(''));
+            $st->execute(['id' => $id, 'u' => $userId]);
+        }
         $inv = $st->fetch();
         if (!$inv) { return null; }
         $st = $pdo->prepare(
-            'SELECT l.*, pr.name AS product_name, pr.sku, pr.track_stock, pr.has_serial, pr.stock_qty
+            'SELECT l.*, pr.name AS product_name, pr.sku, pr.track_stock, pr.has_serial, pr.stock_qty, pr.avg_cost, pr.buy_price
              FROM biz_invoice_lines l
              LEFT JOIN biz_products pr ON pr.id = l.product_id AND pr.user_id = l.user_id
              WHERE l.invoice_id = :id AND l.user_id = :u ORDER BY l.line_no, l.id'
@@ -125,6 +135,44 @@ final class BizInvoices
         $st->execute(['id' => $id, 'u' => $userId]);
         $inv['lines'] = $st->fetchAll();
         return $inv;
+    }
+
+    /**
+     * ردیف‌های فروشی که زیرِ بهای خرید فروخته می‌شوند — گزینه‌ی
+     * `warn_below_cost`. فیِ خالصِ هر واحد (پس از تخفیفِ ردیف؛ صادرشده: پس
+     * از سهمِ تخفیف و حملِ کلِ فاکتور) با بها مقایسه می‌شود: صادرشده همان
+     * `unit_cost`ِ ثبت‌شده، پیش‌نویس میانگینِ امروزِ کالا (یا قیمتِ خرید اگر
+     * هنوز میانگینی نیست). خدمت و شرحِ آزاد بها ندارند.
+     * @return array<int,array{n:int, desc:string, per:int, cost:int}>
+     */
+    public static function belowCost(array $inv): array
+    {
+        if ($inv['kind'] !== 'sale') { return []; }
+        $out = [];
+        foreach ($inv['lines'] as $n => $l) {
+            $q = (float)$l['qty'];
+            if ($l['product_id'] === null || $q <= 0 || (int)($l['track_stock'] ?? 1) !== 1) { continue; }
+            $issued = $inv['status'] !== 'draft' && $l['unit_cost'] !== null;
+            $cost = $issued ? (int)$l['unit_cost']
+                : ((float)($l['avg_cost'] ?? 0) > 0 ? (int)round((float)$l['avg_cost']) : (int)($l['buy_price'] ?? 0));
+            $per  = (int)round((int)($issued ? $l['net_total'] : $l['line_total']) / $q);
+            if ($cost > 0 && $per < $cost) {
+                $out[] = ['n' => $n + 1, 'desc' => (string)$l['description'], 'per' => $per, 'cost' => $cost];
+            }
+        }
+        return $out;
+    }
+
+    /** سودِ ناخالصِ یک فاکتورِ فروشِ صادرشده — همان تعریفِ `BizReports::byInvoice()`. */
+    public static function profit(array $inv): ?int
+    {
+        if ($inv['kind'] !== 'sale' || $inv['status'] !== 'issued') { return null; }
+        $net = 0; $cost = 0;
+        foreach ($inv['lines'] as $l) {
+            $net  += (int)$l['net_total'];
+            $cost += (int)round((int)($l['unit_cost'] ?? 0) * (float)$l['qty']);
+        }
+        return $net - $cost;
     }
 
     /**
@@ -556,6 +604,21 @@ final class BizInvoices
 
         $pdo->prepare("UPDATE biz_invoices SET status = 'issued', number = :n, issued_at = NOW(), voided_at = NULL
                        WHERE id = :id AND user_id = :u")->execute(['n' => $number, 'id' => $id, 'u' => $userId]);
+
+        // ⛔ گزینه‌های فاکتور (`Biz::INVOICE_FLAGS`): «قیمتِ خرید/فروش»ِ کالا به فیِ
+        //    همین سند — داخلِ همان تراکنش، پس صدورِ ناموفق قیمت را هم عوض نمی‌کند.
+        //    فیِ صفر (هدیه، نمونه) قیمت را صفر نمی‌کند؛ کالای تکراری: آخرین ردیف.
+        $prefs = Biz::invoicePrefs($userId);
+        $col = $kind === 'purchase' && $prefs['update_buy_price'] ? 'buy_price'
+            : ($kind === 'sale' && $prefs['update_sell_price'] ? 'sell_price' : '');
+        if ($col !== '') {
+            $upP = $pdo->prepare("UPDATE biz_products SET {$col} = :p WHERE id = :id AND user_id = :u");
+            foreach ($lines as $l) {
+                if ($l['product_id'] !== null && (int)$l['unit_price'] > 0) {
+                    $upP->execute(['p' => (int)$l['unit_price'], 'id' => (int)$l['product_id'], 'u' => $userId]);
+                }
+            }
+        }
 
         if ($payAmount > 0) {
             $p = BizPay::createTx($pdo, $userId, [

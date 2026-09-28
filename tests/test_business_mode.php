@@ -43,7 +43,7 @@ const BPASS   = 'Biz12345';
  */
 const STORE_BUDGET = [
     'store/index.php'    => 14,
-    'store/settings.php' => 4,
+    'store/settings.php' => 5,
     'store/products.php' => 10,
     'store/product.php'  => 9,
     'store/parties.php'  => 9,

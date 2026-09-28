@@ -381,7 +381,15 @@ final class Biz
         'phone'          => 40,
         'address'        => 300,
         'invoice_footer' => 500,
+        // کدهای رسمی (migration_biz_business_info) — قاعده‌شان `BizCommon::CODES`
+        'national_id'    => 20,
+        'economic_code'  => 20,
+        'reg_no'         => 20,
+        'postal_code'    => 20,
     ];
+
+    /** کلیدهای کدِ رسمی در `SETTING_LIMITS` — فقط رقم، نه متنِ آزاد. */
+    public const SETTING_CODES = ['national_id', 'economic_code', 'reg_no', 'postal_code'];
 
     /** کشِ همین درخواست — سرآیند و خودِ صفحه هر دو می‌خوانندش. */
     private static array $settingsCache = [];
@@ -447,15 +455,103 @@ final class Biz
             foreach ($out as $k => $_) { $out[$k] = (string)($row[$k] ?? ''); }
         }
         self::$paletteCache[$userId] = $row ? (string)($row['palette'] ?? '') : '';
+        self::$invoiceRaw[$userId]   = $row ? (string)($row['invoice_prefs'] ?? '') : '';
+        if ($row) { self::$infoReady = array_key_exists('invoice_prefs', $row); }
         return self::$settingsCache[$userId] = $out;
+    }
+
+    /** از ردیفِ `SELECT *`ِ `settings()` — بی‌کوئریِ نقشه‌ی ساختار؛ null = هنوز نمی‌دانیم. */
+    private static ?bool $infoReady = null;
+
+    /** کدهای رسمی و گزینه‌های فاکتور آمده‌اند؟ (migration_biz_business_info) */
+    public static function businessInfoReady(): bool
+    {
+        return self::$infoReady ??= self::hasColumn('biz_settings', 'invoice_prefs');
+    }
+
+    /** ستونی از جدول‌های فروشگاه آمده است؟ — نصبِ migration‌نخورده نشکند. */
+    private static function hasColumn(string $table, string $col): bool
+    {
+        if (function_exists('tableHasColumn')) { return tableHasColumn($table, $col); }
+        try {
+            Database::getConnection()->query("SELECT `{$col}` FROM `{$table}` LIMIT 0");
+            return true;
+        } catch (PDOException $e) {
+            return false;
+        }
+    }
+
+    /* ============================================================
+       گزینه‌های فاکتور — تبِ «فاکتور»ِ تنظیماتِ مالیِ حسابفا
+       (migration_biz_business_info → biz_settings.invoice_prefs)
+       ============================================================ */
+
+    /**
+     * ⛔ تنها مرجعِ گزینه‌های فاکتور. پیش‌فرضِ همه **خاموش** است: هیچ نصبِ
+     *    موجودی با آمدنِ این گزینه‌ها رفتارش عوض نمی‌شود.
+     *    ⚠ «ثبتِ فاکتور با کمبودِ موجودی» عمداً اینجا نیست: سدِ «موجودی در
+     *    هیچ لحظه منفی نمی‌شود» (`BizStock::write()`) تصمیمِ ثابتِ فروشگاه است.
+     */
+    public const INVOICE_FLAGS = [
+        'update_buy_price' => 'پس از صدورِ فاکتورِ خرید، «قیمتِ خرید»ِ کالا به فیِ همان فاکتور به‌روز شود',
+        'update_sell_price' => 'پس از صدورِ فاکتورِ فروش، «قیمتِ فروش»ِ کالا به فیِ همان فاکتور به‌روز شود',
+        'warn_below_cost'  => 'هشدار وقتی کالا زیرِ بهای خرید فروخته می‌شود',
+        'show_profit'      => 'نمایشِ سودِ هر فاکتورِ فروش روی صفحه‌ی فاکتور (روی چاپ نمی‌آید)',
+    ];
+
+    private static array $invoiceRaw = [];
+
+    /** @return array{update_buy_price:bool, update_sell_price:bool, warn_below_cost:bool, show_profit:bool, default_party:int} */
+    public static function invoicePrefs(int $userId): array
+    {
+        self::settings($userId);
+        $in  = json_decode(self::$invoiceRaw[$userId] ?? '', true);
+        $in  = is_array($in) ? $in : [];
+        $out = [];
+        foreach (self::INVOICE_FLAGS as $k => $_) { $out[$k] = ($in[$k] ?? false) === true; }
+        $out['default_party'] = max(0, (int)($in['default_party'] ?? 0));
+        return $out;
+    }
+
+    /**
+     * ⛔ مشتریِ پیش‌فرض فقط اگر طرف‌حسابِ **همین** فروشگاه باشد — شناسه از
+     *    فرم می‌آید و نباید مشتریِ فروشگاهِ دیگری روی فاکتور بنشیند.
+     */
+    public static function saveInvoicePrefs(int $userId, array $in): array
+    {
+        if (!self::hasColumn('biz_settings', 'invoice_prefs')) {
+            return ['ok' => false, 'message' => 'این گزینه‌ها هنوز راه نیفتاده‌اند (migration_biz_business_info).'];
+        }
+        $clean = [];
+        foreach (self::INVOICE_FLAGS as $k => $_) { $clean[$k] = !empty($in[$k]); }
+        $party = max(0, (int)($in['default_party'] ?? 0));
+        if ($party > 0) {
+            $st = Database::getConnection()->prepare('SELECT COUNT(*) FROM biz_parties WHERE id = :id AND user_id = :u AND is_active = 1');
+            $st->execute(['id' => $party, 'u' => $userId]);
+            if ((int)$st->fetchColumn() === 0) { return ['ok' => false, 'message' => 'مشتریِ پیش‌فرض پیدا نشد.']; }
+        }
+        $clean['default_party'] = $party;
+        unset(self::$settingsCache[$userId], self::$invoiceRaw[$userId]);
+        Database::getConnection()->prepare(
+            'INSERT INTO biz_settings (user_id, invoice_prefs) VALUES (:u, :p)
+             ON DUPLICATE KEY UPDATE invoice_prefs = VALUES(invoice_prefs)'
+        )->execute(['u' => $userId, 'p' => json_encode($clean)]);
+        return ['ok' => true, 'message' => 'گزینه‌های فاکتور ذخیره شد.'];
     }
 
     /** @return array{ok:bool, message:string} */
     public static function saveSettings(int $userId, array $in): array
     {
+        require_once __DIR__ . '/biz_catalog.php';
         $clean = [];
         foreach (self::SETTING_LIMITS as $k => $max) {
             $raw = (string)($in[$k] ?? '');
+            if (in_array($k, self::SETTING_CODES, true)) {
+                $c = BizCommon::code($k, $raw);
+                if (!$c['ok']) { return ['ok' => false, 'message' => $c['message']]; }
+                $clean[$k] = (string)$c['value'];
+                continue;
+            }
             // پای فاکتور چندخطی است؛ بقیه یک‌خطی‌اند و فاصله‌ی اضافه ندارند
             $v = $k === 'invoice_footer'
                 ? trim($raw)
@@ -470,7 +566,8 @@ final class Biz
         }
 
         unset(self::$settingsCache[$userId]);
-        Database::getConnection()->prepare(
+        $pdo = Database::getConnection();
+        $pdo->prepare(
             'INSERT INTO biz_settings (user_id, shop_name, phone, address, invoice_footer)
              VALUES (:u, :n, :p, :a, :f)
              ON DUPLICATE KEY UPDATE shop_name = VALUES(shop_name), phone = VALUES(phone),
@@ -479,6 +576,18 @@ final class Biz
             'u' => $userId, 'n' => $clean['shop_name'], 'p' => $clean['phone'],
             'a' => $clean['address'], 'f' => $clean['invoice_footer'],
         ]);
+        // ⚠ کدهای رسمی فقط وقتی ستونشان آمده (نصبِ migration‌نخورده نباید بشکند)
+        if (self::hasColumn('biz_settings', 'economic_code')) {
+            $pdo->prepare(
+                'UPDATE biz_settings SET national_id = :ni, economic_code = :ec, reg_no = :rn, postal_code = :pc WHERE user_id = :u'
+            )->execute([
+                'ni' => $clean['national_id'] !== '' ? $clean['national_id'] : null,
+                'ec' => $clean['economic_code'] !== '' ? $clean['economic_code'] : null,
+                'rn' => $clean['reg_no'] !== '' ? $clean['reg_no'] : null,
+                'pc' => $clean['postal_code'] !== '' ? $clean['postal_code'] : null,
+                'u'  => $userId,
+            ]);
+        }
         return ['ok' => true, 'message' => 'تنظیماتِ فروشگاه ذخیره شد.'];
     }
 

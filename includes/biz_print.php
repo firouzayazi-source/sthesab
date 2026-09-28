@@ -158,6 +158,13 @@ final class BizPrint
             <?php if ($set['address'] !== ''): ?><span><?= h($set['address']) ?></span><?php endif; ?>
         </p>
         <?php endif; ?>
+        <?php // ⛔ کدهای رسمیِ فروشگاه — فقط آن‌که پر شده؛ برگه‌ی فروشگاهِ بی‌کد عوض نمی‌شود
+        $codes = array_filter(array_intersect_key($set, array_flip(Biz::SETTING_CODES)), fn($v) => $v !== '');
+        if ($p['show_contact'] && $codes): ?>
+        <p class="pr-contact pr-codes">
+            <?php foreach ($codes as $ck => $cv): ?><span><?= h(BizCommon::CODES[$ck][2] ?? $ck) ?>: <span class="pr-num" dir="ltr"><?= h($cv) ?></span></span><?php endforeach; ?>
+        </p>
+        <?php endif; ?>
     </header>
     <?php endif; ?>
     <div class="pr-titlebar">

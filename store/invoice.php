@@ -62,6 +62,10 @@ $partyLbl = BizDocView::SIDES[$side]['party'];
 $balance = $inv['status'] === 'issued' && $inv['party_id'] !== null
     ? BizParties::balanceAround($userId, (int)$inv['party_id'], $id) : null;
 
+$invPrefs = Biz::invoicePrefs($userId);
+$costWarn = $invPrefs['warn_below_cost'] && $inv['status'] === 'issued' ? BizInvoices::belowCost($inv) : [];
+$profit   = $invPrefs['show_profit'] ? BizInvoices::profit($inv) : null;
+
 $pageTitle = BizInvoices::title($inv);
 require __DIR__ . '/../includes/biz_head.php';
 ?>
@@ -81,6 +85,9 @@ require __DIR__ . '/../includes/biz_head.php';
     </div>
 </div>
 
+<?php if ($costWarn): ?>
+<div class="st-flash st-flash-warn" role="status">زیرِ بهای خرید فروخته شد: <?= h(implode('، ', array_map(fn($w) => '«' . $w['desc'] . '» ' . formatMoney($w['per']) . ' (بها ' . formatMoney($w['cost']) . ')', $costWarn))) ?></div>
+<?php endif; ?>
 <article class="st-card st-docview">
     <dl class="st-docmeta">
         <div><dt><?= h($partyLbl) ?></dt><dd><?php if ($inv['party_id'] !== null): ?><a href="<?= h(Biz::url('party.php?id=' . (int)$inv['party_id'])) ?>"><?= h((string)$inv['party_name']) ?></a><?php else: ?>گذری<?php endif; ?></dd></div>
@@ -123,6 +130,9 @@ require __DIR__ . '/../includes/biz_head.php';
         <?php if ($inv['status'] === 'issued'): ?>
             <div class="st-sum-line"><span><?= $payKind === 'receipt' ? 'دریافت‌شده' : 'پرداخت‌شده' ?></span><?= BizDocView::money((int)$inv['paid']) ?></div>
             <div class="st-sum-line st-sum-due"><span>مانده</span><?= BizDocView::money($remain) ?></div>
+        <?php endif; ?>
+        <?php if ($profit !== null): ?>
+            <div class="st-sum-line st-sum-profit"><span>سودِ این فاکتور <small class="st-muted-i">(روی چاپ نمی‌آید)</small></span><?= BizDocView::money($profit) ?></div>
         <?php endif; ?>
         <?php if ($balance !== null): ?>
             <div class="st-balbox">

@@ -71,6 +71,35 @@ final class BizCommon
         $page  = min(max(1, $page), $pages);
         return [$page, $pages, ($page - 1) * $size];
     }
+
+    /**
+     * ⛔ تنها مرجعِ کدهای رسمی — فروشگاه (سربرگ) و طرف‌حساب (خریدار) هر دو از
+     *    همین. [کمینه‌ی رقم، بیشینه‌ی رقم، برچسب]. شناسه‌ی ملیِ شرکت ۱۱ و کدِ
+     *    ملیِ شخص ۱۰ رقم است؛ کدِ اقتصادیِ قدیمی ۱۲ و تازه ۱۴ (یا همان کدِ ملی).
+     */
+    public const CODES = [
+        'national_id'   => [10, 11, 'شناسه‌ی ملی / کد ملی'],
+        'economic_code' => [10, 14, 'کد اقتصادی'],
+        'reg_no'        => [1, 20, 'شماره‌ی ثبت'],
+        'postal_code'   => [10, 10, 'کد پستی'],
+    ];
+
+    /**
+     * یک کدِ رسمی → فقط رقمِ لاتین (کیبوردِ فارسی «۱۲۳» و فاصله و خط‌تیره
+     * می‌دهد). خالی یعنی «ندارد»، نه خطا.
+     * @return array{ok:bool, value:?string, message?:string}
+     */
+    public static function code(string $key, string $raw): array
+    {
+        [$min, $max, $label] = self::CODES[$key];
+        $v = (string)preg_replace('/[\s\-\/.\x{200c}]+/u', '', toLatinDigits(trim($raw)));
+        if ($v === '') { return ['ok' => true, 'value' => null]; }
+        if (!preg_match('/^\d+$/', $v) || strlen($v) < $min || strlen($v) > $max) {
+            $len = $min === $max ? toPersianDigits((string)$min) : toPersianDigits((string)$min) . ' تا ' . toPersianDigits((string)$max);
+            return ['ok' => false, 'value' => null, 'message' => $label . ' باید ' . $len . ' رقم باشد.'];
+        }
+        return ['ok' => true, 'value' => $v];
+    }
 }
 
 /* =================================================================
@@ -812,6 +841,15 @@ final class BizParties
     public const LIMITS = ['name' => 150, 'phone' => 40, 'address' => 300, 'note' => 300];
     public const PAGE_SIZE = 25;
 
+    /** کدهای رسمیِ خریدار — قاعده‌شان `BizCommon::CODES`. */
+    public const CODE_KEYS = ['national_id', 'economic_code', 'postal_code'];
+
+    /** ستون‌های کد آمده‌اند؟ (نصبِ migration‌نخورده نباید بشکند) */
+    public static function hasCodes(): bool
+    {
+        return function_exists('tableHasColumn') && tableHasColumn('biz_parties', 'economic_code');
+    }
+
     /**
      * ⛔ تنها تعریفِ «مانده‌ی یک طرف‌حساب» — فهرست، صافیِ بدهکار/طلبکار،
      *    داشبورد، صورت‌حساب و چاپ همه از همین.
@@ -1012,6 +1050,13 @@ final class BizParties
             }
         }
         $opening = $side === 'we' ? -$amount : $amount;
+        // کدهای رسمیِ خریدار (migration_biz_business_info) — فقط رقم
+        $codes = [];
+        foreach (self::CODE_KEYS as $ck) {
+            $c = BizCommon::code($ck, (string)($in[$ck] ?? ''));
+            if (!$c['ok']) { return ['ok' => false, 'message' => $c['message']]; }
+            $codes[$ck] = $c['value'];
+        }
 
         $pdo = Database::getConnection();
         $row = ['u' => $userId, 'n' => $name, 'k' => $kind, 'ph' => $phone === '' ? null : $phone,
@@ -1028,6 +1073,12 @@ final class BizParties
                  VALUES (:u, :n, :k, :ph, :a, :no, :ob)'
             )->execute($row);
             $id = (int)$pdo->lastInsertId();
+        }
+        // ⚠ فقط اگر فرم کدها را فرستاده باشد: مسیرِ ورود از فایل آن‌ها را ندارد
+        //   و نباید کدِ ثبت‌شده را پاک کند.
+        if (self::hasCodes() && array_intersect_key($in, array_flip(self::CODE_KEYS))) {
+            $pdo->prepare('UPDATE biz_parties SET national_id = :ni, economic_code = :ec, postal_code = :pc WHERE id = :id AND user_id = :u')
+                ->execute(['ni' => $codes['national_id'], 'ec' => $codes['economic_code'], 'pc' => $codes['postal_code'], 'id' => $id, 'u' => $userId]);
         }
         return ['ok' => true, 'message' => 'طرف‌حساب ذخیره شد.', 'id' => $id];
     }
