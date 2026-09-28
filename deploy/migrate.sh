@@ -128,6 +128,7 @@ MIGRATIONS=(
     migration_business_mode.sql
     migration_biz_catalog.sql
     migration_biz_print.sql
+    migration_biz_docs.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -321,6 +322,8 @@ declare -A SENTINEL=(
     # جدولِ آخرِ فایل؛ کالا، حرکتِ انبار و طرف‌حساب پیش از آن ساخته می‌شوند.
     [migration_biz_catalog.sql]="biz_accounts"
     [migration_biz_print.sql]="biz_settings.print_prefs"
+    # ⛔ نشانه‌ی دادهٔ آخرِ فایل؛ جدول‌های سند پیش از آن ساخته می‌شوند.
+    [migration_biz_docs.sql]="app_settings~setting_key=biz_categories_linked"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

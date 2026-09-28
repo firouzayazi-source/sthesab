@@ -336,9 +336,9 @@ T::ok(BizProducts::get($b, $pb) !== null, '⛔ و فرمِ حذف با شناس�
 T::ok($c === 302 && preg_match('~party\.php\?id=(\d+)$~', $loc, $mp)
     && (int)BizParties::get($a, (int)$mp[1])['balance'] === -120000, 'طرف‌حساب از راهِ فرم، با جهتِ «فروشگاه بدهکار است»', "{$c} {$loc}");
 
-[$c, , $loc] = $req('store/settings.php', ['csrf_token' => $tok, 'action' => 'cash_save', 'acc_id' => '0',
+[$c, , $loc] = $req('store/accounts.php', ['csrf_token' => $tok, 'action' => 'cash_save', 'acc_id' => '0',
     'name' => 'بانکِ ملی', 'kind' => 'bank', 'opening_balance' => '250000']);
-T::ok($c === 302 && BizCash::total(BizCash::list($a)) === 1250000, 'صندوقِ تازه از راهِ فرمِ تنظیمات', "{$c}");
+T::ok($c === 302 && BizCash::total(BizCash::list($a)) === 1250000, 'صندوقِ تازه از راهِ صفحه‌ی «صندوق و بانک»', "{$c}");
 [$c, , $loc] = $req('store/settings.php', ['csrf_token' => $tok, 'shop_name' => 'فروشگاهِ آ']);
 $st = $pdo->prepare('SELECT shop_name FROM biz_settings WHERE user_id = :u');
 $st->execute(['u' => $a]);

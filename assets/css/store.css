@@ -392,3 +392,234 @@ a.st-kpi-card:hover { border-color: var(--st-accent); }
 .st-head-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .st-head-actions .st-btn { align-self: auto; }
 @media (max-width: 560px) { .st-head-actions .st-btn { padding: 8px 14px; font-size: 14px; } }
+
+/* ============================================================
+   مرحله‌ی ۳ تا ۵ — اسناد، خزانه، گزارش، فروشِ سریع
+   ⛔ عدد چپ (`.st-num`)، بقیه راست؛ روی ۳۹۰ بدونِ اسکرولِ افقی.
+   ============================================================ */
+
+/* نشانِ وضعیتِ سند — کلیدها همان `BizInvoices::STATUS_LABELS` */
+.st-pill {
+    display: inline-block; white-space: nowrap; font-size: 12px; font-weight: 700;
+    border-radius: 999px; padding: 1px 10px; border: 1px solid transparent;
+    background: var(--st-bg); color: var(--st-ink-2);
+}
+.st-pill.is-draft   { border-color: var(--st-line); border-style: dashed; }
+.st-pill.is-open    { background: #dbeafe; color: #1d4ed8; }
+.st-pill.is-partial { background: var(--st-wash); color: var(--st-accent-2); }
+.st-pill.is-paid    { background: var(--st-ok-wash); color: var(--st-ok); }
+.st-pill.is-overdue { background: var(--st-err-wash); color: var(--st-err); }
+.st-pill.is-void    { text-decoration: line-through; opacity: .7; }
+@media (prefers-color-scheme: dark) { .st-pill.is-open { background: #172554; color: #93c5fd; } }
+
+/* منوی «+ ثبت» در نوارِ کناری — `<details>`، بی‌جاوااسکریپت */
+.st-new { margin: 0 0 10px; flex-shrink: 0; }
+.st-new-btn {
+    list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: center;
+    background: var(--st-accent); color: var(--st-accent-ink); font-weight: 700;
+    border-radius: 10px; padding: 9px 12px; user-select: none;
+}
+.st-new-btn::-webkit-details-marker { display: none; }
+.st-new[open] .st-new-btn { border-end-start-radius: 0; border-end-end-radius: 0; }
+.st-new-menu {
+    display: flex; flex-direction: column; background: rgba(250,250,249,.06);
+    border-radius: 0 0 10px 10px; padding: 4px;
+}
+.st-new-menu a {
+    color: var(--st-top-ink); text-decoration: none; font-size: 14px; text-align: right;
+    padding: 7px 10px; border-radius: 8px; white-space: nowrap;
+}
+.st-new-menu a:hover { background: rgba(250,250,249,.08); }
+
+/* زبانه‌ی «فاکتورها / برگشتی‌ها» */
+.st-segtabs {
+    /* ⚠ پنج نوعِ «دریافت و پرداخت» روی ۳۹۰ جا نمی‌شوند: خودش اسکرول می‌شود، نه صفحه */
+    display: flex; width: fit-content; max-width: 100%; overflow-x: auto; scrollbar-width: none;
+    gap: 2px; padding: 3px; margin-bottom: 12px;
+    background: var(--st-surface); border: 1px solid var(--st-line); border-radius: 12px;
+}
+.st-segtabs a {
+    flex: 0 0 auto; text-decoration: none; color: var(--st-ink-2); white-space: nowrap; font-size: 14px;
+    padding: 5px 14px; border-radius: 9px;
+}
+.st-segtabs a.is-active { background: var(--st-top); color: var(--st-top-ink); font-weight: 700; }
+.st-filters .st-date-in { flex: 0 1 150px; }
+.st-sumrow {
+    display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 10px;
+    font-size: 13px; color: var(--st-ink-2);
+}
+.st-sumrow b, .st-sumrow .st-num { color: var(--st-ink); }
+
+/* ---------- ویرایشگرِ سند ---------- */
+.st-docform { display: block; }
+.st-field-link { font-size: 12px; font-weight: 400; text-decoration: none; margin-top: -2px; }
+.st-lines-card { padding: 0; overflow: hidden; }
+.st-lines-wrap { border: 0; border-radius: 0; margin: 0; box-shadow: none; }
+.st-lines { table-layout: auto; }
+.st-lines td { padding: 6px 8px; }
+.st-lines td:first-child { min-width: 0; }
+.st-lines th.st-line-no, .st-lines td.st-line-no { width: 34px; text-align: center; color: var(--st-ink-2); }
+.st-lines input {
+    font: inherit; color: var(--st-ink); background: var(--st-bg); width: 100%; min-width: 0;
+    border: 1px solid var(--st-line); border-radius: 8px; padding: 7px 9px;
+}
+.st-lines input[dir="ltr"] { text-align: left; }
+.st-lines input:focus { outline: 2px solid var(--st-accent); outline-offset: 0; border-color: transparent; }
+.st-lines td.st-line-item { min-width: 200px; }
+.st-lines td:nth-child(3), .st-lines td:nth-child(4), .st-lines td:nth-child(5) { width: 110px; }
+.st-lines td.st-td-num { width: 120px; white-space: nowrap; }
+.st-line.is-over input[data-qty] { border-color: var(--st-err); background: var(--st-err-wash); }
+.st-line-note { display: block; font-size: 11px; color: var(--st-ink-2); margin-top: 2px; }
+.st-lines-tools { padding: 10px 14px; border-top: 1px solid var(--st-line); }
+
+@media (max-width: 640px) {
+    /* ردیفِ فاکتور روی گوشی: کالا یک خطِ کامل، زیرش مقدار/بها/جمع — نه اسکرولِ افقی */
+    .st-lines thead { display: none; }
+    .st-lines, .st-lines tbody { display: block; }
+    .st-lines tr.st-line {
+        display: grid; gap: 6px 8px; padding: 10px;
+        grid-template-columns: 22px minmax(0, 1fr) minmax(0, 1fr) minmax(0, auto);
+        grid-template-areas: "no item item item" "no qty price lt";
+        border-bottom: 1px solid var(--st-line);
+    }
+    .st-lines tr.st-line td { display: block; padding: 0; border: 0; width: auto; min-width: 0; }
+    .st-lines td.st-line-no { grid-area: no; align-self: center; width: auto; }
+    .st-lines td.st-line-item { grid-area: item; min-width: 0; }
+    .st-lines tr.st-line td:nth-child(3) { grid-area: qty; }
+    .st-lines tr.st-line td:nth-child(4) { grid-area: price; }
+    .st-lines td.st-td-num { grid-area: lt; align-self: center; min-width: 64px; text-align: left; }
+}
+
+.st-doc-foot { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; }
+@media (min-width: 900px) { .st-doc-foot { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
+.st-sumbox { display: flex; flex-direction: column; gap: 8px; }
+.st-sum-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; }
+.st-sum-line input {
+    font: inherit; color: var(--st-ink); background: var(--st-bg); text-align: left;
+    border: 1px solid var(--st-line); border-radius: 8px; padding: 6px 9px; width: 140px; min-width: 0;
+}
+.st-sum-total { border-top: 1px solid var(--st-line); padding-top: 10px; font-size: 17px; font-weight: 800; }
+.st-sum-due { color: var(--st-err); font-weight: 700; }
+.st-paybox { display: flex; flex-direction: column; gap: 12px; }
+.st-seg-sm .st-seg-opt span { font-size: 13px; padding: 4px 12px; }
+.st-actionbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 4px 0 14px; }
+.st-actionbar .st-btn { align-self: auto; }
+@media (max-width: 899px) {
+    /* ⛔ بالای منوی پایین می‌ایستد، نه زیرش */
+    .st-actionbar-sticky {
+        position: sticky; bottom: calc(66px + env(safe-area-inset-bottom)); z-index: 15;
+        background: var(--st-surface); border: 1px solid var(--st-line); border-radius: 12px;
+        padding: 10px; box-shadow: 0 -4px 18px rgba(28,25,23,.08);
+    }
+    .st-actionbar-sticky .st-btn { flex: 1 1 auto; }
+}
+.st-after { margin-top: 6px; }
+.st-link-danger { color: var(--st-err); }
+.st-flash-warn { background: var(--st-wash); color: var(--st-accent-2); }
+
+/* ---------- نمای سندِ صادرشده ---------- */
+.st-docview { padding: 20px; }
+.st-docmeta {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr));
+    gap: 10px 16px; margin: 0 0 14px;
+}
+.st-docmeta div { min-width: 0; }
+.st-docmeta dt { font-size: 12px; color: var(--st-ink-2); }
+.st-docmeta dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.st-flat { border: 1px solid var(--st-line); box-shadow: none; }
+.st-doc-totals {
+    display: flex; flex-direction: column; gap: 6px; margin: 14px 0 0 auto;
+    max-width: 340px; margin-inline-start: auto;
+}
+.st-docnote { margin: 14px 0 0; padding: 10px 12px; background: var(--st-bg); border-radius: 10px; font-size: 14px; white-space: pre-line; }
+.st-danger-row form { margin: 0; }
+
+/* ---------- داشبورد ---------- */
+.st-actions {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px;
+}
+@media (min-width: 720px) { .st-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.st-action {
+    display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none;
+    background: var(--st-surface); border: 1px solid var(--st-line); border-radius: 12px;
+    color: var(--st-ink); font-weight: 700; font-size: 14px; padding: 12px 8px; white-space: nowrap;
+}
+.st-action:hover { border-color: var(--st-accent); color: var(--st-accent); }
+.st-action.is-primary { background: var(--st-accent); border-color: var(--st-accent); color: var(--st-accent-ink); }
+.st-action.is-primary:hover { background: var(--st-accent-2); color: var(--st-accent-ink); }
+.st-action-ico { flex: 0 0 auto; }
+.st-attn { border-color: color-mix(in srgb, var(--st-err) 35%, var(--st-line)); }
+.st-attn .st-list-row { flex-wrap: wrap; }
+@media (min-width: 900px) { .st-cols-wide { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
+/* نمودارِ ستونیِ روزانه — جهتِ نمودار همیشه چپ‌به‌راست (زمان) */
+.st-bars {
+    direction: ltr; display: flex; align-items: flex-end; gap: 3px;
+    height: 140px; margin-top: 14px; border-bottom: 1px solid var(--st-line);
+}
+.st-bar { flex: 1 1 0; min-width: 0; min-height: 2px; background: color-mix(in srgb, var(--st-accent) 45%, transparent); border-radius: 3px 3px 0 0; }
+.st-bar.is-today { background: var(--st-accent); }
+.st-bars-axis { direction: ltr; display: flex; justify-content: space-between; font-size: 11px; color: var(--st-ink-2); margin-top: 4px; }
+
+/* ---------- گزارش ---------- */
+.st-catrow { padding: 8px 0; border-bottom: 1px solid var(--st-line); }
+.st-catrow:last-child { border-bottom: 0; }
+.st-plain { border: 0; padding: 0 0 4px; }
+.st-meter { direction: ltr; height: 6px; background: var(--st-bg); border-radius: 999px; overflow: hidden; }
+.st-meter span { display: block; height: 100%; background: var(--st-accent); border-radius: 999px; }
+
+/* ---------- صندوق‌ها و دسته‌بندی ---------- */
+.st-acc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: 12px; margin-bottom: 14px; }
+.st-acc-grid .st-acc { margin: 0; }
+.st-acc.is-inactive { opacity: .6; }
+.st-acc-bal { margin: 6px 0 10px; font-size: 22px; font-weight: 800; display: flex; justify-content: flex-end; align-items: baseline; gap: 6px; }
+.st-acc-bal small { font-size: 13px; font-weight: 500; color: var(--st-ink-2); }
+.st-inline-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin: 0; }
+.st-inline-form .st-btn { align-self: flex-end; }
+.st-grow { flex: 1 1 200px; min-width: 0; }
+.st-open-list { background: var(--st-bg); border-radius: 10px; padding: 10px 12px; }
+.st-open-list .st-list { margin-top: 4px; }
+
+/* ---------- فروشِ سریع و برگشت ---------- */
+.st-scan input { font-size: 17px; padding: 12px 14px; }
+.st-qty-in {
+    font: inherit; color: var(--st-ink); background: var(--st-bg); text-align: left;
+    border: 1px solid var(--st-line); border-radius: 8px; padding: 6px 9px; width: 90px;
+}
+.st-qty-in:focus { outline: 2px solid var(--st-accent); outline-offset: 0; border-color: transparent; }
+.st-scan input.is-miss { border-color: var(--st-err); background: var(--st-err-wash); }
+.st-table-compact td:first-child { min-width: 0; white-space: nowrap; }
+.st-table-compact .st-pill { font-size: 11px; padding: 1px 8px; }
+/* ⛔ فهرستِ اسناد و دریافت/پرداخت روی گوشی کارت می‌شود، نه جدولِ له‌شده:
+   ترتیبِ ستون‌ها در هر دو یکی است — شماره، تاریخ، طرف/شرح، نشان، مبلغ */
+@media (max-width: 640px) {
+    .st-table-compact thead { display: none; }
+    .st-table-compact, .st-table-compact tbody { display: block; }
+    .st-table-compact tr {
+        display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px;
+        padding: 10px 14px; border-bottom: 1px solid var(--st-line);
+    }
+    .st-table-compact tr:last-child { border-bottom: 0; }
+    .st-table-compact td { display: block; padding: 0; border: 0; min-width: 0; }
+    .st-table-compact td.st-hide-sm { display: none; }
+    .st-table-compact td:nth-child(1) { grid-column: 1; grid-row: 1; font-weight: 700; }
+    .st-table-compact td:nth-child(4) { grid-column: 2; grid-row: 1; justify-self: end; }
+    .st-table-compact td:nth-child(3) { grid-column: 1; grid-row: 2; }
+    .st-table-compact td.st-td-num { grid-column: 2; grid-row: 2 / span 2; align-self: center; font-weight: 700; }
+    .st-table-compact td:nth-child(2) { grid-column: 1; grid-row: 3; font-size: 12px; color: var(--st-ink-2); }
+}
+/* ⛔ منوی گروه‌بندی‌شده + «ثبت» از ۹۰۰ پیکسل بلندتر است: خودِ فهرست اسکرول می‌شود،
+   وگرنه روی پایینِ نوار (دفتر شخصی / خروج) می‌افتاد */
+.st-side-nav { overflow-y: auto; overscroll-behavior: contain; }
+@media (max-width: 640px) { .st-lines tr.st-line td.st-hide-sm { display: none; } }
+/* ردیفِ لینک‌دارِ فهرست (آخرین اسناد، نیازمندِ اقدام): عنوان پررنگ، زیرش خاکستری */
+.st-list-row > a { color: var(--st-ink); text-decoration: none; font-weight: 600; min-width: 0;
+                   display: flex; flex-direction: column; gap: 0; }
+.st-list-row > a:hover { color: var(--st-accent); }
+.st-attn .st-list-row > a { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px; }
+.st-card-head > a { font-size: 13px; text-decoration: none; white-space: nowrap; }
+.st-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 719px) { .st-action.is-primary { grid-column: 1 / -1; } }
+@media (min-width: 720px) { .st-actions { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+.st-pill.is-k-receipt, .st-pill.is-k-income { background: var(--st-ok-wash); color: var(--st-ok); }
+.st-pill.is-k-payment, .st-pill.is-k-expense { background: var(--st-err-wash); color: var(--st-err); }
+.st-pill.is-k-transfer { border-color: var(--st-line); }

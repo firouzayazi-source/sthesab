@@ -42,16 +42,26 @@ const BPASS   = 'Biz12345';
  *    را می‌شکند.
  */
 const STORE_BUDGET = [
-    'store/index.php'    => 10,
-    'store/settings.php' => 7,
+    'store/index.php'    => 14,
+    'store/settings.php' => 4,
     'store/products.php' => 10,
     'store/product.php'  => 9,
     'store/parties.php'  => 9,
-    'store/party.php'    => 7,
+    'store/party.php'    => 8,
     'store/products-io.php'    => 5,
-    'store/reports.php'        => 9,
+    'store/reports.php'        => 14,
     'store/print-settings.php' => 6,
     'store/print.php'          => 7,
+    'store/sales.php'          => 6,
+    'store/purchases.php'      => 6,
+    'store/quick-sale.php'     => 7,
+    'store/invoice.php'        => 9,
+    'store/invoice-edit.php'   => 10,
+    'store/return.php'         => 8,
+    'store/payments.php'       => 7,
+    'store/payment.php'        => 6,
+    'store/accounts.php'       => 5,
+    'store/categories.php'     => 5,
 ];
 const STORE_NO_BUDGET = ['store/login.php', 'store/logout.php'];
 
@@ -462,8 +472,21 @@ $bp = BizProducts::save($bid, ['name' => 'کالای بودجه', 'unit' => 'ع�
     'min_stock' => '5', 'opening_qty' => '3', 'category' => 'آزمایشی']);
 BizStock::adjustTo($bid, (int)$bp['id'], 2, 'شمارش');
 $bpt = BizParties::save($bid, ['name' => 'مشتریِ بودجه', 'kind' => 'customer', 'opening_amount' => '5000']);
+require_once __DIR__ . '/../includes/biz_docs.php';
+$bAcc = (int)BizCash::list($bid)[0]['id'];
+$bInv = (int)BizInvoices::saveDraft($bid, 'sale', ['party_id' => (int)$bpt['id'],
+    'lines' => [['item' => 'کالای بودجه', 'qty' => '1', 'price' => '150'], ['item' => 'شرحِ آزاد', 'qty' => '1', 'price' => '20']]])['id'];
+BizInvoices::issue($bid, $bInv, ['account_id' => $bAcc, 'amount' => '50']);
+$bDraft = (int)BizInvoices::saveDraft($bid, 'sale', ['party_id' => (int)$bpt['id'],
+    'lines' => [['item' => 'کالای بودجه', 'qty' => '1', 'price' => '150']]])['id'];
+$bPay = (int)BizPay::create($bid, ['kind' => 'receipt', 'party_id' => (int)$bpt['id'], 'account_id' => $bAcc, 'amount' => '30'])['id'];
+BizPay::create($bid, ['kind' => 'expense', 'account_id' => $bAcc, 'amount' => '10', 'title' => 'قبض']);
 $budgetUrl = ['store/product.php' => 'store/product.php?id=' . (int)$bp['id'],
-              'store/party.php'   => 'store/party.php?id=' . (int)$bpt['id']];
+              'store/party.php'   => 'store/party.php?id=' . (int)$bpt['id'],
+              'store/invoice.php' => 'store/invoice.php?id=' . $bInv,
+              'store/invoice-edit.php' => 'store/invoice-edit.php?id=' . $bDraft,
+              'store/return.php'  => 'store/return.php?inv=' . $bInv,
+              'store/payment.php' => 'store/payment.php?id=' . $bPay];
 $questions = fn(): int => (int)$pdo->query("SHOW GLOBAL STATUS LIKE 'Questions'")->fetch()['Value'];
 foreach (STORE_BUDGET as $pg => $cap) {
     $url = $budgetUrl[$pg] ?? $pg;
@@ -472,7 +495,18 @@ foreach (STORE_BUDGET as $pg => $cap) {
     for ($k = 0; $k < 3; $k++) {
         $q0 = $questions();
         [$c] = $asB3($url);
-        $best = min($best, $questions() - $q0 - 1);
+        // ⚠ curl با رسیدنِ بدنه برمی‌گردد، ولی سرور ممکن است هنوز کوئری‌های
+        //   پایانِ درخواست (و بستنِ اتصال) را نشمرده باشد — عدد گاهی ۳ تا
+        //   **کمتر** می‌آمد و «سقف گشاد است» الکی قرمز می‌شد. تا آرام شدنِ
+        //   شمارنده صبر می‌کنیم؛ هر خواندنِ خودمان یکی است و کم می‌شود.
+        $reads = 1; $prev = $questions();
+        for ($z = 0; $z < 30; $z++) {
+            usleep(30000);
+            $cur = $questions(); $reads++;
+            if ($cur - $prev === 1) { break; }
+            $prev = $cur;
+        }
+        $best = min($best, $cur - $q0 - $reads);
     }
     T::ok($c === 200 && $best <= $cap, "«{$pg}» زیرِ سقفِ {$cap} کوئری است", "اندازه‌گیری‌شده: {$best}");
     T::ok($best >= $cap - 2, "سقفِ «{$pg}» گشاد نیست", "اندازه‌گیری‌شده {$best} در برابرِ سقفِ {$cap} — سقف را پایین بیاورید");

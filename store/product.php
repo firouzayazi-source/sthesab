@@ -241,7 +241,11 @@ require __DIR__ . '/../includes/biz_head.php';
         <?php foreach ($moves as $m): $mq = (float)$m['qty']; ?>
         <li class="st-list-row">
             <span>
+                <?php if ($m['ref_type'] === BizStock::REF_INVOICE): ?>
+                <a href="<?= h(Biz::url('invoice.php?id=' . (int)$m['ref_id'])) ?>"><b><?= h(BizStock::KINDS[$m['kind']] ?? (string)$m['kind']) ?></b></a>
+                <?php else: ?>
                 <b><?= h(BizStock::KINDS[$m['kind']] ?? (string)$m['kind']) ?></b>
+                <?php endif; ?>
                 <span class="st-muted-i"><?= h(toJalali((string)$m['move_date'])) ?></span>
                 <?php if ((string)$m['note'] !== ''): ?><span class="st-muted-i">· <?= h((string)$m['note']) ?></span><?php endif; ?>
             </span>

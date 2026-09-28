@@ -6711,7 +6711,8 @@ if (!preg_match("/Biz::typeFor\(.*?=== 'business'.*?Api::fail\(.*?ApiAuth::issue
 // ۴. هر صفحه‌ی store/ دروازه‌ی خودش را دارد و هیچ چیزی از پوسته‌ی شخصی لود نمی‌کند
 $storeFiles70 = glob(__DIR__ . '/../store/*.php') ?: [];
 foreach (['login.php', 'logout.php', 'index.php', 'settings.php', 'products.php', 'product.php', 'parties.php', 'party.php',
-          'products-io.php', 'reports.php', 'print-settings.php', 'print.php'] as $must) {
+          'products-io.php', 'reports.php', 'print-settings.php', 'print.php', 'sales.php', 'purchases.php', 'quick-sale.php',
+          'invoice.php', 'invoice-edit.php', 'return.php', 'payments.php', 'payment.php', 'accounts.php', 'categories.php'] as $must) {
     if (!is_file(__DIR__ . '/../store/' . $must)) { $bBad[] = "store/{$must} نیست"; }
 }
 foreach (array_merge($storeFiles70, [__DIR__ . '/../includes/biz_head.php', __DIR__ . '/../includes/biz_foot.php']) as $f) {
@@ -6728,7 +6729,8 @@ foreach (array_merge($storeFiles70, [__DIR__ . '/../includes/biz_head.php', __DI
 // ⛔ دفترِ فروشگاه هیچ جدول یا تابعِ پولِ شخصی را نمی‌خواند — حسابِ «شخصی +
 //    فروشگاه» وگرنه پولِ خانه‌اش را روی داشبوردِ مغازه می‌دید.
 foreach (array_merge($storeFiles70, [__DIR__ . '/../includes/biz_catalog.php', __DIR__ . '/../includes/biz_io.php',
-                                     __DIR__ . '/../includes/biz_print.php']) as $f) {
+                                     __DIR__ . '/../includes/biz_print.php', __DIR__ . '/../includes/biz_docs.php',
+                                     __DIR__ . '/../includes/biz_docview.php', __DIR__ . '/../includes/biz_reports.php']) as $f) {
     $src = $strip70((string)file_get_contents($f));
     if (preg_match('/walletBalances|totalBalance|activeWallets|\b(?:FROM|JOIN|INTO|UPDATE)\s+`?(?:transactions|wallets|transfers|debts|debt_payments|cheques|trades|trade_sales|assets)\b/i', $src, $pm)) {
         $bBad[] = basename(dirname($f)) . '/' . basename($f) . " — به دفترِ شخصی دست می‌زند ({$pm[0]})";
@@ -6864,6 +6866,57 @@ if (!str_contains($mig70, "    migration_biz_print.sql\n") || !str_contains($mig
     $bBad[] = 'migrate.sh — migration_biz_print.sql در MIGRATIONS یا SENTINEL نیست';
 }
 
-T::bulk(44, $bBad, 'محیطِ فروشگاهی: دروازه‌ی بی‌کوئری، سه نوعِ حساب، تنها نویسنده، دفترِ جدا از پولِ شخصی، و طرفِ شخصیِ دست‌نخورده');
+// ---------- مراحلِ ۳ تا ۵: سند، تخصیص، برگشت ----------
+$docs70 = $strip70((string)file_get_contents(__DIR__ . '/../includes/biz_docs.php'));
+$allFiles70 = array_merge(glob(__DIR__ . '/../*.php') ?: [], glob(__DIR__ . '/../includes/*.php') ?: [],
+                          glob(__DIR__ . '/../store/*.php') ?: [], glob(__DIR__ . '/../deploy/*.php') ?: []);
+// ⛔ تنها نویسنده‌ی تخصیص‌ها و کش‌های paid/allocated: BizPay::reallocateTx()
+$allocW70 = [];
+foreach ($allFiles70 as $f) {
+    $n = preg_match_all('/INSERT\s+INTO\s+biz_allocations|DELETE\s+FROM\s+biz_allocations|UPDATE\s+biz_invoices\s+SET\s+paid\s*=|UPDATE\s+biz_payments\s+SET\s+allocated\s*=/i',
+                        $strip70((string)file_get_contents($f)));
+    if ($n) { $allocW70[basename($f)] = $n; }
+}
+if ($allocW70 !== ['biz_docs.php' => 4]) {
+    $bBad[] = 'تخصیص یا paid/allocated جز در BizPay::reallocateTx() نوشته می‌شود: ' . json_encode($allocW70);
+}
+if (!preg_match('/function reallocateTx\(.*?INSERT INTO biz_allocations.*?SET allocated.*?SET paid.*?\n    \}/s', $docs70)) {
+    $bBad[] = 'biz_docs.php — نوشتنِ تخصیص/paid/allocated بیرون از بدنه‌ی reallocateTx() است';
+}
+// ⛔ سند فقط از BizStock::postDoc() به موجودی می‌رسد
+if (preg_match('/biz_stock_moves/i', preg_replace('/SELECT DISTINCT product_id FROM biz_stock_moves/', '', $docs70))
+    || substr_count($docs70, 'BizStock::postDoc(') < 2) {
+    $bBad[] = 'biz_docs.php — سند باید فقط با BizStock::postDoc() موجودی را عوض کند (صدور و ابطال)';
+}
+// ⛔ مشتریِ گذری فقط با تسویه‌ی کامل؛ برگشتِ نسیه اعتبار است؛ برگشت بیش از برگشت‌پذیر نه
+if (!str_contains($docs70, "if (\$inv['party_id'] === null && \$payAmount !== (int)\$inv['total']) {")) {
+    $bBad[] = 'biz_docs.php — سدِ «گذری فقط با تسویه‌ی کامل» نیست';
+}
+if (!str_contains($docs70, "array_search(\$rv['kind'], BizInvoices::RETURN_OF, true)")) {
+    $bBad[] = 'biz_docs.php — اعتبارِ برگشتِ نسیه روی فاکتورِ اصلی نمی‌نشیند';
+}
+if (!str_contains($docs70, "if (\$q > \$left[\$lineId]['left'] + 0.0005) {")) {
+    $bBad[] = 'biz_docs.php — برگشت به «برگشت‌پذیر» محدود نیست';
+}
+// ⛔ شماره فقط هنگامِ صدور و MAX+1 زیرِ قفل (COUNT با پیش‌نویسِ حذف‌شده یا باطل تکراری می‌ساخت)
+if (!preg_match("/if \(\\\$inv\['number'\] === null\) \{\s*\\\$n = \\\$pdo->prepare\('SELECT COALESCE\(MAX\(number\), 0\) \+ 1 FROM biz_invoices WHERE user_id = :u AND kind = :k FOR UPDATE'\)/", $docs70)) {
+    $bBad[] = 'biz_docs.php — شماره‌ی سند MAX+1 زیرِ قفل و فقط هنگامِ صدور نیست';
+}
+// فروشِ سریعِ ناموفق پیش‌نویسِ یتیم به جا نمی‌گذارد
+if (!preg_match('/\$r = BizInvoices::issue\(.*?BizInvoices::deleteDraft\(\$userId, \$id\);/s', $strip70((string)file_get_contents(__DIR__ . '/../store/quick-sale.php')))) {
+    $bBad[] = 'store/quick-sale.php — صدورِ ناموفق پیش‌نویسِ یتیم به جا می‌گذارد';
+}
+$mdoc70 = (string)file_get_contents(__DIR__ . '/../migration_biz_docs.sql');
+if (!str_contains($mig70, "    migration_biz_docs.sql\n") || !str_contains($mig70, '[migration_biz_docs.sql]="app_settings~setting_key=biz_categories_linked"')) {
+    $bBad[] = 'migrate.sh — migration_biz_docs.sql در MIGRATIONS یا SENTINEL نیست';
+}
+// ⛔ ارجاعِ «برگشت ← اصل» SET NULL — با RESTRICT حذفِ حسابِ دارای برگشت ناممکن بود
+foreach (['fk_biz_invoices_ref', 'fk_biz_lines_ref'] as $fk) {
+    if (!preg_match('/`' . $fk . '`[^,;]*?ON DELETE SET NULL/s', $mdoc70)) {
+        $bBad[] = "migration_biz_docs.sql — {$fk} باید ON DELETE SET NULL باشد";
+    }
+}
+
+T::bulk(57, $bBad, 'محیطِ فروشگاهی: دروازه‌ی بی‌کوئری، سه نوعِ حساب، تنها نویسنده، دفترِ جدا از پولِ شخصی، و طرفِ شخصیِ دست‌نخورده');
 
 exit(T::report());

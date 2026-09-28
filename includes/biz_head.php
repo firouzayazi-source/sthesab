@@ -31,6 +31,12 @@ $__bizIcons = [
     'reports.php'        => '<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/>',
     'settings.php'       => '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3.1 15H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.1V4a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
     'print-settings.php' => '<path d="M4 6h16"/><path d="M4 12h10"/><path d="M4 18h7"/><circle cx="18" cy="15" r="3"/>',
+    'quick-sale.php'     => '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+    'sales.php'          => '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+    'purchases.php'      => '<path d="M3 4h2l2.4 11h11L21 7H6.2"/><circle cx="9" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/>',
+    'payments.php'       => '<path d="M7 7h13l-3-3"/><path d="M17 17H4l3 3"/>',
+    'accounts.php'       => '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M16 15h2"/>',
+    'categories.php'     => '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
 ];
 ?>
 <!DOCTYPE html>
@@ -41,6 +47,12 @@ $__bizIcons = [
     <title><?= h(($pageTitle ?? '') !== '' ? $pageTitle . ' · ' . $__bizShop : $__bizShop) ?></title>
     <?php foreach (assetUrls(['css/store.css']) as $__u): ?>
     <link rel="stylesheet" href="<?= h($__u) ?>">
+    <?php endforeach; ?>
+    <?php /* ⛔ `store.js` فقط **بهبود** می‌دهد (جمعِ زنده و افزودنِ ردیفِ فاکتور،
+             خواندنِ بارکد). هر فرم بی‌آن هم کار می‌کند و جمع را همیشه سرور حساب
+             می‌کند؛ کشوی منو و «+ ثبت» اصلاً به آن بند نیستند. */ ?>
+    <?php foreach (assetUrls(['js/store.js']) as $__u): ?>
+    <script defer src="<?= h($__u) ?>"></script>
     <?php endforeach; ?>
     <meta name="theme-color" content="#1c1917">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -56,6 +68,14 @@ $__bizIcons = [
         </span>
         <span class="st-brand-name"><?= h($__bizShop) ?></span>
     </a>
+    <details class="st-new">
+        <summary class="st-new-btn"><span aria-hidden="true">+</span> ثبت</summary>
+        <div class="st-new-menu">
+            <?php foreach (Biz::NEW_MENU as $__href => $__label): ?>
+            <a href="<?= h(Biz::url($__href)) ?>"><?= h($__label) ?></a>
+            <?php endforeach; ?>
+        </div>
+    </details>
     <nav class="st-side-nav">
         <?php foreach (Biz::NAV as $__group => $__items):
             $__shown = array_filter($__items, fn($f) => is_file(__DIR__ . '/../' . Biz::DIR . '/' . $f), ARRAY_FILTER_USE_KEY);

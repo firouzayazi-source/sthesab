@@ -18,6 +18,8 @@ Auth::initSession();
 Biz::requirePage();
 require_once __DIR__ . '/../includes/biz_catalog.php';
 require_once __DIR__ . '/../includes/biz_print.php';
+require_once __DIR__ . '/../includes/biz_docs.php';
+require_once __DIR__ . '/../includes/biz_reports.php';
 
 $userId = (int)Auth::userId();
 $doc    = getParam('doc');
@@ -29,6 +31,105 @@ $money  = static fn($v): string => '<span class="pr-num">' . formatMoney((int)$v
 $qty    = static fn($v): string => '<span class="pr-num">' . h(formatQty($v)) . '</span>';
 
 switch ($doc) {
+case 'invoice':
+    $inv = BizInvoices::get($userId, $id);
+    if (!$inv || $inv['status'] === 'draft') { Biz::notFound(); }
+    $isSaleSide = in_array($inv['kind'], ['sale', 'sale_return'], true);
+    $back = getParam('back') === 'quick' ? Biz::url('quick-sale.php') : Biz::url('invoice.php?id=' . $id);
+    BizPrint::head($userId, BizInvoices::title($inv) . ($inv['status'] === 'void' ? ' (باطل)' : ''), $back, [
+        'تاریخ'                              => toJalali((string)$inv['inv_date']),
+        'سررسید'                             => !empty($inv['due_date']) ? toJalali((string)$inv['due_date']) : '',
+        ($isSaleSide ? 'خریدار' : 'فروشنده') => $inv['party_id'] !== null ? (string)$inv['party_name'] : 'گذری',
+        'تلفن'                               => (string)($inv['party_phone'] ?? ''),
+        'نشانی'                              => (string)($inv['party_address'] ?? ''),
+        'فاکتورِ اصلی'                       => $inv['ref_invoice_id'] !== null ? toPersianDigits((string)$inv['ref_number']) : '',
+    ]); ?>
+    <table class="pr-table">
+        <thead><tr><th>#</th><th>شرح</th><th class="pr-c-num">مقدار</th><th class="pr-c-num">بها</th><th class="pr-c-num pr-wide">تخفیف</th><th class="pr-c-num">جمع</th></tr></thead>
+        <tbody>
+        <?php foreach ($inv['lines'] as $n => $l): ?>
+            <tr>
+                <td><span class="pr-num"><?= toPersianDigits((string)($n + 1)) ?></span></td>
+                <td><?= h((string)$l['description']) ?></td>
+                <td class="pr-c-num"><?= $qty($l['qty']) ?></td>
+                <td class="pr-c-num"><?= $money($l['unit_price']) ?></td>
+                <td class="pr-c-num pr-wide"><?= (int)$l['line_discount'] > 0 ? $money($l['line_discount']) : '' ?></td>
+                <td class="pr-c-num"><?= $money($l['line_total']) ?></td>
+            </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+    <div class="pr-totals">
+        <?php if ((int)$inv['discount'] > 0 || (int)$inv['extra'] > 0): ?>
+        <div><span>جمعِ ردیف‌ها</span><span><?= $money($inv['subtotal']) ?></span></div>
+        <?php if ((int)$inv['discount'] > 0): ?><div><span>تخفیف</span><span>−<?= $money($inv['discount']) ?></span></div><?php endif; ?>
+        <?php if ((int)$inv['extra'] > 0): ?><div><span>حمل و هزینه‌ی دیگر</span><span><?= $money($inv['extra']) ?></span></div><?php endif; ?>
+        <?php endif; ?>
+        <div class="pr-grand"><span>مبلغِ کل</span><span><?= $money($inv['total']) ?> تومان</span></div>
+        <?php if ($inv['status'] === 'issued'): ?>
+        <div><span><?= BizInvoices::SETTLED_BY[$inv['kind']] === 'receipt' ? 'دریافت‌شده' : 'پرداخت‌شده' ?></span><span><?= $money($inv['paid']) ?></span></div>
+        <div><span>مانده</span><span><?= $money(BizInvoices::remaining($inv)) ?></span></div>
+        <?php endif; ?>
+    </div>
+    <?php if ((string)$inv['note'] !== ''): ?><p class="pr-note"><?= nl2br(h((string)$inv['note'])) ?></p><?php endif; ?>
+    <?php BizPrint::foot($userId, $isSaleSide ? ['امضای فروشنده', 'امضای خریدار'] : ['امضای تحویل‌گیرنده', 'امضای فروشنده']);
+    break;
+
+case 'payment':
+    $pay = BizPay::get($userId, $id);
+    if (!$pay) { Biz::notFound(); }
+    BizPrint::head($userId, (BizPay::KINDS[$pay['kind']] ?? '') . ' شماره‌ی ' . toPersianDigits((string)$pay['number']) . ($pay['status'] === 'void' ? ' (باطل)' : ''),
+        Biz::url('payment.php?id=' . $id), [
+        'تاریخ'     => toJalali((string)$pay['pay_date']),
+        'طرف‌حساب' => (string)($pay['party_name'] ?? ''),
+        'شرح'       => (string)($pay['title'] ?? ''),
+        'صندوق'     => (string)$pay['account_name'] . ($pay['kind'] === 'transfer' ? ' ← ' . (string)$pay['to_account_name'] : ''),
+        'روش'       => $pay['kind'] === 'transfer' ? '' : (BizPay::METHODS[$pay['method']] ?? ''),
+    ]); ?>
+    <div class="pr-totals"><div class="pr-grand"><span>مبلغ</span><span><?= $money($pay['amount']) ?> تومان</span></div></div>
+    <?php if ($pay['allocations']): ?>
+    <table class="pr-table">
+        <thead><tr><th>بابتِ سند</th><th class="pr-c-num">مبلغ</th></tr></thead>
+        <tbody><?php foreach ($pay['allocations'] as $al): ?><tr><td><?= h(BizInvoices::title($al)) ?></td><td class="pr-c-num"><?= $money($al['amount']) ?></td></tr><?php endforeach; ?></tbody>
+    </table>
+    <?php endif; ?>
+    <?php if ((string)$pay['note'] !== ''): ?><p class="pr-note"><?= nl2br(h((string)$pay['note'])) ?></p><?php endif; ?>
+    <?php BizPrint::foot($userId, ['امضای پرداخت‌کننده', 'امضای دریافت‌کننده']);
+    break;
+
+case 'sales':
+    $period = getParam('p');
+    $period = isset(BizReports::PERIODS[$period]) ? $period : 'month';
+    require_once __DIR__ . '/../includes/biz_docview.php';
+    [$rf, $rt] = BizReports::range($period, BizDocView::gDate(getParam('from')), BizDocView::gDate(getParam('to')));
+    $sa = BizReports::sales($userId, $rf, $rt);
+    $ca = BizReports::cash($userId, $rf, $rt);
+    BizPrint::head($userId, BizPrint::DOCS['sales'], Biz::url('reports.php?p=' . $period), [
+        'از' => toJalali($rf), 'تا' => toJalali($rt),
+    ]); ?>
+    <table class="pr-table">
+        <tbody>
+            <tr><td>فروش</td><td class="pr-c-num"><?= $money($sa['sales']) ?></td></tr>
+            <tr><td>برگشت از فروش</td><td class="pr-c-num">−<?= $money($sa['returns']) ?></td></tr>
+            <tr class="pr-group"><td>فروشِ خالص</td><td class="pr-c-num"><?= $money($sa['net']) ?></td></tr>
+            <tr><td>بهای تمام‌شده‌ی کالای فروخته</td><td class="pr-c-num">−<?= $money($sa['cogs']) ?></td></tr>
+            <tr class="pr-group"><td>سودِ ناخالص</td><td class="pr-c-num"><?= $sa['gross'] < 0 ? '−' : '' ?><?= $money(abs($sa['gross'])) ?></td></tr>
+            <tr><td>هزینه‌های فروشگاه</td><td class="pr-c-num">−<?= $money($ca['expense']) ?></td></tr>
+            <tr><td>درآمدِ متفرقه</td><td class="pr-c-num"><?= $money($ca['income']) ?></td></tr>
+            <?php $afterExp = $sa['gross'] - $ca['expense'] + $ca['income']; ?>
+            <tr class="pr-group"><td>سود پس از هزینه</td><td class="pr-c-num"><?= $afterExp < 0 ? '−' : '' ?><?= $money(abs($afterExp)) ?></td></tr>
+        </tbody>
+    </table>
+    <?php $tp = BizReports::topProducts($userId, $rf, $rt, 20); if ($tp): ?>
+    <table class="pr-table">
+        <thead><tr><th>کالا</th><th class="pr-c-num">مقدار</th><th class="pr-c-num">فروش</th><th class="pr-c-num pr-wide">سود</th></tr></thead>
+        <tbody><?php foreach ($tp as $t): ?><tr><td><?= h((string)$t['name']) ?></td><td class="pr-c-num"><?= $qty($t['qty']) ?></td><td class="pr-c-num"><?= $money($t['rev']) ?></td><td class="pr-c-num pr-wide"><?= $money($t['profit']) ?></td></tr><?php endforeach; ?></tbody>
+    </table>
+    <?php endif; ?>
+    <p class="pr-note">مبلغ‌ها به تومان؛ فقط اسنادِ صادرشده.</p>
+    <?php BizPrint::foot($userId);
+    break;
+
 case 'party':
     $s = BizParties::statement($userId, $id);
     if (!$s) { Biz::notFound(); }

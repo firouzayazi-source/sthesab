@@ -73,9 +73,12 @@ final class Biz
      */
     public const NAV = [
         'پیشخوان'      => ['index.php' => 'داشبورد'],
-        'انبار و کالا' => ['products.php' => 'کالاها', 'products-io.php' => 'ورود و خروجِ اکسل'],
-        'اشخاص'        => ['parties.php' => 'طرف‌حساب‌ها'],
-        'گزارش و چاپ'  => ['reports.php' => 'چاپ و گزارش'],
+        'فروش'         => ['quick-sale.php' => 'فروش سریع', 'sales.php' => 'فاکتورهای فروش'],
+        'خرید'         => ['purchases.php' => 'فاکتورهای خرید'],
+        'خزانه'        => ['payments.php' => 'دریافت و پرداخت', 'accounts.php' => 'صندوق و بانک'],
+        'انبار و کالا' => ['products.php' => 'کالاها', 'categories.php' => 'دسته‌بندی‌ها', 'products-io.php' => 'ورود و خروجِ اکسل'],
+        'اشخاص'        => ['parties.php' => 'مشتری و تأمین‌کننده'],
+        'گزارش و چاپ'  => ['reports.php' => 'گزارش و چاپ'],
         'تنظیمات'      => ['settings.php' => 'تنظیمات فروشگاه', 'print-settings.php' => 'تنظیمات چاپ'],
     ];
 
@@ -83,10 +86,39 @@ final class Biz
      * منوی پایینِ موبایل — فقط **کلید**ها؛ برچسب از `NAV` می‌آید (فهرستِ
      * دومِ برچسب ساخته نمی‌شود). بقیه در کشوی «منو» است.
      */
-    public const TABBAR = ['index.php', 'products.php', 'parties.php'];
+    public const TABBAR = ['index.php', 'quick-sale.php', 'sales.php', 'products.php'];
 
-    /** صفحه‌ی جزئیات کدام قلمِ منو را روشن می‌کند. */
-    public const NAV_PARENT = ['product.php' => 'products.php', 'party.php' => 'parties.php'];
+    /** صفحه‌ی جزئیات کدام قلمِ منو را روشن می‌کند (مگر صفحه خودش `$navActive` بگذارد). */
+    public const NAV_PARENT = [
+        'product.php'      => 'products.php',
+        'party.php'        => 'parties.php',
+        'invoice.php'      => 'sales.php',
+        'invoice-edit.php' => 'sales.php',
+        'return.php'       => 'sales.php',
+        'payment.php'      => 'payments.php',
+    ];
+
+    /**
+     * ⛔ منوی «+ ثبت» (بالای نوارِ کناری) — تنها مرجع؛ `<details>`ِ بومی است،
+     *    پس بی‌جاوااسکریپت باز و بسته می‌شود.
+     */
+    public const NEW_MENU = [
+        'quick-sale.php'              => 'فروش سریع',
+        'invoice-edit.php?k=sale'     => 'فاکتور فروش',
+        'invoice-edit.php?k=purchase' => 'فاکتور خرید',
+        'payment.php?k=receipt'       => 'دریافت از مشتری',
+        'payment.php?k=payment'       => 'پرداخت به تأمین‌کننده',
+        'payment.php?k=expense'       => 'هزینه‌ی فروشگاه',
+        'product.php'                 => 'کالای تازه',
+        'party.php'                   => 'مشتری یا تأمین‌کننده‌ی تازه',
+    ];
+
+    /**
+     * قلمِ فعالِ منو که خودِ صفحه تعیین می‌کند — مثلاً صفحه‌ی یک فاکتورِ
+     * **خرید** باید «فاکتورهای خرید» را روشن کند، نه «فروش». یک ویژگیِ ایستا
+     * است نه متغیرِ سراسری (قاعده ۵۰).
+     */
+    public static ?string $navActive = null;
 
     /** @return array<string,string> فایل ← برچسب، به ترتیبِ منو */
     public static function navFlat(): array
@@ -99,7 +131,7 @@ final class Biz
     /** قلمِ فعالِ منو برای یک اسکریپت (صفحه‌ی جزئیات → فهرستش). */
     public static function navCurrent(string $page): string
     {
-        return self::NAV_PARENT[$page] ?? $page;
+        return self::$navActive ?? (self::NAV_PARENT[$page] ?? $page);
     }
 
     /** نقش‌هایی که حسابِ فروشگاهی می‌تواند داشته باشد. */

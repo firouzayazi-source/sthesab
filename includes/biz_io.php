@@ -868,7 +868,7 @@ final class BizExport
     public static function rows(int $userId, bool $withInactive = false): array
     {
         $st = Database::getConnection()->prepare(
-            'SELECT * FROM biz_products WHERE user_id = :u' . ($withInactive ? '' : ' AND is_active = 1') . ' ORDER BY name, id'
+            BizProducts::SELECT_SQL . ' WHERE p.user_id = :u' . ($withInactive ? '' : ' AND p.is_active = 1') . ' ORDER BY p.name, p.id'
         );
         $st->execute(['u' => $userId]);
         $out = [array_merge(array_values(BizImport::FIELDS), self::EXTRA)];

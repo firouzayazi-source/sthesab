@@ -10,7 +10,7 @@ require_once __DIR__ . '/../includes/functions.php';
 
 Auth::initSession();
 Biz::requirePage();
-require_once __DIR__ . '/../includes/biz_catalog.php';
+require_once __DIR__ . '/../includes/biz_docview.php';
 
 $userId = (int)Auth::userId();
 $id     = (int)getParam('id', '0');
@@ -73,7 +73,13 @@ require __DIR__ . '/../includes/biz_head.php';
 <div class="st-flash st-flash-err" role="alert"><?= h($error) ?></div>
 <?php endif; ?>
 
-<?php if ($party): $bal = (int)$party['balance']; ?>
+<?php if ($party): $bal = (int)$party['balance']; $stmt = BizParties::statement($userId, $id); ?>
+<nav class="st-actions" aria-label="سندِ تازه برای این طرف‌حساب">
+    <?php if ($party['kind'] !== 'supplier'): ?><a class="st-action is-primary" href="<?= h(Biz::url('invoice-edit.php?k=sale&party=' . $id)) ?>">فاکتور فروش</a><?php endif; ?>
+    <?php if ($party['kind'] !== 'customer'): ?><a class="st-action" href="<?= h(Biz::url('invoice-edit.php?k=purchase&party=' . $id)) ?>">فاکتور خرید</a><?php endif; ?>
+    <a class="st-action" href="<?= h(Biz::url('payment.php?k=receipt&party=' . $id)) ?>">دریافت از او</a>
+    <a class="st-action" href="<?= h(Biz::url('payment.php?k=payment&party=' . $id)) ?>">پرداخت به او</a>
+</nav>
 <div class="st-kpis st-kpis-1">
     <div class="st-kpi-card">
         <span class="st-kpi-label">مانده</span>
@@ -85,6 +91,33 @@ require __DIR__ . '/../includes/biz_head.php';
         <?php endif; ?>
     </div>
 </div>
+<?php endif; ?>
+
+<?php if ($party && $stmt && $stmt['lines']): $rows = array_slice($stmt['lines'], -40); ?>
+<section class="st-card">
+    <div class="st-card-head">
+        <h2 class="st-h2">گردشِ حساب</h2>
+        <a href="<?= h(Biz::url('print.php?doc=party&id=' . $id)) ?>">صورت‌حسابِ کامل</a>
+    </div>
+    <?php if (count($stmt['lines']) > count($rows)): ?><p class="st-muted-i"><?= toPersianDigits((string)count($rows)) ?> ردیفِ آخر از <?= toPersianDigits((string)count($stmt['lines'])) ?>؛ همه در صورت‌حسابِ چاپی.</p><?php endif; ?>
+    <div class="st-table-wrap st-flat">
+        <table class="st-table">
+            <thead><tr><th>تاریخ</th><th>شرح</th><th class="st-th-num">بدهکار</th><th class="st-th-num">بستانکار</th><th class="st-th-num st-hide-sm">مانده</th></tr></thead>
+            <tbody>
+            <?php foreach ($rows as $l):
+                $href = isset($l['invoice_id']) ? Biz::url('invoice.php?id=' . $l['invoice_id']) : (isset($l['payment_id']) ? Biz::url('payment.php?id=' . $l['payment_id']) : null); ?>
+                <tr>
+                    <td><span class="st-num"><?= h(toJalali((string)$l['date'])) ?></span></td>
+                    <td><?= $href ? '<a class="st-row-link" href="' . h($href) . '">' . h($l['desc']) . '</a>' : h($l['desc']) ?></td>
+                    <td class="st-td-num"><?= $l['debit'] ? BizDocView::money((int)$l['debit']) : '' ?></td>
+                    <td class="st-td-num"><?= $l['credit'] ? BizDocView::money((int)$l['credit']) : '' ?></td>
+                    <td class="st-td-num st-hide-sm"><?= BizDocView::money(abs((int)$l['balance'])) ?> <small class="st-muted-i"><?= $l['balance'] > 0 ? 'بد' : ($l['balance'] < 0 ? 'بس' : '') ?></small></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+</section>
 <?php endif; ?>
 
 <form method="post" class="st-card st-form st-form-narrow" action="<?= h($self) ?>">

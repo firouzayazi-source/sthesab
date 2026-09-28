@@ -62,6 +62,12 @@ body.pr-body {
 
 .pr-total { display: flex; justify-content: space-between; gap: 10px; border: 2px solid #111; border-radius: 6px; padding: 6px 10px; margin-top: 10px; font-weight: 800; }
 
+/* جمع‌های فاکتور — ستونِ باریکِ سمتِ چپ (در رول تمام‌عرض) */
+.pr-totals { margin: 10px 0 0 auto; width: min(100%, 90mm); display: flex; flex-direction: column; gap: 2px; }
+.pr-totals > div { display: flex; justify-content: space-between; gap: 10px; padding: 2px 6px; }
+.pr-totals .pr-grand { border: 2px solid #111; border-radius: 6px; padding: 5px 8px; font-weight: 800; font-size: 1.1em; }
+.pr-roll .pr-totals { width: 100%; }
+
 .pr-signs { display: flex; gap: 16px; margin-top: 28px; }
 .pr-sign { flex: 1; text-align: center; border-top: 1px dashed #555; padding-top: 4px; font-size: .9em; color: #333; min-height: 44px; }
 .pr-foot { margin-top: 14px; padding-top: 6px; border-top: 1px solid #ccc; font-size: .9em; color: #333; text-align: center; }

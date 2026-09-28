@@ -82,6 +82,14 @@ final class BizProducts
     public const PAGE_SIZE = 25;
 
     /**
+     * ⛔ تنها شکلِ خواندنِ کالا — نامِ دسته از `biz_categories` می‌آید
+     *    (`migration_biz_docs`)، نه از ستونِ متنیِ قدیمیِ `category` که از آن
+     *    migration به بعد همیشه NULL است. ⚠ `c.name AS category` **بعد از**
+     *    `p.*` است: در PDO ستونِ هم‌نامِ بعدی برنده است.
+     */
+    public const SELECT_SQL = 'SELECT p.*, c.name AS category FROM biz_products p LEFT JOIN biz_categories c ON c.id = p.category_id';
+
+    /**
      * ⛔ تنها جای صافی‌های فهرستِ کالا — فهرستِ صفحه‌بندی‌شده و چاپ هر دو
      *    از همین می‌گذرند، وگرنه «کم‌موجودی»ِ روی صفحه با «کم‌موجودی»ِ کاغذ
      *    دو فهرستِ متفاوت می‌شد.
@@ -110,7 +118,7 @@ final class BizProducts
             $params['q1'] = $params['q2'] = BizCommon::like($q);
         }
         if ($category !== '') {
-            $where[] = 'p.category = :c';
+            $where[] = 'c.name = :c';
             $params['c'] = $category;
         }
         return [implode(' AND ', $where), $params];
@@ -124,7 +132,7 @@ final class BizProducts
     {
         [$sqlWhere, $params] = self::where($userId, '', $filter, $category);
         $st = Database::getConnection()->prepare(
-            "SELECT p.* FROM biz_products p WHERE {$sqlWhere} ORDER BY p.category IS NULL, p.category, p.name, p.id LIMIT :lim"
+            self::SELECT_SQL . " WHERE {$sqlWhere} ORDER BY c.name IS NULL, c.name, p.name, p.id LIMIT :lim"
         );
         foreach ($params as $k => $v) { $st->bindValue($k, $v); }
         $st->bindValue('lim', $cap + 1, PDO::PARAM_INT);
@@ -139,13 +147,13 @@ final class BizProducts
         [$sqlWhere, $params] = self::where($userId, $q, $filter, $category);
         $pdo = Database::getConnection();
 
-        $st = $pdo->prepare("SELECT COUNT(*) FROM biz_products p WHERE {$sqlWhere}");
+        $st = $pdo->prepare("SELECT COUNT(*) FROM biz_products p LEFT JOIN biz_categories c ON c.id = p.category_id WHERE {$sqlWhere}");
         $st->execute($params);
         $total = (int)$st->fetchColumn();
         [$page, $pages, $offset] = BizCommon::window($total, $page, self::PAGE_SIZE);
 
         $st = $pdo->prepare(
-            "SELECT p.* FROM biz_products p WHERE {$sqlWhere}
+            self::SELECT_SQL . " WHERE {$sqlWhere}
              ORDER BY p.name, p.id LIMIT :lim OFFSET :off"
         );
         foreach ($params as $k => $v) { $st->bindValue($k, $v); }
@@ -158,21 +166,16 @@ final class BizProducts
 
     public static function get(int $userId, int $id): ?array
     {
-        $st = Database::getConnection()->prepare('SELECT * FROM biz_products WHERE id = :id AND user_id = :u LIMIT 1');
+        $st = Database::getConnection()->prepare(self::SELECT_SQL . ' WHERE p.id = :id AND p.user_id = :u LIMIT 1');
         $st->execute(['id' => $id, 'u' => $userId]);
         $r = $st->fetch();
         return $r ?: null;
     }
 
-    /** دسته‌های به‌کاررفته — برای `<datalist>`، نه یک فهرستِ جدا. */
+    /** نامِ دسته‌ها — برای `<datalist>` و صافی؛ از همان `BizCategories`. */
     public static function categories(int $userId): array
     {
-        $st = Database::getConnection()->prepare(
-            "SELECT DISTINCT category FROM biz_products
-             WHERE user_id = :u AND category IS NOT NULL AND category <> '' ORDER BY category"
-        );
-        $st->execute(['u' => $userId]);
-        return $st->fetchAll(PDO::FETCH_COLUMN);
+        return array_column(BizCategories::list($userId), 'name');
     }
 
     /** مقدار با قاعده‌ی واحد سازگار است؟ */
@@ -233,21 +236,24 @@ final class BizProducts
             }
         }
 
+        // ⛔ دسته با نام می‌آید (فرم، ورود از فایل) و به شناسه تبدیل می‌شود؛
+        //    نامِ تازه دسته‌ی تازه می‌سازد. ستونِ متنیِ قدیمی همیشه NULL.
+        $catId = $category === '' ? null : BizCategories::resolve($userId, $category);
         $row = [
-            'u' => $userId, 'n' => $name, 's' => $sku === '' ? null : $sku, 'c' => $category === '' ? null : $category,
+            'u' => $userId, 'n' => $name, 's' => $sku === '' ? null : $sku, 'c' => $catId,
             'un' => $unit, 'b' => $buy, 'sp' => $sell, 'm' => $minStock, 't' => $track, 'no' => $note === '' ? null : $note,
         ];
         try {
             $pdo->beginTransaction();
             if ($id > 0) {
                 $pdo->prepare(
-                    'UPDATE biz_products SET name = :n, sku = :s, category = :c, unit = :un, buy_price = :b,
+                    'UPDATE biz_products SET name = :n, sku = :s, category_id = :c, category = NULL, unit = :un, buy_price = :b,
                             sell_price = :sp, min_stock = :m, track_stock = :t, note = :no
                      WHERE id = :id AND user_id = :u'
                 )->execute($row + ['id' => $id]);
             } else {
                 $pdo->prepare(
-                    'INSERT INTO biz_products (user_id, name, sku, category, unit, buy_price, sell_price, min_stock, track_stock, note)
+                    'INSERT INTO biz_products (user_id, name, sku, category_id, unit, buy_price, sell_price, min_stock, track_stock, note)
                      VALUES (:u, :n, :s, :c, :un, :b, :sp, :m, :t, :no)'
                 )->execute($row);
                 $id = (int)$pdo->lastInsertId();
@@ -284,8 +290,11 @@ final class BizProducts
     public static function delete(int $userId, int $id): array
     {
         $pdo = Database::getConnection();
-        $st  = $pdo->prepare('SELECT COUNT(*) FROM biz_stock_moves WHERE product_id = :id AND user_id = :u AND ref_type IS NOT NULL');
-        $st->execute(['id' => $id, 'u' => $userId]);
+        // ⛔ ردیفِ فاکتور — حتی پیش‌نویس — به کالا اشاره می‌کند (کلیدِ خارجیِ
+        //    RESTRICT)؛ حذفش فاکتور را بی‌کالا می‌کرد.
+        $st  = $pdo->prepare('SELECT (SELECT COUNT(*) FROM biz_stock_moves WHERE product_id = :id AND user_id = :u AND ref_type IS NOT NULL)
+                                   + (SELECT COUNT(*) FROM biz_invoice_lines WHERE product_id = :id2 AND user_id = :u2)');
+        $st->execute(['id' => $id, 'u' => $userId, 'id2' => $id, 'u2' => $userId]);
         if ((int)$st->fetchColumn() > 0) {
             return ['ok' => false, 'message' => 'این کالا در فاکتور آمده و حذف نمی‌شود؛ غیرفعالش کنید.'];
         }
@@ -349,15 +358,116 @@ final class BizProducts
 }
 
 /* =================================================================
+   دسته‌بندیِ کالا (migration_biz_docs)
+   ================================================================= */
+final class BizCategories
+{
+    public const NAME_MAX = 80;
+
+    /** کشِ همین درخواست — فرمِ کالا، صافی و datalist یک فهرست را می‌خوانند. */
+    private static array $cache = [];
+
+    /** @return array<int,array{id:int,name:string,sort_order:int,products:int}> */
+    public static function list(int $userId): array
+    {
+        if (isset(self::$cache[$userId])) { return self::$cache[$userId]; }
+        $st = Database::getConnection()->prepare(
+            'SELECT c.id, c.name, c.sort_order,
+                    (SELECT COUNT(*) FROM biz_products p WHERE p.category_id = c.id AND p.user_id = c.user_id AND p.is_active = 1) AS products
+             FROM biz_categories c WHERE c.user_id = :u ORDER BY c.sort_order, c.name'
+        );
+        $st->execute(['u' => $userId]);
+        return self::$cache[$userId] = $st->fetchAll();
+    }
+
+    public static function forget(int $userId): void
+    {
+        unset(self::$cache[$userId]);
+    }
+
+    /**
+     * نام → شناسه؛ نامِ تازه ساخته می‌شود. ⚠ مقایسه با پارامترِ bind‌شده
+     * است، نه ستون‌به‌ستون، پس collation ستون را می‌گیرد («ی/ي» و فاصله‌ی
+     * اضافه را `line()` یکی می‌کند).
+     */
+    public static function resolve(int $userId, string $name): ?int
+    {
+        $name = mb_substr(BizCommon::line(str_replace(['ي', 'ك'], ['ی', 'ک'], $name)), 0, self::NAME_MAX);
+        if ($name === '') { return null; }
+        $pdo = Database::getConnection();
+        $st = $pdo->prepare('SELECT id FROM biz_categories WHERE user_id = :u AND name = :n LIMIT 1');
+        $st->execute(['u' => $userId, 'n' => $name]);
+        $id = $st->fetchColumn();
+        if ($id !== false) { return (int)$id; }
+        $pdo->prepare('INSERT INTO biz_categories (user_id, name) VALUES (:u, :n)')->execute(['u' => $userId, 'n' => $name]);
+        self::forget($userId);
+        return (int)$pdo->lastInsertId();
+    }
+
+    /** ساخت یا تغییرِ نام. @return array{ok:bool, message:string, id?:int} */
+    public static function save(int $userId, string $name, int $id = 0): array
+    {
+        $name = BizCommon::line(str_replace(['ي', 'ك'], ['ی', 'ک'], $name));
+        if ($name === '') { return ['ok' => false, 'message' => 'نامِ دسته الزامی است.']; }
+        if (mb_strlen($name) > self::NAME_MAX) { return ['ok' => false, 'message' => 'نامِ دسته بیش از ' . self::NAME_MAX . ' نویسه است.']; }
+        $pdo = Database::getConnection();
+        try {
+            if ($id > 0) {
+                $st = $pdo->prepare('UPDATE biz_categories SET name = :n WHERE id = :id AND user_id = :u');
+                $st->execute(['n' => $name, 'id' => $id, 'u' => $userId]);
+                $chk = $pdo->prepare('SELECT COUNT(*) FROM biz_categories WHERE id = :id AND user_id = :u');
+                $chk->execute(['id' => $id, 'u' => $userId]);
+                if ((int)$chk->fetchColumn() === 0) { return ['ok' => false, 'message' => 'دسته پیدا نشد.']; }
+            } else {
+                $pdo->prepare('INSERT INTO biz_categories (user_id, name) VALUES (:u, :n)')->execute(['u' => $userId, 'n' => $name]);
+                $id = (int)$pdo->lastInsertId();
+            }
+        } catch (PDOException $e) {
+            if ((string)$e->getCode() === '23000') { return ['ok' => false, 'message' => 'دسته‌ای با همین نام هست.']; }
+            throw $e;
+        }
+        self::forget($userId);
+        return ['ok' => true, 'message' => 'دسته ذخیره شد.', 'id' => $id];
+    }
+
+    /**
+     * حذف — کالاهایش **بی‌دسته** می‌شوند (کلیدِ خارجیِ `SET NULL`)، نه حذف.
+     * پیام تعدادشان را می‌گوید تا کسی فکر نکند کالاها رفتند.
+     * @return array{ok:bool, message:string}
+     */
+    public static function delete(int $userId, int $id): array
+    {
+        $pdo = Database::getConnection();
+        $st = $pdo->prepare('SELECT COUNT(*) FROM biz_products WHERE category_id = :id AND user_id = :u');
+        $st->execute(['id' => $id, 'u' => $userId]);
+        $n = (int)$st->fetchColumn();
+        $st = $pdo->prepare('DELETE FROM biz_categories WHERE id = :id AND user_id = :u');
+        $st->execute(['id' => $id, 'u' => $userId]);
+        self::forget($userId);
+        if ($st->rowCount() === 0) { return ['ok' => false, 'message' => 'دسته پیدا نشد.']; }
+        return ['ok' => true, 'message' => $n > 0
+            ? 'دسته حذف شد و ' . toPersianDigits((string)$n) . ' کالایش بی‌دسته شد.'
+            : 'دسته حذف شد.'];
+    }
+}
+
+/* =================================================================
    حرکتِ انبار
    ================================================================= */
 final class BizStock
 {
     /** برچسبِ نوعِ حرکت؛ نوع‌های فاکتور با مرحله‌ی ۳ اضافه می‌شوند. */
     public const KINDS = [
-        'opening' => 'موجودی اول دوره',
-        'adjust'  => 'انبارگردانی',
+        'opening'         => 'موجودی اول دوره',
+        'adjust'          => 'انبارگردانی',
+        'sale'            => 'فروش',
+        'purchase'        => 'خرید',
+        'sale_return'     => 'برگشت از فروش',
+        'purchase_return' => 'برگشت از خرید',
     ];
+
+    /** نوعِ ارجاعِ حرکت‌های سند — تنها مقدار؛ `BizInvoices` هم همین را می‌پرسد. */
+    public const REF_INVOICE = 'invoice';
 
     /** خطای گردِ اعشار — «منفی» یعنی کمتر از این. */
     private const EPS = 0.0005;
@@ -495,6 +605,64 @@ final class BizStock
         return $res;
     }
 
+    /**
+     * ⛔ حرکت‌های یک سند (فاکتور یا برگشت) — تنها راهِ سند به انبار.
+     *
+     * جایگزینیِ کامل است: برای هر کالا حرکت‌های قبلیِ همین سند پاک و
+     * تازه‌ها نوشته می‌شوند، پس «صدور»، «برگشت به پیش‌نویس» و «باطل» یک مسیر
+     * دارند (باطل = فهرستِ خالی). هر کالا از `write()` می‌گذرد: قفلِ ردیف،
+     * محاسبه‌ی دوباره، و سدِ «موجودی در هیچ لحظه‌ای منفی نشود».
+     *
+     * ⛔ فقط داخلِ تراکنشِ فراخواننده (`ownTx = false`) — اگر کالای سوم
+     *    شکست بخورد، دو کالای اول هم باید برگردند؛ فراخواننده rollback می‌کند.
+     * ⚠ کالاها به ترتیبِ شناسه قفل می‌شوند تا دو سندِ هم‌زمان به بن‌بست نخورند.
+     *
+     * @param array<int, list<array{qty:float, unit_cost:?int, date:string}>> $moves
+     * @param int[] $clear کالاهایی که پیش از این حرکتی از همین سند داشتند
+     * @return array{ok:bool, message:string, avg?:array<int,float>}
+     */
+    public static function postDoc(int $userId, string $kind, int $refId, array $moves, array $clear = []): array
+    {
+        if (!isset(self::KINDS[$kind]) || in_array($kind, ['opening', 'adjust'], true)) {
+            return ['ok' => false, 'message' => 'نوعِ سند معتبر نیست.'];
+        }
+        $ids = array_values(array_unique(array_map('intval', array_merge(array_keys($moves), $clear))));
+        sort($ids);
+        $avg = [];
+        foreach ($ids as $pid) {
+            $list = $moves[$pid] ?? [];
+            $res = self::write($userId, $pid, function (PDO $pdo, array $p) use ($userId, $pid, $kind, $refId, $list, &$avg): ?string {
+                $avg[$pid] = (float)$p['avg_cost'];
+                $pdo->prepare('DELETE FROM biz_stock_moves WHERE user_id = :u AND product_id = :p AND ref_type = :rt AND ref_id = :r')
+                    ->execute(['u' => $userId, 'p' => $pid, 'rt' => self::REF_INVOICE, 'r' => $refId]);
+                $ins = $pdo->prepare(
+                    'INSERT INTO biz_stock_moves (user_id, product_id, move_date, kind, qty, unit_cost, ref_type, ref_id)
+                     VALUES (:u, :p, :d, :k, :q, :c, :rt, :r)'
+                );
+                foreach ($list as $m) {
+                    if (!BizProducts::qtyFits((string)$p['unit'], abs((float)$m['qty']))) {
+                        return 'مقدارِ «' . $p['name'] . '» برای واحدِ «' . $p['unit'] . '» باید عددِ صحیح باشد.';
+                    }
+                    $ins->execute(['u' => $userId, 'p' => $pid, 'd' => $m['date'], 'k' => $kind, 'q' => round((float)$m['qty'], 3),
+                                   'c' => $m['unit_cost'] ?? (int)round((float)$p['avg_cost']), 'rt' => self::REF_INVOICE, 'r' => $refId]);
+                }
+                return null;
+            }, false);
+            if (!$res['ok']) {
+                $name = self::nameOf($userId, $pid);
+                return ['ok' => false, 'message' => ($name !== '' ? '«' . $name . '»: ' : '') . $res['message']];
+            }
+        }
+        return ['ok' => true, 'message' => 'موجودی به‌روز شد.', 'avg' => $avg];
+    }
+
+    private static function nameOf(int $userId, int $pid): string
+    {
+        $st = Database::getConnection()->prepare('SELECT name FROM biz_products WHERE id = :p AND user_id = :u');
+        $st->execute(['p' => $pid, 'u' => $userId]);
+        return (string)($st->fetchColumn() ?: '');
+    }
+
     /** حذفِ یک حرکتِ انبارگردانی — اگر موجودی در هیچ لحظه‌ای منفی نشود. */
     public static function deleteMove(int $userId, int $moveId): array
     {
@@ -576,12 +744,23 @@ final class BizParties
     public const PAGE_SIZE = 25;
 
     /**
-     * ⛔ تنها تعریفِ «مانده‌ی یک طرف‌حساب». امروز فقط مانده‌ی اول دوره است؛
-     *    فاکتور و دریافت/پرداختِ مرحله‌ی ۳ همین‌جا اضافه می‌شوند، پس فهرست،
-     *    صافی و داشبورد خودبه‌خود درست می‌مانند.
+     * ⛔ تنها تعریفِ «مانده‌ی یک طرف‌حساب» — فهرست، صافیِ بدهکار/طلبکار،
+     *    داشبورد، صورت‌حساب و چاپ همه از همین.
      *    مثبت = او به فروشگاه بدهکار است؛ منفی = فروشگاه به او بدهکار است.
+     *
+     *    مانده‌ی اول دوره
+     *    + فروش − برگشت از فروش − خرید + برگشت از خرید   (فقط صادرشده)
+     *    − دریافت از او + پرداخت به او                   (فقط باطل‌نشده)
+     *
+     * ⚠ تخصیصِ دریافت به فاکتور (`biz_allocations`) اینجا نیست و نباید باشد:
+     *   تخصیص فقط می‌گوید کدام فاکتور تسویه شده، نه اینکه چه کسی چقدر بدهکار
+     *   است. پولی که هنوز به فاکتوری نخورده همچنان از مانده کم می‌شود.
      */
-    public const BALANCE_SQL = 'p.opening_balance';
+    public const BALANCE_SQL = "(p.opening_balance
+        + COALESCE((SELECT SUM(CASE bi.kind WHEN 'sale' THEN bi.total WHEN 'purchase_return' THEN bi.total ELSE -bi.total END)
+                    FROM biz_invoices bi WHERE bi.party_id = p.id AND bi.user_id = p.user_id AND bi.status = 'issued'), 0)
+        + COALESCE((SELECT SUM(CASE bp.kind WHEN 'receipt' THEN -bp.amount WHEN 'payment' THEN bp.amount ELSE 0 END)
+                    FROM biz_payments bp WHERE bp.party_id = p.id AND bp.user_id = p.user_id AND bp.status = 'ok'), 0))";
 
     /** ⛔ تنها جای صافی‌های فهرستِ طرف‌حساب (صفحه و چاپ). @return array{0:string, 1:array} */
     private static function where(int $userId, string $q, string $filter): array
@@ -623,8 +802,7 @@ final class BizParties
     /**
      * صورت‌حسابِ یک طرف‌حساب: ردیف‌های بدهکار/بستانکار با مانده‌ی جاری.
      * ⛔ مانده‌ی پایانی باید با `BALANCE_SQL` یکی باشد (تست همین را
-     *    می‌سنجد) — امروز فقط مانده‌ی اول دوره است و فاکتور و
-     *    دریافت/پرداختِ مرحله‌ی ۳ همین‌جا ردیف اضافه می‌کنند.
+     *    می‌سنجد): همان سه منبع، با همان شرطِ «صادرشده/باطل‌نشده».
      * @return array{party:array, lines:array, debit:int, credit:int, balance:int}|null
      */
     public static function statement(int $userId, int $id): ?array
@@ -635,8 +813,29 @@ final class BizParties
         $ob = (int)$party['opening_balance'];
         if ($ob !== 0) {
             $lines[] = ['date' => substr((string)$party['created_at'], 0, 10), 'desc' => 'مانده‌ی اول دوره',
-                        'debit' => max($ob, 0), 'credit' => max(-$ob, 0)];
+                        'debit' => max($ob, 0), 'credit' => max(-$ob, 0), 'sort' => '0'];
         }
+        $pdo = Database::getConnection();
+        $docNames = ['sale' => 'فاکتور فروش', 'purchase' => 'فاکتور خرید', 'sale_return' => 'برگشت از فروش', 'purchase_return' => 'برگشت از خرید'];
+        $st = $pdo->prepare("SELECT id, kind, number, inv_date, total, created_at FROM biz_invoices
+                             WHERE party_id = :p AND user_id = :u AND status = 'issued' ORDER BY inv_date, id");
+        $st->execute(['p' => $id, 'u' => $userId]);
+        foreach ($st->fetchAll() as $r) {
+            $plus = in_array($r['kind'], ['sale', 'purchase_return'], true);
+            $lines[] = ['date' => (string)$r['inv_date'], 'desc' => ($docNames[$r['kind']] ?? '') . ' شماره‌ی ' . toPersianDigits((string)$r['number']),
+                        'debit' => $plus ? (int)$r['total'] : 0, 'credit' => $plus ? 0 : (int)$r['total'],
+                        'sort' => $r['inv_date'] . ' 1 ' . $r['created_at'], 'invoice_id' => (int)$r['id']];
+        }
+        $st = $pdo->prepare("SELECT id, kind, number, pay_date, amount, method, created_at FROM biz_payments
+                             WHERE party_id = :p AND user_id = :u AND status = 'ok' AND kind IN ('receipt','payment') ORDER BY pay_date, id");
+        $st->execute(['p' => $id, 'u' => $userId]);
+        foreach ($st->fetchAll() as $r) {
+            $rec = $r['kind'] === 'receipt';
+            $lines[] = ['date' => (string)$r['pay_date'], 'desc' => ($rec ? 'دریافت' : 'پرداخت') . ' شماره‌ی ' . toPersianDigits((string)$r['number']),
+                        'debit' => $rec ? 0 : (int)$r['amount'], 'credit' => $rec ? (int)$r['amount'] : 0,
+                        'sort' => $r['pay_date'] . ' 2 ' . $r['created_at'], 'payment_id' => (int)$r['id']];
+        }
+        usort($lines, fn($a, $b) => strcmp($a['sort'], $b['sort']));
         $run = 0; $dr = 0; $cr = 0;
         foreach ($lines as &$l) {
             $run += $l['debit'] - $l['credit'];
@@ -736,9 +935,17 @@ final class BizParties
         return $st->rowCount() > 0;
     }
 
-    /** حذف — از مرحله‌ی ۳ طرف‌حسابِ دارای فاکتور فقط غیرفعال می‌شود. */
+    /** حذف — طرف‌حسابی که فاکتور یا دریافت/پرداخت دارد فقط غیرفعال می‌شود. */
     public static function delete(int $userId, int $id): array
     {
+        $chk = Database::getConnection()->prepare(
+            'SELECT (SELECT COUNT(*) FROM biz_invoices WHERE party_id = :id AND user_id = :u)
+                  + (SELECT COUNT(*) FROM biz_payments WHERE party_id = :id2 AND user_id = :u2)'
+        );
+        $chk->execute(['id' => $id, 'u' => $userId, 'id2' => $id, 'u2' => $userId]);
+        if ((int)$chk->fetchColumn() > 0) {
+            return ['ok' => false, 'message' => 'این طرف‌حساب سند دارد و حذف نمی‌شود؛ غیرفعالش کنید.'];
+        }
         $st = Database::getConnection()->prepare('DELETE FROM biz_parties WHERE id = :id AND user_id = :u');
         $st->execute(['id' => $id, 'u' => $userId]);
         return $st->rowCount() > 0
@@ -783,8 +990,17 @@ final class BizCash
 
     public const NAME_MAX = 80;
 
-    /** ⛔ تنها تعریفِ «موجودیِ یک صندوق» — دریافت و پرداختِ مرحله‌ی ۳ اینجا می‌نشیند. */
-    public const BALANCE_SQL = 'a.opening_balance';
+    /**
+     * ⛔ تنها تعریفِ «موجودیِ یک صندوق» — داشبورد، فهرستِ صندوق‌ها و گردشِ
+     *    حساب همه از همین. موجودیِ اولیه + دریافت و درآمد − پرداخت و هزینه،
+     *    و انتقال از این صندوق منفی و به این صندوق مثبت؛ فقط باطل‌نشده‌ها.
+     *    ⛔ هیچ‌چیز از `walletBalances()` (دفترِ شخصی) اینجا نیست.
+     */
+    public const BALANCE_SQL = "(a.opening_balance
+        + COALESCE((SELECT SUM(CASE bp.kind WHEN 'receipt' THEN bp.amount WHEN 'income' THEN bp.amount ELSE -bp.amount END)
+                    FROM biz_payments bp WHERE bp.account_id = a.id AND bp.user_id = a.user_id AND bp.status = 'ok'), 0)
+        + COALESCE((SELECT SUM(bp.amount) FROM biz_payments bp
+                    WHERE bp.to_account_id = a.id AND bp.user_id = a.user_id AND bp.kind = 'transfer' AND bp.status = 'ok'), 0))";
 
     /**
      * فهرستِ صندوق‌ها با موجودی. اگر فروشگاه هنوز هیچ صندوقی ندارد، یک
