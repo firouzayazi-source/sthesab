@@ -58,6 +58,9 @@ if ($retKind !== null && $inv['status'] === 'issued') {
     foreach (BizInvoices::returnable($userId, $inv) as $r) { if ($r['left'] > 0) { $canReturn = true; break; } }
 }
 $partyLbl = BizDocView::SIDES[$side]['party'];
+// مانده‌ی قبلی و کلِ طرف‌حساب — فقط سندِ صادرشده‌ی دارای طرف‌حساب
+$balance = $inv['status'] === 'issued' && $inv['party_id'] !== null
+    ? BizParties::balanceAround($userId, (int)$inv['party_id'], $id) : null;
 
 $pageTitle = BizInvoices::title($inv);
 require __DIR__ . '/../includes/biz_head.php';
@@ -90,7 +93,7 @@ require __DIR__ . '/../includes/biz_head.php';
 
     <div class="st-table-wrap st-flat">
         <table class="st-table">
-            <thead><tr><th>#</th><th>شرح</th><th class="st-th-num">مقدار</th><th class="st-th-num">بهای واحد</th><th class="st-th-num st-hide-sm">تخفیف</th><th class="st-th-num">جمع</th></tr></thead>
+            <thead><tr><th>#</th><th>کالا</th><th class="st-th-num">تعداد</th><th class="st-th-num">فی</th><th class="st-th-num st-hide-sm">تخفیف</th><th class="st-th-num">جمع</th></tr></thead>
             <tbody>
             <?php foreach ($inv['lines'] as $n => $l): ?>
                 <tr>
@@ -98,7 +101,7 @@ require __DIR__ . '/../includes/biz_head.php';
                     <td>
                         <?php if ($l['product_id'] !== null): ?><a class="st-row-link" href="<?= h(Biz::url('product.php?id=' . (int)$l['product_id'])) ?>"><?= h((string)$l['description']) ?></a>
                         <?php else: ?><?= h((string)$l['description']) ?> <span class="st-line-note">شرحِ آزاد</span><?php endif; ?>
-                        <?= BizDocView::imeiLine($l) ?>
+                        <?= BizDocView::lineSub($l) ?>
                     </td>
                     <td class="st-td-num"><span class="st-num"><?= h(formatQty($l['qty'])) ?></span> <?= h((string)$l['unit']) ?></td>
                     <td class="st-td-num"><?= BizDocView::money((int)$l['unit_price']) ?></td>
@@ -120,6 +123,12 @@ require __DIR__ . '/../includes/biz_head.php';
         <?php if ($inv['status'] === 'issued'): ?>
             <div class="st-sum-line"><span><?= $payKind === 'receipt' ? 'دریافت‌شده' : 'پرداخت‌شده' ?></span><?= BizDocView::money((int)$inv['paid']) ?></div>
             <div class="st-sum-line st-sum-due"><span>مانده</span><?= BizDocView::money($remain) ?></div>
+        <?php endif; ?>
+        <?php if ($balance !== null): ?>
+            <div class="st-balbox">
+                <?= BizDocView::balanceRows($balance, (string)$inv['party_name'], fn(int $v): string => BizDocView::money($v)) ?>
+                <a class="st-field-link" href="<?= h(Biz::url('party.php?id=' . (int)$inv['party_id'])) ?>">صورت‌حساب و اصلاحِ مانده‌ی اول دوره ›</a>
+            </div>
         <?php endif; ?>
     </div>
     <?php if ((string)$inv['note'] !== ''): ?><p class="st-muted st-docnote"><?= nl2br(h((string)$inv['note'])) ?></p><?php endif; ?>

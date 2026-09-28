@@ -36,6 +36,31 @@ final class BizCommon
     }
 
     /**
+     * ⛔ «ي/ى» و «ك»ِ عربی → «ی» و «ک»ِ فارسی. `utf8mb4_persian_ci` این دو را
+     *    **یکی نمی‌داند**، پس کالایی که از اکسل آمده با کیبوردِ فارسی پیدا
+     *    نمی‌شد (نه در پیشنهاد، نه در تطبیقِ سرور، نه در فهرست). نام‌ها با
+     *    همین نوشته و جست‌وجوها با همین خوانده می‌شوند.
+     */
+    public static function persian(string $v): string
+    {
+        return strtr($v, ['ي' => 'ی', 'ى' => 'ی', 'ك' => 'ک']);
+    }
+
+    /**
+     * کلیدِ تطبیقِ «از نظرِ آدم یکی»: حروفِ عربی، ارقامِ فارسی، اعراب و
+     * کشیده، نیم‌فاصله و فاصله‌ی اضافه، و بزرگی/کوچکیِ حروفِ لاتین.
+     * ⛔ فقط برای **مقایسه‌ی برابری** — هیچ‌جا ذخیره نمی‌شود.
+     */
+    public static function fold(string $v): string
+    {
+        // «آیفون» و «ایفون» یکی‌اند: کاربر روی کیبوردِ گوشی اغلب «آ» را نمی‌زند
+        $v = strtr(toLatinDigits(self::persian($v)), ['آ' => 'ا', 'أ' => 'ا', 'إ' => 'ا', 'ٱ' => 'ا', 'ؤ' => 'و', 'ة' => 'ه', 'ۀ' => 'ه']);
+        $v = (string)preg_replace('/[\x{064B}-\x{065F}\x{0670}\x{0640}]/u', '', $v);
+        $v = (string)preg_replace('/[\s\x{200c}\x{200f}\x{200e}]+/u', ' ', $v);
+        return mb_strtolower(trim($v));
+    }
+
+    /**
      * صفحه‌بندی — `[page, pages, offset]`؛ شماره‌ی بیرون از بازه به
      * نزدیک‌ترین صفحه بریده می‌شود، نه فهرستِ خالی (همان قاعده‌ی
      * `paged_list.php`).
@@ -141,8 +166,12 @@ final class BizProducts
                 $params['qs'] = $params['qi1'] = $params['qi2'] = $qi;
                 $params['qu'] = $userId;
             } else {
-                $where[] = "(p.name LIKE :q1 ESCAPE '!' OR p.sku LIKE :q2 ESCAPE '!')";
-                $params['q1'] = $params['q2'] = BizCommon::like($q);
+                // ⛔ نامِ ذخیره‌شده هم یکسان مقایسه می‌شود (REPLACE با رشته‌ی ثابت، پس
+                //    «Illegal mix of collations» ممکن نیست): کالایی که پیش از
+                //    `migration_biz_search` با «ي/ك» آمده هم پیدا می‌شود.
+                $where[] = "(REPLACE(REPLACE(REPLACE(p.name, 'ي', 'ی'), 'ى', 'ی'), 'ك', 'ک') LIKE :q1 ESCAPE '!' OR p.sku LIKE :q2 ESCAPE '!')";
+                $params['q1'] = BizCommon::like(BizCommon::persian($q));
+                $params['q2'] = BizCommon::like(toLatinDigits($q));
             }
         }
         if ($category !== '') {
@@ -220,7 +249,7 @@ final class BizProducts
      */
     public static function save(int $userId, array $in, int $id = 0): array
     {
-        $name     = BizCommon::line((string)($in['name'] ?? ''));
+        $name     = BizCommon::line(BizCommon::persian((string)($in['name'] ?? '')));
         $sku      = BizCommon::line(toLatinDigits((string)($in['sku'] ?? '')));
         $category = BizCommon::line((string)($in['category'] ?? ''));
         $note     = trim((string)($in['note'] ?? ''));
@@ -866,14 +895,15 @@ final class BizParties
                         'debit' => $plus ? (int)$r['total'] : 0, 'credit' => $plus ? 0 : (int)$r['total'],
                         'sort' => $r['inv_date'] . ' 1 ' . $r['created_at'], 'invoice_id' => (int)$r['id']];
         }
-        $st = $pdo->prepare("SELECT id, kind, number, pay_date, amount, method, created_at FROM biz_payments
+        $st = $pdo->prepare("SELECT id, kind, number, pay_date, amount, method, created_at, invoice_id, origin_invoice FROM biz_payments
                              WHERE party_id = :p AND user_id = :u AND status = 'ok' AND kind IN ('receipt','payment') ORDER BY pay_date, id");
         $st->execute(['p' => $id, 'u' => $userId]);
         foreach ($st->fetchAll() as $r) {
             $rec = $r['kind'] === 'receipt';
             $lines[] = ['date' => (string)$r['pay_date'], 'desc' => ($rec ? 'دریافت' : 'پرداخت') . ' شماره‌ی ' . toPersianDigits((string)$r['number']),
                         'debit' => $rec ? 0 : (int)$r['amount'], 'credit' => $rec ? (int)$r['amount'] : 0,
-                        'sort' => $r['pay_date'] . ' 2 ' . $r['created_at'], 'payment_id' => (int)$r['id']];
+                        'sort' => $r['pay_date'] . ' 2 ' . $r['created_at'], 'payment_id' => (int)$r['id'],
+                        'origin_of' => (int)$r['origin_invoice'] === 1 ? (int)$r['invoice_id'] : 0];
         }
         usort($lines, fn($a, $b) => strcmp($a['sort'], $b['sort']));
         $run = 0; $dr = 0; $cr = 0;
@@ -884,6 +914,40 @@ final class BizParties
         }
         unset($l);
         return ['party' => $party, 'lines' => $lines, 'debit' => $dr, 'credit' => $cr, 'balance' => $run];
+    }
+
+    /**
+     * مانده‌ی طرف‌حساب **پیش و پس** از یک فاکتورِ صادرشده — برای «مانده‌ی
+     * قبلی / مانده‌ی کل» روی فاکتور و برگه‌ی چاپ.
+     *
+     * ⛔ از همان `statement()` ساخته می‌شود، نه یک حسابِ دوم: «قبلی» مانده‌ی
+     *    جاریِ صورت‌حساب درست پیش از ردیفِ همین فاکتور است، پس با صفحه‌ی
+     *    طرف‌حساب و برگه‌ی صورت‌حساب همیشه یک عدد می‌گوید.
+     * ⛔ «پس از» = قبلی + این فاکتور ± فقط دریافت/پرداختِ **همراهِ همین
+     *    فاکتور** (`origin_invoice = 1`) — نه `paid`ِ فاکتور: تخصیصِ FIFO
+     *    پیش‌پرداختی را هم دارد که از قبل در «قبلی» کم شده، و آن‌وقت همان
+     *    پول دو بار کم می‌شد.
+     * @return array{prev:int, doc:int, paid:int, after:int}|null  مثبت = او بدهکار است
+     */
+    public static function balanceAround(int $userId, int $partyId, int $invoiceId): ?array
+    {
+        $s = self::statement($userId, $partyId);
+        if ($s === null) { return null; }
+        $prev = 0; $doc = null; $paid = 0;
+        foreach ($s['lines'] as $l) {
+            if (($l['origin_of'] ?? 0) === $invoiceId) { $paid += $l['debit'] - $l['credit']; }
+            if ($doc !== null) { continue; }
+            if (($l['invoice_id'] ?? 0) === $invoiceId) { $doc = $l['debit'] - $l['credit']; continue; }
+            $prev = $l['balance'];
+        }
+        if ($doc === null) { return null; }                      // پیش‌نویس یا باطل — در صورت‌حساب نیست
+        return ['prev' => $prev, 'doc' => $doc, 'paid' => $paid, 'after' => $prev + $doc + $paid];
+    }
+
+    /** برچسبِ جهتِ یک مانده (مثبت = او بدهکار است). */
+    public static function sideLabel(int $bal): string
+    {
+        return $bal > 0 ? 'بدهکار' : ($bal < 0 ? 'بستانکار' : 'تسویه');
     }
 
     public static function list(int $userId, string $q = '', string $filter = '', int $page = 1): array

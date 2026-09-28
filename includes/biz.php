@@ -455,11 +455,13 @@ final class Biz
         'show_date'    => 'تاریخ و ساعتِ چاپ',
         'show_footer'  => 'متنِ پای فاکتور (از تنظیماتِ فروشگاه)',
         'show_sign'    => 'جای امضا در پایینِ برگه',
+        'show_balance' => 'مانده‌ی قبلی و مانده‌ی کلِ طرف‌حساب روی فاکتور',
     ];
 
     public const PRINT_DEFAULTS = [
         'paper' => 'a4', 'orient' => 'portrait', 'font' => 'md', 'margin' => 'normal',
         'show_header' => true, 'show_contact' => true, 'show_date' => true, 'show_footer' => true, 'show_sign' => false,
+        'show_balance' => true,
     ];
 
     private static array $printCache = [];

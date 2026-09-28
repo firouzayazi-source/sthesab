@@ -65,6 +65,8 @@ final class BizInvoices
     public const MAX_LINES = 200;
     public const PAGE_SIZE = 25;
     public const NOTE_MAX  = 300;
+    /** «شرحِ کالا»ی هر ردیف (`biz_invoice_lines.note`). */
+    public const LINE_NOTE_MAX = 190;
     public const DESC_MAX  = 200;
 
     /**
@@ -233,7 +235,7 @@ final class BizInvoices
         $bySku = $pdo->prepare("SELECT {$cols} FROM biz_products WHERE sku = :s AND user_id = :u LIMIT 1");
         $byName = $pdo->prepare("SELECT {$cols} FROM biz_products WHERE name = :n AND user_id = :u ORDER BY is_active DESC, id LIMIT 1");
 
-        $lines = []; $errors = []; $meta = []; $seen = []; $no = 0;
+        $lines = []; $errors = []; $meta = []; $seen = []; $no = 0; $folded = null;
         foreach (array_values($raw) as $i => $r) {
             if (!is_array($r)) { continue; }
             $item  = BizCommon::line((string)($r['item'] ?? ''));
@@ -242,6 +244,7 @@ final class BizInvoices
             $prIn  = trim((string)($r['price'] ?? ''));
             $imei1 = BizSerial::norm((string)($r['imei1'] ?? ''));
             $imei2 = BizSerial::norm((string)($r['imei2'] ?? ''));
+            $lnote = mb_substr(BizCommon::line((string)($r['note'] ?? '')), 0, self::LINE_NOTE_MAX);
             if ($imei1 === '' && $imei2 !== '') { [$imei1, $imei2] = [$imei2, '']; }
             if ($item === '' && $pid === 0 && $prIn === '' && $imei1 === '') { continue; }
             $no++;
@@ -256,7 +259,20 @@ final class BizInvoices
             if ($prod && $item !== '' && $item !== (string)$prod['name']) { $prod = null; }
             if (!$prod && $item !== '') {
                 $bySku->execute(['s' => toLatinDigits($item), 'u' => $userId]); $prod = $bySku->fetch() ?: null;
-                if (!$prod) { $byName->execute(['n' => $item, 'u' => $userId]); $prod = $byName->fetch() ?: null; }
+                if (!$prod) { $byName->execute(['n' => BizCommon::persian($item), 'u' => $userId]); $prod = $byName->fetch() ?: null; }
+                // ⛔ «از نظرِ آدم یکی» (نیم‌فاصله، ارقامِ فارسی، اعراب…) — ولی فقط
+                //    برابریِ **یکتا**: متنی که به دو کالا می‌خورد شرحِ آزاد می‌ماند،
+                //    وگرنه موجودیِ کالای اشتباه بی‌صدا کم می‌شد. هرگز «شامل بودن».
+                if (!$prod) {
+                    if ($folded === null) {
+                        $folded = [];
+                        $fs = $pdo->prepare('SELECT id, name FROM biz_products WHERE user_id = :u AND is_active = 1 LIMIT 5000');
+                        $fs->execute(['u' => $userId]);
+                        foreach ($fs->fetchAll() as $fp) { $folded[BizCommon::fold((string)$fp['name'])][] = (int)$fp['id']; }
+                    }
+                    $hit = $folded[BizCommon::fold($item)] ?? [];
+                    if (count($hit) === 1) { $byId->execute(['id' => $hit[0], 'u' => $userId]); $prod = $byId->fetch() ?: null; }
+                }
             }
             // ⛔ جست‌وجوی هوشمند: متنِ ردیف خودش یک IMEI است (اسکن یا تایپِ
             //    شماره‌ی روی جعبه) → گوشیِ همان IMEI از اسنادِ صادرشده.
@@ -284,9 +300,9 @@ final class BizInvoices
 
             if ($desc === '') { $errors[$i] = 'ردیف ' . toPersianDigits((string)$no) . ': شرح یا کالا خالی است.'; continue; }
             if (mb_strlen($desc) > self::DESC_MAX) { $desc = mb_substr($desc, 0, self::DESC_MAX); }
-            if ($qty <= 0) { $errors[$i] = 'ردیف ' . toPersianDigits((string)$no) . ': مقدار باید بیشتر از صفر باشد.'; continue; }
+            if ($qty <= 0) { $errors[$i] = 'ردیف ' . toPersianDigits((string)$no) . ': تعداد باید بیشتر از صفر باشد.'; continue; }
             if ($prod && !BizProducts::qtyFits($unit, $qty)) {
-                $errors[$i] = 'ردیف ' . toPersianDigits((string)$no) . ': مقدارِ «' . $desc . '» برای واحدِ «' . $unit . '» باید عددِ صحیح باشد.';
+                $errors[$i] = 'ردیف ' . toPersianDigits((string)$no) . ': تعدادِ «' . $desc . '» برای واحدِ «' . $unit . '» باید عددِ صحیح باشد.';
                 continue;
             }
             // ⛔ گوشی: هر ردیف دقیقاً یک دستگاه با IMEIِ خودش. IMEI فقط روی
@@ -297,7 +313,7 @@ final class BizInvoices
             if ($imei1 !== '' && $imei1 === $imei2) { $errors[$i] = $tag . 'IMEI ۱ و ۲ یکی‌اند.'; continue; }
             if ($serial) {
                 if ($imei1 === '') { $errors[$i] = $tag . 'برای گوشیِ «' . $desc . '» IMEI را بنویسید (هر گوشی یک ردیف).'; continue; }
-                if (abs($qty - 1.0) > 0.0005) { $errors[$i] = $tag . 'هر گوشی یک ردیف است؛ مقدارِ ردیفِ IMEIدار ۱ است.'; continue; }
+                if (abs($qty - 1.0) > 0.0005) { $errors[$i] = $tag . 'هر گوشی یک ردیف است؛ تعدادِ ردیفِ IMEIدار ۱ است.'; continue; }
             } elseif ($imei1 !== '') {
                 $errors[$i] = $tag . ($prod ? '«' . $desc . '» گوشی نیست؛ IMEI فقط روی کالای نوعِ «گوشی» ثبت می‌شود.'
                                             : 'IMEI فقط روی گوشیِ ثبت‌شده می‌نشیند؛ اول کالا را با «+» تعریف کنید.');
@@ -316,6 +332,7 @@ final class BizInvoices
                 'line_discount' => $disc, 'line_total' => $gross - $disc, 'ref_line_id' => null, 'unit_cost' => null,
                 'inactive' => $prod && (int)$prod['is_active'] !== 1,
                 'imei1' => $imei1 === '' ? null : $imei1, 'imei2' => $imei2 === '' ? null : $imei2,
+                'note' => $lnote === '' ? null : $lnote,
             ];
         }
         return ['lines' => $lines, 'errors' => $errors, 'meta' => $meta];
@@ -418,17 +435,22 @@ final class BizInvoices
     private static function writeLines(PDO $pdo, int $userId, int $id, array $lines): void
     {
         $pdo->prepare('DELETE FROM biz_invoice_lines WHERE invoice_id = :id AND user_id = :u')->execute(['id' => $id, 'u' => $userId]);
+        // «شرحِ کالا» (`migration_biz_search`) — روی نصبِ عقب‌مانده بی‌صدا کنار
+        // گذاشته می‌شود، نه اینکه صدورِ فاکتور بخوابد.
+        $withNote = function_exists('tableHasColumn') && tableHasColumn('biz_invoice_lines', 'note');
         $ins = $pdo->prepare(
-            'INSERT INTO biz_invoice_lines (user_id, invoice_id, line_no, product_id, ref_line_id, description, unit, imei1, imei2, qty,
-                                            unit_price, line_discount, line_total, net_total, unit_cost)
-             VALUES (:u, :i, :no, :p, :r, :d, :un, :m1, :m2, :q, :pr, :di, :lt, :nt, :c)'
+            'INSERT INTO biz_invoice_lines (user_id, invoice_id, line_no, product_id, ref_line_id, description, unit, imei1, imei2, '
+            . ($withNote ? 'note, ' : '') . 'qty, unit_price, line_discount, line_total, net_total, unit_cost)
+             VALUES (:u, :i, :no, :p, :r, :d, :un, :m1, :m2, ' . ($withNote ? ':nt2, ' : '') . ':q, :pr, :di, :lt, :nt, :c)'
         );
         foreach (array_values($lines) as $n => $l) {
-            $ins->execute(['u' => $userId, 'i' => $id, 'no' => $n + 1, 'p' => $l['product_id'], 'r' => $l['ref_line_id'],
-                           'd' => $l['description'], 'un' => $l['unit'], 'm1' => $l['imei1'] ?? null, 'm2' => $l['imei2'] ?? null,
-                           'q' => $l['qty'], 'pr' => $l['unit_price'],
-                           'di' => $l['line_discount'], 'lt' => $l['line_total'], 'nt' => $l['net_total'] ?? $l['line_total'],
-                           'c' => $l['unit_cost']]);
+            $row = ['u' => $userId, 'i' => $id, 'no' => $n + 1, 'p' => $l['product_id'], 'r' => $l['ref_line_id'],
+                    'd' => $l['description'], 'un' => $l['unit'], 'm1' => $l['imei1'] ?? null, 'm2' => $l['imei2'] ?? null,
+                    'q' => $l['qty'], 'pr' => $l['unit_price'],
+                    'di' => $l['line_discount'], 'lt' => $l['line_total'], 'nt' => $l['net_total'] ?? $l['line_total'],
+                    'c' => $l['unit_cost']];
+            if ($withNote) { $row['nt2'] = $l['note'] ?? null; }
+            $ins->execute($row);
         }
     }
 
@@ -701,16 +723,17 @@ final class BizInvoices
                 return ['ok' => false, 'message' => '«' . $o['description'] . '» حداکثر ' . formatQty($left[$lineId]['left']) . ' ' . $o['unit'] . ' برگشت‌پذیر است.'];
             }
             if ($o['product_id'] !== null && !BizProducts::qtyFits((string)$o['unit'], $q)) {
-                return ['ok' => false, 'message' => 'مقدارِ «' . $o['description'] . '» باید عددِ صحیح باشد.'];
+                return ['ok' => false, 'message' => 'تعدادِ «' . $o['description'] . '» باید عددِ صحیح باشد.'];
             }
             $unitNet = (float)$o['qty'] > 0 ? (int)$o['net_total'] / (float)$o['qty'] : 0;
             $lt = (int)round($q * $unitNet);
             $lines[] = ['product_id' => $o['product_id'] !== null ? (int)$o['product_id'] : null, 'ref_line_id' => $lineId,
                         'description' => (string)$o['description'], 'unit' => (string)$o['unit'], 'qty' => round($q, 3),
                         'unit_price' => (int)round($unitNet), 'line_discount' => 0, 'line_total' => $lt, 'net_total' => $lt,
-                        'unit_cost' => null, 'imei1' => $o['imei1'] ?? null, 'imei2' => $o['imei2'] ?? null];
+                        'unit_cost' => null, 'imei1' => $o['imei1'] ?? null, 'imei2' => $o['imei2'] ?? null,
+                        'note' => $o['note'] ?? null];
         }
-        if (!$lines) { return ['ok' => false, 'message' => 'مقدارِ برگشت را دست‌کم برای یک ردیف بنویسید.']; }
+        if (!$lines) { return ['ok' => false, 'message' => 'تعدادِ برگشت را دست‌کم برای یک ردیف بنویسید.']; }
         $total = array_sum(array_column($lines, 'line_total'));
         // ⛔ «پس دادنِ کامل» یعنی همان مبلغی که همین‌جا ساخته شد — صفحه آن را
         //    دوباره حساب نمی‌کند (دو جای حسابِ پول دیر یا زود دو عدد می‌گویند).

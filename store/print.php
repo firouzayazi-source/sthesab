@@ -46,12 +46,12 @@ case 'invoice':
         'فاکتورِ اصلی'                       => $inv['ref_invoice_id'] !== null ? toPersianDigits((string)$inv['ref_number']) : '',
     ]); ?>
     <table class="pr-table">
-        <thead><tr><th>#</th><th>شرح</th><th class="pr-c-num">مقدار</th><th class="pr-c-num">بها</th><th class="pr-c-num pr-wide">تخفیف</th><th class="pr-c-num">جمع</th></tr></thead>
+        <thead><tr><th>#</th><th>کالا</th><th class="pr-c-num">تعداد</th><th class="pr-c-num">فی</th><th class="pr-c-num pr-wide">تخفیف</th><th class="pr-c-num">جمع</th></tr></thead>
         <tbody>
         <?php foreach ($inv['lines'] as $n => $l): ?>
             <tr>
                 <td><span class="pr-num"><?= toPersianDigits((string)($n + 1)) ?></span></td>
-                <td><?= h((string)$l['description']) ?><?= BizDocView::imeiLine($l, 'pr-imei') ?></td>
+                <td><?= h((string)$l['description']) ?><?= BizDocView::lineSub($l, 'pr-imei') ?></td>
                 <td class="pr-c-num"><?= $qty($l['qty']) ?></td>
                 <td class="pr-c-num"><?= $money($l['unit_price']) ?></td>
                 <td class="pr-c-num pr-wide"><?= (int)$l['line_discount'] > 0 ? $money($l['line_discount']) : '' ?></td>
@@ -71,6 +71,12 @@ case 'invoice':
         <div><span><?= BizInvoices::SETTLED_BY[$inv['kind']] === 'receipt' ? 'دریافت‌شده' : 'پرداخت‌شده' ?></span><span><?= $money($inv['paid']) ?></span></div>
         <div><span>مانده</span><span><?= $money(BizInvoices::remaining($inv)) ?></span></div>
         <?php endif; ?>
+        <?php
+        // ⛔ «مانده‌ی قبلی / کل» — کلیدش در تنظیماتِ چاپ (`show_balance`)
+        $ba = !empty(Biz::printPrefs($userId)['show_balance']) && $inv['status'] === 'issued' && $inv['party_id'] !== null
+            ? BizParties::balanceAround($userId, (int)$inv['party_id'], $id) : null;
+        if ($ba !== null) { echo BizDocView::balanceRows($ba, (string)$inv['party_name'], $money, 'pr-bal'); }
+        ?>
     </div>
     <?php if ((string)$inv['note'] !== ''): ?><p class="pr-note"><?= nl2br(h((string)$inv['note'])) ?></p><?php endif; ?>
     <?php BizPrint::foot($userId, $isSaleSide ? ['امضای فروشنده', 'امضای خریدار'] : ['امضای تحویل‌گیرنده', 'امضای فروشنده']);

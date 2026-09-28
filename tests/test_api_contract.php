@@ -6953,6 +6953,57 @@ if (!str_contains($ie70, '$res = BizProducts::save($userId, [') || preg_match('/
     $bBad[] = 'store/invoice-edit.php — کالای تازه باید از BizProducts::save() ساخته شود';
 }
 
-T::bulk(66, $bBad, 'محیطِ فروشگاهی: دروازه‌ی بی‌کوئری، سه نوعِ حساب، تنها نویسنده، دفترِ جدا از پولِ شخصی، و طرفِ شخصیِ دست‌نخورده');
+// ---------- جست‌وجوی کالا، «شرحِ کالا»، مانده‌ی قبلی (`migration_biz_search`) ----------
+$js70  = (string)file_get_contents(__DIR__ . '/../assets/js/store.js');
+$cat70 = $strip70((string)file_get_contents(__DIR__ . '/../includes/biz_catalog.php'));
+$dv70  = $strip70((string)file_get_contents(__DIR__ . '/../includes/biz_docview.php'));
+if (!str_contains($mig70, "    migration_biz_search.sql\n") || !str_contains($mig70, '[migration_biz_search.sql]="biz_invoice_lines.note"')) {
+    $bBad[] = 'migrate.sh — migration_biz_search.sql در MIGRATIONS یا SENTINEL نیست';
+}
+// ⛔ پاپ‌آپِ datalist با جاوااسکریپت برداشته می‌شود (دو فهرست روی هم نیفتند)
+if (!str_contains($js70, "inp.removeAttribute('list');")) {
+    $bBad[] = 'store.js — list="bizProducts" باید با جاوااسکریپت برداشته شود';
+}
+// ⛔ fold مرورگر و سرور یکی‌اند: ي/ك عربی و «آ»
+foreach (["replace(/[يى]/g, 'ی')", "replace(/ك/g, 'ک')", "replace(/[آأإٱ]/g, 'ا')"] as $f70) {
+    if (!str_contains($js70, $f70)) { $bBad[] = "store.js — fold() باید {$f70} داشته باشد"; }
+}
+if (!str_contains($cat70, "'ي' => 'ی'") || !str_contains($cat70, "'ك' => 'ک'") || !str_contains($cat70, "'آ' => 'ا'")) {
+    $bBad[] = 'biz_catalog.php — BizCommon::persian()/fold() حروفِ عربی و «آ» را یکی نمی‌کند';
+}
+// ⛔ نامِ کالا (نوشته‌ی کاربر) در فهرستِ پیشنهاد با textContent، هرگز innerHTML
+if (!str_contains($js70, 'n.textContent = p.name;') || preg_match('/innerHTML\s*[+]?=\s*[^;]*p\.name/', $js70)) {
+    $bBad[] = 'store.js — نامِ کالا در فهرستِ پیشنهاد باید با textContent نوشته شود';
+}
+// ⛔ تطبیقِ «از نظرِ آدم یکی» فقط یکتا، هرگز «شامل بودن»
+if (!preg_match('/\$hit = \$folded\[BizCommon::fold\(\$item\)\] \?\? \[\];\s*if \(count\(\$hit\) === 1\)/', $docs70)) {
+    $bBad[] = 'biz_docs.php — تطبیقِ fold در parseLines() باید فقط برابریِ یکتا باشد';
+}
+if (!str_contains($docs70, "tableHasColumn('biz_invoice_lines', 'note')")) {
+    $bBad[] = 'biz_docs.php — writeLines() باید نبودِ ستونِ note را تحمل کند';
+}
+if (!str_contains($cat70, 'BizCommon::line(BizCommon::persian((string)($in[\'name\']')) {
+    $bBad[] = 'biz_catalog.php — BizProducts::save() نام را با حروفِ فارسی ذخیره نمی‌کند';
+}
+// ⛔ «مانده‌ی قبلی» از خودِ statement()، نه حسابِ دوم
+$ba70 = preg_match('/function balanceAround\(.*?\n    \}/s', $cat70, $bm70) ? $bm70[0] : '';
+if ($ba70 === '' || !str_contains($ba70, 'self::statement(') || preg_match('/FROM\s+biz_(payments|invoices)/i', $ba70)) {
+    $bBad[] = 'biz_catalog.php — balanceAround() باید فقط از statement() بسازد';
+}
+// ⛔ «تعداد» نه «مقدار»، و سرآیندِ جدول یک منبع دارد
+foreach (['store/invoice-edit.php', 'store/quick-sale.php'] as $f70) {
+    $src70 = (string)file_get_contents(__DIR__ . '/../' . $f70);
+    if (!str_contains($src70, 'BizDocView::lineHead()') || str_contains($src70, '>مقدار<')) {
+        $bBad[] = "{$f70} — سرآیندِ ردیف‌ها باید BizDocView::lineHead() باشد (با «تعداد»)";
+    }
+}
+if (!str_contains($dv70, 'تعداد</th>') || !str_contains($dv70, "'<span class=\"' . h(\$class) . ' is-note\">' . h(\$n)")) {
+    $bBad[] = 'biz_docview.php — lineHead() «تعداد» ندارد یا lineSub() شرح را فرار نمی‌دهد';
+}
+if (!str_contains((string)file_get_contents(__DIR__ . '/../store/print.php'), "Biz::printPrefs(\$userId)['show_balance']")) {
+    $bBad[] = 'store/print.php — مانده‌ی قبلی باید پشتِ کلیدِ show_balance باشد';
+}
+
+T::bulk(81, $bBad, 'محیطِ فروشگاهی: دروازه‌ی بی‌کوئری، سه نوعِ حساب، تنها نویسنده، دفترِ جدا از پولِ شخصی، و طرفِ شخصیِ دست‌نخورده');
 
 exit(T::report());

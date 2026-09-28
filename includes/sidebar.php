@@ -61,8 +61,10 @@ if (Auth::isLoggedIn()) {
         </li>
         <li>
             <?php /* ⛔ روی دسکتاپِ پهن (`deskView()`) داشبورد ادامه‌ی خانه است، پس
-                     این قلم به همان بخش می‌رود، نه به صفحه‌ی دوم. */ ?>
-            <a href="<?= APP_BASE_PATH ?>/<?= deskView() ? 'index.php#year' : 'dashboard.php' ?>" class="<?= $__currentPage === 'dashboard.php' ? 'active' : '' ?>">
+                     این قلم به همان صفحه می‌رود — ولی به **بالای** آن، نه به `#year`:
+                     «وقتی روی داشبورد میزنم بیاد بالای صفحه». لنگرِ `#year` فقط
+                     برای ناوبریِ سال و دکمه‌ی بازگشت از تراکنش‌هاست. */ ?>
+            <a href="<?= APP_BASE_PATH ?>/<?= deskView() ? 'index.php' : 'dashboard.php' ?>" class="<?= $__currentPage === 'dashboard.php' ? 'active' : '' ?>">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 9L12 2L21 9V20A2 2 0 0119 22H5A2 2 0 013 20V9Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
                 <span>داشبورد</span>
             </a>

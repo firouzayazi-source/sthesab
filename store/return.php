@@ -68,17 +68,17 @@ require __DIR__ . '/../includes/biz_head.php';
     <section class="st-card st-lines-card">
         <div class="st-table-wrap st-flat">
             <table class="st-table">
-                <thead><tr><th>کالا</th><th class="st-th-num st-hide-sm">فروخته/خریده</th><th class="st-th-num">برگشت‌پذیر</th><th class="st-th-num st-hide-sm">بهای خالص</th><th class="st-th-num">مقدارِ برگشت</th></tr></thead>
+                <thead><tr><th>کالا</th><th class="st-th-num st-hide-sm">فروخته/خریده</th><th class="st-th-num">برگشت‌پذیر</th><th class="st-th-num st-hide-sm">بهای خالص</th><th class="st-th-num">تعدادِ برگشت</th></tr></thead>
                 <tbody>
                 <?php foreach ($left as $lid => $x): $o = $x['line']; $unitNet = (float)$o['qty'] > 0 ? (int)round((int)$o['net_total'] / (float)$o['qty']) : 0; ?>
                     <tr class="<?= $x['left'] <= 0 ? 'is-inactive' : '' ?>">
-                        <td><?= h((string)$o['description']) ?><?= BizDocView::imeiLine($o) ?></td>
+                        <td><?= h((string)$o['description']) ?><?= BizDocView::lineSub($o) ?></td>
                         <td class="st-td-num st-hide-sm"><span class="st-num"><?= h(formatQty($o['qty'])) ?></span> <?= h((string)$o['unit']) ?></td>
                         <td class="st-td-num"><span class="st-num"><?= h(formatQty($x['left'])) ?></span></td>
                         <td class="st-td-num st-hide-sm"><?= BizDocView::money($unitNet) ?></td>
                         <td class="st-td-num">
                             <?php if ($x['left'] > 0): ?>
-                            <input class="st-qty-in" type="text" name="qty[<?= (int)$lid ?>]" value="<?= h((string)($form['qty'][$lid] ?? '')) ?>" inputmode="decimal" dir="ltr" placeholder="۰" aria-label="مقدارِ برگشتِ <?= h((string)$o['description']) ?>">
+                            <input class="st-qty-in" type="text" name="qty[<?= (int)$lid ?>]" value="<?= h((string)($form['qty'][$lid] ?? '')) ?>" inputmode="decimal" dir="ltr" placeholder="۰" aria-label="تعدادِ برگشتِ <?= h((string)$o['description']) ?>">
                             <?php else: ?><span class="st-muted-i">—</span><?php endif; ?>
                         </td>
                     </tr>

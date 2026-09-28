@@ -99,7 +99,7 @@ require __DIR__ . '/../includes/biz_head.php';
     <section class="st-card st-lines-card">
         <div class="st-table-wrap st-lines-wrap">
             <table class="st-table st-lines">
-                <thead><tr><th class="st-line-no">#</th><th>کالا</th><th class="st-th-num">مقدار</th><th class="st-th-num">بها</th><th class="st-th-num st-hide-sm">تخفیف</th><th class="st-th-num">جمع</th></tr></thead>
+                <?= BizDocView::lineHead() ?>
                 <tbody data-lines><?= BizDocView::lineRows($form['lines'], $blank) ?></tbody>
             </table>
         </div>

@@ -132,26 +132,70 @@ final class BizDocView
             $free  = $item !== '' && $pid === 0 && !empty($l['description']);
             $im1   = (string)($l['imei1'] ?? '');
             $im2   = (string)($l['imei2'] ?? '');
+            $note  = (string)($l['note'] ?? '');
             $showImei = !empty($l['serial']) || !empty($l['has_serial']) || $im1 !== '' || $im2 !== '';
+            // ⛔ گوشی → IMEI؛ بقیه → توضیح. توضیحِ از پیش نوشته‌شده روی گوشی هم
+            //    پنهان نمی‌شود — پنهان کردنِ داده‌ی کاربر یعنی بی‌صدا گم کردنش.
+            $showNote = !$showImei || $note !== '';
             $out .= '<tr class="st-line" data-row>'
                   . '<td class="st-line-no st-num">' . toPersianDigits((string)($i + 1)) . '</td>'
                   . '<td class="st-line-item"><div class="st-item-wrap">'
-                  . '<input type="text" name="lines[' . $i . '][item]" value="' . h($item) . '" list="bizProducts" autocomplete="off" placeholder="نام، کد، بارکد یا IMEI" data-item>'
+                  . '<input type="text" name="lines[' . $i . '][item]" value="' . h($item) . '" list="bizProducts" autocomplete="off" placeholder="نام، کد یا IMEI" aria-label="کالا" data-item>'
                   . ($plus ? '<button type="submit" name="np_open" value="' . $i . '" class="st-plus" formnovalidate data-np-open title="تعریفِ کالای تازه" aria-label="تعریفِ کالای تازه">+</button>' : '')
                   . '</div>'
                   . '<input type="hidden" name="lines[' . $i . '][product_id]" value="' . ($pid ?: '') . '" data-pid>'
+                  . ($free ? '<span class="st-line-note">شرحِ آزاد — بی‌اثر بر موجودی</span>' : '') . '</td>'
+                  . '<td class="st-line-desc">'
                   . '<div class="st-line-imei" data-imei-box' . ($showImei ? '' : ' hidden') . '>'
                   . '<input type="text" name="lines[' . $i . '][imei1]" value="' . h($im1) . '" inputmode="numeric" dir="ltr" autocomplete="off" placeholder="IMEI ۱" aria-label="IMEI ۱" data-imei1>'
-                  . '<input type="text" name="lines[' . $i . '][imei2]" value="' . h($im2) . '" inputmode="numeric" dir="ltr" autocomplete="off" placeholder="IMEI ۲ (اختیاری)" aria-label="IMEI ۲" data-imei2>'
+                  . '<input type="text" name="lines[' . $i . '][imei2]" value="' . h($im2) . '" inputmode="numeric" dir="ltr" autocomplete="off" placeholder="IMEI ۲" aria-label="IMEI ۲" data-imei2>'
                   . '</div>'
-                  . ($free ? '<span class="st-line-note">شرحِ آزاد — بی‌اثر بر موجودی</span>' : '') . '</td>'
-                  . '<td><input type="text" name="lines[' . $i . '][qty]" value="' . h($qty) . '" inputmode="decimal" dir="ltr" placeholder="۱" data-qty></td>'
-                  . '<td><input type="text" name="lines[' . $i . '][price]" value="' . h((string)$price) . '" inputmode="numeric" dir="ltr" data-price></td>'
-                  . '<td class="st-hide-sm"><input type="text" name="lines[' . $i . '][disc]" value="' . h((string)$disc) . '" inputmode="numeric" dir="ltr" data-disc></td>'
+                  . '<input type="text" name="lines[' . $i . '][note]" value="' . h($note) . '" maxlength="' . BizInvoices::LINE_NOTE_MAX . '" autocomplete="off" placeholder="توضیح (رنگ، گارانتی…)" aria-label="شرحِ کالا" class="st-line-notein" data-note' . ($showNote ? '' : ' hidden') . '>'
+                  . '</td>'
+                  . '<td class="st-line-qty"><input type="text" name="lines[' . $i . '][qty]" value="' . h($qty) . '" inputmode="decimal" dir="ltr" placeholder="۱" aria-label="تعداد" data-qty></td>'
+                  . '<td class="st-line-price"><input type="text" name="lines[' . $i . '][price]" value="' . h((string)$price) . '" inputmode="numeric" dir="ltr" aria-label="فی" data-price></td>'
+                  . '<td class="st-line-disc st-hide-sm"><input type="text" name="lines[' . $i . '][disc]" value="' . h((string)$disc) . '" inputmode="numeric" dir="ltr" aria-label="تخفیف" data-disc></td>'
                   . '<td class="st-td-num"><span class="st-num" data-lt>' . $lt . '</span></td>'
                   . '</tr>';
         }
         return $out;
+    }
+
+    /**
+     * «مانده‌ی قبلی / مانده‌ی کل» یک فاکتورِ صادرشده — صفحه‌ی سند و چاپ هر
+     * دو از همین (مبلغ‌ها از `BizParties::balanceAround()`، تنها حسابِ آن).
+     * @param callable(int):string $money
+     */
+    public static function balanceRows(array $ba, string $party, callable $money, string $row = 'st-sum-line'): string
+    {
+        $pay = $ba['paid'] === 0 ? '' : '<div class="' . $row . '"><span>' . ($ba['paid'] < 0 ? '− دریافتِ همین فاکتور' : '+ پرداختِ همین فاکتور')
+             . '</span>' . $money(abs($ba['paid'])) . '</div>';
+        $sign = $ba['doc'] < 0 ? '−' : '+';
+        return '<div class="' . $row . ' is-prev"><span>مانده‌ی قبلیِ ' . h($party) . ' <small>(' . BizParties::sideLabel($ba['prev']) . ')</small></span>'
+             . $money(abs($ba['prev'])) . '</div>'
+             . '<div class="' . $row . '"><span>' . $sign . ' این سند</span>' . $money(abs($ba['doc'])) . '</div>'
+             . $pay
+             . '<div class="' . $row . ' is-after"><span>مانده‌ی کل <small>(' . BizParties::sideLabel($ba['after']) . ')</small></span>'
+             . $money(abs($ba['after'])) . '</div>';
+    }
+
+    /** سرآیندِ جدولِ ردیف‌ها — ویرایشگرِ فاکتور و فروشِ سریع هر دو از همین. */
+    public static function lineHead(): string
+    {
+        return '<thead><tr><th class="st-line-no">#</th><th>کالا</th><th>شرحِ کالا</th>'
+             . '<th class="st-th-num st-line-qty">تعداد</th><th class="st-th-num st-line-price">فی</th>'
+             . '<th class="st-th-num st-line-disc st-hide-sm">تخفیف</th><th class="st-th-num">جمع</th></tr></thead>';
+    }
+
+    /**
+     * زیرِ نامِ کالا در سند، برگشت و چاپ: IMEI برای گوشی، و «شرحِ کالا» اگر
+     * نوشته شده. ⛔ هر دو با `h()`؛ شرح را کاربر نوشته.
+     */
+    public static function lineSub(array $l, string $class = 'st-imei'): string
+    {
+        $out = self::imeiLine($l, $class);
+        $n = trim((string)($l['note'] ?? ''));
+        return $out . ($n !== '' ? '<span class="' . h($class) . ' is-note">' . h($n) . '</span>' : '');
     }
 
     /** IMEIِ یک ردیفِ سند زیرِ شرح — سند، برگشت و چاپ همه از همین. */

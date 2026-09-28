@@ -188,8 +188,10 @@ try {
     T::ok(!str_contains($more, 'گزارش با بازه دلخواه') && !str_contains($more, 'یادآوری چک'),
         '⛔ یادآوری‌ها و بازه‌ی دلخواه عمداً نیامدند');
     $sb = preg_match('#<nav class="sidebar".*?</nav>#s', $deskHtml, $sbm) ? $sbm[0] : '';
-    T::ok($sb !== '' && str_contains($sb, 'index.php#year') && !str_contains($sb, '/dashboard.php"'),
-        '⛔ قلمِ «داشبورد»ِ منوی کناری روی دسکتاپ به همان بخشِ خانه می‌رود');
+    T::ok($sb !== '' && !str_contains($sb, '/dashboard.php"'),
+        '⛔ قلمِ «داشبورد»ِ منوی کناری روی دسکتاپ به خانه می‌رود، نه صفحه‌ی دوم');
+    T::ok($sb !== '' && !str_contains($sb, '#year'),
+        '⛔ و به بالای صفحه، نه وسطش (`#year`) — «وقتی روی داشبورد میزنم بیاد بالای صفحه»');
     [, $dash] = $get('dashboard.php', null, true);
     foreach (['class="season-card', 'breakdown-cta', 'trendChart'] as $needle) {
         T::ok(substr_count($dash, $needle) === substr_count($more, $needle), "⛔ خانه و داشبورد «{$needle}» را یکسان رندر می‌کنند (یک منبع)");

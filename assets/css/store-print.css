@@ -93,3 +93,9 @@ body.pr-body {
 
 /* IMEIِ گوشی زیرِ شرحِ ردیف */
 .pr-imei { display: block; font-size: .85em; color: #555; text-align: right; }
+
+/* مانده‌ی قبلی و کلِ طرف‌حساب — زیرِ جمع، با خطِ جدا کمرنگ‌تر از «مبلغِ کل» */
+.pr-totals .pr-bal { display: flex; justify-content: space-between; gap: 10px; padding: 2px 6px; }
+.pr-totals .pr-bal.is-prev { margin-top: 6px; border-top: 1px dashed #999; padding-top: 6px; }
+.pr-totals .pr-bal.is-after { font-weight: 800; }
+.pr-totals .pr-bal small { font-weight: 400; color: #555; }

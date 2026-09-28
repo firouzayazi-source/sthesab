@@ -173,7 +173,7 @@ $parsed = BizInvoices::parseLines($userId, array_map(fn($l) => [
     'item' => $l['item'] ?? $l['description'] ?? '', 'product_id' => $l['product_id'] ?? '',
     'qty' => isset($l['qty']) ? (string)$l['qty'] : '', 'price' => $l['price'] ?? (isset($l['unit_price']) ? (string)$l['unit_price'] : ''),
     'disc' => $l['disc'] ?? (isset($l['line_discount']) ? (string)$l['line_discount'] : ''),
-    'imei1' => (string)($l['imei1'] ?? ''), 'imei2' => (string)($l['imei2'] ?? ''),
+    'imei1' => (string)($l['imei1'] ?? ''), 'imei2' => (string)($l['imei2'] ?? ''), 'note' => (string)($l['note'] ?? ''),
 ], $form['lines']));
 $form['lines'] = BizDocView::mergeMeta($form['lines'], $parsed['meta']);
 $tot = BizInvoices::totals($parsed['lines'], sanitizeAmount($form['discount']), sanitizeAmount($form['extra']));
@@ -223,7 +223,7 @@ require __DIR__ . '/../includes/biz_head.php';
                 <select name="party_id" data-party>
                     <option value="0"><?= $isSale ? 'مشتریِ گذری (نقدی)' : 'فروشنده‌ی گذری (نقدی)' ?></option>
                     <?php foreach ($parties as $p): ?>
-                        <option value="<?= (int)$p['id'] ?>"<?= (int)$p['id'] === (int)$form['party_id'] ? ' selected' : '' ?>><?= h($p['name']) ?></option>
+                        <option value="<?= (int)$p['id'] ?>" data-balance="<?= (int)$p['balance'] ?>"<?= (int)$p['id'] === (int)$form['party_id'] ? ' selected' : '' ?>><?= h($p['name']) ?></option>
                     <?php endforeach; ?>
                 </select>
                 <a class="st-field-link" href="<?= h(Biz::url('party.php?kind=' . ($isSale ? 'customer' : 'supplier'))) ?>">+ <?= h($partyLbl) ?>ِ تازه</a>
@@ -238,16 +238,13 @@ require __DIR__ . '/../includes/biz_head.php';
     <section class="st-card st-lines-card">
         <div class="st-table-wrap st-lines-wrap">
             <table class="st-table st-lines">
-                <thead><tr>
-                    <th class="st-line-no">#</th><th>کالا یا شرح</th><th class="st-th-num">مقدار</th>
-                    <th class="st-th-num">بهای واحد</th><th class="st-th-num st-hide-sm">تخفیف</th><th class="st-th-num">جمع</th>
-                </tr></thead>
+                <?= BizDocView::lineHead() ?>
                 <tbody data-lines><?= BizDocView::lineRows($form['lines'], $blank, true) ?></tbody>
             </table>
         </div>
         <div class="st-lines-tools">
             <button type="submit" name="action" value="addrows" class="st-link-btn" formnovalidate data-add-rows>+ ردیفِ بیشتر</button>
-            <span class="st-muted-i">کالا را با نام، کد، بارکد یا IMEI پیدا کنید؛ کالای تازه را با «+» کنارِ همان خانه تعریف کنید. گوشی هر ردیف یک دستگاه است با IMEIِ خودش. چیزی که در فهرستِ کالا نیست «شرحِ آزاد» می‌شود و به موجودی دست نمی‌زند.</span>
+            <span class="st-muted-i">چند حرف از نام، کد یا IMEI را بنویسید و از فهرست انتخاب کنید؛ کالای تازه با «+». گوشی: هر ردیف یک دستگاه با IMEIِ خودش. چیزی که در فهرستِ کالا نیست «شرحِ آزاد» می‌شود و به موجودی دست نمی‌زند.</span>
         </div>
     </section>
 
@@ -275,7 +272,7 @@ require __DIR__ . '/../includes/biz_head.php';
             <label class="st-field"><span>IMEI ۱ <small class="st-muted">(فقط گوشی)</small></span><input type="text" name="np[imei1]" value="<?= h($np['imei1']) ?>" inputmode="numeric" dir="ltr" autocomplete="off"></label>
             <label class="st-field"><span>IMEI ۲ <small class="st-muted">(گوشیِ دوسیم‌کارت)</small></span><input type="text" name="np[imei2]" value="<?= h($np['imei2']) ?>" inputmode="numeric" dir="ltr" autocomplete="off"></label>
         </div>
-        <p class="st-muted">کالا در فهرستِ کالاها ثبت می‌شود و همین‌جا در ردیفِ فاکتور می‌نشیند (قیمتِ <?= $isSale ? 'فروش' : 'خرید' ?>، مقدارِ ۱). موجودی فقط با صدورِ فاکتور عوض می‌شود.</p>
+        <p class="st-muted">کالا در فهرستِ کالاها ثبت می‌شود و همین‌جا در ردیفِ فاکتور می‌نشیند (قیمتِ <?= $isSale ? 'فروش' : 'خرید' ?>، تعدادِ ۱). موجودی فقط با صدورِ فاکتور عوض می‌شود.</p>
         <button type="submit" name="action" value="np_save" class="st-btn" formnovalidate>ثبتِ کالا و افزودن به فاکتور</button>
     </section>
 
@@ -285,6 +282,20 @@ require __DIR__ . '/../includes/biz_head.php';
             <label class="st-sum-line"><span>تخفیفِ فاکتور</span><input type="text" name="discount" value="<?= h((string)$form['discount']) ?>" inputmode="numeric" dir="ltr" data-discount></label>
             <label class="st-sum-line"><span>حمل و هزینه‌ی دیگر</span><input type="text" name="extra" value="<?= h((string)$form['extra']) ?>" inputmode="numeric" dir="ltr" data-extra></label>
             <div class="st-sum-line st-sum-total"><span>مبلغِ فاکتور</span><b class="st-num" data-total><?= formatMoney($tot['total']) ?></b></div>
+            <?php
+            // ⛔ مانده‌ی قبلی = مانده‌ی امروزِ طرف‌حساب (پیش‌نویس هنوز اثری ندارد) —
+            //    همان `BALANCE_SQL` که `parties()` خوانده، پس کوئریِ تازه‌ای نیست.
+            //    «پس از این فاکتور» فقط پیش‌نمایش است؛ عددِ واقعی را صدور می‌سازد.
+            $prevBal = 0;
+            foreach ($parties as $p) { if ((int)$p['id'] === (int)$form['party_id']) { $prevBal = (int)$p['balance']; } }
+            $payNow  = $form['pay_mode'] === 'full' ? $tot['total'] : ($form['pay_mode'] === 'part' ? min(sanitizeAmount($form['pay_amount']), $tot['total']) : 0);
+            $afterBal = $prevBal + ($isSale ? 1 : -1) * ($tot['total'] - $payNow);
+            ?>
+            <div class="st-balbox" data-balbox data-sign="<?= $isSale ? 1 : -1 ?>"<?= (int)$form['party_id'] > 0 ? '' : ' hidden' ?>>
+                <div class="st-sum-line is-prev"><span>مانده‌ی قبلی <small data-bal-side><?= h(BizParties::sideLabel($prevBal)) ?></small></span><b class="st-num" data-bal-prev><?= formatMoney(abs($prevBal)) ?></b></div>
+                <div class="st-sum-line is-after"><span>مانده‌ی کل پس از این فاکتور <small data-after-side><?= h(BizParties::sideLabel($afterBal)) ?></small></span><b class="st-num" data-bal-after><?= formatMoney(abs($afterBal)) ?></b></div>
+                <a class="st-field-link" data-bal-link href="<?= h(Biz::url('party.php' . ((int)$form['party_id'] > 0 ? '?id=' . (int)$form['party_id'] : ''))) ?>">صورت‌حساب و اصلاحِ مانده‌ی اول دوره ›</a>
+            </div>
             <p class="st-muted st-unit-note">مبلغ‌ها به تومان.</p>
         </section>
         <section class="st-card st-paybox">
@@ -295,7 +306,7 @@ require __DIR__ . '/../includes/biz_head.php';
                 <?php endforeach; ?>
             </div>
             <div class="st-row2">
-                <label class="st-field"><span>مبلغ (برای «بخشی»)</span><input type="text" name="pay_amount" value="<?= h((string)$form['pay_amount']) ?>" inputmode="numeric" dir="ltr"></label>
+                <label class="st-field"><span>مبلغ (برای «بخشی»)</span><input type="text" name="pay_amount" value="<?= h((string)$form['pay_amount']) ?>" inputmode="numeric" dir="ltr" data-payamount></label>
                 <label class="st-field"><span>روش</span>
                     <select name="method"><?php foreach (BizPay::METHODS as $mk => $ml): ?><option value="<?= h($mk) ?>"<?= $mk === $form['method'] ? ' selected' : '' ?>><?= h($ml) ?></option><?php endforeach; ?></select>
                 </label>

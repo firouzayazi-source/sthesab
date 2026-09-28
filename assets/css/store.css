@@ -454,40 +454,73 @@ a.st-kpi-card:hover { border-color: var(--st-accent); }
 .st-field-link { font-size: 12px; font-weight: 400; text-decoration: none; margin-top: -2px; }
 .st-lines-card { padding: 0; overflow: hidden; }
 .st-lines-wrap { border: 0; border-radius: 0; margin: 0; box-shadow: none; }
-.st-lines { table-layout: auto; }
-.st-lines td { padding: 6px 8px; }
+/* ⛔ جدولِ ردیف‌ها فشرده است («جدولش خیلی بزرگه فضا رو گرفته»): خانه‌های
+   ۳۴ پیکسلی، ستون‌های عددیِ باریکِ ثابت، و نامِ کالا دیگر تمام‌عرض نیست —
+   کنارش «شرحِ کالا» (IMEI برای گوشی، توضیح برای بقیه). */
+.st-lines { table-layout: fixed; width: 100%; font-size: 13.5px; }
+.st-lines th { padding: 8px 6px; font-size: 12px; }
+.st-lines td { padding: 4px 4px; }
 .st-lines td:first-child { min-width: 0; }
-.st-lines th.st-line-no, .st-lines td.st-line-no { width: 34px; text-align: center; color: var(--st-ink-2); }
+.st-lines th.st-line-no, .st-lines td.st-line-no { width: 30px; text-align: center; color: var(--st-ink-2); padding-inline: 2px; }
 .st-lines input {
-    font: inherit; color: var(--st-ink); background: var(--st-bg); width: 100%; min-width: 0;
-    border: 1px solid var(--st-line); border-radius: 8px; padding: 7px 9px;
+    font: inherit; color: var(--st-ink); background: var(--st-bg); width: 100%; min-width: 0; height: 34px;
+    border: 1px solid transparent; border-radius: 8px; padding: 4px 8px;
 }
+.st-lines input:hover { border-color: var(--st-line); }
 .st-lines input[dir="ltr"] { text-align: left; }
-.st-lines input:focus { outline: 2px solid var(--st-accent); outline-offset: 0; border-color: transparent; }
-.st-lines td.st-line-item { min-width: 200px; }
-.st-lines td:nth-child(3), .st-lines td:nth-child(4), .st-lines td:nth-child(5) { width: 110px; }
-.st-lines td.st-td-num { width: 120px; white-space: nowrap; }
+.st-lines input:focus { outline: 2px solid var(--st-accent); outline-offset: 0; border-color: transparent; background: var(--st-surface); }
+.st-lines .st-line-qty { width: 64px; }
+.st-lines .st-line-price { width: 112px; }
+.st-lines .st-line-disc { width: 92px; }
+.st-lines th.st-th-num:last-child, .st-lines td.st-td-num { width: 132px; white-space: nowrap; }
+.st-lines td.st-td-num { padding-inline: 8px; font-weight: 700; }
+.st-lines td.st-line-item, .st-lines td.st-line-desc { min-width: 0; }
+.st-line-desc input.st-line-notein { color: var(--st-ink-2); }
 .st-line.is-over input[data-qty] { border-color: var(--st-err); background: var(--st-err-wash); }
 .st-line-note { display: block; font-size: 11px; color: var(--st-ink-2); margin-top: 2px; }
-.st-lines-tools { padding: 10px 14px; border-top: 1px solid var(--st-line); }
+.st-lines-tools { padding: 10px 14px; border-top: 1px solid var(--st-line); display: flex; flex-direction: column; gap: 4px; }
+.st-lines-tools .st-muted-i { font-size: 12px; }
 
 @media (max-width: 640px) {
-    /* ردیفِ فاکتور روی گوشی: کالا یک خطِ کامل، زیرش مقدار/بها/جمع — نه اسکرولِ افقی */
+    /* ردیفِ فاکتور روی گوشی: کالا یک خط، زیرش شرح، و زیرش تعداد/فی/جمع — نه اسکرولِ افقی */
+    .st-lines { table-layout: auto; }
     .st-lines thead { display: none; }
     .st-lines, .st-lines tbody { display: block; }
     .st-lines tr.st-line {
-        display: grid; gap: 6px 8px; padding: 10px;
+        display: grid; gap: 4px 6px; padding: 8px 8px;
         grid-template-columns: 22px minmax(0, 1fr) minmax(0, 1fr) minmax(0, auto);
-        grid-template-areas: "no item item item" "no qty price lt";
+        grid-template-areas: "no item item item" "no desc desc desc" "no qty price lt";
         border-bottom: 1px solid var(--st-line);
     }
     .st-lines tr.st-line td { display: block; padding: 0; border: 0; width: auto; min-width: 0; }
     .st-lines td.st-line-no { grid-area: no; align-self: center; width: auto; }
-    .st-lines td.st-line-item { grid-area: item; min-width: 0; }
-    .st-lines tr.st-line td:nth-child(3) { grid-area: qty; }
-    .st-lines tr.st-line td:nth-child(4) { grid-area: price; }
+    .st-lines td.st-line-item { grid-area: item; }
+    .st-lines td.st-line-desc { grid-area: desc; }
+    .st-lines td.st-line-qty { grid-area: qty; }
+    .st-lines td.st-line-price { grid-area: price; }
     .st-lines td.st-td-num { grid-area: lt; align-self: center; min-width: 64px; text-align: left; }
+    .st-lines input { border-color: var(--st-line); }
 }
+
+/* ---------- فهرستِ کشوییِ پیشنهادِ کالا (`store.js`) ---------- */
+.st-ac {
+    position: fixed; z-index: 60; max-height: 300px; overflow-y: auto; overscroll-behavior: contain;
+    background: var(--st-surface); border: 1px solid var(--st-line); border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(28,25,23,.18); padding: 4px; direction: rtl; text-align: right;
+}
+.st-ac-opt { display: flex; flex-direction: column; gap: 0; padding: 7px 10px; border-radius: 8px; cursor: pointer; line-height: 1.5; }
+.st-ac-opt b { font-weight: 700; font-size: 14px; overflow-wrap: anywhere; }
+.st-ac-opt span { font-size: 12px; color: var(--st-ink-2); }
+.st-ac-opt:hover, .st-ac-opt.is-active { background: var(--st-wash); }
+.st-ac-opt.is-out b { color: var(--st-ink-2); }
+.st-ac-none { padding: 10px 12px; font-size: 13px; color: var(--st-ink-2); }
+
+/* ---------- مانده‌ی قبلی و کلِ طرف‌حساب ---------- */
+.st-balbox { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; padding: 10px 12px; border-radius: 10px; background: var(--st-bg); border: 1px dashed var(--st-line); }
+.st-balbox[hidden] { display: none; }
+.st-balbox .st-sum-line small { color: var(--st-ink-2); font-weight: 400; font-size: 12px; }
+.st-balbox .is-after { font-weight: 800; }
+.st-imei.is-note { font-style: normal; }
 
 .st-doc-foot { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; }
 @media (min-width: 900px) { .st-doc-foot { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
@@ -648,3 +681,36 @@ a.st-kpi-card:hover { border-color: var(--st-accent); }
 .st-unit-list { display: flex; flex-direction: column; gap: 0; list-style: none; margin: 0; padding: 0; }
 .st-unit-list li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--st-line); }
 .st-unit-list li:last-child { border-bottom: 0; }
+.st-line-desc .st-line-imei { margin-top: 0; }
+.st-line-desc .st-line-imei:not([hidden]) + .st-line-notein:not([hidden]) { margin-top: 4px; }
+
+/* ============================================================
+   لایه‌ی مینیمال — «قوی‌تر، مینیمال‌تر، باحال‌تر»
+   ============================================================
+   ⛔ فقط شکل؛ هیچ توکنِ رنگی عوض نشد. هر حرکت «کم کردن» است:
+   - کارت‌ها در روز بی‌خط‌اند و عمقشان از یک سایه‌ی نرم می‌آید (خط + سایه
+     همان مرز را دو بار می‌کشید). در شب خط می‌ماند: سایه آنجا دیده نمی‌شود.
+   - یک کارتِ «قهرمان» روی پیشخوان (`.st-kpi-hero`): فروشِ امروز، تیره با
+     عددِ کهربایی — چشم اول همان‌جا می‌نشیند، نه روی چهار کارتِ هم‌وزن.
+   - عددِ درشت با رقمِ متناسب و فشرده؛ ستون‌های جدول همان جدول‌عرض می‌مانند.
+   - نوارِ اسکرولِ منوی کناری باریک و هم‌رنگِ نوار. */
+@media (prefers-color-scheme: light) {
+    .st-card, .st-kpi-card, .st-action:not(.is-primary), .st-table-wrap:not(.st-lines-wrap) {
+        border-color: transparent;
+        box-shadow: 0 1px 1px rgba(28,25,23,.04), 0 14px 32px -22px rgba(28,25,23,.45);
+    }
+    .st-card-invite, .st-np { border-color: var(--st-accent); }
+}
+.st-card, .st-kpi-card { border-radius: 18px; }
+.st-h1 { font-size: 25px; letter-spacing: -.4px; }
+.st-kpi-value { font-variant-numeric: proportional-nums; letter-spacing: -.6px; }
+.st-kpi-card.st-kpi-hero {
+    background: radial-gradient(120% 140% at 100% 0%, #44300f 0%, #1c1917 58%);
+    border-color: transparent; color: #fafaf9;
+}
+.st-kpi-card.st-kpi-hero .st-kpi-label, .st-kpi-card.st-kpi-hero .st-kpi-sub { color: rgba(250,250,249,.72); }
+.st-kpi-card.st-kpi-hero .st-kpi-value { color: #fcd34d; }
+a.st-kpi-card.st-kpi-hero:hover { border-color: #fcd34d; }
+.st-table th { font-size: 12px; font-weight: 600; color: var(--st-ink-2); }
+.st-bar { border-radius: 4px 4px 1px 1px; }
+.st-side-nav { scrollbar-width: thin; scrollbar-color: rgba(250,250,249,.16) transparent; }

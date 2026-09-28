@@ -71,7 +71,7 @@ require __DIR__ . '/../includes/biz_head.php';
 <?php endif; ?>
 
 <div class="st-kpis">
-    <a class="st-kpi-card" href="<?= h(Biz::url('reports.php?p=today')) ?>">
+    <a class="st-kpi-card st-kpi-hero" href="<?= h(Biz::url('reports.php?p=today')) ?>">
         <span class="st-kpi-label">فروشِ امروز</span>
         <span class="st-kpi-value st-num"><?= formatMoney($saleToday['net']) ?></span>
         <span class="st-kpi-sub"><?= toPersianDigits((string)$saleToday['docs']) ?> فاکتور · هفته‌ی پیش همین روز <?= formatMoney($saleLW['net']) ?></span>
