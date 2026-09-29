@@ -69,10 +69,10 @@ final class BizDocView
         return is_string($g) && isValidDate($g) ? $g : '';
     }
 
-    /** طرف‌حساب‌های فعال برای `<select>` — سقف دارد و می‌گوید. */
-    public static function parties(int $userId, int $cap = 2000): array
+    /** طرف‌حساب‌های فعال برای `<select>` — سقف دارد و می‌گوید. `$balance`: بالای `BizParties::all()`. */
+    public static function parties(int $userId, int $cap = 2000, bool $balance = true): array
     {
-        return BizParties::all($userId, '', $cap)['rows'];
+        return BizParties::all($userId, '', $cap, $balance)['rows'];
     }
 
     /** صندوق‌های فعال. */

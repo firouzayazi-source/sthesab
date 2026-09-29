@@ -248,6 +248,14 @@ a { color: var(--st-accent); }
     background: var(--st-sunken); color: var(--st-ink); font-size: 13px; font-weight: 700;
     border: 1px solid var(--st-line);
 }
+/* ⛔ تصویرِ شخصی جای حرفِ اول؛ همان قاب — اندازه‌ی نوار عوض نمی‌شود. */
+.st-avatar.has-img { overflow: hidden; padding: 0; background: var(--st-sunken); }
+.st-avatar-img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.st-avatar-lg { width: 72px; height: 72px; font-size: 26px; }
+.st-avatar-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.st-avatar-form { display: flex; align-items: flex-end; gap: 10px; flex: 1 1 260px; flex-wrap: wrap; min-width: 0; }
+.st-avatar-row .st-field { flex: 1 1 200px; margin: 0; min-width: 0; }
+.st-avatar-row input[type="file"] { max-width: 100%; }
 .st-me-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
 .st-me-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .st-me-role { font-size: 11.5px; color: var(--st-ink-3); white-space: nowrap; }

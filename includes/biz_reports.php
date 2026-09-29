@@ -115,18 +115,25 @@ final class BizReports
     public static function topProducts(int $userId, string $from, string $to, int $limit = 10): array
     {
         $st = Database::getConnection()->prepare(
-            "SELECT COALESCE(p.name, l.description) AS name, l.product_id, l.unit,
-                    SUM(CASE WHEN i.kind = 'sale' THEN l.qty ELSE -l.qty END) AS qty,
-                    SUM(CASE WHEN i.kind = 'sale' THEN l.net_total ELSE -l.net_total END) AS rev,
-                    SUM(CASE WHEN i.kind = 'sale' THEN 1 ELSE -1 END * ROUND(COALESCE(l.unit_cost, 0) * l.qty)) AS cost
-             FROM biz_invoice_lines l
-             JOIN biz_invoices i ON i.id = l.invoice_id AND i.user_id = l.user_id
-             LEFT JOIN biz_products p ON p.id = l.product_id AND p.user_id = l.user_id
-             WHERE l.user_id = :u AND i.status = 'issued' AND i.kind IN ('sale','sale_return') AND i.inv_date BETWEEN :f AND :t
-             GROUP BY l.product_id, COALESCE(p.name, l.description), l.unit
-             ORDER BY rev DESC LIMIT :lim"
+            // ⛔ اول روی خودِ ردیف‌ها گروه می‌شود (کالا ← `product_id`، شرحِ آزاد ←
+            //    متن) و نامِ کالا **بعد** از جمع می‌آید: گروه‌بندی روی رشته‌ی
+            //    `COALESCE(p.name, …)` با جدولِ موقت ۳۳٪ کندتر بود (۱۵٫۴ → ۱۰٫۴ ms
+            //    روی یک سال و ۳۷۵۰ ردیف، نتیجه‌ی یکسان). کالای دارای ردیف حذف‌شدنی
+            //    نیست، پس `MIN(description)` فقط برای شرحِ آزاد به کار می‌آید.
+            "SELECT COALESCE(p.name, g.descr) AS name, g.product_id, g.unit, g.qty, g.rev, g.cost
+             FROM (SELECT l.product_id, l.unit, MIN(l.description) AS descr,
+                          SUM(CASE WHEN i.kind = 'sale' THEN l.qty ELSE -l.qty END) AS qty,
+                          SUM(CASE WHEN i.kind = 'sale' THEN l.net_total ELSE -l.net_total END) AS rev,
+                          SUM(CASE WHEN i.kind = 'sale' THEN 1 ELSE -1 END * ROUND(COALESCE(l.unit_cost, 0) * l.qty)) AS cost
+                   FROM biz_invoices i
+                   JOIN biz_invoice_lines l ON l.invoice_id = i.id AND l.user_id = i.user_id
+                   WHERE i.user_id = :u AND i.status = 'issued' AND i.kind IN ('sale','sale_return') AND i.inv_date BETWEEN :f AND :t
+                   GROUP BY l.product_id, CASE WHEN l.product_id IS NULL THEN l.description END, l.unit) g
+             LEFT JOIN biz_products p ON p.id = g.product_id AND p.user_id = :u2
+             ORDER BY g.rev DESC, g.product_id LIMIT :lim"
         );
         $st->bindValue('u', $userId, PDO::PARAM_INT);
+        $st->bindValue('u2', $userId, PDO::PARAM_INT);
         $st->bindValue('f', $from);
         $st->bindValue('t', $to);
         $st->bindValue('lim', $limit, PDO::PARAM_INT);
@@ -143,7 +150,7 @@ final class BizReports
                     SUM(CASE WHEN i.kind = 'sale' THEN 1 ELSE -1 END * ROUND(COALESCE(l.unit_cost, 0) * l.qty)) AS cost
              FROM biz_invoice_lines l
              JOIN biz_invoices i ON i.id = l.invoice_id AND i.user_id = l.user_id
-             LEFT JOIN biz_products p ON p.id = l.product_id AND p.user_id = l.user_id
+             LEFT JOIN biz_products p FORCE INDEX (PRIMARY) ON p.id = l.product_id AND p.user_id = l.user_id
              LEFT JOIN biz_categories c ON c.id = p.category_id AND c.user_id = l.user_id
              WHERE l.user_id = :u AND i.status = 'issued' AND i.kind IN ('sale','sale_return') AND i.inv_date BETWEEN :f AND :t
              GROUP BY c.name ORDER BY rev DESC"
@@ -221,7 +228,7 @@ final class BizReports
                     COUNT(DISTINCT i.id) AS docs
              FROM biz_invoice_lines l
              JOIN biz_invoices i ON i.id = l.invoice_id AND i.user_id = l.user_id
-             LEFT JOIN biz_products p ON p.id = l.product_id AND p.user_id = l.user_id
+             LEFT JOIN biz_products p FORCE INDEX (PRIMARY) ON p.id = l.product_id AND p.user_id = l.user_id
              WHERE l.user_id = :u AND i.status = 'issued' AND i.kind IN (:k1, :k2) AND i.inv_date BETWEEN :f AND :t
              GROUP BY l.product_id, COALESCE(p.name, l.description), p.sku, l.unit
              ORDER BY amount DESC LIMIT :lim"

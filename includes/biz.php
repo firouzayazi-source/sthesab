@@ -239,10 +239,30 @@ final class Biz
      * `store/` (یک کوئری). بدونِ آن، کاربری که مدیر همین حالا برایش
      * فروشگاه روشن کرده تا ورودِ دوباره ۴۰۴ می‌گرفت.
      */
+    /** ستونِ `users.avatar` هست؟ — از همان کوئریِ `refreshType()`، بی‌سنجشِ ساختار. */
+    public static ?bool $avatarReady = null;
+
     public static function refreshType(): string
     {
         if (empty($_SESSION['user_id'])) { return 'personal'; }
-        $t = self::typeFor((int)$_SESSION['user_id']);
+        $uid = (int)$_SESSION['user_id'];
+        // ⛔ تصویرِ شخصی (بالا-چپِ پوسته‌ی فروشگاه) در **همین** کوئری می‌آید —
+        //    صفر کوئریِ اضافه. ستونِ `avatar` (migration_p4) یا `account_type`
+        //    ممکن است نباشد؛ آن‌وقت همان مسیرِ قبلی.
+        try {
+            $st = Database::getConnection()->prepare('SELECT account_type, avatar FROM users WHERE id = :id LIMIT 1');
+            $st->execute(['id' => $uid]);
+            $row = $st->fetch() ?: [];
+            $v = $row['account_type'] ?? null;
+            $t = is_string($v) && isset(self::TYPES[$v]) ? $v : 'personal';
+            $a = $row['avatar'] ?? null;
+            if (is_string($a) && $a !== '') { $_SESSION['avatar'] = $a; } else { unset($_SESSION['avatar']); }
+            self::$avatarReady = true;
+        } catch (PDOException $e) {
+            if ((string)$e->getCode() !== '42S22') { throw $e; }
+            $t = self::typeFor($uid);
+            self::$avatarReady = false;
+        }
         $_SESSION['account_type'] = $t;
         return $t;
     }
@@ -465,6 +485,48 @@ final class Biz
             . "try{t=localStorage.getItem('st_theme');m=localStorage.getItem('st_side_mini');}catch(e){}"
             . "if(t!=='dark'&&t!=='light'){t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}"
             . "d.setAttribute('data-st-theme',t);if(m==='1'){d.setAttribute('data-st-mini','1');}})();";
+    }
+
+    /**
+     * ⛔ صفحه‌هایی که پیش‌گیری نمی‌شوند: `logout.php` با GET خارج می‌کند (مکثِ
+     *    نشانگر روی «خروج» کاربر را بیرون می‌انداخت). هیچ صفحه‌ی دیگرِ
+     *    فروشگاه با GET نمی‌نویسد — همه‌ی نوشتن‌ها POST + CSRF‌اند.
+     */
+    public const SPEC_SKIP = ['logout.php'];
+    /** پیش‌گیری بله، prerender نه: برگه‌ی چاپ سنگین است و کمتر باز می‌شود. */
+    public const SPEC_NO_PRERENDER = ['print.php'];
+
+    /**
+     * ⛔ تعویضِ فوریِ صفحه در فروشگاه — Speculation Rules (همان سازوکارِ
+     * `speculationRulesJson()`ِ حساب لند، با دامنه‌ی `/store/`).
+     *
+     * - **prerender با `moderate`:** وقتی نشانگر ۲۰۰ms روی لینک می‌ماند (یا
+     *   انگشت لمس می‌کند) مرورگر صفحه‌ی بعد را **کامل** در پس‌زمینه می‌سازد؛
+     *   زدن فقط آن را نشان می‌دهد. `eager`/`immediate` عمداً نه: هر بازدید
+     *   ده صفحه‌ی ناخواسته روی سرور می‌ساخت.
+     * - **کهنگی ممکن نیست:** همه‌ی نوشتن‌های فروشگاه فرمِ POST + ریدایرکت‌اند،
+     *   یعنی **سندِ تازه** — و پیش‌گرفته‌ها مالِ سندِ قبلی‌اند و دور ریخته
+     *   می‌شوند. (حساب لند `fetch`ِ نویسنده دارد و برای همین
+     *   `resetSpeculation()` لازم شد؛ اینجا `store.js` هیچ درخواستِ نویسنده‌ای
+     *   ندارد.)
+     * - HTML همچنان `no-store` است؛ کشِ پیش‌گیری جدا و یک‌بارمصرف است.
+     * - سافاری این را ندارد و بی‌صدا نادیده می‌گیرد.
+     */
+    public static function speculationRulesJson(): string
+    {
+        $b = (defined('APP_BASE_PATH') ? APP_BASE_PATH : '') . '/' . self::DIR;
+        $not = [['selector_matches' => '[download], [target], [onclick], [data-no-prefetch]'],
+                ['href_matches' => $b . '/*format=json*']];
+        foreach (self::SPEC_SKIP as $p) { $not[] = ['href_matches' => $b . '/' . $p . '*']; }
+        $where = ['and' => [['href_matches' => $b . '/*'], ['not' => ['or' => $not]]]];
+        $noPre = $not;
+        foreach (self::SPEC_NO_PRERENDER as $p) { $noPre[] = ['href_matches' => $b . '/' . $p . '*']; }
+        $rules = [
+            'prerender' => [['where' => ['and' => [['href_matches' => $b . '/*'], ['not' => ['or' => $noPre]]]],
+                             'eagerness' => 'moderate']],
+            'prefetch'  => [['where' => $where, 'eagerness' => 'moderate']],
+        ];
+        return json_encode($rules, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
     }
 
     /** پالتِ این فروشگاه؛ ناشناخته یا خالی → اولین کلید. صفر کوئریِ اضافه. */

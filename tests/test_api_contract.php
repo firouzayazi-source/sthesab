@@ -7271,4 +7271,103 @@ if (!preg_match("/'store\/search\.php'\s*=>\s*\d+/", $bud70d) || !str_contains((
 }
 T::bulk(24, $dBad, 'پالت فقط توکن، پوسته بی‌جاوااسکریپت، جستجو و داشبورد فقط‌خواندنی با user_id، چک بیرونِ نقد، و فرمان بی‌نوشتن');
 
+// ---------------------------------------------------------------
+// ⛔ قاعده ۷۰ه — سرعتِ فروشگاه و تصویرِ شخصی.
+//    «کمی کند است»: اندازه‌گیری نشان داد مانده‌ی طرف‌حساب‌ها در یک SELECT
+//    چهار بار و روی داشبورد سه بار حساب می‌شد، منوهایی که مانده نشان
+//    نمی‌دهند آن را حساب می‌کردند، و اپتیمایزر برای هر ردیفِ فاکتور همه‌ی
+//    کالاها را می‌پیمود (۱۴۳ ms → ۱۴). رفتار در `test_store_dash`،
+//    `test_store_speed` و `test_store_avatar` است؛ این قاعده شکل را نگه
+//    می‌دارد برای ماشینی که دیتابیس یا کرومیوم ندارد.
+T::group('قاعده ۷۰ه — سرعتِ فروشگاه و تصویرِ شخصی');
+$eBad = [];
+$strip70e = function (string $src): string {
+    $out = '';
+    foreach (token_get_all($src) as $t) {
+        if (is_array($t) && in_array($t[0], [T_COMMENT, T_DOC_COMMENT], true)) { continue; }
+        $out .= is_array($t) ? $t[1] : $t;
+    }
+    return $out;
+};
+$head70e = $strip70e((string)file_get_contents(__DIR__ . '/../includes/biz_head.php'));
+$biz70e  = $strip70e((string)file_get_contents(__DIR__ . '/../includes/biz.php'));
+$cat70e  = $strip70e((string)file_get_contents(__DIR__ . '/../includes/biz_catalog.php'));
+$dash70e = $strip70e((string)file_get_contents(__DIR__ . '/../includes/biz_dash.php'));
+$rep70e  = $strip70e((string)file_get_contents(__DIR__ . '/../includes/biz_reports.php'));
+$idx70e  = $strip70e((string)file_get_contents(__DIR__ . '/../store/index.php'));
+$js70e   = (string)preg_replace(['#/\*.*?\*/#s', '#(?<![:"\'])//[^\n]*#'], '', (string)file_get_contents(__DIR__ . '/../assets/js/store.js'));
+
+// ۱. پیش‌گیری و فونت در پوسته
+if (!str_contains($head70e, '<script type="speculationrules" id="stSpecRules"><?= Biz::speculationRulesJson() ?></script>')) {
+    $eBad[] = 'biz_head.php — قاعده‌ی پیش‌گیری (Biz::speculationRulesJson) رندر نمی‌شود';
+}
+if (!preg_match('#<link rel="preload" href="<\?= APP_BASE_PATH \?>/assets/fonts/Vazirmatn\.woff2" as="font" type="font/woff2" crossorigin>#', $head70e)) {
+    $eBad[] = 'biz_head.php — preloadِ فونت (همان آدرسِ @font-face، بی‌?v=)';
+}
+$fnSpec = preg_match('/function speculationRulesJson\(\).*?\n    \}/s', $biz70e, $mS) ? $mS[0] : '';
+if ($fnSpec === '' || substr_count($fnSpec, "'moderate'") < 2 || preg_match("/'(eager|immediate)'/", $fnSpec)) {
+    $eBad[] = 'Biz::speculationRulesJson — prefetch و prerender هر دو «moderate»، هرگز eager/immediate';
+}
+if (!preg_match("/const SPEC_SKIP = \[[^\]]*'logout\.php'/", $biz70e)) { $eBad[] = 'Biz::SPEC_SKIP — «خروج» با GET است و نباید پیش‌گرفته شود'; }
+// ⛔ کهنگی ممکن نیست فقط چون store.js هیچ درخواستِ نویسنده‌ای ندارد
+if (preg_match("/method\s*:\s*['\"]POST['\"]/i", $js70e)) {
+    $eBad[] = 'store.js — درخواستِ نویسنده با fetch؛ آن‌وقت پیش‌گرفته‌ها کهنه می‌مانند (resetSpeculation لازم می‌شود)';
+}
+
+// ۲. مانده‌ها یک بار
+$fnSum = preg_match('/class BizParties.*?public static function summary\(int \$userId\): array\s*\{(.*?)\n    \}/s', $cat70e, $mU) ? $mU[1] : '';
+if ($fnSum === '' || substr_count($fnSum, 'BALANCE_SQL') !== 1) { $eBad[] = 'BizParties::summary — BALANCE_SQL باید دقیقاً یک بار در کوئری باشد'; }
+if (!str_contains($idx70e, 'BizDash::partyBook($userId)') || str_contains($idx70e, 'BizDash::balances(') || str_contains($idx70e, 'BizParties::summary(')) {
+    $eBad[] = 'store/index.php — داشبورد مانده‌ها را فقط با BizDash::partyBook() (یک بار) می‌خواند';
+}
+if (str_contains($dash70e, 'function balances(')) { $eBad[] = 'biz_dash.php — balances() برگشته؛ مانده‌ها دوباره سه بار حساب می‌شوند'; }
+$fnAll = preg_match('/public static function all\(int \$userId, string \$filter = \'\', int \$cap = 3000, bool \$withBalance = true\)/', $cat70e);
+if (!$fnAll || !str_contains($cat70e, "\$bal = \$withBalance ? self::BALANCE_SQL : 'NULL';")) {
+    $eBad[] = 'BizParties::all — منویی که مانده نشان نمی‌دهد باید بتواند BALANCE_SQL را نزند';
+}
+foreach (['store/quick-sale.php' => 'BizDocView::parties($userId, 2000, false)', 'store/settings.php' => "BizParties::all(\$userId, '', 500, false)",
+          'store/reports.php' => "BizParties::all(\$userId, '', 500, false)"] as $f => $needle) {
+    if (!str_contains((string)file_get_contents(__DIR__ . '/../' . $f), $needle)) { $eBad[] = "{$f} — منوی طرف‌حساب مانده نشان نمی‌دهد و نباید حسابش کند"; }
+}
+
+// ۳. اتصال به کالا با کلیدِ اصلی (اپتیمایزر همه‌ی کالاها را می‌پیمود)
+foreach (['biz_reports.php' => $rep70e, 'biz_docs.php' => $strip70e((string)file_get_contents(__DIR__ . '/../includes/biz_docs.php'))] as $f => $src) {
+    if (preg_match_all('/LEFT JOIN biz_products p(?! FORCE INDEX \(PRIMARY\)) ON p\.id = l\.product_id AND p\.user_id = l\.user_id/', $src, $mm)) {
+        $eBad[] = "{$f} — " . count($mm[0]) . ' اتصالِ biz_products روی ردیف‌ها بی FORCE INDEX (PRIMARY)';
+    }
+}
+if (!str_contains($rep70e, "GROUP BY l.product_id, CASE WHEN l.product_id IS NULL THEN l.description END, l.unit) g")) {
+    $eBad[] = 'BizReports::topProducts — گروه‌بندی روی خودِ ردیف‌ها، نامِ کالا بعد از جمع';
+}
+$mig70e = (string)file_get_contents(__DIR__ . '/../deploy/migrate.sh');
+if (!preg_match('/^\s+migration_biz_perf\.sql$/m', $mig70e) || !str_contains($mig70e, '[migration_biz_perf.sql]="biz_payments:idx_biz_payments_to_sum"')) {
+    $eBad[] = 'migrate.sh — migration_biz_perf.sql باید در MIGRATIONS و SENTINEL باشد';
+}
+
+// ۴. تصویرِ شخصی: یک مسیرِ ذخیره، CSRF، و آدرس فقط از avatarUrl()
+$writers = [];
+foreach (array_merge(glob(__DIR__ . '/../*.php') ?: [], glob(__DIR__ . '/../{api,store,includes,admin,deploy}/*.php', GLOB_BRACE) ?: []) as $f) {
+    if (preg_match('/UPDATE users SET avatar\b/', $strip70e((string)file_get_contents($f)))) { $writers[] = basename($f); }
+}
+if ($writers !== ['avatar.php']) { $eBad[] = '⛔ نوشتنِ users.avatar فقط در includes/avatar.php: ' . implode(', ', $writers); }
+$set70e = $strip70e((string)file_get_contents(__DIR__ . '/../store/settings.php'));
+if (!str_contains($set70e, "saveUserAvatar(\$userId, \$_FILES['avatar'] ?? null)") || !str_contains($set70e, 'deleteUserAvatar($userId)')
+    || !str_contains((string)file_get_contents(__DIR__ . '/../api/upload_avatar.php'), 'saveUserAvatar(')
+    || !str_contains((string)file_get_contents(__DIR__ . '/../api/delete_avatar.php'), 'deleteUserAvatar(')) {
+    $eBad[] = 'تصویر: فروشگاه و پروفایلِ حساب لند هر دو از saveUserAvatar()/deleteUserAvatar()';
+}
+if (preg_match_all('/<\?= Csrf::field\(\) \?>\s*<input type="hidden" name="action" value="avatar(_delete)?">/', $set70e) < 2) {
+    $eBad[] = 'store/settings.php — هر دو فرمِ تصویر (ذخیره و حذف) CSRF دارند';
+}
+if (!str_contains($head70e, "avatarUrl(\$_SESSION['avatar'] ?? null)") || preg_match('#uploads/avatars/\'\s*\.#', $head70e)) {
+    $eBad[] = 'biz_head.php — آدرسِ تصویر فقط از avatarUrl() (نامِ خوانده‌شده خام در مسیر نمی‌نشیند)';
+}
+if (!preg_match("/SELECT account_type, avatar FROM users WHERE id = :id LIMIT 1/", $biz70e)) {
+    $eBad[] = 'Biz::refreshType — نامِ تصویر در همان کوئریِ نوعِ حساب (صفر کوئریِ اضافه)';
+}
+if (!preg_match('/createImageBitmap\(f\)/', $js70e) || !str_contains($js70e, 'rd.readAsDataURL(f)')) {
+    $eBad[] = 'store.js — کوچک‌سازیِ تصویر با createImageBitmap و FileReader (نه blob:)';
+}
+T::bulk(21, $eBad, 'پیش‌گیری و فونت در پوسته، مانده‌ها یک بار، اتصالِ کالا با کلیدِ اصلی، و تصویرِ شخصی از یک مسیر');
+
 exit(T::report());

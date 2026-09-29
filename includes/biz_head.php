@@ -30,6 +30,13 @@ $__bizSet   = Biz::settings($__bizUid);
 $__bizShop  = $__bizSet['shop_name'] !== '' ? $__bizSet['shop_name'] : 'فروشگاه من';
 $__bizName  = Auth::fullName() !== '' ? Auth::fullName() : 'کاربر';
 $__bizInit  = mb_substr(trim($__bizName), 0, 1);
+// ⛔ تصویرِ شخصی جای حرفِ اول — نامش را `Biz::requirePage()` در همان کوئریِ
+//    نوعِ حساب خوانده (صفر کوئریِ اضافه)؛ فایلِ نبوده یعنی همان حرف.
+require_once __DIR__ . '/avatar.php';
+$__bizAvUrl = avatarUrl($_SESSION['avatar'] ?? null);
+$__bizAv    = $__bizAvUrl !== ''
+    ? '<img class="st-avatar-img" src="' . h($__bizAvUrl) . '" alt="" width="38" height="38" decoding="async">'
+    : h($__bizInit);
 $__bizType  = Biz::TYPES[$_SESSION['account_type'] ?? ''] ?? '';
 $__bizScript = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
 $__bizPage  = Biz::navCurrent($__bizScript);
@@ -71,6 +78,10 @@ foreach (Biz::NEW_MENU as $__h => $__l) { $__bizCmd['new'][] = ['t' => $__l, 'u'
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title><?= h(($pageTitle ?? '') !== '' ? $pageTitle . ' · ' . $__bizShop : $__bizShop) ?></title>
     <script><?= Biz::bootScript() ?></script>
+    <?php /* ⛔ فونت داخلِ CSS تعریف شده و مرورگر تا تجزیه‌ی آن خبر ندارد لازمش
+             دارد؛ preload هر دو را با هم می‌گیرد (همان آدرسِ `@font-face`، بی‌`?v=`
+             — آدرسِ متفاوت یعنی دو دانلود). */ ?>
+    <link rel="preload" href="<?= APP_BASE_PATH ?>/assets/fonts/Vazirmatn.woff2" as="font" type="font/woff2" crossorigin>
     <?php foreach (assetUrls(['css/store.css']) as $__u): ?>
     <link rel="stylesheet" href="<?= h($__u) ?>">
     <?php endforeach; ?>
@@ -85,6 +96,8 @@ foreach (Biz::NEW_MENU as $__h => $__l) { $__bizCmd['new'][] = ['t' => $__l, 'u'
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="<?= h($__bizShop) ?>">
+    <?php /* ⛔ تعویضِ فوریِ صفحه: مکثِ نشانگر/لمس صفحه‌ی بعد را از پیش می‌سازد (`Biz::speculationRulesJson()`). */ ?>
+    <script type="speculationrules" id="stSpecRules"><?= Biz::speculationRulesJson() ?></script>
     <script type="application/json" id="stCmdData"><?= json_encode($__bizCmd, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
 </head>
 <body class="st-body">
@@ -118,7 +131,7 @@ foreach (Biz::NEW_MENU as $__h => $__l) { $__bizCmd['new'][] = ['t' => $__l, 'u'
     </nav>
     <div class="st-side-foot">
         <div class="st-me" title="<?= h($__bizName) ?>">
-            <span class="st-avatar" aria-hidden="true"><?= h($__bizInit) ?></span>
+            <span class="st-avatar<?= $__bizAvUrl !== '' ? ' has-img' : '' ?>" aria-hidden="true"><?= $__bizAv ?></span>
             <span class="st-me-text">
                 <span class="st-me-name"><?= h($__bizName) ?></span>
                 <span class="st-me-role"><?= h($__bizType) ?></span>
@@ -174,9 +187,10 @@ foreach (Biz::NEW_MENU as $__h => $__l) { $__bizCmd['new'][] = ['t' => $__l, 'u'
                 <svg class="st-ico-sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
             </button>
             <details class="st-dd st-profile">
-                <summary aria-label="حساب کاربری"><span class="st-avatar"><?= h($__bizInit) ?></span></summary>
+                <summary aria-label="حساب کاربری"><span class="st-avatar<?= $__bizAvUrl !== '' ? ' has-img' : '' ?>"><?= $__bizAv ?></span></summary>
                 <div class="st-dd-menu">
                     <div class="st-dd-head"><b><?= h($__bizName) ?></b><span><?= h($__bizShop) ?> · <?= h($__bizType) ?></span></div>
+                    <a href="<?= h(Biz::url('settings.php')) ?>#avatar">تصویر شخصی</a>
                     <a href="<?= h(Biz::url('settings.php')) ?>">تنظیمات فروشگاه</a>
                     <a href="<?= h(Biz::url('invoice-design.php')) ?>">طراحی فاکتور</a>
                     <?php if (!Biz::isStoreOnly()): ?>

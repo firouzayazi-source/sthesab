@@ -861,3 +861,70 @@
         a.addEventListener('click', function (e) { e.preventDefault(); open(''); });
     });
 })();
+
+/* تصویرِ شخصی (تنظیمات): پیش از فرستادن در خودِ مرورگر کوچک می‌شود.
+   ⛔ `createImageBitmap(file)` (رمزگشایی بیرون از رشته‌ی اصلی) و در نبودش
+      `FileReader` + `data:` — هرگز `URL.createObjectURL`: CSP فقط
+      `img-src 'self' data:` می‌پذیرد و `blob:` بی‌صدا شکست می‌خورد (قاعده ۵۹).
+      رمزگشاییِ یک عکسِ ۱۲ مگاپیکسلی با `<img>`ِ روی رشته‌ی اصلی صفحه را
+      ثانیه‌ها قفل کرد (در کرومیومِ آزمایشی اندازه‌گیری شد) — برای همین اول
+      `createImageBitmap`.
+   عکسِ درشتِ گوشی روی دیتای موبایل کُند است و از سقفِ آپلودِ سرور هم رد
+   می‌شد؛ حالا یک JPEGِ ۵۱۲ پیکسلی می‌رود. سرور همچنان خودش می‌سنجد و از نو
+   می‌کشد (`saveUserAvatar()`). اگر مرورگر فایل را باز نکند یا `DataTransfer`
+   نداشته باشد، همان فایلِ اصلی می‌رود. */
+(function () {
+    'use strict';
+    document.addEventListener('DOMContentLoaded', function () {
+        var input = document.querySelector('[data-avatar-input]');
+        var prev  = document.querySelector('[data-avatar-preview]');
+        if (!input) { return; }
+        var SIDE = 512;
+        var draw = function (src, w, h) {
+            var s = Math.min(w, h);
+            if (!s) { return; }
+            var c = document.createElement('canvas');
+            c.width = c.height = Math.min(SIDE, s);
+            var g = c.getContext('2d');
+            g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height);
+            g.drawImage(src, (w - s) / 2, (h - s) / 2, s, s, 0, 0, c.width, c.height);
+            if (src.close) { src.close(); }
+            if (prev) {
+                prev.classList.add('has-img');
+                prev.textContent = '';
+                var im = document.createElement('img');
+                im.className = 'st-avatar-img'; im.alt = ''; im.src = c.toDataURL('image/jpeg', 0.85);
+                prev.appendChild(im);
+            }
+            if (!c.toBlob || typeof DataTransfer === 'undefined') { return; }
+            c.toBlob(function (b) {
+                if (!b) { return; }
+                try {
+                    var dt = new DataTransfer();
+                    dt.items.add(new File([b], 'avatar.jpg', { type: 'image/jpeg' }));
+                    input.dataset.resized = '1';
+                    input.files = dt.files;
+                } catch (e) { /* همان فایلِ اصلی */ }
+            }, 'image/jpeg', 0.85);
+        };
+        var viaReader = function (f) {
+            if (!window.FileReader) { return; }
+            var rd = new FileReader();
+            rd.onload = function () {
+                var img = new Image();
+                img.onload = function () { draw(img, img.naturalWidth, img.naturalHeight); };
+                img.src = String(rd.result || '');
+            };
+            rd.readAsDataURL(f);
+        };
+        input.addEventListener('change', function () {
+            var f = input.files && input.files[0];
+            if (!f || input.dataset.resized === '1') { input.dataset.resized = ''; return; }
+            if (window.createImageBitmap) {
+                createImageBitmap(f).then(function (bm) { draw(bm, bm.width, bm.height); }, function () { viaReader(f); });
+            } else {
+                viaReader(f);
+            }
+        });
+    });
+})();

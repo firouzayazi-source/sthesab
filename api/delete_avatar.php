@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/avatar.php';
 
 Auth::initSession();
 header('Content-Type: application/json; charset=utf-8');
@@ -11,24 +12,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') { jsonResponse(['success' => false, '
 Csrf::verifyOrFail(postParam('csrf_token'));
 
 $userId = Auth::userId();
-$pdo = Database::getConnection();
 
-try {
-    $stmt = $pdo->prepare('SELECT avatar FROM users WHERE id = :id');
-    $stmt->execute(['id' => $userId]);
-    $name = $stmt->fetch()['avatar'] ?? null;
-
-    $upd = $pdo->prepare('UPDATE users SET avatar = NULL WHERE id = :id');
-    $upd->execute(['id' => $userId]);
-
-    if ($name) {
-        $path = __DIR__ . '/../uploads/avatars/' . basename($name);
-        if (is_file($path)) { @unlink($path); }
-    }
-
-    unset($_SESSION['avatar']);
-    jsonResponse(['success' => true, 'message' => 'تصویر حذف شد.']);
-} catch (PDOException $e) {
-    Log::error('api.delete_avatar', $e);
-    jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);
-}
+$res = deleteUserAvatar((int)$userId);   // ⛔ تنها مسیرِ حذف (includes/avatar.php)
+jsonResponse(['success' => $res['ok'], 'message' => $res['message']], $res['code']);

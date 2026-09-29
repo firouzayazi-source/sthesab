@@ -1041,10 +1041,18 @@ final class BizParties
         return [implode(' AND ', $where), $params];
     }
 
-    /** همه‌ی ردیف‌ها برای چاپ. @return array{rows:array, capped:bool} */
-    public static function all(int $userId, string $filter = '', int $cap = 3000): array
+    /**
+     * همه‌ی ردیف‌ها برای چاپ و منوها. @return array{rows:array, capped:bool}
+     *
+     * ⛔ `$withBalance = false` برای منویی که مانده را نشان نمی‌دهد (فروشِ
+     *    سریع، مشتریِ پیش‌فرض، صافیِ گزارش): `BALANCE_SQL` دو زیرکوئریِ
+     *    همبسته به‌ازای **هر** طرف‌حساب است و یک منوی ساده را به کُندترین
+     *    کوئریِ صفحه تبدیل می‌کرد. کلیدِ `balance` در آن حالت `null` است، نه
+     *    صفر — صفر یک مانده‌ی واقعی است.
+     */
+    public static function all(int $userId, string $filter = '', int $cap = 3000, bool $withBalance = true): array
     {
-        $bal = self::BALANCE_SQL;
+        $bal = $withBalance ? self::BALANCE_SQL : 'NULL';
         [$sqlWhere, $params] = self::where($userId, '', $filter);
         $st = Database::getConnection()->prepare(
             "SELECT p.*, {$bal} AS balance FROM biz_parties p WHERE {$sqlWhere} ORDER BY p.name, p.id LIMIT :lim"
@@ -1261,24 +1269,25 @@ final class BizParties
     /** @return array{count:int, receivable:int, payable:int, debtors:int, creditors:int} */
     public static function summary(int $userId): array
     {
-        $bal = self::BALANCE_SQL;
-        $st  = Database::getConnection()->prepare(
-            "SELECT COUNT(*) AS cnt,
-                    COALESCE(SUM(GREATEST({$bal}, 0)), 0)  AS rec,
-                    COALESCE(SUM(GREATEST(-{$bal}, 0)), 0) AS pay,
-                    COALESCE(SUM({$bal} > 0), 0) AS dn,
-                    COALESCE(SUM({$bal} < 0), 0) AS cn
-             FROM biz_parties p WHERE p.user_id = :u AND p.is_active = 1"
+        // ⛔ مانده **یک بار** برای هر طرف‌حساب حساب می‌شود و جمع در PHP است.
+        //    نسخه‌ی قبلی `BALANCE_SQL` را چهار بار در یک `SELECT` می‌نوشت
+        //    (طلب، بدهی، شمارِ بدهکار، شمارِ بستانکار) و MariaDB هر چهار را
+        //    — هر کدام دو زیرکوئریِ همبسته — جدا اجرا می‌کرد: روی ۸۰ طرف‌حساب
+        //    و ۱۵۰۰ فاکتور **۲۳ میلی‌ثانیه** و ۱۴٬۲۱۴ ردیف، روی داشبورد و
+        //    فهرستِ طرف‌حساب‌ها هر دو. اندازه‌گیری شد (صفحه‌ی داشبورد را کُند
+        //    کرده بود)؛ حالا ~۴ ms.
+        $st = Database::getConnection()->prepare(
+            'SELECT ' . self::BALANCE_SQL . ' AS b FROM biz_parties p WHERE p.user_id = :u AND p.is_active = 1'
         );
         $st->execute(['u' => $userId]);
-        $r = $st->fetch() ?: [];
-        return [
-            'count'      => (int)($r['cnt'] ?? 0),
-            'receivable' => (int)($r['rec'] ?? 0),
-            'payable'    => (int)($r['pay'] ?? 0),
-            'debtors'    => (int)($r['dn'] ?? 0),
-            'creditors'  => (int)($r['cn'] ?? 0),
-        ];
+        $out = ['count' => 0, 'receivable' => 0, 'payable' => 0, 'debtors' => 0, 'creditors' => 0];
+        foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $b) {
+            $b = (int)$b;
+            $out['count']++;
+            if ($b > 0) { $out['receivable'] += $b; $out['debtors']++; }
+            elseif ($b < 0) { $out['payable'] -= $b; $out['creditors']++; }
+        }
+        return $out;
     }
 }
 

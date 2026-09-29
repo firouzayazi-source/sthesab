@@ -12,6 +12,7 @@ require_once __DIR__ . '/../includes/functions.php';
 Auth::initSession();
 Biz::requirePage();
 require_once __DIR__ . '/../includes/biz_catalog.php';
+require_once __DIR__ . '/../includes/avatar.php';
 
 $userId   = (int)Auth::userId();
 $error    = '';
@@ -19,6 +20,16 @@ $values   = Biz::settings($userId);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Csrf::verifyOrFail(postParam('csrf_token'));
+    // ⛔ تصویرِ شخصی از همان `saveUserAvatar()`ِ پروفایلِ حساب لند می‌رود
+    //    (includes/avatar.php) — نوع از محتوا، بازکشی با GD، نامِ تصادفی.
+    if (postParam('action') === 'avatar') {
+        $res = saveUserAvatar($userId, $_FILES['avatar'] ?? null);
+        redirectWithMessage(Biz::url('settings.php') . '#avatar', $res['ok'] ? 'success' : 'error', $res['message']);
+    }
+    if (postParam('action') === 'avatar_delete') {
+        $res = deleteUserAvatar($userId);
+        redirectWithMessage(Biz::url('settings.php') . '#avatar', $res['ok'] ? 'success' : 'error', $res['message']);
+    }
     // رنگِ فروشگاه فرمِ خودش را دارد تا ذخیره‌ی رنگ به سربرگ دست نزند.
     if (postParam('action') === 'palette') {
         $res = Biz::savePalette($userId, (string)postParam('palette'));
@@ -43,13 +54,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $ready    = Biz::businessInfoReady();
 $invPrefs = Biz::invoicePrefs($userId);
 // مشتریِ پیش‌فرض — فقط مشتری‌های فعال (تأمین‌کننده روی فاکتورِ فروش نمی‌نشیند)
-$customers = $ready ? array_values(array_filter(BizParties::all($userId, '', 500)['rows'],
+$customers = $ready ? array_values(array_filter(BizParties::all($userId, '', 500, false)['rows'],
     fn($p) => $p['kind'] !== 'supplier' && (int)$p['is_active'] === 1)) : [];
 
 $pageTitle = 'تنظیمات فروشگاه';
 require __DIR__ . '/../includes/biz_head.php';
 ?>
 <h1 class="st-h1">تنظیمات فروشگاه</h1>
+
+<?php $__av = avatarUrl($_SESSION['avatar'] ?? null); $__avOk = Biz::$avatarReady ?? usersHaveColumn(Database::getConnection(), 'avatar');   // از کوئریِ نوعِ حساب — بی‌کوئریِ ساختار ?>
+<h2 class="st-h2 st-section-title" id="avatar">تصویر شخصی</h2>
+<div class="st-card st-form">
+    <p class="st-muted">جای حرفِ اولِ نامتان، بالای صفحه و در منو می‌نشیند — همان تصویرِ پروفایلِ دفترِ شخصی.</p>
+    <?php if (!$__avOk): ?>
+    <p class="st-muted">ستونِ تصویر هنوز در دیتابیس ساخته نشده (<code dir="ltr">bash deploy/migrate.sh --apply</code>).</p>
+    <?php else: ?>
+    <div class="st-avatar-row">
+        <span class="st-avatar st-avatar-lg<?= $__av !== '' ? ' has-img' : '' ?>" data-avatar-preview aria-hidden="true"><?php if ($__av !== ''): ?><img class="st-avatar-img" src="<?= h($__av) ?>" alt="" width="72" height="72"><?php else: ?><?= h(mb_substr(trim(Auth::fullName() !== '' ? Auth::fullName() : 'کاربر'), 0, 1)) ?><?php endif; ?></span>
+        <form method="post" enctype="multipart/form-data" class="st-avatar-form" action="<?= h(Biz::url('settings.php')) ?>" data-avatar-form>
+            <?= Csrf::field() ?>
+            <input type="hidden" name="action" value="avatar">
+            <label class="st-field">
+                <span>انتخابِ تصویر</span>
+                <input type="file" name="avatar" accept="image/*" required data-avatar-input>
+            </label>
+            <button type="submit" class="st-btn">ذخیره‌ی تصویر</button>
+        </form>
+        <?php if ($__av !== ''): ?>
+        <form method="post" action="<?= h(Biz::url('settings.php')) ?>">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="action" value="avatar_delete">
+            <button type="submit" class="st-btn st-btn-ghost">حذفِ تصویر</button>
+        </form>
+        <?php endif; ?>
+    </div>
+    <p class="st-muted">JPG، PNG یا WEBP. مربعِ وسطِ تصویر برداشته و کوچک می‌شود.</p>
+    <?php endif; ?>
+</div>
 
 <h2 class="st-h2 st-section-title" id="palette">رنگِ فروشگاه</h2>
 <form method="post" class="st-card st-form" action="<?= h(Biz::url('settings.php')) ?>">

@@ -1571,7 +1571,7 @@ final class BizSerial
                        COALESCE(p.name, l.description) AS product_name, pa.name AS party_name
                 FROM biz_invoice_lines l
                 JOIN biz_invoices i ON i.id = l.invoice_id AND i.user_id = l.user_id
-                LEFT JOIN biz_products p ON p.id = l.product_id AND p.user_id = l.user_id
+                LEFT JOIN biz_products p FORCE INDEX (PRIMARY) ON p.id = l.product_id AND p.user_id = l.user_id
                 LEFT JOIN biz_parties pa ON pa.id = i.party_id AND pa.user_id = i.user_id
                 WHERE l.user_id = :u AND i.status = 'issued' AND l.imei1 IS NOT NULL"
              . ($productId > 0 ? ' AND l.product_id = :p' : '') . ' ORDER BY i.issued_at, i.id, l.id';

@@ -33,7 +33,7 @@ $rExp     = BizReports::expenses($userId, $rFrom, $rTo);
 $rAging   = BizReports::aging($userId);
 $rPrint   = BizPrint::url('sales', ['p' => $period, 'from' => $period === 'custom' ? BizDocView::jDate($rFrom) : '', 'to' => $period === 'custom' ? BizDocView::jDate($rTo) : '']);
 $cats     = BizProducts::categories($userId);
-$parties  = BizParties::all($userId, '', 500);
+$parties  = BizParties::all($userId, '', 500, false);   // فقط برای منوی صافی
 $products = BizProducts::all($userId, '', '', 500);
 $prefs    = Biz::printPrefs($userId);
 $printUrl = Biz::url('print.php');

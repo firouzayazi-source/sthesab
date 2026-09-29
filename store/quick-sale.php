@@ -73,7 +73,7 @@ $tot = BizInvoices::totals($parsed['lines'], sanitizeAmount($form['discount']), 
 if (count($parsed['lines']) === count($form['lines'])) {
     foreach ($form['lines'] as $k => $l) { $form['lines'][$k]['line_total'] = $parsed['lines'][$k]['line_total']; }
 }
-$parties = BizDocView::parties($userId);
+$parties = BizDocView::parties($userId, 2000, false);   // منو مانده نشان نمی‌دهد
 Biz::$navActive = 'quick-sale.php';
 
 $pageTitle = 'فروش سریع';

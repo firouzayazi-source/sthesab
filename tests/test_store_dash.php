@@ -152,6 +152,61 @@ try {
 
     T::same([], BizDash::cashDaily($b, $today, $today), '⛔ فروشگاهِ دیگر هیچ جریانی از این فروشگاه نمی‌بیند');
     T::same([], BizDash::salesDaily($b, $today, $today), '⛔ و هیچ فروشی');
+
+    // ---------- ۶ — سرعت: مانده‌ها یک بار، با همان عدد ----------
+    T::group('۶ — دفترِ طرف‌حساب‌ها یک بار، و پرفروش‌ها با گروه‌بندیِ تازه');
+    // دو بدهکار، دو بستانکار، یک صفر؛ و یک فاکتورِ خریدِ نسیه برای «قدیمی‌ترین»
+    $p2 = (int)BizParties::save($a, ['name' => 'مشتریِ دوم', 'kind' => 'customer', 'opening_amount' => '9000'])['id'];
+    $s1 = (int)BizParties::save($a, ['name' => 'تأمین‌کننده', 'kind' => 'supplier', 'opening_amount' => '7000', 'opening_side' => 'we'])['id'];
+    $s2 = (int)BizParties::save($a, ['name' => 'تأمین‌کننده‌ی دوم', 'kind' => 'supplier'])['id'];
+    BizParties::save($a, ['name' => 'صفر', 'kind' => 'customer']);
+    $pd = (int)BizInvoices::saveDraft($a, 'purchase', ['party_id' => $s2, 'inv_date' => date('Y-m-d', strtotime($today . ' -40 days')),
+        'lines' => [['item' => 'قطعه', 'qty' => '2', 'price' => '1500']]])['id'];
+    T::ok(BizInvoices::issue($a, $pd, ['amount' => '0'])['ok'], 'فاکتورِ خریدِ نسیه‌ی ۳۰۰۰، چهل روز پیش');
+
+    $book = BizDash::partyBook($a, 5);
+    T::same(BizParties::summary($a), $book['summary'], '⛔ خلاصه‌ی داشبورد = خلاصه‌ی صفحه‌ی طرف‌حساب‌ها (یک تعریف)');
+    $all  = BizParties::all($a)['rows'];
+    $want = ['d' => [], 'c' => []];
+    foreach ($all as $r) {
+        $v = (int)$r['balance'];
+        if ($v > 0) { $want['d'][] = [(int)$r['id'], $v]; } elseif ($v < 0) { $want['c'][] = [(int)$r['id'], $v]; }
+    }
+    usort($want['d'], fn($x, $y) => [$y[1], $x[0]] <=> [$x[1], $y[0]]);
+    usort($want['c'], fn($x, $y) => [$x[1], $x[0]] <=> [$y[1], $y[0]]);
+    T::same($want['d'], array_map(fn($r) => [(int)$r['id'], (int)$r['balance']], $book['debtors']), 'بدهکارها: بزرگ‌ترین اول، همان مانده‌ی `BALANCE_SQL`');
+    T::same($want['c'], array_map(fn($r) => [(int)$r['id'], (int)$r['balance']], $book['creditors']), 'بستانکارها: بزرگ‌ترین بدهیِ ما اول');
+    $oldS2 = null;
+    foreach ($book['creditors'] as $r) { if ((int)$r['id'] === $s2) { $oldS2 = $r['oldest']; } }
+    T::same(date('Y-m-d', strtotime($today . ' -40 days')), $oldS2, '«قدیمی‌ترین فاکتورِ تسویه‌نشده»ِ بستانکار از خرید می‌آید');
+    $oldCus = null;
+    foreach ($book['debtors'] as $r) { if ((int)$r['id'] === $cus) { $oldCus = $r['oldest']; } }
+    T::same($today, $oldCus, '… و ِ بدهکار از فروش');
+    T::same(1, count(BizDash::partyBook($a, 1)['debtors']), 'سقفِ هر سو رعایت می‌شود');
+    T::same(['count' => 0, 'receivable' => 0, 'payable' => 0, 'debtors' => 0, 'creditors' => 0], BizDash::partyBook($b)['summary'],
+        '⛔ فروشگاهِ دیگر هیچ طرف‌حسابی از این فروشگاه نمی‌بیند');
+    $nb = BizParties::all($a, '', 50, false)['rows'][0] ?? [];
+    T::ok(array_key_exists('balance', $nb) && $nb['balance'] === null,
+        'منوی بی‌مانده: `balance` برابرِ null است، نه صفرِ ساختگی');
+
+    // پرفروش‌ها: کالا با نامِ کالا، شرحِ آزاد جدا؛ جمع = فروشِ خالص
+    $prod = BizProducts::save($a, ['name' => 'گوشیِ آزمایشی', 'unit' => 'عدد', 'buy_price' => '100', 'sell_price' => '900', 'opening_qty' => '5']);
+    T::ok($prod['ok'] ?? false, 'کالای آزمایشی ساخته شد', (string)($prod['message'] ?? ''));
+    $sl = (int)BizInvoices::saveDraft($a, 'sale', ['party_id' => $cus, 'lines' => [
+        ['item' => 'گوشیِ آزمایشی', 'qty' => '2', 'price' => '900'], ['item' => 'شرحِ آزادِ دیگر', 'qty' => '1', 'price' => '50']]])['id'];
+    T::ok(BizInvoices::issue($a, $sl, ['amount' => '0'])['ok'], 'فروشِ دو گوشی و یک شرحِ آزاد');
+    $top = BizReports::topProducts($a, $today, $today, 10);
+    $names = array_column($top, 'name');
+    $row = [];
+    foreach ($top as $r) { if ((int)$r['product_id'] === (int)($prod['id'] ?? -1)) { $row = $r; } }
+    T::same('گوشیِ آزمایشی', $row['name'] ?? null, 'ردیفِ کالا نامِ خودِ کالا را دارد (نه شرحِ ردیف)');
+    T::same(2, (int)($row['qty'] ?? 0), 'تعدادِ کالا درست جمع شد');
+    T::same(1800, (int)($row['rev'] ?? 0), 'فروشِ کالا');
+    T::same(5000, (int)($top[0]['rev'] ?? 0), 'مرتب: بیشترین فروش اول');
+    T::ok(in_array('خدمت', $names, true) && in_array('شرحِ آزادِ دیگر', $names, true), 'دو شرحِ آزادِ متفاوت دو ردیف‌اند');
+    T::same((int)BizReports::sales($a, $today, $today)['net'], array_sum(array_map(fn($r) => (int)$r['rev'], $top)),
+        '⛔ جمعِ پرفروش‌ها = فروشِ خالصِ گزارش');
+    T::same([], BizReports::topProducts($b, $today, $today, 10), '⛔ فروشگاهِ دیگر هیچ پرفروشی از این فروشگاه نمی‌بیند');
 } finally {
     $wipe();
 }

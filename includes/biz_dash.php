@@ -133,26 +133,60 @@ final class BizDash
     }
 
     /**
-     * بزرگ‌ترین طلب‌ها (`debtor`) یا بدهی‌ها (`creditor`) با قدیمی‌ترین
-     * فاکتورِ تسویه‌نشده‌ی همان سو.
+     * ⛔ دفترِ طرف‌حساب‌ها برای داشبورد — **یک** بار مانده‌ی همه، نه سه بار.
+     *
+     * پیش از این داشبورد `BizParties::summary()` و دو بار `balances()` (طلب و
+     * بدهی) را جدا صدا می‌زد و هر سه `BALANCE_SQL` را روی **همه‌ی**
+     * طرف‌حساب‌ها اجرا می‌کردند (هر کدام دو زیرکوئریِ همبسته به‌ازای هر ردیف).
+     * اینجا مانده یک بار خوانده می‌شود، خلاصه و پنج‌تای بزرگِ هر سو در PHP از
+     * رویش ساخته می‌شوند، و «قدیمی‌ترین فاکتورِ تسویه‌نشده» فقط برای همان
+     * چند ردیفِ منتخب — با یک کوئریِ گروهی. خلاصه همان تعریفِ
+     * `BizParties::summary()` است (تست برابری را می‌سنجد).
+     *
+     * @return array{summary: array{count:int, receivable:int, payable:int, debtors:int, creditors:int},
+     *               debtors: list<array>, creditors: list<array>}
      */
-    public static function balances(int $userId, string $side, int $limit = 5): array
+    public static function partyBook(int $userId, int $limit = 5): array
     {
-        $bal  = BizParties::BALANCE_SQL;
-        $debt = $side === 'debtor';
-        $st = Database::getConnection()->prepare(
-            "SELECT p.id, p.name, p.phone, {$bal} AS balance,
-                    (SELECT MIN(bi.inv_date) FROM biz_invoices bi WHERE bi.party_id = p.id AND bi.user_id = p.user_id
-                       AND bi.status = 'issued' AND bi.kind = :k AND bi.paid < bi.total) AS oldest
-             FROM biz_parties p WHERE p.user_id = :u AND p.is_active = 1
-             HAVING balance " . ($debt ? '> 0' : '< 0') . "
-             ORDER BY " . ($debt ? 'balance DESC' : 'balance ASC') . ", p.id LIMIT :lim"
+        $pdo = Database::getConnection();
+        $st = $pdo->prepare(
+            'SELECT p.id, p.name, p.phone, ' . BizParties::BALANCE_SQL . ' AS balance
+             FROM biz_parties p WHERE p.user_id = :u AND p.is_active = 1'
         );
-        $st->bindValue('u', $userId, PDO::PARAM_INT);
-        $st->bindValue('k', $debt ? 'sale' : 'purchase');
-        $st->bindValue('lim', $limit, PDO::PARAM_INT);
-        $st->execute();
-        return $st->fetchAll();
+        $st->execute(['u' => $userId]);
+        $sum = ['count' => 0, 'receivable' => 0, 'payable' => 0, 'debtors' => 0, 'creditors' => 0];
+        $deb = []; $cre = [];
+        foreach ($st->fetchAll() as $r) {
+            $r['balance'] = (int)$r['balance'];
+            $sum['count']++;
+            if ($r['balance'] > 0) { $sum['receivable'] += $r['balance']; $sum['debtors']++; $deb[] = $r; }
+            elseif ($r['balance'] < 0) { $sum['payable'] -= $r['balance']; $sum['creditors']++; $cre[] = $r; }
+        }
+        // همان ترتیبِ قبلی: بزرگ‌ترین قدرِ مطلق، و در تساوی شناسه‌ی کوچک‌تر
+        usort($deb, fn($a, $b) => [$b['balance'], $a['id']] <=> [$a['balance'], $b['id']]);
+        usort($cre, fn($a, $b) => [$a['balance'], $a['id']] <=> [$b['balance'], $b['id']]);
+        $deb = array_slice($deb, 0, $limit);
+        $cre = array_slice($cre, 0, $limit);
+
+        $ids = array_merge(array_column($deb, 'id'), array_column($cre, 'id'));
+        $old = [];
+        if ($ids) {
+            $in = []; $params = ['u' => $userId];
+            foreach (array_values($ids) as $i => $id) { $in[] = ':p' . $i; $params['p' . $i] = (int)$id; }
+            $q = $pdo->prepare(
+                "SELECT party_id, kind, MIN(inv_date) AS oldest FROM biz_invoices
+                 WHERE user_id = :u AND status = 'issued' AND kind IN ('sale','purchase') AND paid < total
+                   AND party_id IN (" . implode(',', $in) . ')
+                 GROUP BY party_id, kind'
+            );
+            $q->execute($params);
+            foreach ($q->fetchAll() as $o) { $old[(int)$o['party_id'] . ':' . $o['kind']] = (string)$o['oldest']; }
+        }
+        foreach ($deb as &$r) { $r['oldest'] = $old[(int)$r['id'] . ':sale'] ?? null; }
+        unset($r);
+        foreach ($cre as &$r) { $r['oldest'] = $old[(int)$r['id'] . ':purchase'] ?? null; }
+        unset($r);
+        return ['summary' => $sum, 'debtors' => $deb, 'creditors' => $cre];
     }
 
     /**
