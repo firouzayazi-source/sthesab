@@ -37,6 +37,25 @@ T::ok(str_contains($flat, '"href_matches":"' . APP_BASE_PATH . '/store/*"'), 'د
 T::ok(str_contains($flat, '[onclick]') && str_contains($flat, '[target]'), 'لینکِ onclick/target‌دار پیش‌گرفته نمی‌شود');
 T::ok(str_contains($flat, '/store/print.php'), 'برگه‌ی چاپ prerender نمی‌شود');
 
+// ⛔ وب‌اپِ نصب‌شده: بدونِ مانیفست، آیفون هر قلمِ منو را در برگه‌ی مرورگر باز
+//    می‌کرد (گزارشِ مالکِ نصب). هر آدرسِ منو باید داخلِ `scope` باشد.
+T::group('وب‌اپِ نصب‌شده — مانیفستِ فروشگاه');
+$mfSrc = (string)file_get_contents($root . '/assets/store-manifest.php');
+$scope = APP_BASE_PATH . '/' . Biz::DIR . '/';
+$outOf = [];
+foreach (array_merge(array_keys(Biz::navFlat()), Biz::TABBAR, ['login.php', 'logout.php', 'settings.php', 'search.php']) as $pg) {
+    $u = Biz::url($pg);
+    if (strncmp($u, $scope, strlen($scope)) !== 0) { $outOf[] = $u; }
+}
+T::same([], $outOf, '⛔ هر قلمِ منوی کناری/پایین داخلِ scopeِ مانیفست است (وگرنه در برگه‌ی مرورگر باز می‌شود)');
+$tags = Biz::webAppTags('x');
+T::ok(str_contains($tags, 'rel="manifest" href="' . APP_BASE_PATH . '/assets/store-manifest.php"')
+    && str_contains($tags, 'rel="apple-touch-icon"') && str_contains($tags, 'apple-mobile-web-app-capable'),
+    'Biz::webAppTags: مانیفست، آیکونِ آیفون و حالتِ تمام‌صفحه');
+foreach (['includes/biz_head.php', 'store/login.php'] as $f) {
+    T::ok(str_contains((string)file_get_contents($root . '/' . $f), 'Biz::webAppTags('), "{$f} برچسب‌های وب‌اپ را دارد (کاربر از همین صفحه هم آیکون می‌سازد)");
+}
+
 $node = trim((string)@shell_exec('command -v node 2>/dev/null'));
 if ($node === '') { T::skip('سرعتِ فروشگاه (مرورگر)', 'node نصب نیست'); exit(T::report()); }
 try { $pdo = Database::getConnection(); }
@@ -97,7 +116,20 @@ try {
     preg_match('/name="csrf_token"[^>]*value="([^"]+)"/', $html, $m);
     [$code] = $get('store/login.php', ['csrf_token' => $m[1] ?? '', 'username' => $USER[0], 'password' => $USER[1]]);
     T::ok($code === 302 || $code === 303, 'ورودِ فروشگاهِ آزمایشی');
+    [$mc, $mb] = $get('assets/store-manifest.php');
+    $mf = json_decode($mb, true);
+    T::ok($mc === 200 && is_array($mf), 'assets/store-manifest.php پاسخ ۲۰۰ و JSONِ معتبر می‌دهد (بی‌کوکی هم)', substr($mb, 0, 120));
+    T::same([$scope, $scope, 'standalone'], [$mf['scope'] ?? null, $mf['start_url'] ?? null, $mf['display'] ?? null],
+        '⛔ scope و start_url هر دو /store/ و تمام‌صفحه');
+    T::ok(($mf['id'] ?? '') === $scope && ($mf['id'] ?? '') !== APP_BASE_PATH . '/index.php', 'id جدا از حساب لند — هر دو روی یک گوشی نصب می‌شوند');
+    $miss = [];
+    foreach (($mf['icons'] ?? []) as $ic) {
+        if (!is_file($root . strtok((string)$ic['src'], '?'))) { $miss[] = $ic['src']; }
+    }
+    T::ok(!empty($mf['icons']) && $miss === [], 'فایلِ هر آیکونِ مانیفست روی دیسک هست', implode(', ', $miss));
     [, $home] = $get('store/index.php');
+    T::ok(str_contains($home, '/assets/store-manifest.php') && str_contains($html, '/assets/store-manifest.php'),
+        'پوسته و صفحه‌ی ورودِ فروشگاه هر دو مانیفست را دارند');
     T::ok(str_contains($home, 'id="stSpecRules"') && str_contains($home, 'rel="preload" href="' . APP_BASE_PATH . '/assets/fonts/Vazirmatn.woff2"'),
         'پوسته: قاعده‌ی پیش‌گیری و preloadِ فونت رندر شدند');
 

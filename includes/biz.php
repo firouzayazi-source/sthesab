@@ -529,6 +529,26 @@ final class Biz
         return json_encode($rules, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
     }
 
+    /**
+     * ⛔ برچسب‌های «وب‌اپ» فروشگاه — **تنها** جای آن‌ها؛ پوسته (`biz_head.php`)
+     * و صفحه‌ی ورودِ فروشگاه هر دو از همین می‌گیرند (کاربر اغلب آیکون را از
+     * همان صفحه‌ی ورود به صفحه‌ی اصلی اضافه می‌کند).
+     *
+     * بدونِ `<link rel="manifest">`، آیفونِ نصب‌شده هر ناوبری به صفحه‌ی دیگرِ
+     * فروشگاه را «بیرون از اپ» می‌دید و در برگه‌ی مرورگر باز می‌کرد (منوی پایین
+     * = نوارِ سافاری با ×). جزئیات بالای `assets/store-manifest.php`.
+     */
+    public static function webAppTags(string $title): string
+    {
+        $b = defined('APP_BASE_PATH') ? APP_BASE_PATH : '';
+        return '<link rel="manifest" href="' . h($b . '/assets/store-manifest.php') . '">' . "\n"
+             . '    <link rel="apple-touch-icon" href="' . h(iconUrl('icon-180.png')) . '">' . "\n"
+             . '    <meta name="apple-mobile-web-app-capable" content="yes">' . "\n"
+             . '    <meta name="mobile-web-app-capable" content="yes">' . "\n"
+             . '    <meta name="apple-mobile-web-app-status-bar-style" content="default">' . "\n"
+             . '    <meta name="apple-mobile-web-app-title" content="' . h($title) . '">';
+    }
+
     /** پالتِ این فروشگاه؛ ناشناخته یا خالی → اولین کلید. صفر کوئریِ اضافه. */
     public static function palette(int $userId): string
     {

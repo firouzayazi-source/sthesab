@@ -93,9 +93,7 @@ foreach (Biz::NEW_MENU as $__h => $__l) { $__bizCmd['new'][] = ['t' => $__l, 'u'
     <script defer src="<?= h($__u) ?>"></script>
     <?php endforeach; ?>
     <meta name="theme-color" content="<?= h(Biz::PALETTES[$__bizPal]['theme']) ?>">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <meta name="apple-mobile-web-app-title" content="<?= h($__bizShop) ?>">
+    <?= Biz::webAppTags($__bizShop) ?>
     <?php /* ⛔ تعویضِ فوریِ صفحه: مکثِ نشانگر/لمس صفحه‌ی بعد را از پیش می‌سازد (`Biz::speculationRulesJson()`). */ ?>
     <script type="speculationrules" id="stSpecRules"><?= Biz::speculationRulesJson() ?></script>
     <script type="application/json" id="stCmdData"><?= json_encode($__bizCmd, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>

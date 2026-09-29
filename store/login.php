@@ -60,6 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?php endforeach; ?>
     <meta name="theme-color" content="#1c1917">
     <meta name="robots" content="noindex">
+    <?= Biz::webAppTags('فروشگاه') ?>
 </head>
 <body class="st-body st-auth">
     <main class="st-auth-box">
