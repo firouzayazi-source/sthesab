@@ -558,7 +558,7 @@ final class Biz
         return '<link rel="manifest" href="' . h($b . '/assets/store-manifest.php') . '">' . "\n"
              . '    <link rel="icon" type="image/png" sizes="32x32" href="' . h(self::icon('32')) . '">' . "\n"
              . '    <link rel="icon" type="image/png" sizes="16x16" href="' . h(self::icon('16')) . '">' . "\n"
-             . '    <link rel="apple-touch-icon" href="' . h(self::icon('180')) . '">' . "\n"
+             . '    <link rel="apple-touch-icon" sizes="180x180" href="' . h(self::icon('180')) . '">' . "\n"
              . '    <meta name="apple-mobile-web-app-capable" content="yes">' . "\n"
              . '    <meta name="mobile-web-app-capable" content="yes">' . "\n"
              . '    <meta name="apple-mobile-web-app-status-bar-style" content="default">' . "\n"

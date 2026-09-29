@@ -149,6 +149,9 @@ try {
         if (!is_file($root . strtok((string)$ic['src'], '?'))) { $miss[] = $ic['src']; }
     }
     T::ok(!empty($mf['icons']) && $miss === [], 'فایلِ هر آیکونِ مانیفست روی دیسک هست', implode(', ', $miss));
+    $mh = @get_headers('http://127.0.0.1:' . $port . '/assets/store-manifest.php', true) ?: [];
+    T::ok(stripos((string)($mh['Cache-Control'] ?? ''), 'no-cache') !== false,
+        '⛔ مانیفستِ فروشگاه بازسنجی می‌شود (no-cache)، نه کشِ یک‌روزه — وگرنه آیکونِ کهنه هنگامِ افزودن', json_encode($mh['Cache-Control'] ?? null));
     $srcs = implode(' ', array_column($mf['icons'] ?? [], 'src'));
     T::ok(!str_contains($srcs, '/icon-') && substr_count($srcs, '/store-') === 3
         && in_array('maskable', array_column($mf['icons'] ?? [], 'purpose'), true),

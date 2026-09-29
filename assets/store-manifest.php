@@ -49,7 +49,10 @@ $manifest = [
 
 $json = json_encode($manifest, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 $etag = '"' . md5($json) . '"';
-header('Cache-Control: public, max-age=86400');
+// ⛔ `no-cache` + ETag، نه `max-age=86400`: با کشِ یک‌روزه، گوشی‌ای که همین دیروز
+//    فروشگاه را باز کرده تا ۲۴ ساعت مانیفستِ **کهنه** (آیکونِ قبلی) را هنگامِ
+//    «افزودن به صفحه‌ی اصلی» می‌خواند. بازسنجی یک ۳۰۴ِ چندبایتی است.
+header('Cache-Control: no-cache');
 header('ETag: ' . $etag);
 if (trim($_SERVER['HTTP_IF_NONE_MATCH'] ?? '') === $etag) {
     http_response_code(304);
