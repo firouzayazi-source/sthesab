@@ -17,6 +17,7 @@
  * - نامِ فروشگاه اینجا نیست: مانیفست بی‌کوکی خوانده می‌شود و مالِ هیچ کاربری
  *   نیست؛ نامِ زیرِ آیکون را `apple-mobile-web-app-title` (نامِ فروشگاه) و
  *   خودِ کاربر هنگامِ افزودن می‌دهد.
+ * - ⛔ آیکون‌ها لوگوی **فروشگاه** است (`Biz::icon()`)، نه آیکونِ حساب لند.
  * - ⚠ iOS مانیفست را **هنگامِ افزودن** می‌خواند: آیکونی که پیش از این نسخه
  *   ساخته شده باید یک بار حذف و دوباره اضافه شود.
  */
@@ -40,9 +41,9 @@ $manifest = [
     'theme_color'      => $__theme,
     'orientation'      => 'portrait',
     'icons' => [
-        ['src' => iconUrl('icon-192.png'), 'sizes' => '192x192', 'type' => 'image/png'],
-        ['src' => iconUrl('icon-512.png'), 'sizes' => '512x512', 'type' => 'image/png'],
-        ['src' => iconUrl('icon-512-maskable.png'), 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'maskable'],
+        ['src' => Biz::icon('192'), 'sizes' => '192x192', 'type' => 'image/png'],
+        ['src' => Biz::icon('512'), 'sizes' => '512x512', 'type' => 'image/png'],
+        ['src' => Biz::icon('512-maskable'), 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'maskable'],
     ],
 ];
 

@@ -64,9 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body class="st-body st-auth">
     <main class="st-auth-box">
-        <div class="st-auth-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9h18v2a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0V9z"/><path d="M5 13v7h14v-7"/><path d="M10 20v-4h4v4"/></svg>
-        </div>
+        <div class="st-auth-mark is-logo" aria-hidden="true"><img src="<?= h(Biz::icon('180')) ?>" alt="" width="64" height="64"></div>
         <h1 class="st-h1">ورود به پنل فروشگاه</h1>
 
         <?php if ($error !== ''): ?>

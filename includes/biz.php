@@ -538,11 +538,27 @@ final class Biz
      * فروشگاه را «بیرون از اپ» می‌دید و در برگه‌ی مرورگر باز می‌کرد (منوی پایین
      * = نوارِ سافاری با ×). جزئیات بالای `assets/store-manifest.php`.
      */
+    /**
+     * ⛔ آیکونِ **فروشگاه** — جدا از آیکونِ حساب لند (`assets/icons/icon-*`).
+     * مالکِ نصب: «فقط برای بخشِ فروشگاه این لوگو». تنها جای نامِ این فایل‌هاست؛
+     * مانیفستِ فروشگاه، برچسب‌های وب‌اپ، نشانِ منو و صفحه‌ی ورود از همین می‌خوانند.
+     * `maskable` فایلِ جداست (نشان ×۰٫۸۶۵، داخلِ ۸۰٪ِ امنِ اندروید).
+     */
+    public const ICONS = ['16', '32', '96', '180', '192', '512', '512-maskable'];
+
+    public static function icon(string $size): string
+    {
+        if (!in_array($size, self::ICONS, true)) { $size = '192'; }
+        return iconUrl('store-' . $size . '.png');
+    }
+
     public static function webAppTags(string $title): string
     {
         $b = defined('APP_BASE_PATH') ? APP_BASE_PATH : '';
         return '<link rel="manifest" href="' . h($b . '/assets/store-manifest.php') . '">' . "\n"
-             . '    <link rel="apple-touch-icon" href="' . h(iconUrl('icon-180.png')) . '">' . "\n"
+             . '    <link rel="icon" type="image/png" sizes="32x32" href="' . h(self::icon('32')) . '">' . "\n"
+             . '    <link rel="icon" type="image/png" sizes="16x16" href="' . h(self::icon('16')) . '">' . "\n"
+             . '    <link rel="apple-touch-icon" href="' . h(self::icon('180')) . '">' . "\n"
              . '    <meta name="apple-mobile-web-app-capable" content="yes">' . "\n"
              . '    <meta name="mobile-web-app-capable" content="yes">' . "\n"
              . '    <meta name="apple-mobile-web-app-status-bar-style" content="default">' . "\n"

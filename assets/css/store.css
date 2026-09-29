@@ -212,6 +212,9 @@ a { color: var(--st-accent); }
     background: var(--st-primary); color: var(--st-primary-ink);
 }
 .st-brand-mark svg { color: var(--st-accent); }
+/* ⛔ لوگوی فروشگاه خودش رنگ و زمینه دارد؛ فقط گوشه گرد می‌شود (آیکون تمام‌بلید است). */
+.st-brand-mark.is-logo { background: none; overflow: hidden; }
+.st-brand-mark.is-logo img, .st-auth-mark.is-logo img { display: block; width: 100%; height: 100%; object-fit: cover; }
 :root[data-st-theme="dark"] .st-brand-mark svg { color: var(--st-primary-ink); }
 .st-brand-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
 .st-brand-name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1018,6 +1021,7 @@ html.st-locked, html.st-locked body { overflow: hidden; }
     border-radius: 16px; background: var(--st-primary); color: var(--st-accent);
 }
 :root[data-st-theme="dark"] .st-auth-mark { color: var(--st-primary-ink); }
+.st-auth-mark.is-logo { width: 64px; height: 64px; border-radius: 18px; background: none; overflow: hidden; box-shadow: 0 6px 18px rgba(234,88,12,.25); }
 .st-auth-box .st-h1 { text-align: center; margin-bottom: 18px; font-size: 19px; }
 .st-auth-note { margin: 14px 0 0; text-align: center; font-size: 12.5px; }
 

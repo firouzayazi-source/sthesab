@@ -56,6 +56,28 @@ foreach (['includes/biz_head.php', 'store/login.php'] as $f) {
     T::ok(str_contains((string)file_get_contents($root . '/' . $f), 'Biz::webAppTags('), "{$f} برچسب‌های وب‌اپ را دارد (کاربر از همین صفحه هم آیکون می‌سازد)");
 }
 
+// ⛔ لوگوی فروشگاه فقط مالِ فروشگاه است: هیچ آیکونِ حساب لند (`icon-*`) در وب‌اپِ
+//    فروشگاه، و هیچ `store-*` در مانیفست و برچسب‌های حساب لند.
+T::ok(!preg_match('/icons\/icon-/', $tags) && preg_match_all('/icons\/store-(16|32|180)\.png/', $tags) === 3,
+    'برچسب‌های وب‌اپِ فروشگاه: favicon و آیکونِ آیفون از لوگوی فروشگاه (نه آیکونِ حساب لند)');
+$missIc = [];
+foreach (Biz::ICONS as $sz) {
+    $fp = $root . '/assets/icons/store-' . $sz . '.png';
+    $info = is_file($fp) ? @getimagesize($fp) : false;
+    $want = (int)$sz;
+    if (!$info || $info[0] !== $want || $info[1] !== $want) { $missIc[] = $sz; }
+}
+T::same([], $missIc, 'هر اندازه‌ی Biz::ICONS فایلِ مربعیِ هم‌اندازه دارد');
+// آیکون تمام‌بلید: گوشه باید رنگِ صفحه (نارنجی) باشد، نه سفیدِ دورِ مربعِ گرد
+$im = @imagecreatefrompng($root . '/assets/icons/store-512.png');
+$c = $im ? imagecolorsforindex($im, imagecolorat($im, 1, 1)) : ['red' => 255, 'green' => 255, 'blue' => 255];
+T::ok($c['red'] > 200 && $c['blue'] < 90, 'store-512 تمام‌بلید است (گوشه‌ی سفید پر شده)', json_encode($c));
+$personal = (string)file_get_contents($root . '/assets/manifest.php') . (string)file_get_contents($root . '/includes/header.php');
+T::ok(!str_contains($personal, 'store-'), '⛔ مانیفست و سرآیندِ حساب لند به لوگوی فروشگاه دست نزده‌اند');
+foreach (['includes/biz_head.php' => "Biz::icon('96')", 'store/login.php' => "Biz::icon('180')"] as $f => $needle) {
+    T::ok(str_contains((string)file_get_contents($root . '/' . $f), $needle), "{$f} لوگوی فروشگاه را نشان می‌دهد");
+}
+
 $node = trim((string)@shell_exec('command -v node 2>/dev/null'));
 if ($node === '') { T::skip('سرعتِ فروشگاه (مرورگر)', 'node نصب نیست'); exit(T::report()); }
 try { $pdo = Database::getConnection(); }
@@ -127,6 +149,10 @@ try {
         if (!is_file($root . strtok((string)$ic['src'], '?'))) { $miss[] = $ic['src']; }
     }
     T::ok(!empty($mf['icons']) && $miss === [], 'فایلِ هر آیکونِ مانیفست روی دیسک هست', implode(', ', $miss));
+    $srcs = implode(' ', array_column($mf['icons'] ?? [], 'src'));
+    T::ok(!str_contains($srcs, '/icon-') && substr_count($srcs, '/store-') === 3
+        && in_array('maskable', array_column($mf['icons'] ?? [], 'purpose'), true),
+        '⛔ مانیفستِ فروشگاه فقط لوگوی فروشگاه (با نسخه‌ی maskable) را دارد');
     [, $home] = $get('store/index.php');
     T::ok(str_contains($home, '/assets/store-manifest.php') && str_contains($html, '/assets/store-manifest.php'),
         'پوسته و صفحه‌ی ورودِ فروشگاه هر دو مانیفست را دارند');
