@@ -6745,7 +6745,8 @@ foreach (array_merge($storeFiles70, [__DIR__ . '/../includes/biz_head.php', __DI
 //    فروشگاه» وگرنه پولِ خانه‌اش را روی داشبوردِ مغازه می‌دید.
 foreach (array_merge($storeFiles70, [__DIR__ . '/../includes/biz_catalog.php', __DIR__ . '/../includes/biz_io.php',
                                      __DIR__ . '/../includes/biz_print.php', __DIR__ . '/../includes/biz_docs.php',
-                                     __DIR__ . '/../includes/biz_docview.php', __DIR__ . '/../includes/biz_reports.php']) as $f) {
+                                     __DIR__ . '/../includes/biz_docview.php', __DIR__ . '/../includes/biz_reports.php',
+                                     __DIR__ . '/../includes/biz_dash.php']) as $f) {
     $src = $strip70((string)file_get_contents($f));
     if (preg_match('/walletBalances|totalBalance|activeWallets|\b(?:FROM|JOIN|INTO|UPDATE)\s+`?(?:transactions|wallets|transfers|debts|debt_payments|cheques|trades|trade_sales|assets)\b/i', $src, $pm)) {
         $bBad[] = basename(dirname($f)) . '/' . basename($f) . " — به دفترِ شخصی دست می‌زند ({$pm[0]})";
@@ -7188,5 +7189,86 @@ if (!str_contains((string)file_get_contents(__DIR__ . '/../includes/admin_insigh
     $gBad[] = 'admin_insights.php — biz_logos باید در NON_ACTIVITY_TABLES باشد';
 }
 T::bulk(20, $gBad, 'پاک‌سازی فقط کالای بی‌سندِ همین فروشگاه، لوگوی بازسازی‌شده و بسته، و فاکتور با یک رندرکننده');
+
+// =================================================================
+// قاعده ۷۰د — بازطراحیِ فروشگاه: سیستمِ طراحی، پوسته، فرمانِ سریع، داشبورد.
+// رفتار در test_store_dash / test_store_cmd / test_store_theme است؛ این
+// شکل را برای ماشینِ بی‌node و بی‌دیتابیس نگه می‌دارد.
+// =================================================================
+T::group('قاعده ۷۰د — سیستمِ طراحی، فرمانِ سریع و داشبوردِ فروشگاه');
+$dBad = [];
+$css70d  = preg_replace('~/\*.*?\*/~s', '', (string)file_get_contents(__DIR__ . '/../assets/css/store.css'));
+$head70d = (string)file_get_contents(__DIR__ . '/../includes/biz_head.php');
+$srch70d = $strip70((string)file_get_contents(__DIR__ . '/../store/search.php'));
+$dash70d = $strip70((string)file_get_contents(__DIR__ . '/../includes/biz_dash.php'));
+$pay70d  = $strip70((string)file_get_contents(__DIR__ . '/../store/payment.php'));
+$js70d   = (string)file_get_contents(__DIR__ . '/../assets/js/store.js');
+$biz70d  = (string)file_get_contents(__DIR__ . '/../includes/biz.php');
+
+// ۱. پالت فقط توکن‌های --p-* را عوض می‌کند — نه قاعده‌ی جدا برای هر پالت
+$nPal70d = preg_match_all('/html\[data-st-palette="([a-z]+)"\]\s*\{([^}]*)\}/', $css70d, $pm70d, PREG_SET_ORDER);
+if ($nPal70d < 5) { $dBad[] = "store.css — بلوکِ پالت پیدا نشد ({$nPal70d})"; }
+foreach ($pm70d as $p) {
+    foreach (array_filter(array_map('trim', explode(';', $p[2]))) as $decl) {
+        if (!preg_match('/^--p-[a-z0-9-]+\s*:/', $decl)) { $dBad[] = "store.css — پالتِ {$p[1]} چیزی جز --p-* می‌نویسد ({$decl})"; }
+    }
+}
+if (preg_match('/html\[data-st-palette="[a-z]+"\][^{,]*\s[.#a-z]/', $css70d)) {
+    $dBad[] = 'store.css — قاعده‌ی مخصوصِ یک پالت روی یک جزء (پالت فقط توکن است)';
+}
+
+// ۲. حالتِ شب و منوی کوچک پیش از CSS — بی‌چشمک
+$pBoot = strpos($head70d, 'Biz::bootScript()'); $pCss = strpos($head70d, "css/store.css");
+if ($pBoot === false || $pCss === false || $pBoot > $pCss) { $dBad[] = 'biz_head.php — bootScript باید پیش از store.css بیاید'; }
+if (!preg_match('/id="stCmdData"><\?= json_encode\([^;]*JSON_HEX_TAG/', $head70d)) { $dBad[] = 'biz_head.php — stCmdData بی‌JSON_HEX_TAG'; }
+foreach (['id="stNavToggle"', 'class="st-side"', 'data-cmd-open', 'foreach (Biz::NAV as'] as $n) {
+    if (!str_contains($head70d, $n)) { $dBad[] = "biz_head.php — «{$n}» نیست (پوسته بی‌جاوااسکریپت کار نمی‌کند)"; }
+}
+if (!preg_match('/<form class="st-search"[^>]*method="get"[^>]*action="<\?= h\(Biz::url\(\'search\.php\'\)\)/', $head70d)) {
+    $dBad[] = 'biz_head.php — جستجوی بالا باید فرمِ GET به search.php باشد (بی‌جاوااسکریپت هم)';
+}
+foreach (['اصلی', 'فروشگاه', 'مالی', 'گزارش‌ها', 'سیستم'] as $g) {
+    if (!str_contains($biz70d, "'{$g}'")) { $dBad[] = "biz.php — گروهِ «{$g}» در NAV نیست"; }
+}
+
+// ۳. جستجو و داشبورد فقط می‌خوانند
+foreach (['search.php' => $srch70d, 'biz_dash.php' => $dash70d] as $n => $src) {
+    if (preg_match('/\b(INSERT\s+INTO|UPDATE\s+biz_|DELETE\s+FROM|REPLACE\s+INTO)\b|\$_POST|REQUEST_METHOD/i', $src)) {
+        $dBad[] = "{$n} — فقط خواندنی است";
+    }
+}
+if (!preg_match('/Auth::initSession\(\);\s*Biz::requirePage\(\);/', $srch70d)) { $dBad[] = 'store/search.php — دروازه‌ی Biz::requirePage()'; }
+if (!str_contains($srch70d, 'y.user_id = :u')) { $dBad[] = 'store/search.php — کوئریِ چک بی‌user_id'; }
+$qm70d = array_map(fn($c) => strstr($c, ');', true) ?: $c, array_slice(explode('->prepare(', $dash70d), 1));
+if (count($qm70d) < 9) { $dBad[] = 'biz_dash.php — کوئری‌ها پیدا نشدند (' . count($qm70d) . ')'; }
+foreach ($qm70d as $q) {
+    if (!preg_match('/\b\w+\.user_id = :u\b|\buser_id = :u\b/', $q)) { $dBad[] = 'biz_dash.php — کوئری بی‌شرطِ user_id: ' . mb_substr(preg_replace('/\s+/', ' ', $q), 0, 70); }
+}
+// ⛔ چک تا وصول نقد نیست
+if (!preg_match("/NOT_CHEQUE\s*=\s*\"NOT IN \('cheque_in','cheque_out'\)\"/", $dash70d) || substr_count($dash70d, '{$nc}') < 4) {
+    $dBad[] = 'biz_dash.php — cashDaily() باید صندوقِ چک را از جریانِ نقد بیرون بگذارد';
+}
+// ⛔ درصدِ دروغ ممنوع
+if (!preg_match("/if \(\\\$prev === 0\) \{ return \['pct' => null/", $dash70d)) { $dBad[] = 'biz_dash.php — change() روی دوره‌ی قبلِ صفر درصد نمی‌دهد'; }
+
+// ۴. فرمانِ سریع فقط آدرس می‌سازد؛ پیش‌پرشدن را سرور می‌سنجد
+$cmd70d = ($a = strpos($js70d, '/* @cmd-start')) !== false && ($b = strpos($js70d, '/* @cmd-end */')) !== false ? substr($js70d, $a, $b - $a) : '';
+if ($cmd70d === '' || preg_match('/fetch\(|XMLHttpRequest|document\.|\.submit\(/', $cmd70d)) {
+    $dBad[] = 'store.js — تکه‌ی @cmd باید خالص بماند (بی‌DOM، بی‌شبکه، بی‌ارسال)';
+}
+if (!preg_match('/fetch\([^)]*search\.php[^)]*format=json/', $js70d) && !preg_match("/format=json/", $js70d)) {
+    $dBad[] = 'store.js — نتیجه‌ی زنده از search.php?format=json';
+}
+if (!str_contains($pay70d, "\$preAmt = sanitizeAmount(getParam('amount'))")
+    || !preg_match('/\$preAcc = in_array\(\$preAcc, array_map\(fn\(\$a\) => \(int\)\$a\[\'id\'\], \$accounts\), true\)/', $pay70d)) {
+    $dBad[] = 'store/payment.php — پیش‌پرشدن از آدرس: مبلغ با sanitizeAmount و صندوق فقط از صندوق‌های همین فروشگاه';
+}
+
+// ۵. ثبت‌ها
+$bud70d = (string)file_get_contents(__DIR__ . '/test_business_mode.php');
+if (!preg_match("/'store\/search\.php'\s*=>\s*\d+/", $bud70d) || !str_contains((string)file_get_contents(__DIR__ . '/test_page_render.php'), "'store/search.php'")) {
+    $dBad[] = 'store/search.php — باید در STORE_BUDGET و EXPECT باشد';
+}
+T::bulk(24, $dBad, 'پالت فقط توکن، پوسته بی‌جاوااسکریپت، جستجو و داشبورد فقط‌خواندنی با user_id، چک بیرونِ نقد، و فرمان بی‌نوشتن');
 
 exit(T::report());

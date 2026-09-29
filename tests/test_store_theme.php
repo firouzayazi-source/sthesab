@@ -1,14 +1,14 @@
 <?php
 /**
- * ⛔ رنگِ فروشگاه — منوی کناریِ طیف‌دار که با پالت عوض می‌شود.
+ * ⛔ رنگِ فروشگاه — لهجه‌ی سیستمِ طراحی که با پالت عوض می‌شود.
  *
- * **خواسته‌ی مالکِ نصب:** «ساید بار با تغییرِ رنگ تغییر کنه، طیف‌طور و
- * خوشگل بر طبقِ رنگ‌های تعریف‌شده… در بخشِ فروشگاهی هم همین استایل.»
+ * **خواسته‌ی مالکِ نصب (بازطراحی):** «Accent سبز (هویت حساب‌لند)… بدون
+ * گرادیان‌های آماتور». منوی طیف‌دارِ قبلی رفت؛ پالت فقط لهجه را عوض می‌کند.
  *
  * چهار خطر، همه بی‌صدا:
  *   ۱. پالتی در `Biz::PALETTES` باشد و در `store.css` نه (یا فقط روز، نه
  *      شب) — انتخابش هیچ اثری ندارد یا در شب رنگِ روز می‌ماند.
- *   ۲. طیف متنِ منو را ناخوانا کند (نارنجیِ روشن زیرِ سفید).
+ *   ۲. لهجه روی کارت یا زیرِ متنِ دکمه ناخوانا شود.
  *   ۳. ذخیره‌ی پیش‌فرض با نام (نه NULL) — پیش‌فرضِ فردا به کسی نمی‌رسد.
  *   ۴. رنگِ یک فروشگاه روی فروشگاهِ دیگر بنشیند، یا نامِ دلخواه روی `<html>`.
  */
@@ -60,48 +60,33 @@ function thHex(string $h): array { $h = ltrim($h, '#'); return [hexdec(substr($h
 function thMix(array $a, array $b, float $t): array { return [$a[0]*$t + $b[0]*(1-$t), $a[1]*$t + $b[1]*(1-$t), $a[2]*$t + $b[2]*(1-$t)]; }
 
 // ---------------------------------------------------------------
-T::group('۱ — هر پالت در CSS کامل است (روز و شب)، و هیچ پالتی یتیم نیست');
+T::group('۱ — هر پالت در CSS کامل است (روز و شب در یک بلوک)، و هیچ پالتی یتیم نیست');
 // ---------------------------------------------------------------
+// ⛔ سیستمِ طراحیِ فروشگاه: هر پالت فقط `--p-*` را عوض می‌کند و **یک** بلوک
+//    دارد با هر دو رنگِ روز و شب؛ حالتِ شب فقط نگاشت می‌کند
+//    (`--st-accent: var(--p-acc-n)`). پس «پالتی که در شب رنگِ روز می‌ماند»
+//    یعنی توکنِ `-n` جا افتاده — همین سنجیده می‌شود.
 $keys = array_keys(Biz::PALETTES);
 $def  = $keys[0] ?? '';
-T::same('amber', $def, 'کهربایی پیش‌فرض است (فروشگاه و حساب لند قاطی نشوند)');
+T::same('emerald', $def, 'سبزِ حساب‌لند پیش‌فرض است (خواسته‌ی مالکِ نصب: لهجه‌ی سبز)');
 T::ok(count($keys) >= 5, 'دست‌کم پنج رنگ', (string)count($keys));
 
-$darkAt = strpos($css, '@media (prefers-color-scheme: dark)');
-$roots  = thBlocks($css, ':root');
-$rootRb = array_values(array_filter($roots, fn($b) => str_contains($b[0], '--st-rb1')));
-T::ok(count($rootRb) === 2 && $rootRb[1][1] > (int)$darkAt, 'پیش‌فرض --st-rb1..3 را در :root روز و شب دارد (خودِ :root، نه ویژگی)');
-T::ok(!str_contains($css, 'html[data-st-palette="' . $def . '"]'), 'پیش‌فرض بلوکِ data-st-palette ندارد');
+$need = ['p-acc', 'p-acc2', 'p-acc-ink', 'p-wash', 'p-acc-n', 'p-acc2-n', 'p-acc-ink-n', 'p-wash-n'];
+$roots = thBlocks($css, ':root');
+$rootT = $roots ? thTokens($roots[0][0]) : [];
+T::same($def, $rootT['palette-default'] ?? '', '⛔ نشانِ پیش‌فرضِ :root همان اولین کلیدِ Biz::PALETTES است');
+T::ok(!str_contains($css, 'html[data-st-palette="' . $def . '"]'), 'پیش‌فرض بلوکِ data-st-palette ندارد (خودِ :root است)');
 
-$need = ['st-rb1', 'st-rb2', 'st-rb3', 'st-accent', 'st-accent-2', 'st-accent-ink', 'st-wash'];
-$pal = [];
-$badP = [];
-$rootL = []; $rootD = [];
-foreach ($roots as [$body, $off]) {
-    $t = thTokens($body);
-    // اولین :root (بالای فایل) روز، آنچه داخلِ مدیای شب است شب
-    $inDark = false;
-    $open = strrpos(substr($css, 0, $off), '@media (prefers-color-scheme: dark)');
-    if ($open !== false) {
-        $depth = 0;
-        for ($i = $open; $i < $off; $i++) { if ($css[$i] === '{') { $depth++; } elseif ($css[$i] === '}') { $depth--; } }
-        $inDark = $depth >= 2;
-    }
-    if ($inDark) { $rootD = $t + $rootD; } else { $rootL = $t + $rootL; }
-}
-$pal[$def] = [$rootL, $rootD + $rootL];
+$pal = [$def => $rootT];
+$badP = array_map(fn($tk) => "{$def} (:root): --{$tk}", array_values(array_diff($need, array_keys($rootT))));
 foreach (array_slice($keys, 1) as $k) {
     $bl = thBlocks($css, 'html[data-st-palette="' . $k . '"]');
-    if (count($bl) !== 2) { $badP[] = "{$k}: " . count($bl) . ' بلوک (باید دو: روز، بعد شب)'; continue; }
-    if ($bl[1][1] < (int)$darkAt || $bl[0][1] > $bl[1][1]) { $badP[] = "{$k}: بلوکِ شب داخلِ مدیای شب و بعد از روز نیست"; }
-    [$L, $D] = [thTokens($bl[0][0]), thTokens($bl[1][0])];
-    foreach ($need as $tk) {
-        if (!isset($L[$tk])) { $badP[] = "{$k} (روز): --{$tk}"; }
-        if (!isset($D[$tk])) { $badP[] = "{$k} (شب): --{$tk}"; }
-    }
-    $pal[$k] = [$L, $D + $L];
+    if (count($bl) !== 1) { $badP[] = "{$k}: " . count($bl) . ' بلوک (باید یکی، با روز و شب)'; continue; }
+    $T = thTokens($bl[0][0]);
+    foreach ($need as $tk) { if (!isset($T[$tk])) { $badP[] = "{$k}: --{$tk}"; } }
+    $pal[$k] = $T;
 }
-T::bulk(count($keys) - 1, $badP, 'هر رنگ همه‌ی توکن‌هایش را در روز و در شب بازتعریف می‌کند');
+T::bulk(count($keys), $badP, 'هر رنگ هر هشت توکنش (روز و شب) را دارد');
 
 preg_match_all('/html\[data-st-palette="([a-z]+)"\]/', $css, $cm);
 $orph = array_values(array_diff(array_unique($cm[1]), $keys));
@@ -109,47 +94,47 @@ T::bulk(count(array_unique($cm[1])), array_map(fn($x) => "«{$x}» در CSS هس
 
 $badS = [];
 foreach ($keys as $k) {
-    if (!preg_match('/\.st-pal-swatch\[data-pal="' . $k . '"\]\s*\{[^}]*linear-gradient/', $css)) { $badS[] = $k; }
-    if (strtolower(Biz::PALETTES[$k]['theme']) !== strtolower($pal[$k][0]['st-rb3'] ?? '')) {
-        $badS[] = "{$k}: theme با --st-rb3ِ روز یکی نیست";
+    $acc = strtolower($pal[$k]['p-acc'] ?? '');
+    if (!preg_match('/\.st-pal-swatch\[data-pal="' . $k . '"\]::after\s*\{[^}]*background:\s*(#[0-9a-f]{6})/i', $css, $sm) || strtolower($sm[1]) !== $acc) {
+        $badS[] = "{$k}: نمونه‌ی انتخابگر رنگِ خودِ پالت (--p-acc) نیست";
     }
+    if (strtolower(Biz::PALETTES[$k]['theme']) !== $acc) { $badS[] = "{$k}: theme با --p-accِ روز یکی نیست"; }
 }
-T::bulk(count($keys), $badS, 'هر رنگ نمونه‌ی طیف‌دار دارد و رنگِ نوارِ وضعیتش همان --st-rb3 است');
+T::bulk(count($keys), $badS, 'هر رنگ نمونه‌ی خودش را دارد و رنگِ نوارِ وضعیتش همان --p-acc است');
+
+// ⛔ دو درِ حالتِ شب (ویژگی و، بی‌اسکریپت، سیستم) باید **همان** نگاشت باشند
+$darkAttr = thBlocks($css, ':root[data-st-theme="dark"]');
+$darkSys  = thBlocks($css, ':root:not([data-st-theme])');
+$dA = $darkAttr ? thTokens($darkAttr[0][0]) : [];
+$dS = $darkSys ? thTokens($darkSys[0][0]) : [];
+T::ok($dA !== [] && $dA === $dS, 'حالتِ شبِ انتخابی و حالتِ شبِ سیستم یک نگاشت‌اند (هیچ‌کدام از دیگری عقب نمانده)');
+T::ok(($dA['st-accent'] ?? '') === 'var(--p-acc-n)' && ($dA['st-accent-ink'] ?? '') === 'var(--p-acc-ink-n)'
+    && ($rootT['st-accent'] ?? '') === 'var(--p-acc)', 'لهجه در روز از --p-acc و در شب از --p-acc-n می‌آید');
+T::ok(str_contains(Biz::bootScript(), "setAttribute('data-st-theme'"), 'اسکریپتِ سرآیند حالت را پیش از رندر روی <html> می‌گذارد (بی‌چشمک)');
 
 // ---------------------------------------------------------------
-T::group('۲ — خوانایی: اعداد از خودِ قاعده خوانده می‌شوند، نه کپیِ محلی');
+T::group('۲ — خوانایی در هر رنگ، روز و شب (از خودِ توکن‌ها، نه کپیِ محلی)');
 // ---------------------------------------------------------------
-$side = thBlocks($css, '.st-side');
-$sideG = '';
-foreach ($side as [$b]) { if (str_contains($b, 'var(--st-rb2)')) { $sideG = $b; } }
-$ok1 = preg_match('/color-mix\(in srgb,\s*var\(--st-rb2\)\s*(\d+)%,\s*var\(--st-rb3\)\)/', $sideG, $mm);
-$ok2 = preg_match('/rgba\(0,\s*0,\s*0,\s*(\.\d+)\)/', $sideG, $vm);
-$ok3 = preg_match('/\.st-side-item\s*\{[^}]*?(?<![\w-])color:\s*rgba\(255,\s*255,\s*255,\s*(\.\d+)\)/', $css, $tm);
-$hero = '';
-foreach (thBlocks($css, '.st-kpi-card.st-kpi-hero') as [$b]) { if (str_contains($b, 'var(--st-rb2)')) { $hero = $b; } }
-$ok4 = preg_match('/color-mix\(in srgb,\s*var\(--st-rb2\)\s*(\d+)%,\s*var\(--st-rb3\)\)/', $hero, $hm);
-T::ok($ok1 && $ok2 && $ok3 && $ok4, 'منو و کارتِ «فروشِ امروز» از --st-rb2/--st-rb3 ساخته می‌شوند');
-
-if ($ok1 && $ok2 && $ok3 && $ok4) {
-    $bad = []; $n = 0;
-    $surf = ['روز' => [255, 255, 255], 'شب' => thHex('#131418')];
-    foreach ($pal as $k => [$L, $D]) {
-        foreach (['روز' => $L, 'شب' => $D] as $mode => $T) {
-            $n++;
-            foreach (['st-rb2', 'st-rb3', 'st-accent', 'st-accent-ink'] as $tk) {
-                if (!preg_match('/^#[0-9a-f]{6}$/i', $T[$tk] ?? '')) { $bad[] = "{$k} ({$mode}): --{$tk} رنگِ شش‌رقمی نیست"; continue 2; }
-            }
-            $bg = thMix([0, 0, 0], thMix(thHex($T['st-rb2']), thHex($T['st-rb3']), (int)$mm[1] / 100), (float)$vm[1]);
-            $fg = thMix([255, 255, 255], $bg, (float)$tm[1]);
-            if (($r = thCr($fg, $bg)) < 4.5) { $bad[] = sprintf('%s (%s): متنِ منو %.2f', $k, $mode, $r); }
-            $hb = thMix(thHex($T['st-rb2']), thHex($T['st-rb3']), (int)$hm[1] / 100);
-            if (($r = thCr([255, 255, 255], $hb)) < 4.5) { $bad[] = sprintf('%s (%s): عددِ سفیدِ «فروشِ امروز» %.2f', $k, $mode, $r); }
-            if (($r = thCr(thHex($T['st-accent']), $surf[$mode])) < 4.5) { $bad[] = sprintf('%s (%s): لینک/لهجه روی پنل %.2f', $k, $mode, $r); }
-            if (($r = thCr(thHex($T['st-accent-ink']), thHex($T['st-accent']))) < 4.5) { $bad[] = sprintf('%s (%s): متنِ دکمه %.2f', $k, $mode, $r); }
+$surfL = thHex($rootT['st-surface'] ?? '#ffffff');
+$surfD = thHex($dA['st-surface'] ?? '#14171c');
+$bad = []; $n = 0;
+foreach ($pal as $k => $T) {
+    foreach (['روز' => ['p-acc', 'p-acc-ink', 'p-wash', $surfL], 'شب' => ['p-acc-n', 'p-acc-ink-n', 'p-wash-n', $surfD]] as $mode => [$ac, $ink, $wash, $surf]) {
+        $n++;
+        foreach ([$ac, $ink, $wash] as $tk) {
+            if (!preg_match('/^#[0-9a-f]{6}$/i', $T[$tk] ?? '')) { $bad[] = "{$k} ({$mode}): --{$tk} رنگِ شش‌رقمی نیست"; continue 2; }
         }
+        if (($r = thCr(thHex($T[$ink]), thHex($T[$ac]))) < 4.5) { $bad[] = sprintf('%s (%s): متنِ دکمه‌ی لهجه %.2f', $k, $mode, $r); }
+        if (($r = thCr(thHex($T[$ac]), $surf)) < 4.5) { $bad[] = sprintf('%s (%s): لینک/لهجه روی کارت %.2f', $k, $mode, $r); }
+        // آیکونِ قلمِ فعالِ منو روی زمینه‌ی آرامِ لهجه — عنصرِ غیرمتنی، کفِ ۳
+        if (($r = thCr(thHex($T[$ac]), thHex($T[$wash]))) < 3.0) { $bad[] = sprintf('%s (%s): آیکونِ فعال روی زمینه‌ی آرام %.2f', $k, $mode, $r); }
     }
-    T::bulk($n, $bad, 'متنِ منو، عددِ قهرمان، لینک و دکمه در هر رنگ (روز و شب) دست‌کم ۴٫۵ تضاد دارند');
 }
+T::bulk($n, $bad, 'دکمه، لینک و قلمِ فعالِ منو در هر رنگ (روز و شب) خوانا هستند');
+$ink = thHex($rootT['st-ink'] ?? '#000000'); $inkD = thHex($dA['st-ink'] ?? '#ffffff');
+T::ok(thCr($ink, $surfL) >= 7 && thCr($inkD, $surfD) >= 7, 'متنِ اصلی روی کارت، روز و شب، دست‌کم ۷ تضاد دارد');
+T::ok(thCr(thHex($rootT['st-primary-ink'] ?? '#fff'), thHex($rootT['st-primary'] ?? '#000')) >= 7
+    && thCr(thHex($dA['st-primary-ink'] ?? '#000'), thHex($dA['st-primary'] ?? '#fff')) >= 7, 'دکمه‌ی اصلیِ زغالی (و وارونه‌ی شبش) خواناست');
 
 // ---------------------------------------------------------------
 try {

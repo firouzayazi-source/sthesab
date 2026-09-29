@@ -68,25 +68,34 @@ final class Biz
 
     /**
      * ⛔ منوی محیطِ فروشگاهی — تنها مرجع، گروه‌بندی‌شده (نوارِ کناریِ
-     *    سمتِ راست از همین رندر می‌شود). فایلی که هنوز ساخته نشده رندر
-     *    نمی‌شود (دکمه‌ی بی‌کار از نبودنش بدتر است).
+     *    سمتِ راست، مسیرِ نوارِ بالا و فرمانِ سریع همه از همین). فایلی که
+     *    هنوز ساخته نشده رندر نمی‌شود (دکمه‌ی بی‌کار از نبودنش بدتر است).
+     *
+     * **خواسته‌ی مالکِ نصب:** گروه‌های «اصلی / فروشگاه / مالی / گزارش‌ها /
+     * سیستم». ⚠ قلم‌هایی از آن فهرست که در فروشگاه صفحه ندارند (اقساط،
+     * انتقالِ وجهِ جدا، اعلان‌ها) ساخته نشدند: «انتقال» یکی از نوع‌های
+     * «دریافت و پرداخت» است و «نیاز به توجه» روی خودِ داشبورد.
      */
     public const NAV = [
-        'پیشخوان'      => ['index.php' => 'داشبورد'],
-        'فروش'         => ['quick-sale.php' => 'فروش سریع', 'sales.php' => 'فاکتورهای فروش'],
-        'خرید'         => ['purchases.php' => 'فاکتورهای خرید'],
-        'خزانه'        => ['payments.php' => 'دریافت و پرداخت', 'cheques.php' => 'چک‌ها', 'accounts.php' => 'صندوق و بانک'],
-        'انبار و کالا' => ['products.php' => 'کالاها', 'categories.php' => 'دسته‌بندی‌ها', 'products-io.php' => 'ورود و خروجِ اکسل'],
-        'اشخاص'        => ['parties.php' => 'مشتری و تأمین‌کننده'],
-        'گزارش و چاپ'  => ['reports.php' => 'گزارش و چاپ'],
-        'تنظیمات'      => ['settings.php' => 'تنظیمات فروشگاه', 'print-settings.php' => 'تنظیمات چاپ', 'invoice-design.php' => 'طراحی فاکتور'],
+        'اصلی'     => ['index.php' => 'داشبورد', 'search.php' => 'جستجوی سریع'],
+        'فروشگاه'  => ['quick-sale.php' => 'فروش سریع', 'sales.php' => 'فاکتورهای فروش', 'purchases.php' => 'فاکتورهای خرید',
+                       'products.php' => 'محصولات و موجودی', 'categories.php' => 'دسته‌بندی‌ها', 'parties.php' => 'مشتریان و تأمین‌کنندگان'],
+        'مالی'     => ['payments.php' => 'دریافت و پرداخت', 'accounts.php' => 'صندوق و بانک', 'cheques.php' => 'چک‌ها'],
+        'گزارش‌ها' => ['reports.php' => 'گزارش‌ها و چاپ'],
+        'سیستم'    => ['settings.php' => 'تنظیمات فروشگاه', 'invoice-design.php' => 'طراحی فاکتور', 'print-settings.php' => 'تنظیمات چاپ',
+                       'products-io.php' => 'ورود و خروجِ اکسل'],
     ];
 
     /**
      * منوی پایینِ موبایل — فقط **کلید**ها؛ برچسب از `NAV` می‌آید (فهرستِ
-     * دومِ برچسب ساخته نمی‌شود). بقیه در کشوی «منو» است.
+     * دومِ برچسب ساخته نمی‌شود). «+ ثبت» بعد از `TABBAR_NEW_AT` قلم و
+     * «بیشتر» (کشوی منو) آخرِ نوار است: داشبورد، حساب‌ها، +، فروش، بیشتر.
      */
-    public const TABBAR = ['index.php', 'quick-sale.php', 'sales.php', 'products.php'];
+    public const TABBAR = ['index.php', 'accounts.php', 'sales.php'];
+    public const TABBAR_NEW_AT = 2;
+
+    /** برچسبِ کوتاهِ منوی پایین — فقط وقتی برچسبِ `NAV` برای ۲۰ درصدِ عرض بلند است. */
+    public const TABBAR_SHORT = ['accounts.php' => 'حساب‌ها', 'sales.php' => 'فروش'];
 
     /** صفحه‌ی جزئیات کدام قلمِ منو را روشن می‌کند (مگر صفحه خودش `$navActive` بگذارد). */
     public const NAV_PARENT = [
@@ -100,8 +109,9 @@ final class Biz
     ];
 
     /**
-     * ⛔ منوی «+ ثبت» (بالای نوارِ کناری) — تنها مرجع؛ `<details>`ِ بومی است،
-     *    پس بی‌جاوااسکریپت باز و بسته می‌شود.
+     * ⛔ منوی «+ ثبتِ جدید» (نوارِ بالا و دکمه‌ی وسطِ منوی پایین) — تنها
+     *    مرجع؛ `<details>`ِ بومی است، پس بی‌جاوااسکریپت باز و بسته می‌شود.
+     *    فرمانِ سریع هم همین‌ها را پیشنهاد می‌دهد.
      */
     public const NEW_MENU = [
         'quick-sale.php'              => 'فروش سریع',
@@ -110,8 +120,9 @@ final class Biz
         'payment.php?k=receipt'       => 'دریافت از مشتری',
         'payment.php?k=payment'       => 'پرداخت به تأمین‌کننده',
         'payment.php?k=expense'       => 'هزینه‌ی فروشگاه',
-        'product.php'                 => 'کالای تازه',
-        'party.php'                   => 'مشتری یا تأمین‌کننده‌ی تازه',
+        'payment.php?k=receipt&method=cheque' => 'ثبتِ چکِ دریافتی',
+        'party.php'                   => 'مشتری یا تأمین‌کننده',
+        'product.php'                 => 'محصول',
     ];
 
     /**
@@ -120,6 +131,33 @@ final class Biz
      * است نه متغیرِ سراسری (قاعده ۵۰).
      */
     public static ?string $navActive = null;
+
+    /**
+     * آیکونِ خطیِ هر قلمِ منو (نوارِ کناری، منوی پایین و فرمانِ سریع) — فقط
+     * شکل، نه فهرستِ صفحه‌ها (آن `NAV` است). یک وزن، یک اندازه.
+     * @return array<string,string>
+     */
+    public static function navIcons(): array
+    {
+        return [
+            'index.php'          => '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
+            'search.php'         => '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+            'products.php'       => '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+            'products-io.php'    => '<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
+            'parties.php'        => '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14a6 6 0 0 1 3.5 6"/>',
+            'reports.php'        => '<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>',
+            'settings.php'       => '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3.1 15H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.1V4a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+            'print-settings.php' => '<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/>',
+            'invoice-design.php' => '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h7M9 17h5"/>',
+            'quick-sale.php'     => '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+            'sales.php'          => '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+            'purchases.php'      => '<path d="M3 4h2l2.4 11h11L21 7H6.2"/><circle cx="9" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/>',
+            'payments.php'       => '<path d="M7 7h13l-3-3"/><path d="M17 17H4l3 3"/>',
+            'accounts.php'       => '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M16 15h2"/>',
+            'cheques.php'        => '<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 14h5"/><path d="M15 11h3"/><path d="M15 14h3"/>',
+            'categories.php'     => '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+        ];
+    }
 
     /** @return array<string,string> فایل ← برچسب، به ترتیبِ منو */
     public static function navFlat(): array
@@ -398,20 +436,36 @@ final class Biz
     private static array $paletteCache = [];
 
     /**
-     * ⛔ تنها مرجعِ رنگ‌های فروشگاه («همین استایل» — منوی کناریِ طیف‌دار).
-     * **اولین کلید پیش‌فرض است** و در `store.css` خودِ `:root` است (بلوکِ
-     * `data-st-palette` ندارد). `theme` رنگِ نوارِ وضعیتِ گوشی است و باید
-     * همان `--st-rb3`ِ روزِ همان پالت باشد (`test_store_theme` می‌سنجد).
-     * ⚠ کهربایی پیش‌فرض ماند تا فروشگاه و حساب لند با هم قاطی نشوند.
+     * ⛔ تنها مرجعِ رنگِ لهجه‌ی فروشگاه. **اولین کلید پیش‌فرض است** و در
+     * `store.css` خودِ `:root` است (بلوکِ `data-st-palette` ندارد).
+     * **خواسته‌ی مالکِ نصب:** «Accent سبز (هویت حساب‌لند)» — پس سبز اول آمد
+     * و کهربایی (پیش‌فرضِ قبلی) یکی از گزینه‌هاست. چون پیش‌فرض `NULL`
+     * ذخیره می‌شد، هر فروشگاهی که رنگ را دست نزده بود حالا سبز است.
+     * `theme` رنگِ نوارِ وضعیتِ گوشی است و باید همان `--p-acc`ِ روزِ همان
+     * پالت باشد (`test_store_theme` می‌سنجد).
      */
     public const PALETTES = [
-        'amber'    => ['label' => 'کهربایی', 'theme' => '#431407'],
-        'indigo'   => ['label' => 'نیلی',    'theme' => '#2f2a6b'],
-        'emerald'  => ['label' => 'زمرد',    'theme' => '#073f2c'],
-        'ocean'    => ['label' => 'اقیانوس', 'theme' => '#1e3a8a'],
-        'lilac'    => ['label' => 'یاس',     'theme' => '#4c1d95'],
-        'graphite' => ['label' => 'شب',      'theme' => '#0e1013'],
+        'emerald'  => ['label' => 'سبزِ حساب‌لند', 'theme' => '#047857'],
+        'indigo'   => ['label' => 'نیلی',    'theme' => '#4f46e5'],
+        'ocean'    => ['label' => 'اقیانوس', 'theme' => '#0369a1'],
+        'lilac'    => ['label' => 'یاس',     'theme' => '#7e22ce'],
+        'amber'    => ['label' => 'کهربایی', 'theme' => '#b45309'],
+        'graphite' => ['label' => 'زغالی',   'theme' => '#1f2937'],
     ];
+
+    /**
+     * اسکریپتِ درون‌خطیِ سرآیند — **پیش از رندر** حالتِ شب و فشرده بودنِ
+     * نوارِ کناری را روی `<html>` می‌گذارد تا چشمکی از حالتِ دیگر دیده نشود.
+     * ⛔ فقط `localStorage` و `matchMedia` را می‌خواند؛ هیچ داده‌ای از
+     *    صفحه در آن نیست. بی‌جاوااسکریپت CSS خودش از سیستم پیروی می‌کند.
+     */
+    public static function bootScript(): string
+    {
+        return "(function(){var d=document.documentElement,t=null,m=null;"
+            . "try{t=localStorage.getItem('st_theme');m=localStorage.getItem('st_side_mini');}catch(e){}"
+            . "if(t!=='dark'&&t!=='light'){t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}"
+            . "d.setAttribute('data-st-theme',t);if(m==='1'){d.setAttribute('data-st-mini','1');}})();";
+    }
 
     /** پالتِ این فروشگاه؛ ناشناخته یا خالی → اولین کلید. صفر کوئریِ اضافه. */
     public static function palette(int $userId): string

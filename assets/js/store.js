@@ -1,3 +1,105 @@
+/* @cmd-start ================================================
+   ⛔ فرمانِ سریع — تشخیصِ نیت (خالص، بی‌DOM؛ `tests/test_store_cmd.php`
+      همین تکه را در node اجرا می‌کند، نه کپیِ آن).
+   **خواسته‌ی مالکِ نصب:** «ثبت تراکنش ۵ میلیون»، «فاکتور جدید»، «مشتری
+   جدید»، «جستجوی علی رضایی»، «نمایش بدهی‌ها»، «نمایش فروش امروز».
+   ⛔ هیچ فرمانی خودش چیزی نمی‌نویسد: هر نیت یک **آدرسِ صفحه‌ی موجود** است
+      (با مبلغِ پیش‌پرشده)، و ثبت را همان صفحه با CSRF و سنجشِ سرور انجام
+      می‌دهد. نیتِ مبهم (مثلاً مبلغ بدونِ نوع) چند گزینه می‌دهد، نه حدس.
+   ============================================================ */
+(function (root) {
+    'use strict';
+    var FA = '۰۱۲۳۴۵۶۷۸۹', AR = '٠١٢٣٤٥٦٧٨٩';
+    function norm(s) {
+        return String(s == null ? '' : s)
+            .replace(/[۰-۹]/g, function (d) { return FA.indexOf(d); })
+            .replace(/[٠-٩]/g, function (d) { return AR.indexOf(d); })
+            .replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/أ|إ/g, 'ا').replace(/ۀ|ة/g, 'ه')
+            .replace(/[ً-ٟـ]/g, '')
+            .replace(/[‌‏‎]/g, ' ')
+            .replace(/\s+/g, ' ').trim().toLowerCase();
+    }
+    /**
+     * مبلغ از متن — «۵ میلیون»، «۲٫۵ میلیون»، «۳۰۰ هزار»، «۱,۲۰۰,۰۰۰»، «۵م».
+     * ⛔ مبلغ به تومان است (واحدِ همه‌ی فرم‌های فروشگاه). عددِ بی‌واحدِ زیرِ
+     *    ۱۰۰۰ مبلغ نیست (شماره‌ی فاکتور یا تعداد است) مگر واحد بگیرد.
+     */
+    function amount(text) {
+        var t = norm(text).replace(/(\d)[,٬](?=\d{3}(\D|$))/g, '$1');
+        var re = /(\d+(?:[.٫\/]\d+)?)\s*(میلیارد|میلیون|تومان|هزار|م(?=\s|$)|k(?=\s|$)|m(?=\s|$))?/g, mm, best = 0;
+        while ((mm = re.exec(t)) !== null) {
+            var n = parseFloat(mm[1].replace(/[٫\/]/, '.'));
+            if (!isFinite(n) || n <= 0) { continue; }
+            var u = mm[2] || '';
+            var mul = u === 'میلیارد' ? 1e9 : (u === 'میلیون' || u === 'م' || u === 'm') ? 1e6 : (u === 'هزار' || u === 'k') ? 1e3 : 1;
+            var v = Math.round(n * mul);
+            if (mul === 1 && u !== 'تومان' && v < 1000) { continue; }
+            if (v > best) { best = v; }
+        }
+        return best;
+    }
+    function fa(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '٬').replace(/\d/g, function (d) { return FA[d]; }); }
+    var PAY = [
+        { re: /(دریافت|وصول|گرفتم|واریز\s*مشتری)/, k: 'receipt', t: 'دریافت از مشتری' },
+        { re: /(پرداخت|دادم)/,                    k: 'payment', t: 'پرداخت به تأمین‌کننده' },
+        { re: /(هزینه|خرج|قبض|اجاره)/,           k: 'expense', t: 'هزینه‌ی فروشگاه' },
+        { re: /درآمد/,                            k: 'income',  t: 'درآمدِ متفرقه' },
+        { re: /انتقال/,                           k: 'transfer', t: 'انتقال بینِ صندوق‌ها' }
+    ];
+    /**
+     * @return {Array<{t:string,s:string,u:string,i:string}>} نیت‌ها به ترتیبِ
+     *         احتمال — `u` نسبت به `/store/` است (بی‌اسلشِ اول).
+     */
+    function parse(text) {
+        var q = norm(text), out = [], seen = {};
+        if (q === '') { return out; }
+        function add(t, s, u, i) { if (!seen[u]) { seen[u] = 1; out.push({ t: t, s: s, u: u, i: i || 'go' }); } }
+        var srch = q.match(/^(?:جستجو(?:ی)?|جست و جو(?:ی)?|پیدا کن|بگرد|search)\s+(.+)$/);
+        if (srch) { add('جستجوی «' + srch[1] + '»', 'در مشتری، کالا، فاکتور، چک و صندوق', 'search.php?q=' + encodeURIComponent(srch[1]), 'search'); return out; }
+        var amt = amount(q), amtQ = amt > 0 ? '&amount=' + amt : '', amtS = amt > 0 ? 'مبلغ ' + fa(amt) + ' تومان' : '';
+        // گزارش و فهرست
+        var per = q.match(/فروش\s*(?:(?:این|امروز)\s*)?(امروز|دیروز|هفته|ماه|امسال|سال)/);
+        if (per) {
+            var pm = { 'امروز': 'today', 'دیروز': 'today', 'هفته': 'week', 'ماه': 'month', 'امسال': 'year', 'سال': 'year' }[per[1]];
+            add('فروشِ ' + ({ today: 'امروز', week: 'این هفته', month: 'این ماه', year: 'امسال' }[pm]), 'گزارشِ فروش و سود', 'reports.php?p=' + pm, 'chart');
+        }
+        if (/(بدهکار|طلب\s*(از|ما|ها)|بدهی\s*مشتری)/.test(q)) { add('بدهکاران (طلبِ فروشگاه)', 'مشتری‌هایی که مانده‌ی بدهکار دارند', 'parties.php?f=debtor', 'list'); }
+        if (/(طلبکار|بدهی\s*به|بدهی\s*فروشگاه)/.test(q)) { add('طلبکاران (بدهیِ فروشگاه)', 'تأمین‌کننده‌هایی که به آن‌ها بدهکارید', 'parties.php?f=creditor', 'list'); }
+        if (/^(نمایش\s*)?بدهی/.test(q) || /نمایش\s*بدهی/.test(q)) {
+            add('بدهکاران (طلبِ فروشگاه)', 'مشتری‌هایی که مانده‌ی بدهکار دارند', 'parties.php?f=debtor', 'list');
+            add('طلبکاران (بدهیِ فروشگاه)', 'تأمین‌کننده‌هایی که به آن‌ها بدهکارید', 'parties.php?f=creditor', 'list');
+        }
+        if (/(کم\s*موجود|موجودی\s*کم)/.test(q)) { add('کالاهای کم‌موجودی', 'زیرِ حداقلِ موجودی', 'products.php?f=low', 'list'); }
+        if (/ناموجود/.test(q)) { add('کالاهای ناموجود', 'موجودیِ صفر', 'products.php?f=out', 'list'); }
+        if (/پیش\s*نویس/.test(q)) { add('پیش‌نویس‌های فاکتور', 'اسنادِ صادرنشده', 'sales.php?f=draft', 'list'); }
+        if (/(تسویه\s*نشده|فاکتور(های)?\s*باز|نقد\s*نشده)/.test(q)) { add('فاکتورهای تسویه‌نشده', 'مانده‌ی دریافت‌نشده', 'sales.php?f=open', 'list'); }
+        // ساختن
+        if (/(مشتری|تامین\s*کننده|تأمین\s*کننده|طرف\s*حساب|شخص)\s*(جدید|تازه)|(تعریف|ثبت)\s*(مشتری|تامین|تأمین)/.test(q)) { add('مشتری یا تأمین‌کننده‌ی تازه', 'تعریفِ طرف‌حساب', 'party.php', 'plus'); }
+        if (/(کالا|محصول|جنس|گوشی)\s*(جدید|تازه)|(تعریف|ثبت)\s*(کالا|محصول)/.test(q)) { add('محصولِ تازه', 'تعریفِ کالا یا خدمت', 'product.php', 'plus'); }
+        if (/چک/.test(q)) {
+            if (/(ثبت|جدید|تازه|دریافت)/.test(q)) { add('ثبتِ چکِ دریافتی', amtS || 'چک از مشتری', 'payment.php?k=receipt&method=cheque' + amtQ, 'plus'); }
+            if (/پرداخت/.test(q)) { add('ثبتِ چکِ پرداختی', amtS || 'چک به تأمین‌کننده', 'payment.php?k=payment&method=cheque' + amtQ, 'plus'); }
+            add('دفترِ چک', /سررسید|گذشته|معوق/.test(q) ? 'چک‌های سررسیدگذشته' : 'چک‌های در جریان', 'cheques.php' + (/سررسید|گذشته|معوق/.test(q) ? '?f=overdue' : ''), 'list');
+        }
+        if (/فروش\s*سریع|صندوق\s*فروش/.test(q)) { add('فروش سریع', 'اسکنِ بارکد و صدورِ فوری', 'quick-sale.php', 'plus'); }
+        if (/فاکتور\s*خرید|خرید\s*(جدید|تازه|کالا)/.test(q)) { add('فاکتور خرید تازه', 'ورودِ کالا از تأمین‌کننده', 'invoice-edit.php?k=purchase', 'plus'); }
+        else if (/فاکتور|فروش\s*(جدید|تازه)/.test(q) && !per) { add('فاکتور فروش تازه', 'صدورِ فاکتور برای مشتری', 'invoice-edit.php?k=sale', 'plus'); }
+        if (!/چک/.test(q)) {
+            var hit = false;
+            PAY.forEach(function (p) { if (p.re.test(q)) { hit = true; add(p.t, amtS || 'ثبتِ تازه', 'payment.php?k=' + p.k + amtQ, 'plus'); } });
+            // مبلغِ بی‌نوع («ثبت تراکنش ۵ میلیون») — چند گزینه، نه حدس
+            if (!hit && (amt > 0 && (/(تراکنش|ثبت|سند)/.test(q) || /^[\d.,٫\s]+(میلیون|هزار|تومان|م)?\s*$/.test(q)))) {
+                add('دریافت از مشتری', amtS, 'payment.php?k=receipt' + amtQ, 'plus');
+                add('هزینه‌ی فروشگاه', amtS, 'payment.php?k=expense' + amtQ, 'plus');
+                add('پرداخت به تأمین‌کننده', amtS, 'payment.php?k=payment' + amtQ, 'plus');
+            }
+        }
+        return out.slice(0, 6);
+    }
+    root.stCmd = { norm: norm, amount: amount, parse: parse };
+})(typeof window !== 'undefined' ? window : globalThis);
+/* @cmd-end */
+
 /* ============================================================
    محیطِ فروشگاهی — بهبودِ پیش‌رونده‌ی فرم‌های سند
    ============================================================
@@ -537,5 +639,225 @@
         var later = function () { clearTimeout(t); t = setTimeout(refresh, 350); };
         form.addEventListener('input', later);
         form.addEventListener('change', later);
+    });
+})();
+
+
+/* ============================================================
+   پوسته — حالتِ شب، جمع کردنِ منو، بستنِ منوهای کشویی، Toast، و فرمانِ
+   سریع (Ctrl+K). ⛔ همه بهبودِ تدریجی‌اند: دکمه‌های حالتِ شب و «جمع کردن»
+   تا رسیدنِ این اسکریپت `hidden` می‌مانند، و جعبه‌ی جست‌وجو بی‌آن یک فرمِ
+   GET به `search.php` است.
+   ============================================================ */
+(function () {
+    'use strict';
+    var doc = document.documentElement;
+    function store(k, v) { try { if (v === null) { localStorage.removeItem(k); } else { localStorage.setItem(k, v); } } catch (e) {} }
+
+    // ---------- حالتِ شب ----------
+    Array.prototype.forEach.call(document.querySelectorAll('[data-theme-toggle]'), function (b) {
+        b.hidden = false;
+        b.addEventListener('click', function () {
+            var next = doc.getAttribute('data-st-theme') === 'dark' ? 'light' : 'dark';
+            doc.setAttribute('data-st-theme', next);
+            store('st_theme', next);
+        });
+    });
+    // کاربری که خودش انتخاب نکرده، با سیستم جلو می‌رود
+    if (window.matchMedia) {
+        var mq = matchMedia('(prefers-color-scheme: dark)');
+        var onMq = function () { var own = null; try { own = localStorage.getItem('st_theme'); } catch (e) {} if (!own) { doc.setAttribute('data-st-theme', mq.matches ? 'dark' : 'light'); } };
+        if (mq.addEventListener) { mq.addEventListener('change', onMq); }
+    }
+
+    // ---------- جمع کردنِ نوارِ کناری ----------
+    Array.prototype.forEach.call(document.querySelectorAll('[data-side-mini]'), function (b) {
+        b.hidden = false;
+        b.addEventListener('click', function () {
+            var on = doc.getAttribute('data-st-mini') !== '1';
+            if (on) { doc.setAttribute('data-st-mini', '1'); } else { doc.removeAttribute('data-st-mini'); }
+            store('st_side_mini', on ? '1' : null);
+        });
+    });
+
+    // ---------- منوهای کشویی: کلیکِ بیرون و Escape ----------
+    document.addEventListener('click', function (e) {
+        Array.prototype.forEach.call(document.querySelectorAll('details.st-dd[open]'), function (d) {
+            if (!d.contains(e.target)) { d.removeAttribute('open'); }
+        });
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { Array.prototype.forEach.call(document.querySelectorAll('details.st-dd[open]'), function (d) { d.removeAttribute('open'); }); }
+    });
+
+    // ---------- Toast ----------
+    var flash = document.querySelector('[data-toast]');
+    if (flash) {
+        var box = document.createElement('div');
+        box.className = 'st-toasts';
+        box.setAttribute('aria-live', 'polite');
+        document.body.appendChild(box);
+        box.appendChild(flash);
+        var x = document.createElement('button');
+        x.type = 'button'; x.className = 'st-toast-x'; x.setAttribute('aria-label', 'بستن'); x.textContent = '×';
+        flash.appendChild(x);
+        var gone = function () { flash.classList.add('is-out'); setTimeout(function () { if (flash.parentNode) { flash.parentNode.removeChild(flash); } }, 260); };
+        x.addEventListener('click', gone);
+        setTimeout(gone, flash.classList.contains('st-flash-err') ? 9000 : 5000);
+    }
+
+    // ---------- نمودار: راهنمای روی نقطه ----------
+    Array.prototype.forEach.call(document.querySelectorAll('.st-chart'), function (c) {
+        var tip = null;
+        c.addEventListener('pointerover', function (e) {
+            var h = e.target.closest ? e.target.closest('[data-tip]') : null;
+            if (!h) { return; }
+            if (!tip) { tip = document.createElement('div'); tip.className = 'st-chart-tip'; c.appendChild(tip); }
+            var parts = String(h.getAttribute('data-tip')).split('|');
+            tip.textContent = '';
+            var b = document.createElement('b'); b.textContent = parts.shift(); tip.appendChild(b);
+            parts.forEach(function (p) { var d = document.createElement('div'); d.textContent = p; tip.appendChild(d); });
+            var r = h.getBoundingClientRect(), cr = c.getBoundingClientRect();
+            var left = Math.max(70, Math.min(cr.width - 70, r.left - cr.left + r.width / 2));
+            tip.style.left = left + 'px';
+            tip.style.top = Math.max(0, r.top - cr.top) + 'px';
+            tip.hidden = false;
+            var g = h.nextElementSibling; if (g && g.classList.contains('st-guide')) { g.classList.add('is-on'); }
+        });
+        c.addEventListener('pointerout', function (e) {
+            var h = e.target.closest ? e.target.closest('[data-tip]') : null;
+            if (h) { var g = h.nextElementSibling; if (g && g.classList.contains('st-guide')) { g.classList.remove('is-on'); } }
+            if (tip && !c.contains(e.relatedTarget)) { tip.hidden = true; }
+        });
+        c.addEventListener('pointerleave', function () { if (tip) { tip.hidden = true; } });
+    });
+
+    // ---------- فرمانِ سریع (Ctrl+K) ----------
+    var dataEl = document.getElementById('stCmdData');
+    if (!dataEl || !window.stCmd) { return; }
+    var DATA;
+    try { DATA = JSON.parse(dataEl.textContent); } catch (e) { return; }
+    var BASE = DATA.search.replace(/search\.php.*$/, '');
+    var ICO = {
+        go:     '<path d="M5 12h14M13 6l6 6-6 6"/>',
+        plus:   '<path d="M12 5v14M5 12h14"/>',
+        search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
+        chart:  '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+        list:   '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+        page:   '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/>',
+        party:  '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+        product:'<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/>',
+        invoice:'<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/>',
+        cheque: '<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 14h5"/>',
+        account:'<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/>',
+        payment:'<path d="M7 7h13l-3-3"/><path d="M17 17H4l3 3"/>'
+    };
+    var back = null, input = null, list = null, opts = [], active = 0, remote = [], ctl = null, timer = null, lastQ = null;
+    function svg(k) { return '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICO[k] || ICO.go) + '</svg>'; }
+    function build() {
+        back = document.createElement('div');
+        back.className = 'st-cmd-back'; back.hidden = true;
+        back.innerHTML = '<div class="st-cmd" role="dialog" aria-modal="true" aria-label="فرمانِ سریع">'
+            + '<div class="st-cmd-in">' + svg('search') + '<input type="text" autocomplete="off" spellcheck="false" placeholder="جستجو یا فرمان — مثلاً «دریافت ۵ میلیون»، «مشتری جدید»، «فروش امروز»" aria-label="فرمان"></div>'
+            + '<div class="st-cmd-list" role="listbox"></div>'
+            + '<div class="st-cmd-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> جابه‌جایی</span><span><kbd>Enter</kbd> باز کردن</span><span><kbd>Esc</kbd> بستن</span></div></div>';
+        document.body.appendChild(back);
+        input = back.querySelector('input');
+        list = back.querySelector('.st-cmd-list');
+        back.addEventListener('pointerdown', function (e) { if (e.target === back) { close(); } });
+        input.addEventListener('input', function () { render(); fetchRemote(); });
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'ArrowDown') { e.preventDefault(); mark(Math.min(opts.length - 1, active + 1)); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); mark(Math.max(0, active - 1)); }
+            else if (e.key === 'Enter') { e.preventDefault(); go(active); }
+            else if (e.key === 'Escape') { e.preventDefault(); close(); }
+        });
+        list.addEventListener('pointermove', function (e) { var o = e.target.closest('.st-cmd-opt'); if (o) { mark(+o.getAttribute('data-i'), true); } });
+        list.addEventListener('click', function (e) { var o = e.target.closest('.st-cmd-opt'); if (o) { e.preventDefault(); go(+o.getAttribute('data-i')); } });
+    }
+    function fold(s) { return window.stCmd.norm(s).replace(/\s/g, ''); }
+    function render() {
+        var q = input.value, fq = fold(q), groups = [];
+        var intents = window.stCmd.parse(q).map(function (x) { return { t: x.t, s: x.s, u: BASE + x.u, i: x.i, intent: true }; });
+        if (intents.length) { groups.push(['پیشنهادِ فرمان', intents]); }
+        var news = DATA['new'].filter(function (n) { return fq === '' || fold(n.t).indexOf(fq) >= 0; }).map(function (n) { return { t: n.t, s: 'ثبتِ جدید', u: n.u, i: 'plus' }; });
+        var pages = DATA.pages.filter(function (p) { return fq === '' || fold(p.t).indexOf(fq) >= 0 || fold(p.g).indexOf(fq) >= 0; }).map(function (p) { return { t: p.t, s: p.g, u: p.u, i: 'page' }; });
+        if (q.trim() === '') { groups.push(['ثبتِ جدید', news.slice(0, 5)]); groups.push(['رفتن به', pages.slice(0, 8)]); }
+        else {
+            remote.forEach(function (g) { if (g.items && g.items.length) { groups.push([g.label, g.items.map(function (it) { return { t: it.t, s: it.s || '', u: it.u, i: it.i || 'go', end: it.e || '' }; })]); } });
+            if (news.length) { groups.push(['ثبتِ جدید', news.slice(0, 4)]); }
+            if (pages.length) { groups.push(['صفحه‌ها', pages.slice(0, 5)]); }
+            groups.push(['', [{ t: 'جستجوی کامل برای «' + q.trim() + '»', s: 'همه‌ی نتیجه‌ها در یک صفحه', u: DATA.search + '?q=' + encodeURIComponent(q.trim()), i: 'search' }]]);
+        }
+        opts = []; list.textContent = '';
+        groups.forEach(function (g) {
+            if (!g[1].length) { return; }
+            if (g[0]) { var h = document.createElement('div'); h.className = 'st-cmd-group'; h.textContent = g[0]; list.appendChild(h); }
+            g[1].forEach(function (o) {
+                var a = document.createElement('a');
+                a.className = 'st-cmd-opt' + (o.intent ? ' is-intent' : '');
+                a.href = o.u; a.setAttribute('role', 'option'); a.setAttribute('data-i', String(opts.length));
+                var ic = document.createElement('span'); ic.className = 'st-cmd-ico'; ic.innerHTML = svg(o.i);
+                var tx = document.createElement('span'); tx.className = 'st-cmd-text';
+                var b = document.createElement('b'); b.textContent = o.t; tx.appendChild(b);
+                if (o.s) { var sp = document.createElement('span'); sp.textContent = o.s; tx.appendChild(sp); }
+                a.appendChild(ic); a.appendChild(tx);
+                if (o.end) { var en = document.createElement('span'); en.className = 'st-cmd-end'; en.textContent = o.end; a.appendChild(en); }
+                list.appendChild(a);
+                opts.push(o);
+            });
+        });
+        if (!opts.length) { var em = document.createElement('div'); em.className = 'st-cmd-empty'; em.textContent = 'چیزی پیدا نشد.'; list.appendChild(em); }
+        mark(0);
+    }
+    function mark(i, noScroll) {
+        active = i;
+        Array.prototype.forEach.call(list.querySelectorAll('.st-cmd-opt'), function (a) {
+            var on = +a.getAttribute('data-i') === i;
+            a.classList.toggle('is-active', on); a.setAttribute('aria-selected', on ? 'true' : 'false');
+            if (on && !noScroll) { a.scrollIntoView({ block: 'nearest' }); }
+        });
+    }
+    function go(i) { var o = opts[i]; if (o) { window.location.href = o.u; } }
+    function fetchRemote() {
+        var q = input.value.trim();
+        clearTimeout(timer);
+        if (q.length < 2) { remote = []; return; }
+        timer = setTimeout(function () {
+            if (q === lastQ) { return; }
+            lastQ = q;
+            if (ctl && ctl.abort) { ctl.abort(); }
+            ctl = window.AbortController ? new AbortController() : null;
+            var term = q.replace(/^(جستجو(ی)?|پیدا کن|بگرد)\s+/, '');
+            fetch(DATA.search + '?format=json&q=' + encodeURIComponent(term), { credentials: 'same-origin', signal: ctl ? ctl.signal : undefined, headers: { 'Accept': 'application/json' } })
+                .then(function (r) { return r.ok ? r.json() : { groups: [] }; })
+                .then(function (j) { if (input.value.trim() === q) { remote = j.groups || []; render(); } })
+                .catch(function () {});
+        }, 160);
+    }
+    function open(prefill) {
+        if (!back) { build(); }
+        back.hidden = false;
+        doc.classList.add('st-locked');
+        input.value = prefill || '';
+        remote = []; lastQ = null;
+        render();
+        if (input.value) { fetchRemote(); }
+        setTimeout(function () { input.focus(); input.select(); }, 0);
+    }
+    function close() { if (back) { back.hidden = true; doc.classList.remove('st-locked'); } }
+    document.addEventListener('keydown', function (e) {
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K' || e.key === 'ک')) { e.preventDefault(); if (back && !back.hidden) { close(); } else { open(''); } }
+        else if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement || {}).tagName || '') && !(document.activeElement || {}).isContentEditable) { e.preventDefault(); open(''); }
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-cmd-open]'), function (f) {
+        var inp = f.querySelector('input');
+        f.addEventListener('submit', function (e) { e.preventDefault(); open(inp ? inp.value : ''); });
+        if (inp) {
+            inp.addEventListener('focus', function () { var v = inp.value; inp.blur(); open(v); });
+        }
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('[data-cmd-link]'), function (a) {
+        a.addEventListener('click', function (e) { e.preventDefault(); open(''); });
     });
 })();

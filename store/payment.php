@@ -93,10 +93,18 @@ $inv   = $invId > 0 ? BizInvoices::get($userId, $invId) : null;
 if ($inv && ($inv['status'] !== 'issued' || BizInvoices::SETTLED_BY[$inv['kind']] !== $kind)) { $inv = null; $invId = 0; }
 $accounts = BizDocView::accounts($userId);
 $self = Biz::url('payment.php?k=' . $kind . ($invId ? '&inv=' . $invId : ''));
+// ⛔ پیش‌پر کردن از آدرس (فرمانِ سریع «دریافت ۵ میلیون»، دکمه‌ی «افزایش» روی
+//    صندوقِ داشبورد، «ثبتِ چک» در منوی «+ ثبت») فقط **پیشنهاد** است: هر عدد و
+//    شناسه‌ای که از آدرس می‌آید دوباره از `BizPay::create()` و سنجشِ مالکیتِ
+//    صندوق رد می‌شود؛ صندوقی که مالِ این فروشگاه نیست اصلاً در فهرست نیست.
+$preAcc = (int)getParam('acc', '0');
+$preAcc = in_array($preAcc, array_map(fn($a) => (int)$a['id'], $accounts), true) ? $preAcc : (int)($accounts[0]['id'] ?? 0);
+$preAmt = sanitizeAmount(getParam('amount'));
 $form = [
     'party_id' => $inv ? (int)$inv['party_id'] : (int)getParam('party', '0'),
-    'amount' => $inv ? (string)BizInvoices::remaining($inv) : '', 'account_id' => (int)($accounts[0]['id'] ?? 0),
-    'to_account_id' => (int)($accounts[1]['id'] ?? 0), 'method' => 'cash',
+    'amount' => $inv ? (string)BizInvoices::remaining($inv) : ($preAmt > 0 ? (string)$preAmt : ''), 'account_id' => $preAcc,
+    'to_account_id' => (int)($accounts[1]['id'] ?? 0),
+    'method' => getParam('method') === 'cheque' && in_array($kind, ['receipt', 'payment'], true) ? 'cheque' : 'cash',
     'pay_date' => BizDocView::jDate(date('Y-m-d')), 'title' => '', 'note' => '',
     'cheque_no' => '', 'cheque_bank' => '', 'cheque_due' => '',
 ];

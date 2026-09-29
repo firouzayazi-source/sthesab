@@ -42,7 +42,12 @@ const BPASS   = 'Biz12345';
  *    را می‌شکند.
  */
 const STORE_BUDGET = [
-    'store/index.php'    => 15,   // +۱: چک‌های سررسیدِ نزدیک در «نیازمندِ اقدام»
+    // ⛔ بازطراحی: شش شاخص، جریانِ نقد، درآمد و هزینه، حساب‌ها با تغییرِ امروز،
+    //    سهمِ هزینه‌ها، طلب/بدهی با سررسید، نیاز به توجه، آخرین تراکنش‌ها و
+    //    تحلیلِ فروش — هر بخش یک کوئری (`BizDash`)، و سریِ روزانه‌ی یک سال یک
+    //    بار خوانده و همه‌ی نمودارها و مقایسه‌ها در PHP از رویش ساخته می‌شوند.
+    'store/index.php'    => 24,
+    'store/search.php'   => 14,   // پنج فهرستِ دامنه (هر کدام شمارش + ردیف) + شماره‌ی چک + صندوق‌ها
     'store/settings.php' => 5,
     'store/products.php' => 10,
     'store/product.php'  => 9,
@@ -484,7 +489,8 @@ $bDraft = (int)BizInvoices::saveDraft($bid, 'sale', ['party_id' => (int)$bpt['id
     'lines' => [['item' => 'کالای بودجه', 'qty' => '1', 'price' => '150']]])['id'];
 $bPay = (int)BizPay::create($bid, ['kind' => 'receipt', 'party_id' => (int)$bpt['id'], 'account_id' => $bAcc, 'amount' => '30'])['id'];
 BizPay::create($bid, ['kind' => 'expense', 'account_id' => $bAcc, 'amount' => '10', 'title' => 'قبض']);
-$budgetUrl = ['store/product.php' => 'store/product.php?id=' . (int)$bp['id'],
+$budgetUrl = ['store/search.php' => 'store/search.php?q=' . rawurlencode('بودجه'),
+              'store/product.php' => 'store/product.php?id=' . (int)$bp['id'],
               'store/party.php'   => 'store/party.php?id=' . (int)$bpt['id'],
               'store/invoice.php' => 'store/invoice.php?id=' . $bInv,
               'store/invoice-edit.php' => 'store/invoice-edit.php?id=' . $bDraft,

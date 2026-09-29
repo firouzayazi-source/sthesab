@@ -1,10 +1,25 @@
 /* ============================================================
-   محیطِ فروشگاهی (/store) — استایلِ جدا
+   محیطِ فروشگاهی (/store) — سیستمِ طراحیِ حساب‌لند برای فروشگاه
    ============================================================
-   ⛔ فایلِ جداست تا `style.css`ِ حساب لندِ شخصی حتی یک بایت عوض نشود.
-   هیچ کلاسی از آن فایل اینجا نیست و هیچ کلاسی از اینجا آنجا نیست
-   (پیشوندِ `st-`). ظاهر عمداً هیچ نسبتی با حساب لند ندارد: سنگی و
-   کهربایی، و نوارِ کناریِ سمتِ راست (روی گوشی کشو + منوی پایین).
+   **خواسته‌ی مالکِ نصب:** «Premium — Minimal — Powerful»؛ ترکیبِ Ramp
+   (داشبوردِ قدرتمند)، Mercury (مینیمال، فضای سفید، تایپوگرافیِ قوی) و
+   Xero (ساختارِ حسابداری، جدولِ فشرده ولی خوانا)، با هویتِ حساب‌لند:
+   بومِ #F6F7F9، کارتِ سفید، اصلیِ زغالی، **لهجه‌ی سبز**.
+
+   ⛔ فایلِ جداست تا `style.css`ِ حساب لندِ شخصی حتی یک بایت عوض نشود
+      (پیشوندِ `st-`).
+   ⛔ فهرستِ توکن‌ها (بخشِ ۱) تنها مرجعِ رنگ، شعاع، سایه و زمان است؛ هیچ
+      قاعده‌ای رنگِ سخت‌کد نمی‌گیرد مگر روی سطحی که همیشه ثابت است
+      (برگه‌ی سفیدِ پیش‌نمایشِ فاکتور).
+   ⛔ سایه نزدیک به صفر، بدونِ گلس‌مورفیسم و نئومورفیسم: جداسازی با **خطِ
+      مو و تضادِ زمینه**، نه با سایه و گرادیان.
+   ⛔ حرکت ۱۵۰ تا ۲۵۰ میلی‌ثانیه، و با `prefers-reduced-motion` صفر.
+
+   بخش‌ها:
+   ۱. توکن‌ها (روز، شب، رنگِ فروشگاه)   ۲. پایه و تایپوگرافی
+   ۳. پوسته: نوارِ کناری، نوارِ بالا، منوی پایینِ موبایل
+   ۴. اجزا: دکمه، فیلد، کارت، جدول، نشان، منوی کشویی، پیام، اسکلت، خالی
+   ۵. فرمانِ سریع (Ctrl+K)   ۶. داشبورد و نمودار   ۷. صفحه‌ها
    ============================================================ */
 
 @font-face {
@@ -14,47 +29,130 @@
     font-weight: 100 900; font-style: normal; font-display: swap;
 }
 
+/* ============================================================
+   ۱. توکن‌ها
+   ============================================================
+   ⛔ رنگِ فروشگاه (`Biz::PALETTES`) فقط `--p-*` را عوض می‌کند و هر پالت
+   **یک** بلوک دارد با هر دو رنگِ روز و شب. حالتِ شب فقط نگاشت می‌کند
+   (`--st-accent: var(--p-acc-n)`)، پس هیچ پالتی دو بار نوشته نمی‌شود.
+   ⛔ اولین کلیدِ `Biz::PALETTES` (سبز) خودِ `:root` است و ویژگی نمی‌گیرد. */
 :root {
-    /* Ramp × Mercury × Linear: بومِ خنثی، پنلِ سفید، خطِ مو؛ کهربایی فقط لهجه */
-    --st-bg:       #f6f7f9;
-    --st-surface:  #ffffff;
-    --st-ink:      #0f1115;
-    --st-ink-2:    #626978;
-    --st-line:     #e6e8ec;
-    --st-top:      #0f1012;
-    --st-top-ink:  #fafaf9;
-    --st-accent:   #b45309;
-    --st-accent-2: #92400e;
-    --st-accent-ink: #ffffff;
-    --st-wash:     #fef3c7;
-    --st-ok:       #15803d;
-    --st-ok-wash:  #dcfce7;
-    --st-err:      #b91c1c;
-    --st-err-wash: #fee2e2;
-    --st-radius:   12px;
-    --st-shadow:   none;   /* خطِ مو به‌جای سایه — Linear */
+    color-scheme: light;
+    --palette-default: emerald;
+
+    /* رنگِ فروشگاه — روز و شب (سبزِ حساب‌لند) */
+    --p-acc: #047857;  --p-acc2: #065f46;  --p-acc-ink: #ffffff;  --p-wash: #e7f5ee;
+    --p-acc-n: #34d399; --p-acc2-n: #6ee7b7; --p-acc-ink-n: #04291c; --p-wash-n: #0e2a20;
+
+    /* سطح و متن */
+    --st-bg:        #f6f7f9;
+    --st-surface:   #ffffff;
+    --st-surface-2: #fafbfc;
+    --st-sunken:    #f1f3f6;
+    --st-ink:       #0f1115;
+    --st-ink-2:     #5b6270;
+    --st-ink-3:     #7c8391;
+    --st-line:      #e6e8ec;
+    --st-line-2:    #d7dbe2;
+
+    /* اصلی (زغالی) و لهجه (سبز) */
+    --st-primary:     #15171c;
+    --st-primary-2:   #2a2d35;
+    --st-primary-ink: #ffffff;
+    --st-accent:      var(--p-acc);
+    --st-accent-2:    var(--p-acc2);
+    --st-accent-ink:  var(--p-acc-ink);
+    --st-wash:        var(--p-wash);
+
+    /* معنا — کم، و فقط برای معنا */
+    --st-ok:        #15803d; --st-ok-wash:   #e8f6ed;
+    --st-err:       #c42b2b; --st-err-wash:  #fdeeee;
+    --st-warn:      #a45308; --st-warn-wash: #fdf3e3;
+    --st-info:      #1d4ed8; --st-info-wash: #eaf0fe;
+
+    /* سازگاری با نام‌های قدیمی (چیپ و زبانه‌ی فعال زغالی‌اند) */
+    --st-top:     var(--st-primary);
+    --st-top-ink: var(--st-primary-ink);
+
+    /* شکل */
+    --st-radius:    16px;
+    --st-radius-lg: 20px;
+    --st-radius-sm: 10px;
+    --st-radius-xs: 8px;
+    --st-shadow:     0 1px 2px rgba(16, 24, 40, .04);
+    --st-shadow-pop: 0 16px 40px -12px rgba(16, 24, 40, .22), 0 2px 6px rgba(16, 24, 40, .06);
+    --st-ring:       0 0 0 3px color-mix(in srgb, var(--st-accent) 22%, transparent);
+
+    /* حرکت */
+    --st-ease: cubic-bezier(.2, .7, .2, 1);
+    --st-fast: .15s;
+    --st-med:  .22s;
+
+    /* قاب */
+    --st-side-w:  248px;
+    --st-side-mw: 72px;
+    --st-top-h:   60px;
+}
+
+/* ⛔ حالتِ شب دو درِ ورود دارد و هر دو **همان** نگاشت‌اند: ویژگیِ
+   `data-st-theme` (که اسکریپتِ سرآیند پیش از رندر می‌گذارد — انتخابِ کاربر
+   یا سیستم) و، اگر جاوااسکریپت نرسید، خودِ سیستم. */
+:root[data-st-theme="dark"] {
+    color-scheme: dark;
+    --st-bg: #0b0d10; --st-surface: #14171c; --st-surface-2: #171b21; --st-sunken: #10131a;
+    --st-ink: #eceef2; --st-ink-2: #9aa2af; --st-ink-3: #737b88;
+    --st-line: #242931; --st-line-2: #313743;
+    --st-primary: #eceef2; --st-primary-2: #ffffff; --st-primary-ink: #0f1115;
+    --st-accent: var(--p-acc-n); --st-accent-2: var(--p-acc2-n); --st-accent-ink: var(--p-acc-ink-n); --st-wash: var(--p-wash-n);
+    --st-ok: #4ade80; --st-ok-wash: #11281a;
+    --st-err: #f87171; --st-err-wash: #321416;
+    --st-warn: #fbbf24; --st-warn-wash: #2e220b;
+    --st-info: #7aa2ff; --st-info-wash: #152241;
+    --st-shadow: none;
+    --st-shadow-pop: 0 18px 44px -12px rgba(0, 0, 0, .65), 0 0 0 1px var(--st-line);
 }
 @media (prefers-color-scheme: dark) {
-    :root {
-        --st-bg:       #0b0c0e;
-        --st-surface:  #131418;
-        --st-ink:      #eceef1;
-        --st-ink-2:    #8e939d;
-        --st-line:     #24262c;
-        --st-top:      #08090a;
-        --st-top-ink:  #fafaf9;
-        --st-accent:   #f59e0b;
-        --st-accent-2: #d97706;
-        --st-accent-ink: #1c1917;
-        --st-wash:     #3a2a0d;
-        --st-ok:       #4ade80;
-        --st-ok-wash:  #13301d;
-        --st-err:      #f87171;
-        --st-err-wash: #3b1414;
-        --st-shadow:   none;
+    :root:not([data-st-theme]) {
+        color-scheme: dark;
+        --st-bg: #0b0d10; --st-surface: #14171c; --st-surface-2: #171b21; --st-sunken: #10131a;
+        --st-ink: #eceef2; --st-ink-2: #9aa2af; --st-ink-3: #737b88;
+        --st-line: #242931; --st-line-2: #313743;
+        --st-primary: #eceef2; --st-primary-2: #ffffff; --st-primary-ink: #0f1115;
+        --st-accent: var(--p-acc-n); --st-accent-2: var(--p-acc2-n); --st-accent-ink: var(--p-acc-ink-n); --st-wash: var(--p-wash-n);
+        --st-ok: #4ade80; --st-ok-wash: #11281a;
+        --st-err: #f87171; --st-err-wash: #321416;
+        --st-warn: #fbbf24; --st-warn-wash: #2e220b;
+        --st-info: #7aa2ff; --st-info-wash: #152241;
+        --st-shadow: none;
+        --st-shadow-pop: 0 18px 44px -12px rgba(0, 0, 0, .65), 0 0 0 1px var(--st-line);
     }
 }
 
+/* رنگِ فروشگاه — کلیدها همان `Biz::PALETTES` (به‌جز اولی که :root است) */
+html[data-st-palette="indigo"] {
+    --p-acc: #4f46e5; --p-acc2: #4338ca; --p-acc-ink: #ffffff; --p-wash: #eef0ff;
+    --p-acc-n: #a5b4fc; --p-acc2-n: #c7d2fe; --p-acc-ink-n: #15163b; --p-wash-n: #1b1d42;
+}
+html[data-st-palette="ocean"] {
+    --p-acc: #0369a1; --p-acc2: #075985; --p-acc-ink: #ffffff; --p-wash: #e6f2fa;
+    --p-acc-n: #7dd3fc; --p-acc2-n: #bae6fd; --p-acc-ink-n: #062033; --p-wash-n: #0c2a3d;
+}
+html[data-st-palette="lilac"] {
+    --p-acc: #7e22ce; --p-acc2: #6b21a8; --p-acc-ink: #ffffff; --p-wash: #f5ecfe;
+    --p-acc-n: #d8b4fe; --p-acc2-n: #e9d5ff; --p-acc-ink-n: #2a0c49; --p-wash-n: #281243;
+}
+html[data-st-palette="amber"] {
+    --p-acc: #b45309; --p-acc2: #92400e; --p-acc-ink: #ffffff; --p-wash: #fdf3e2;
+    --p-acc-n: #fbbf24; --p-acc2-n: #fcd34d; --p-acc-ink-n: #291802; --p-wash-n: #33240a;
+}
+html[data-st-palette="graphite"] {
+    --p-acc: #1f2937; --p-acc2: #111827; --p-acc-ink: #ffffff; --p-wash: #eef0f3;
+    --p-acc-n: #e5e7eb; --p-acc2-n: #f3f4f6; --p-acc-ink-n: #111418; --p-wash-n: #23262c;
+}
+
+/* ============================================================
+   ۲. پایه و تایپوگرافی
+   ============================================================ */
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
 
@@ -64,424 +162,896 @@ body.st-body {
     background: var(--st-bg);
     color: var(--st-ink);
     font-family: 'Vazirmatn', Tahoma, sans-serif;
-    font-size: 15px;
+    font-size: 14.5px;
     line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
 }
 a { color: var(--st-accent); }
+:focus-visible { outline: 2px solid var(--st-accent); outline-offset: 2px; }
 
-/* ---------- قاب: نوارِ کناریِ راست + بدنه ----------
-   ⛔ خواسته‌ی مالکِ نصب: «ساید بار سمت راست». روی دسکتاپ (≥۹۰۰) نوار
-   ثابت است و بدنه کنارش؛ روی گوشی همان نوار کشو است (چک‌باکسِ پنهان +
-   `<label>` — بی‌جاوااسکریپت) و منوی پایین سرِ جایش می‌ماند.
-   ⚠ جای نوار با `inset-inline-start` است: در `dir="rtl"` یعنی راست. */
+/* سلسله‌مراتبِ تایپ — درشت فقط برای عددِ قهرمان و عنوانِ صفحه */
+.st-h1 { font-size: 22px; margin: 0 0 2px; font-weight: 700; letter-spacing: -.3px; line-height: 1.45; }
+.st-h2 { font-size: 15px; margin: 0 0 6px; font-weight: 650; }
+.st-h3 { font-size: 14px; margin: 0; font-weight: 650; }
+.st-muted { color: var(--st-ink-2); margin: 0 0 12px; font-size: 13.5px; }
+.st-muted-i { color: var(--st-ink-2); font-size: 12.5px; }
+.st-date { color: var(--st-ink-2); margin: 0; font-size: 13px; }
+.st-eyebrow { font-size: 12px; font-weight: 600; color: var(--st-ink-3); margin: 0; }
+
+/* ⛔ عدد چپ‌چین، برچسب راست‌چین — همان قاعده‌ی حساب لند.
+   ⛔ ارقامِ جدول هم‌عرض‌اند (tabular) تا ستون‌ها زیرِ هم بخوانند. */
+.st-num { direction: ltr; unicode-bidi: isolate; font-variant-numeric: tabular-nums; }
+.st-num.is-neg { color: var(--st-err); }
+.st-num.is-pos { color: var(--st-ok); }
+.st-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ============================================================
+   ۳. پوسته
+   ============================================================
+   ⛔ نوارِ کناری سمتِ راست (`inset-inline-start` در rtl): روی دسکتاپ ثابت و
+   با دکمه‌ی «جمع کردن» فشرده (فقط آیکون)؛ روی تبلت (۹۰۰ تا ۱۱۹۹) همیشه
+   فشرده؛ روی گوشی کشو با چک‌باکسِ پنهان + `<label>` — بی‌جاوااسکریپت.
+   ⚠ قلمِ فعال با **نوار و زمینه‌ی آرام** دیده می‌شود، نه طیفِ رنگی. */
 .st-nav-toggle { position: absolute; opacity: 0; pointer-events: none; width: 0; height: 0; }
 .st-side {
     position: fixed; z-index: 40; inset-block: 0; inset-inline-start: 0;
-    width: 248px; display: flex; flex-direction: column;
-    background: var(--st-top); color: var(--st-top-ink);
-    padding: calc(14px + env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom));
-    overflow-y: auto; overscroll-behavior: contain;
+    width: var(--st-side-w); display: flex; flex-direction: column;
+    background: var(--st-surface); color: var(--st-ink);
+    border-inline-end: 1px solid var(--st-line);
+    padding: calc(12px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));
+    transition: width var(--st-med) var(--st-ease), transform var(--st-med) var(--st-ease);
 }
-.st-side-brand { padding: 4px 6px 14px; border-bottom: 1px solid rgba(250,250,249,.1); margin-bottom: 8px; flex-shrink: 0; }
+.st-side-brand {
+    display: flex; align-items: center; gap: 10px; min-width: 0; flex-shrink: 0;
+    padding: 4px 6px 12px; margin-bottom: 6px; border-bottom: 1px solid var(--st-line);
+    color: var(--st-ink); text-decoration: none;
+}
+.st-brand-mark {
+    display: grid; place-items: center; flex: 0 0 auto;
+    width: 34px; height: 34px; border-radius: 10px;
+    background: var(--st-primary); color: var(--st-primary-ink);
+}
+.st-brand-mark svg { color: var(--st-accent); }
+:root[data-st-theme="dark"] .st-brand-mark svg { color: var(--st-primary-ink); }
+.st-brand-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
+.st-brand-name { font-weight: 700; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-brand-sub { font-size: 11.5px; color: var(--st-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* ⛔ `min-height: 0` نیمه‌ی دومِ اسکرول است (درسِ منوی کناریِ حساب لند) */
-.st-side-nav { flex: 1; min-height: 0; }
-.st-side-group { margin-bottom: 10px; }
+.st-side-nav {
+    flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    scrollbar-width: thin; scrollbar-color: var(--st-line-2) transparent; padding-bottom: 6px;
+}
+.st-side-group { margin-bottom: 6px; }
 .st-side-title {
-    margin: 10px 8px 4px; font-size: 11px; font-weight: 700; letter-spacing: 0;
-    color: var(--st-top-ink); opacity: .45; text-align: right;
+    margin: 12px 10px 4px; font-size: 11.5px; font-weight: 600; color: var(--st-ink-3); text-align: right;
+    white-space: nowrap; overflow: hidden;
 }
 .st-side-item {
-    display: flex; align-items: center; gap: 10px; text-align: right;
-    color: var(--st-top-ink); opacity: .8; text-decoration: none; font-size: 14px;
-    padding: 8px 10px; border-radius: 10px; white-space: nowrap;
+    position: relative; display: flex; align-items: center; gap: 11px; text-align: right;
+    color: var(--st-ink-2); text-decoration: none; font-size: 13.5px; font-weight: 500;
+    padding: 7px 10px; border-radius: var(--st-radius-sm); white-space: nowrap;
+    transition: background var(--st-fast) var(--st-ease), color var(--st-fast) var(--st-ease);
 }
-.st-side-item:hover { opacity: 1; background: rgba(250,250,249,.06); }
-.st-side-item.is-active { opacity: 1; background: rgba(245,158,11,.16); color: #fcd34d; font-weight: 700; }
+.st-side-item > span { overflow: hidden; text-overflow: ellipsis; }
+.st-side-item:hover { background: var(--st-sunken); color: var(--st-ink); }
+.st-side-item.is-active { background: var(--st-wash); color: var(--st-ink); font-weight: 650; }
+.st-side-item.is-active::before {
+    content: ''; position: absolute; inset-inline-start: -10px; top: 8px; bottom: 8px; width: 3px;
+    border-radius: 0 3px 3px 0; background: var(--st-accent);
+}
+.st-side-item.is-active .st-side-ico { color: var(--st-accent); }
 .st-side-ico { flex: 0 0 auto; }
-.st-side-foot { display: flex; gap: 8px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid rgba(250,250,249,.1); flex-shrink: 0; }
+.st-side-foot { flex-shrink: 0; display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid var(--st-line); }
+.st-me { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 2px 4px; }
+.st-avatar {
+    display: grid; place-items: center; flex: 0 0 auto; width: 32px; height: 32px; border-radius: 50%;
+    background: var(--st-sunken); color: var(--st-ink); font-size: 13px; font-weight: 700;
+    border: 1px solid var(--st-line);
+}
+.st-me-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
+.st-me-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.st-me-role { font-size: 11.5px; color: var(--st-ink-3); white-space: nowrap; }
+.st-side-links { display: flex; gap: 6px; flex-wrap: wrap; }
+.st-switch, .st-logout {
+    display: inline-flex; align-items: center; gap: 6px;
+    color: var(--st-ink-2); text-decoration: none; white-space: nowrap; font-size: 12.5px;
+    border: 1px solid var(--st-line); border-radius: 999px; padding: 3px 11px; background: var(--st-surface);
+}
+.st-switch:hover, .st-logout:hover { color: var(--st-ink); border-color: var(--st-line-2); }
+.st-side-mini-btn {
+    display: none; align-items: center; justify-content: center; gap: 8px; width: 100%;
+    font: inherit; font-size: 12.5px; color: var(--st-ink-3); cursor: pointer;
+    background: none; border: 0; border-radius: var(--st-radius-sm); padding: 6px;
+}
+.st-side-mini-btn:hover { background: var(--st-sunken); color: var(--st-ink); }
 .st-side-scrim { display: none; }
 
 .st-shell { min-height: 100vh; }
 @media (min-width: 900px) {
-    .st-shell { margin-inline-start: 248px; }
-    .st-top { display: none; }
+    .st-shell { margin-inline-start: 248px; transition: margin var(--st-med) var(--st-ease); }
+    .st-side-mini-btn { display: flex; }
+    .st-menu-btn { display: none !important; }
 }
 
-/* سربرگِ موبایل */
+/* فشرده: فقط آیکون — دسکتاپ با انتخابِ کاربر، تبلت همیشه */
+@media (min-width: 900px) {
+    html[data-st-mini="1"] .st-side { width: var(--st-side-mw); }
+    html[data-st-mini="1"] .st-shell { margin-inline-start: var(--st-side-mw); }
+    html[data-st-mini="1"] .st-side .st-brand-text,
+    html[data-st-mini="1"] .st-side .st-side-item > span,
+    html[data-st-mini="1"] .st-side .st-me-text,
+    html[data-st-mini="1"] .st-side .st-side-links,
+    html[data-st-mini="1"] .st-side .st-side-mini-btn span { display: none; }
+    html[data-st-mini="1"] .st-side .st-side-title { font-size: 0; margin: 10px 14px 4px; height: 1px; background: var(--st-line); }
+    html[data-st-mini="1"] .st-side .st-side-item,
+    html[data-st-mini="1"] .st-side .st-side-brand,
+    html[data-st-mini="1"] .st-side .st-me { justify-content: center; }
+    html[data-st-mini="1"] .st-side .st-side-mini-btn svg { transform: scaleX(-1); }
+}
+@media (min-width: 900px) and (max-width: 1199px) {
+    .st-side { width: var(--st-side-mw); }
+    .st-shell { margin-inline-start: var(--st-side-mw); }
+    .st-side .st-brand-text, .st-side .st-side-item > span, .st-side .st-me-text,
+    .st-side .st-side-links, .st-side-mini-btn { display: none !important; }
+    .st-side .st-side-title { font-size: 0; margin: 10px 14px 4px; height: 1px; background: var(--st-line); }
+    .st-side .st-side-item, .st-side .st-side-brand, .st-side .st-me { justify-content: center; }
+    /* روی تبلت برچسبِ فشرده با نگه‌داشتنِ نشانگر دیده می‌شود (title) */
+}
+
+/* ---------- نوارِ بالا ----------
+   راست: مسیر (breadcrumb)؛ وسط: جست‌وجو (Ctrl+K)؛ چپ: «+ ثبتِ جدید»،
+   حالتِ شب و نمایه. ⛔ جست‌وجو یک فرمِ GET به `search.php` است؛ اسکریپت
+   فقط آن را به فرمانِ سریع بدل می‌کند. */
 .st-top {
-    position: sticky; top: 0; z-index: 20;
-    background: var(--st-top); color: var(--st-top-ink);
+    position: sticky; top: 0; z-index: 30;
+    background: color-mix(in srgb, var(--st-bg) 92%, transparent);
+    border-bottom: 1px solid var(--st-line);
     padding-top: env(safe-area-inset-top);
 }
+@supports not (background: color-mix(in srgb, red 50%, transparent)) { .st-top { background: var(--st-bg); } }
 .st-top-in {
-    display: flex; align-items: center; gap: 12px;
-    padding: 10px max(14px, env(safe-area-inset-right)) 10px max(14px, env(safe-area-inset-left));
+    display: flex; align-items: center; gap: 12px; min-height: var(--st-top-h);
+    max-width: 1320px; margin: 0 auto;
+    padding: 8px max(18px, env(safe-area-inset-right)) 8px max(18px, env(safe-area-inset-left));
 }
-.st-menu-btn { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; cursor: pointer; flex: 0 0 auto; }
-.st-menu-btn:hover { background: rgba(250,250,249,.08); }
-.st-brand {
-    display: flex; align-items: center; gap: 10px; min-width: 0;
-    color: inherit; text-decoration: none; font-weight: 800;
+.st-menu-btn {
+    display: grid; place-items: center; width: 38px; height: 38px; border-radius: var(--st-radius-sm);
+    cursor: pointer; flex: 0 0 auto; color: var(--st-ink); border: 1px solid var(--st-line); background: var(--st-surface);
 }
-.st-top .st-brand { flex: 1; }
-.st-brand-mark {
-    display: grid; place-items: center; flex: 0 0 auto;
-    width: 34px; height: 34px; border-radius: 10px;
-    background: var(--st-accent); color: var(--st-accent-ink);
+.st-crumbs {
+    display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1 1 0;
+    font-size: 13px; color: var(--st-ink-3); margin: 0; padding: 0; list-style: none;
 }
-.st-brand-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.st-logout {
-    color: var(--st-top-ink); opacity: .7; text-decoration: none; white-space: nowrap;
-    border: 1px solid rgba(250,250,249,.25); border-radius: 999px; padding: 4px 12px; font-size: 13px;
+.st-crumbs li { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
+.st-crumbs li + li::before { content: '‹'; color: var(--st-line-2); }
+.st-crumbs a { color: var(--st-ink-3); text-decoration: none; }
+.st-crumbs a:hover { color: var(--st-ink); }
+.st-crumbs li:last-child { color: var(--st-ink); font-weight: 650; overflow: hidden; }
+.st-crumbs li:last-child span { overflow: hidden; text-overflow: ellipsis; }
+
+.st-search {
+    position: relative; flex: 0 1 420px; min-width: 0; margin: 0;
 }
+.st-search input {
+    width: 100%; height: 38px; font: inherit; font-size: 13.5px; color: var(--st-ink);
+    background: var(--st-surface); border: 1px solid var(--st-line); border-radius: var(--st-radius-sm);
+    padding: 0 38px 0 64px;
+    transition: border-color var(--st-fast) var(--st-ease), box-shadow var(--st-fast) var(--st-ease);
+}
+.st-search input::placeholder { color: var(--st-ink-3); }
+.st-search input:focus { outline: none; border-color: var(--st-accent); box-shadow: var(--st-ring); }
+.st-search-ico { position: absolute; inset-inline-start: 12px; top: 50%; transform: translateY(-50%); color: var(--st-ink-3); pointer-events: none; }
+.st-kbd {
+    position: absolute; inset-inline-end: 8px; top: 50%; transform: translateY(-50%);
+    direction: ltr; font: 600 11px/1 'Vazirmatn', monospace; color: var(--st-ink-3);
+    border: 1px solid var(--st-line); border-bottom-width: 2px; border-radius: 6px; padding: 4px 6px; background: var(--st-surface-2);
+    pointer-events: none;
+}
+.st-top-tools { display: flex; align-items: center; gap: 8px; flex: 1 1 0; justify-content: flex-end; min-width: 0; }
+.st-icon-btn {
+    display: grid; place-items: center; flex: 0 0 auto; width: 38px; height: 38px;
+    border-radius: var(--st-radius-sm); border: 1px solid var(--st-line); background: var(--st-surface);
+    color: var(--st-ink-2); cursor: pointer; text-decoration: none; font: inherit; padding: 0;
+    transition: color var(--st-fast) var(--st-ease), border-color var(--st-fast) var(--st-ease);
+}
+.st-icon-btn:hover { color: var(--st-ink); border-color: var(--st-line-2); }
+.st-theme-btn .st-ico-sun { display: none; }
+:root[data-st-theme="dark"] .st-theme-btn .st-ico-sun { display: block; }
+:root[data-st-theme="dark"] .st-theme-btn .st-ico-moon { display: none; }
+.st-search-mobile { display: none; }
+@media (max-width: 899px) {
+    .st-search { display: none; }
+    .st-search-mobile { display: grid; }
+    .st-top-tools .st-new-top { display: none; }
+    .st-top-in { gap: 8px; padding-inline: max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-left)); }
+}
+
+/* ---------- منوی کشویی (details) — «+ ثبتِ جدید»، نمایه ----------
+   ⛔ `<details>`ِ بومی: بی‌جاوااسکریپت باز و بسته می‌شود؛ اسکریپت فقط با
+   کلیکِ بیرون و Escape می‌بندد. */
+.st-dd { position: relative; }
+.st-dd > summary { list-style: none; cursor: pointer; user-select: none; }
+.st-dd > summary::-webkit-details-marker { display: none; }
+.st-dd-menu {
+    position: absolute; z-index: 50; inset-inline-end: 0; top: calc(100% + 6px);
+    min-width: 230px; display: flex; flex-direction: column; gap: 1px;
+    background: var(--st-surface); border: 1px solid var(--st-line); border-radius: 14px;
+    box-shadow: var(--st-shadow-pop); padding: 6px;
+    animation: st-pop var(--st-fast) var(--st-ease);
+}
+.st-dd-menu a, .st-dd-menu button {
+    display: flex; align-items: center; gap: 10px; text-align: right; font: inherit; font-size: 13.5px;
+    color: var(--st-ink); text-decoration: none; background: none; border: 0; cursor: pointer;
+    padding: 8px 10px; border-radius: var(--st-radius-xs); white-space: nowrap;
+}
+.st-dd-menu a:hover, .st-dd-menu button:hover { background: var(--st-sunken); }
+.st-dd-menu svg { color: var(--st-ink-3); flex: 0 0 auto; }
+.st-dd-sep { height: 1px; background: var(--st-line); margin: 4px 2px; }
+.st-dd-head { padding: 6px 10px 8px; border-bottom: 1px solid var(--st-line); margin-bottom: 4px; display: flex; flex-direction: column; line-height: 1.4; }
+.st-dd-head b { font-size: 13.5px; font-weight: 650; }
+.st-dd-head span { font-size: 12px; color: var(--st-ink-3); }
+.st-new-btn {
+    display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 14px;
+    background: var(--st-primary); color: var(--st-primary-ink); font-weight: 600; font-size: 13.5px;
+    border-radius: var(--st-radius-sm); white-space: nowrap;
+    transition: background var(--st-fast) var(--st-ease);
+}
+.st-new-btn:hover { background: var(--st-primary-2); }
+.st-profile > summary { display: block; border-radius: 50%; }
+.st-profile .st-avatar { width: 38px; height: 38px; }
+@keyframes st-pop { from { opacity: 0; transform: translateY(-4px) scale(.98); } to { opacity: 1; transform: none; } }
 
 /* ---------- بدنه ---------- */
 .st-main {
-    max-width: 1180px; margin: 0 auto;
-    padding: 22px max(18px, env(safe-area-inset-right)) 32px max(18px, env(safe-area-inset-left));
+    max-width: 1320px; margin: 0 auto;
+    padding: 22px max(22px, env(safe-area-inset-right)) 40px max(22px, env(safe-area-inset-left));
 }
-.st-h1 { font-size: 22px; margin: 0 0 4px; font-weight: 800; }
-.st-h2 { font-size: 16px; margin: 0 0 6px; font-weight: 700; }
-.st-muted { color: var(--st-ink-2); margin: 0 0 12px; font-size: 14px; }
-.st-date { color: var(--st-ink-2); margin: 0; }
-.st-hello { margin-bottom: 16px; }
+@media (max-width: 899px) {
+    .st-main { padding: 16px max(14px, env(safe-area-inset-right)) calc(92px + env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); }
+}
 
+/* ---------- گوشی: کشو + منوی پایین ----------
+   منوی پایین: داشبورد، حساب‌ها، «+»، فروش، بیشتر (کلیدها از `Biz::TABBAR`). */
+.st-tabbar { display: none; }
+@media (max-width: 899px) {
+    .st-side {
+        width: min(300px, 86vw); transform: translateX(105%); border-inline-end: 0;
+        box-shadow: none; z-index: 45;
+    }
+    .st-nav-toggle:checked ~ .st-side { transform: none; box-shadow: var(--st-shadow-pop); }
+    .st-nav-toggle:checked ~ .st-side-scrim {
+        display: block; position: fixed; inset: 0; z-index: 44; background: rgba(10, 12, 16, .42);
+        animation: st-fade var(--st-med) var(--st-ease);
+    }
+    .st-tabbar {
+        display: flex; align-items: stretch; position: fixed; inset-inline: 0; bottom: 0; z-index: 30;
+        background: var(--st-surface); border-top: 1px solid var(--st-line);
+        padding: 6px max(6px, env(safe-area-inset-right)) calc(6px + env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left));
+    }
+    .st-tab {
+        flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+        text-decoration: none; white-space: nowrap; cursor: pointer;
+        color: var(--st-ink-3); padding: 5px 2px; border-radius: var(--st-radius-sm); font-size: 11.5px; font-weight: 500;
+    }
+    .st-tab svg { flex: 0 0 auto; }
+    .st-tab.is-active { color: var(--st-ink); font-weight: 650; }
+    .st-tab.is-active svg { color: var(--st-accent); }
+    .st-tab-new { flex: 1 1 0; display: flex; justify-content: center; align-items: center; }
+    .st-tab-new > summary {
+        display: grid; place-items: center; width: 46px; height: 46px; border-radius: 15px;
+        background: var(--st-primary); color: var(--st-primary-ink);
+    }
+    .st-tab-new .st-dd-menu { position: fixed; inset-inline: 12px; top: auto; bottom: calc(72px + env(safe-area-inset-bottom)); min-width: 0; }
+}
+@keyframes st-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* ============================================================
+   ۴. اجزا
+   ============================================================ */
+
+/* ---------- کارت ---------- */
 .st-card {
     background: var(--st-surface);
     border: 1px solid var(--st-line);
     border-radius: var(--st-radius);
     box-shadow: var(--st-shadow);
-    padding: 18px;
-    margin-bottom: 14px;
+    padding: 20px;
+    margin-bottom: 16px;
+    min-width: 0;
 }
-.st-card-invite { border-color: var(--st-accent); background: var(--st-wash); }
+.st-card-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.st-card-head .st-h2 { margin: 0; }
+.st-card-head > a, .st-card-link { font-size: 12.5px; text-decoration: none; white-space: nowrap; color: var(--st-ink-2); }
+.st-card-head > a:hover, .st-card-link:hover { color: var(--st-ink); }
+.st-card-invite { border-color: color-mix(in srgb, var(--st-accent) 35%, var(--st-line)); background: var(--st-wash); }
 .st-card-soon { border-style: dashed; box-shadow: none; }
+.st-flat { border: 1px solid var(--st-line); box-shadow: none; }
+.st-danger { box-shadow: none; border-color: color-mix(in srgb, var(--st-err) 30%, var(--st-line)); }
 
-.st-kpi { display: flex; flex-direction: column; gap: 2px; }
-.st-kpi-label { color: var(--st-ink-2); font-size: 14px; }
-.st-kpi-value { font-size: 28px; font-weight: 800; align-self: flex-end; }
-.st-kpi-value small { font-size: 14px; font-weight: 500; color: var(--st-ink-2); }
-
-/* ⛔ عدد چپ‌چین، برچسب راست‌چین — همان قاعده‌ی حساب لند */
-.st-num { direction: ltr; unicode-bidi: isolate; font-variant-numeric: tabular-nums; }
-.st-num.is-neg { color: var(--st-err); }
-.st-num.is-pos { color: var(--st-ok); }
-
-.st-list { list-style: none; margin: 14px 0 0; padding: 0; border-top: 1px solid var(--st-line); }
-.st-list-row {
-    display: flex; justify-content: space-between; align-items: center; gap: 12px;
-    padding: 10px 0; border-bottom: 1px solid var(--st-line);
-}
-.st-list-row:last-child { border-bottom: 0; }
-
-/* ---------- فرم ---------- */
-.st-form { display: flex; flex-direction: column; gap: 14px; }
-.st-field { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 14px; }
-.st-field input, .st-field textarea, .st-field select {
-    font: inherit; font-weight: 400; color: var(--st-ink);
-    background: var(--st-bg); border: 1px solid var(--st-line); border-radius: 10px;
-    padding: 10px 12px; width: 100%;
-}
-.st-field input:focus, .st-field textarea:focus, .st-field select:focus,
-.st-filters input:focus, .st-filters select:focus {
-    outline: 2px solid var(--st-accent); outline-offset: 1px; border-color: transparent;
-}
+/* ---------- دکمه ----------
+   ⛔ اصلی زغالی، لهجه سبز (فقط برای «کارِ اصلیِ این صفحه» در جاهای خاص)،
+   ثانویه خط‌دار، خطر قرمز. ارتفاعِ یکسان ۴۰ پیکسل، شعاعِ ۱۰. */
 .st-btn {
-    display: inline-flex; align-items: center; justify-content: center; align-self: flex-start;
-    font: inherit; font-weight: 700; cursor: pointer; text-decoration: none; white-space: nowrap;
-    background: var(--st-accent); color: var(--st-accent-ink);
-    border: 0; border-radius: 10px; padding: 10px 22px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; align-self: flex-start;
+    font: inherit; font-weight: 600; font-size: 14px; cursor: pointer; text-decoration: none; white-space: nowrap;
+    min-height: 40px; padding: 0 18px;
+    background: var(--st-primary); color: var(--st-primary-ink);
+    border: 1px solid var(--st-primary); border-radius: var(--st-radius-sm);
+    transition: background var(--st-fast) var(--st-ease), border-color var(--st-fast) var(--st-ease), transform var(--st-fast) var(--st-ease);
 }
-.st-btn:hover { background: var(--st-accent-2); }
-.st-btn-block { align-self: stretch; }
-
-.st-flash { border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; font-size: 14px; }
-.st-flash-ok  { background: var(--st-ok-wash);  color: var(--st-ok); }
-.st-flash-err { background: var(--st-err-wash); color: var(--st-err); }
-
-/* ---------- ورود ---------- */
-.st-auth { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
-.st-auth-box {
-    width: 100%; max-width: 380px;
-    background: var(--st-surface); border: 1px solid var(--st-line);
-    border-radius: 18px; box-shadow: var(--st-shadow); padding: 28px 22px;
-}
-.st-auth-mark {
-    display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 12px;
-    border-radius: 16px; background: var(--st-top); color: var(--st-accent);
-}
-.st-auth-box .st-h1 { text-align: center; margin-bottom: 16px; font-size: 19px; }
-.st-auth-note { margin: 14px 0 0; text-align: center; font-size: 13px; }
-
-/* ---------- مرحله‌ی ۲: کالا، طرف‌حساب، صندوق ---------- */
-.st-switch {
-    color: var(--st-accent); text-decoration: none; white-space: nowrap; font-size: 13px;
-    border: 1px solid rgba(245,158,11,.45); border-radius: 999px; padding: 4px 12px;
-}
-.st-h3 { font-size: 15px; margin: 0; font-weight: 700; }
-.st-section-title { margin-top: 10px; }
-.st-page-head {
-    display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
-    flex-wrap: wrap; margin-bottom: 14px;
-}
-.st-back { display: inline-block; font-size: 13px; text-decoration: none; margin-bottom: 2px; }
-.st-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.st-empty { color: var(--st-ink-2); margin: 6px 0 12px; font-size: 14px; }
-.st-empty-card { text-align: center; }
-.st-empty-card .st-btn { align-self: center; }
-.st-muted-i { color: var(--st-ink-2); font-size: 13px; }
-.st-unit-note { font-size: 12px; margin: -6px 0 14px; }
-.st-soon { margin: 14px 0 0; font-size: 13px; }
-
-/* کاشی‌های شاخص — ۱، ۲ یا ۴ ستون، بدونِ auto-fit (همان درسِ کارتِ چهارفصل) */
-.st-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
-.st-kpis-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.st-kpis-1 { grid-template-columns: minmax(0, 1fr); }
-@media (min-width: 900px) { .st-kpis:not(.st-kpis-3):not(.st-kpis-1) { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-@media (max-width: 560px) { .st-kpis-3 { grid-template-columns: minmax(0, 1fr); } }
-.st-kpi-card {
-    display: flex; flex-direction: column; gap: 2px; min-width: 0;
-    background: var(--st-surface); border: 1px solid var(--st-line); border-radius: var(--st-radius);
-    box-shadow: var(--st-shadow); padding: 14px 16px; color: var(--st-ink); text-decoration: none;
-}
-a.st-kpi-card:hover { border-color: var(--st-accent); }
-.st-kpi-card .st-kpi-value { font-size: 22px; overflow-wrap: anywhere; }
-@media (max-width: 560px) { .st-kpi-card .st-kpi-value { font-size: 18px; } .st-kpi-card { padding: 12px; } }
-.st-kpi-sub { font-size: 12px; color: var(--st-ink-2); }
-
-.st-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; align-items: start; }
-@media (min-width: 900px) { .st-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
-
-.st-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.st-quick-btn {
-    display: block; text-align: center; text-decoration: none; white-space: nowrap;
-    border: 1px solid var(--st-line); border-radius: 10px; padding: 10px 8px;
-    color: var(--st-ink); background: var(--st-bg); font-weight: 600; font-size: 14px;
-}
-.st-quick-btn:hover { border-color: var(--st-accent); color: var(--st-accent); }
-
-.st-badge {
-    display: inline-block; white-space: nowrap; font-size: 12px; font-weight: 700;
-    border-radius: 999px; padding: 1px 9px; background: var(--st-bg); color: var(--st-ink-2);
-    border: 1px solid var(--st-line);
-}
-.st-badge.is-low { background: var(--st-wash); color: var(--st-accent-2); border-color: transparent; }
-.st-badge.is-out { background: var(--st-err-wash); color: var(--st-err); border-color: transparent; }
-
-.st-chips-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
-.st-stat {
-    font-size: 13px; background: var(--st-surface); border: 1px solid var(--st-line);
-    border-radius: 999px; padding: 4px 12px; white-space: nowrap;
-}
-.st-stat.is-low { background: var(--st-wash); border-color: transparent; }
-.st-stat.is-out { background: var(--st-err-wash); color: var(--st-err); border-color: transparent; }
-
-.st-filters { display: flex; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-.st-filters input, .st-filters select {
-    font: inherit; color: var(--st-ink); background: var(--st-surface);
-    border: 1px solid var(--st-line); border-radius: 10px; padding: 9px 12px;
-}
-.st-filters input { flex: 1 1 180px; min-width: 0; width: auto; }
-.st-filters select { flex: 0 1 180px; min-width: 0; width: auto; }
-.st-filters .st-btn { align-self: stretch; }
-.st-btn-ghost { background: transparent; color: var(--st-accent); border: 1px solid var(--st-accent); }
-.st-btn-ghost:hover { background: var(--st-wash); }
-.st-btn-danger { background: var(--st-err); color: #fff; }
-.st-btn-danger:hover { background: var(--st-err); opacity: .9; }
+.st-btn:hover { background: var(--st-primary-2); border-color: var(--st-primary-2); }
+.st-btn:active { transform: translateY(1px); }
+.st-btn-accent { background: var(--st-accent); border-color: var(--st-accent); color: var(--st-accent-ink); }
+.st-btn-accent:hover { background: var(--st-accent-2); border-color: var(--st-accent-2); }
+.st-btn-ghost { background: var(--st-surface); color: var(--st-ink); border-color: var(--st-line-2); }
+.st-btn-ghost:hover { background: var(--st-sunken); border-color: var(--st-line-2); }
+.st-btn-danger { background: var(--st-err); border-color: var(--st-err); color: #fff; }
+.st-btn-danger:hover { background: var(--st-err); border-color: var(--st-err); filter: brightness(.94); }
+.st-btn-sm { min-height: 32px; padding: 0 12px; font-size: 13px; border-radius: var(--st-radius-xs); }
+.st-btn-block { align-self: stretch; width: 100%; }
+.st-btn[disabled] { opacity: .45; cursor: not-allowed; }
 .st-link-btn {
     font: inherit; font-size: 13px; background: none; border: 0; padding: 0; cursor: pointer;
     color: var(--st-accent); text-decoration: none;
 }
+.st-link-btn:hover { text-decoration: underline; }
+.st-link-danger { color: var(--st-err); }
 
+/* ---------- فیلد ----------
+   ⛔ مبلغ مهم‌ترین فیلدِ هر فرم است: `.st-field-amount` درشت و چپ‌چین. */
+.st-form { display: flex; flex-direction: column; gap: 16px; }
+.st-field { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 13.5px; min-width: 0; }
+.st-field input, .st-field textarea, .st-field select {
+    font: inherit; font-weight: 400; font-size: 14px; color: var(--st-ink);
+    background: var(--st-surface); border: 1px solid var(--st-line-2); border-radius: var(--st-radius-sm);
+    padding: 9px 12px; min-height: 40px; width: 100%;
+    transition: border-color var(--st-fast) var(--st-ease), box-shadow var(--st-fast) var(--st-ease);
+}
+.st-field textarea { min-height: 84px; }
+.st-field input::placeholder, .st-field textarea::placeholder { color: var(--st-ink-3); }
+.st-field input:focus, .st-field textarea:focus, .st-field select:focus,
+.st-filters input:focus, .st-filters select:focus, .st-hub-ctl select:focus {
+    outline: none; border-color: var(--st-accent); box-shadow: var(--st-ring);
+}
+.st-field input[type="file"] { padding: 8px; }
+.st-field input[name="amount"], .st-field-amount input {
+    font-size: 22px; font-weight: 650; letter-spacing: -.3px; min-height: 52px; font-variant-numeric: tabular-nums;
+}
+.st-field-link { font-size: 12px; font-weight: 400; text-decoration: none; margin-top: -2px; }
+.st-form-narrow { max-width: 760px; }
+.st-row2, .st-row3 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+@media (min-width: 560px) { .st-row2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 720px) { .st-row3 { grid-template-columns: 2fr 1fr 1fr; } }
+.st-fieldset { border: 1px solid var(--st-line); border-radius: 14px; padding: 12px 16px 16px; margin: 0; background: var(--st-surface-2); }
+.st-fieldset legend { font-weight: 650; font-size: 13.5px; padding: 0 6px; }
+.st-check { display: flex; align-items: center; gap: 8px; font-size: 13.5px; cursor: pointer; }
+.st-check input { width: 18px; height: 18px; accent-color: var(--st-accent); }
+.st-seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.st-seg-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.st-seg-opt span {
+    display: inline-block; cursor: pointer; white-space: nowrap; font-size: 13.5px;
+    border: 1px solid var(--st-line-2); border-radius: 999px; padding: 5px 14px; background: var(--st-surface);
+    transition: background var(--st-fast) var(--st-ease), color var(--st-fast) var(--st-ease);
+}
+.st-seg-opt input:checked + span { background: var(--st-primary); color: var(--st-primary-ink); border-color: var(--st-primary); }
+.st-seg-opt input:focus-visible + span { outline: 2px solid var(--st-accent); outline-offset: 1px; }
+.st-seg-sm .st-seg-opt span { font-size: 12.5px; padding: 3px 12px; }
+.st-seg-label { margin: 6px 0 4px; font-size: 13px; color: var(--st-ink-2); }
+
+/* ---------- پیام و Toast ----------
+   ⛔ بی‌جاوااسکریپت پیام همان‌جا بالای بدنه می‌ماند؛ اسکریپت آن را به
+   Toastِ گوشه‌ی پایین بدل می‌کند و بعد از چند ثانیه می‌بندد. */
+.st-flash {
+    display: flex; align-items: flex-start; gap: 10px;
+    border-radius: 12px; padding: 11px 14px; margin-bottom: 16px; font-size: 13.5px;
+    border: 1px solid transparent;
+}
+.st-flash-ok   { background: var(--st-ok-wash);   color: var(--st-ok);   border-color: color-mix(in srgb, var(--st-ok) 18%, transparent); }
+.st-flash-err  { background: var(--st-err-wash);  color: var(--st-err);  border-color: color-mix(in srgb, var(--st-err) 18%, transparent); }
+.st-flash-warn { background: var(--st-warn-wash); color: var(--st-warn); border-color: color-mix(in srgb, var(--st-warn) 18%, transparent); }
+.st-toasts {
+    position: fixed; z-index: 70; inset-inline-end: 20px; bottom: 20px; display: flex; flex-direction: column; gap: 8px;
+    max-width: min(380px, calc(100vw - 32px)); pointer-events: none;
+}
+.st-toasts .st-flash {
+    margin: 0; pointer-events: auto; box-shadow: var(--st-shadow-pop); background: var(--st-surface); color: var(--st-ink);
+    border-color: var(--st-line); animation: st-rise var(--st-med) var(--st-ease);
+}
+.st-toasts .st-flash::before { content: ''; flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; margin-top: 8px; background: var(--st-ok); }
+.st-toasts .st-flash-err::before { background: var(--st-err); }
+.st-toasts .st-flash-warn::before { background: var(--st-warn); }
+.st-toast-x { margin-inline-start: auto; font: inherit; background: none; border: 0; color: var(--st-ink-3); cursor: pointer; padding: 0 2px; }
+.st-toasts .st-flash.is-out { opacity: 0; transform: translateY(6px); transition: opacity var(--st-med), transform var(--st-med); }
+@media (max-width: 899px) { .st-toasts { inset-inline: 12px; bottom: calc(80px + env(safe-area-inset-bottom)); max-width: none; } }
+@keyframes st-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* ---------- نشان و وضعیت ---------- */
+.st-badge, .st-pill {
+    display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+    font-size: 11.5px; font-weight: 600; line-height: 1.6;
+    border-radius: 999px; padding: 1px 9px; border: 1px solid var(--st-line);
+    background: var(--st-surface-2); color: var(--st-ink-2);
+}
+.st-badge.is-low, .st-badge.is-warn, .st-badge.is-update { background: var(--st-warn-wash); color: var(--st-warn); border-color: transparent; }
+.st-badge.is-out, .st-badge.is-error { background: var(--st-err-wash); color: var(--st-err); border-color: transparent; }
+.st-badge.is-ok, .st-badge.is-create { background: var(--st-ok-wash); color: var(--st-ok); border-color: transparent; }
+.st-badge.is-info { background: var(--st-info-wash); color: var(--st-info); border-color: transparent; }
+/* نشانِ وضعیتِ سند — کلیدها همان `BizInvoices::STATUS_LABELS` */
+.st-pill.is-draft   { border-style: dashed; }
+.st-pill.is-open    { background: var(--st-info-wash); color: var(--st-info); border-color: transparent; }
+.st-pill.is-partial { background: var(--st-warn-wash); color: var(--st-warn); border-color: transparent; }
+.st-pill.is-paid    { background: var(--st-ok-wash); color: var(--st-ok); border-color: transparent; }
+.st-pill.is-void    { text-decoration: line-through; opacity: .7; }
+.st-pill.is-k-receipt, .st-pill.is-k-income { background: var(--st-ok-wash); color: var(--st-ok); border-color: transparent; }
+.st-pill.is-k-payment, .st-pill.is-k-expense { background: var(--st-err-wash); color: var(--st-err); border-color: transparent; }
+.st-pill.is-k-transfer { border-color: var(--st-line); }
+.st-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+
+.st-chips-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.st-stat {
+    font-size: 12.5px; background: var(--st-surface); border: 1px solid var(--st-line);
+    border-radius: 999px; padding: 3px 12px; white-space: nowrap; color: var(--st-ink-2);
+}
+.st-stat b { color: var(--st-ink); font-weight: 650; }
+.st-stat.is-low { background: var(--st-warn-wash); color: var(--st-warn); border-color: transparent; }
+.st-stat.is-out { background: var(--st-err-wash); color: var(--st-err); border-color: transparent; }
+
+/* ---------- صافی، زبانه، زبانه‌ی تکه‌ای ---------- */
+.st-filters { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: stretch; }
+.st-filters input, .st-filters select {
+    font: inherit; font-size: 13.5px; color: var(--st-ink); background: var(--st-surface);
+    border: 1px solid var(--st-line-2); border-radius: var(--st-radius-sm); padding: 0 12px; min-height: 40px;
+}
+.st-filters input { flex: 1 1 200px; min-width: 0; width: auto; }
+.st-filters select { flex: 0 1 190px; min-width: 0; width: auto; }
+.st-filters .st-btn { align-self: stretch; }
+.st-filters .st-date-in { flex: 0 1 150px; }
 .st-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 12px; scrollbar-width: none; }
 .st-tab-chip {
-    flex: 0 0 auto; white-space: nowrap; text-decoration: none; font-size: 13px;
-    color: var(--st-ink-2); border: 1px solid var(--st-line); border-radius: 999px; padding: 5px 14px;
+    flex: 0 0 auto; white-space: nowrap; text-decoration: none; font-size: 12.5px;
+    color: var(--st-ink-2); border: 1px solid var(--st-line); border-radius: 999px; padding: 4px 13px; background: var(--st-surface);
+    transition: background var(--st-fast) var(--st-ease);
 }
-.st-tab-chip.is-active { background: var(--st-top); color: var(--st-top-ink); border-color: var(--st-top); }
+.st-tab-chip:hover { color: var(--st-ink); border-color: var(--st-line-2); }
+.st-tab-chip.is-active { background: var(--st-primary); color: var(--st-primary-ink); border-color: var(--st-primary); }
+.st-segtabs {
+    /* ⚠ پنج نوعِ «دریافت و پرداخت» روی ۳۹۰ جا نمی‌شوند: خودش اسکرول می‌شود، نه صفحه */
+    display: flex; width: fit-content; max-width: 100%; overflow-x: auto; scrollbar-width: none;
+    gap: 2px; padding: 3px; margin-bottom: 14px;
+    background: var(--st-sunken); border: 1px solid var(--st-line); border-radius: 12px;
+}
+.st-segtabs a {
+    flex: 0 0 auto; text-decoration: none; color: var(--st-ink-2); white-space: nowrap; font-size: 13px;
+    padding: 5px 14px; border-radius: 9px; transition: background var(--st-fast) var(--st-ease);
+}
+.st-segtabs a:hover { color: var(--st-ink); }
+.st-segtabs a.is-active { background: var(--st-surface); color: var(--st-ink); font-weight: 650; box-shadow: 0 1px 2px rgba(16,24,40,.08); }
 
+/* ---------- جدول ----------
+   ⛔ سرآیندِ چسبان روی دسکتاپ (زیرِ نوارِ بالا)، ردیفِ آرام با hover، عدد
+   چپ‌چین. روی گوشی `.st-table-compact` کارت می‌شود. ⚠ ظرف روی دسکتاپ
+   اسکرول‌شونده نیست — وگرنه سرآیند نسبت به ظرف می‌چسبید نه صفحه. */
 .st-table-wrap {
     background: var(--st-surface); border: 1px solid var(--st-line); border-radius: var(--st-radius);
-    box-shadow: var(--st-shadow); overflow-x: auto; margin-bottom: 12px;
+    box-shadow: var(--st-shadow); overflow-x: auto; margin-bottom: 14px;
 }
-.st-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+@media (min-width: 900px) { .st-table-wrap:not(.st-lines-wrap) { overflow: visible; } }
+.st-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
 .st-table th {
-    text-align: right; font-size: 12px; font-weight: 700; color: var(--st-ink-2);
+    text-align: right; font-size: 12px; font-weight: 600; color: var(--st-ink-3);
     padding: 10px 14px; border-bottom: 1px solid var(--st-line); white-space: nowrap;
+    background: var(--st-surface-2);
 }
-.st-table td { padding: 10px 14px; border-bottom: 1px solid var(--st-line); vertical-align: middle; }
-/* ⛔ نامِ کالا و دسته را کاربر می‌نویسد و می‌تواند بی‌فاصله و بلند باشد؛
+@media (min-width: 900px) {
+    .st-table-wrap:not(.st-lines-wrap) .st-table thead th { position: sticky; top: calc(var(--st-top-h) + 1px); z-index: 2; }
+}
+.st-table thead tr:first-child th:first-child { border-start-start-radius: var(--st-radius); }
+.st-table thead tr:first-child th:last-child  { border-start-end-radius: var(--st-radius); }
+.st-table td { padding: 11px 14px; border-bottom: 1px solid var(--st-line); vertical-align: middle; }
+/* ⛔ نامِ کالا و دسته را کاربر می‌نویسد و می‌تواند بی‌فاصله و بلند باشد;
    `anywhere` (نه `break-word`) کمینه‌ی عرضِ ستون را هم پایین می‌آورد، پس
    جدول به‌جای اسکرولِ افقی می‌شکند و ستونِ قیمت روی گوشی دیده می‌ماند. */
 .st-table td:not(.st-td-num) { overflow-wrap: anywhere; }
 .st-table td:first-child { min-width: 96px; }
 .st-table tr:last-child td { border-bottom: 0; }
+.st-table tbody tr { transition: background var(--st-fast) var(--st-ease); }
+.st-table tbody tr:hover td { background: color-mix(in srgb, var(--st-ink) 2.5%, transparent); }
 /* ⛔ ستونِ عدد چپ‌چین، برچسبِ فارسی راست‌چین */
 .st-th-num, .st-td-num { text-align: left !important; white-space: nowrap; }
-.st-td-num .st-badge { display: block; width: fit-content; margin: 3px 0 0 auto; }
+.st-td-num { font-variant-numeric: tabular-nums; }
+.st-td-num .st-badge { display: flex; width: fit-content; margin: 3px 0 0 auto; }
 .st-table tr.is-inactive td, .st-list-row.is-inactive { opacity: .55; }
-.st-row-link { color: var(--st-ink); font-weight: 700; text-decoration: none; }
+.st-table tr.is-error td { background: color-mix(in srgb, var(--st-err-wash) 45%, transparent); }
+.st-row-link { color: var(--st-ink); font-weight: 600; text-decoration: none; }
 .st-row-link:hover { color: var(--st-accent); }
-.st-sku { display: block; font-size: 12px; color: var(--st-ink-2); text-align: right; }
-.st-bal-side { display: block; font-size: 11px; color: var(--st-ink-2); }
+.st-sku { display: block; font-size: 12px; color: var(--st-ink-3); text-align: right; }
+.st-bal-side { display: block; font-size: 11px; color: var(--st-ink-3); }
 @media (max-width: 640px) { .st-hide-sm { display: none; } .st-table td, .st-table th { padding: 10px 8px; } .st-table { font-size: 13px; } }
+/* ستون‌های اختیاریِ جدول (نمایشِ ستون‌ها — `store.js`) */
+.st-col-off { display: none !important; }
+.st-cols-menu label { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--st-radius-xs); cursor: pointer; font-size: 13px; white-space: nowrap; }
+.st-cols-menu label:hover { background: var(--st-sunken); }
+.st-th-sort { cursor: pointer; user-select: none; }
+.st-th-sort::after { content: '↕'; font-size: 10px; margin-inline-start: 4px; color: var(--st-line-2); }
+.st-th-sort[aria-sort="ascending"]::after { content: '↑'; color: var(--st-ink-2); }
+.st-th-sort[aria-sort="descending"]::after { content: '↓'; color: var(--st-ink-2); }
 
-.st-pager { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 4px 0 14px; }
+.st-pager { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 6px 0 16px; }
 .st-pager-btn {
-    text-decoration: none; border: 1px solid var(--st-line); border-radius: 10px; padding: 6px 14px;
-    color: var(--st-ink); background: var(--st-surface); white-space: nowrap;
+    text-decoration: none; border: 1px solid var(--st-line-2); border-radius: var(--st-radius-sm); padding: 5px 14px;
+    color: var(--st-ink); background: var(--st-surface); white-space: nowrap; font-size: 13px;
 }
-.st-pager-btn.is-off { opacity: .4; }
-.st-pager-info { font-size: 13px; color: var(--st-ink-2); white-space: nowrap; }
+.st-pager-btn:hover { background: var(--st-sunken); }
+.st-pager-btn.is-off { opacity: .4; pointer-events: none; }
+.st-pager-info { font-size: 12.5px; color: var(--st-ink-3); white-space: nowrap; }
 
-.st-row2, .st-row3 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
-@media (min-width: 560px) { .st-row2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (min-width: 720px) { .st-row3 { grid-template-columns: 2fr 1fr 1fr; } }
-.st-form-narrow { max-width: 720px; }
-.st-fieldset { border: 1px dashed var(--st-line); border-radius: 12px; padding: 10px 14px 14px; margin: 0; }
-.st-fieldset legend { font-weight: 700; font-size: 14px; padding: 0 6px; }
-.st-check { display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; }
-.st-check input { width: 18px; height: 18px; accent-color: var(--st-accent); }
-.st-seg { display: flex; flex-wrap: wrap; gap: 6px; }
-.st-seg-opt input { position: absolute; opacity: 0; pointer-events: none; }
-.st-seg-opt span {
-    display: inline-block; cursor: pointer; white-space: nowrap; font-size: 14px;
-    border: 1px solid var(--st-line); border-radius: 999px; padding: 6px 14px; background: var(--st-bg);
+/* ---------- فهرست ---------- */
+.st-list { list-style: none; margin: 0; padding: 0; }
+.st-list-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 11px 0; border-bottom: 1px solid var(--st-line); min-width: 0;
 }
-.st-seg-opt input:checked + span { background: var(--st-top); color: var(--st-top-ink); border-color: var(--st-top); }
-.st-seg-opt input:focus-visible + span { outline: 2px solid var(--st-accent); outline-offset: 1px; }
-
+.st-list-row:last-child { border-bottom: 0; }
+.st-list-row > a { color: var(--st-ink); text-decoration: none; font-weight: 600; min-width: 0;
+                   display: flex; flex-direction: column; gap: 0; }
+.st-list-row > a:hover { color: var(--st-accent); }
 .st-move-end { display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
 .st-move-end form { margin: 0; }
-.st-danger { box-shadow: none; }
-.st-danger-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-.st-subform { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--st-line); }
 
-/* ---------- گوشی: کشو + منوی پایین ---------- */
-.st-tabbar { display: none; }
-@media (max-width: 899px) {
-    .st-side {
-        width: min(300px, 86vw); transform: translateX(105%);
-        transition: transform .22s ease; box-shadow: none;
-    }
-    .st-nav-toggle:checked ~ .st-side { transform: none; box-shadow: -8px 0 30px rgba(0,0,0,.25); }
-    .st-nav-toggle:checked ~ .st-side-scrim {
-        display: block; position: fixed; inset: 0; z-index: 35; background: rgba(12,10,9,.45);
-    }
-    .st-main { padding-bottom: calc(84px + env(safe-area-inset-bottom)); }
-    .st-tabbar {
-        display: flex; position: fixed; inset-inline: 0; bottom: 0; z-index: 20;
-        background: var(--st-surface); border-top: 1px solid var(--st-line);
-        padding: 8px max(8px, env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
-    }
-    .st-tab {
-        flex: 1; text-align: center; text-decoration: none; white-space: nowrap; cursor: pointer;
-        color: var(--st-ink-2); padding: 8px 4px; border-radius: 10px; font-size: 14px;
-    }
-    .st-tab.is-active { color: var(--st-accent); background: var(--st-wash); font-weight: 700; }
+/* ---------- حالت‌های خالی، بارگذاری، خطا ---------- */
+.st-empty { color: var(--st-ink-2); margin: 6px 0 12px; font-size: 13.5px; }
+.st-empty-card { text-align: center; padding-block: 32px; }
+.st-empty-card .st-btn { align-self: center; }
+.st-empty-card::before {
+    content: ''; display: block; width: 44px; height: 44px; margin: 0 auto 12px; border-radius: 14px;
+    background: var(--st-sunken); border: 1px solid var(--st-line);
 }
-@media (prefers-reduced-motion: reduce) { .st-side { transition: none; } }
+.st-skel {
+    display: block; height: 12px; border-radius: 6px; background: var(--st-sunken);
+    background-image: linear-gradient(90deg, transparent, color-mix(in srgb, var(--st-surface) 70%, transparent), transparent);
+    background-size: 200% 100%; animation: st-shimmer 1.2s linear infinite;
+}
+@keyframes st-shimmer { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+
+/* ---------- سرِ صفحه ---------- */
+.st-page-head {
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
+    flex-wrap: wrap; margin-bottom: 18px;
+}
+.st-back { display: inline-block; font-size: 12.5px; text-decoration: none; margin-bottom: 2px; color: var(--st-ink-3); }
+.st-back:hover { color: var(--st-ink); }
+.st-head-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.st-head-actions .st-btn { align-self: auto; }
+@media (max-width: 560px) { .st-head-actions .st-btn { padding: 0 14px; font-size: 13.5px; } }
+.st-section-title { margin-top: 10px; }
+.st-unit-note { font-size: 12px; margin: -8px 0 14px; }
+.st-soon { margin: 14px 0 0; font-size: 13px; }
+.st-subform { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--st-line); }
+.st-danger-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.st-danger-row form { margin: 0; }
+.st-grow { flex: 1 1 200px; min-width: 0; }
+.st-inline-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin: 0; }
+.st-inline-form .st-btn { align-self: flex-end; }
+
+/* ---------- کاشیِ شاخص (KPI) ----------
+   عنوان، عددِ درشت، تغییر نسبت به دوره‌ی قبل، و مینی‌نمودار. */
+.st-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.st-kpis-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.st-kpis-1 { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .st-kpis:not(.st-kpis-3):not(.st-kpis-1):not(.st-kpis-6) { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.st-kpis-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 720px) { .st-kpis-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1640px) { .st-kpis-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+/* ⛔ عددِ قهرمان نمی‌شکند — «۱۱۲٬۰۸۵٬۰۰۰» دو تکه یعنی دو عدد خوانده می‌شود.
+   اندازه‌اش از عرضِ خودِ کارت می‌آید (container query)، پس روی گوشی کوچک‌تر می‌شود
+   به‌جای اینکه از کارت بیرون بزند. */
+.st-kpis .st-kpi-card { container-type: inline-size; }
+.st-kpis .st-kpi-value { overflow-wrap: normal; word-break: keep-all; }
+@supports (font-size: 1cqi) { .st-kpis .st-kpi-card .st-kpi-value { font-size: clamp(14px, 10.5cqi, 24px); } }
+@media (max-width: 560px) { .st-kpis-3 { grid-template-columns: minmax(0, 1fr); } }
+.st-kpi { display: flex; flex-direction: column; gap: 2px; }
+.st-kpi-card {
+    position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0;
+    background: var(--st-surface); border: 1px solid var(--st-line); border-radius: var(--st-radius);
+    box-shadow: var(--st-shadow); padding: 16px 16px 14px; color: var(--st-ink); text-decoration: none;
+    transition: border-color var(--st-fast) var(--st-ease), transform var(--st-fast) var(--st-ease);
+}
+a.st-kpi-card:hover { border-color: var(--st-line-2); }
+.st-kpi-label { color: var(--st-ink-2); font-size: 12.5px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+.st-kpi-value {
+    font-size: 26px; font-weight: 650; letter-spacing: -.6px; line-height: 1.3; align-self: flex-end;
+    font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+.st-kpi-card .st-kpi-value { font-size: 22px; }
+.st-kpi-value small { font-size: 12px; font-weight: 500; color: var(--st-ink-3); letter-spacing: 0; }
+.st-kpi-sub { font-size: 12px; color: var(--st-ink-3); }
+.st-kpi-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; min-width: 0; }
+.st-kpi-card.is-warn { border-color: color-mix(in srgb, var(--st-err) 45%, var(--st-line)); }
+@media (max-width: 560px) { .st-kpi-card .st-kpi-value { font-size: 18px; } .st-kpi-card { padding: 12px; } }
+/* تغییر نسبت به دوره‌ی قبل */
+.st-trend {
+    display: inline-flex; align-items: center; gap: 3px; unicode-bidi: isolate;
+    font-size: 11.5px; font-weight: 650; border-radius: 999px; padding: 0 7px; white-space: nowrap;
+    background: var(--st-sunken); color: var(--st-ink-2);
+}
+.st-trend.is-up   { background: var(--st-ok-wash);  color: var(--st-ok); }
+.st-trend.is-down { background: var(--st-err-wash); color: var(--st-err); }
+.st-spark { display: block; width: 72px; height: 24px; direction: ltr; flex: 0 0 auto; overflow: visible; }
+.st-spark path { fill: none; stroke: var(--st-ink-3); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.st-spark .is-area { fill: color-mix(in srgb, var(--st-ink-3) 10%, transparent); stroke: none; }
+.st-spark.is-up path { stroke: var(--st-ok); }
+.st-spark.is-up .is-area { fill: color-mix(in srgb, var(--st-ok) 12%, transparent); }
+.st-spark.is-down path { stroke: var(--st-err); }
+.st-spark.is-down .is-area { fill: color-mix(in srgb, var(--st-err) 10%, transparent); }
+
+.st-cols { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 16px; align-items: start; }
+@media (min-width: 900px) { .st-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+@media (min-width: 900px) { .st-cols-wide { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
+.st-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.st-quick-btn {
+    display: block; text-align: center; text-decoration: none; white-space: nowrap;
+    border: 1px solid var(--st-line); border-radius: var(--st-radius-sm); padding: 10px 8px;
+    color: var(--st-ink); background: var(--st-surface-2); font-weight: 600; font-size: 13.5px;
+}
+.st-quick-btn:hover { border-color: var(--st-line-2); background: var(--st-sunken); }
+.st-meter { direction: ltr; height: 6px; background: var(--st-sunken); border-radius: 999px; overflow: hidden; }
+.st-meter span { display: block; height: 100%; background: var(--st-accent); border-radius: 999px; }
+
+/* ============================================================
+   ۵. فرمانِ سریع (Ctrl+K)
+   ============================================================
+   ⛔ `store.js` می‌سازدش؛ بی‌جاوااسکریپت همان جعبه‌ی جست‌وجوی نوارِ بالا
+   فرمِ GET به `search.php` است. هیچ چیزی از اینجا نمی‌نویسد: هر فرمان به
+   یک صفحه‌ی موجود می‌رود (با مقدارِ پیش‌پرشده)، ثبت را همان صفحه با CSRF
+   انجام می‌دهد. */
+.st-cmd-back {
+    position: fixed; inset: 0; z-index: 80; background: rgba(10, 12, 16, .38);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: max(10vh, calc(16px + env(safe-area-inset-top))) 16px 16px;
+    animation: st-fade var(--st-fast) var(--st-ease);
+}
+.st-cmd {
+    width: min(640px, 100%); max-height: min(70vh, 560px); display: flex; flex-direction: column;
+    background: var(--st-surface); border: 1px solid var(--st-line); border-radius: var(--st-radius-lg);
+    box-shadow: var(--st-shadow-pop); overflow: hidden; animation: st-pop var(--st-med) var(--st-ease);
+}
+.st-cmd-in { display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--st-line); }
+.st-cmd-in svg { color: var(--st-ink-3); flex: 0 0 auto; }
+.st-cmd-in input {
+    flex: 1; min-width: 0; height: 54px; font: inherit; font-size: 15.5px; color: var(--st-ink);
+    background: none; border: 0; outline: none;
+}
+.st-cmd-list { overflow-y: auto; overscroll-behavior: contain; padding: 6px; }
+.st-cmd-group { font-size: 11.5px; font-weight: 600; color: var(--st-ink-3); padding: 10px 10px 4px; }
+.st-cmd-opt {
+    display: flex; align-items: center; gap: 12px; padding: 9px 10px; border-radius: 10px;
+    color: var(--st-ink); text-decoration: none; cursor: pointer; min-width: 0;
+}
+.st-cmd-opt.is-active { background: var(--st-sunken); }
+.st-cmd-ico {
+    display: grid; place-items: center; flex: 0 0 auto; width: 30px; height: 30px; border-radius: 9px;
+    background: var(--st-surface-2); border: 1px solid var(--st-line); color: var(--st-ink-2);
+}
+.st-cmd-opt.is-intent .st-cmd-ico { background: var(--st-wash); color: var(--st-accent); border-color: transparent; }
+.st-cmd-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.45; }
+.st-cmd-text b { font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-cmd-text span { font-size: 12px; color: var(--st-ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-cmd-end { margin-inline-start: auto; font-size: 12px; color: var(--st-ink-3); white-space: nowrap; }
+.st-cmd-empty { padding: 22px 16px; text-align: center; color: var(--st-ink-3); font-size: 13px; }
+.st-cmd-foot {
+    display: flex; gap: 14px; flex-wrap: wrap; padding: 8px 16px; border-top: 1px solid var(--st-line);
+    font-size: 11.5px; color: var(--st-ink-3); background: var(--st-surface-2);
+}
+.st-cmd-foot kbd { font: 600 10.5px/1 'Vazirmatn', monospace; border: 1px solid var(--st-line); border-bottom-width: 2px; border-radius: 5px; padding: 2px 5px; background: var(--st-surface); direction: ltr; display: inline-block; }
+html.st-locked, html.st-locked body { overflow: hidden; }
+@media (max-width: 640px) { .st-cmd-back { padding-top: calc(10px + env(safe-area-inset-top)); } .st-cmd { max-height: 80vh; } }
+
+/* نتیجه‌ی جست‌وجو (صفحه‌ی `search.php`، بی‌جاوااسکریپت) */
+.st-results { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .st-results { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
+.st-results .st-card { margin: 0; }
+.st-result-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.st-result-row a { color: var(--st-ink); text-decoration: none; font-weight: 600; min-width: 0; display: flex; flex-direction: column; overflow-wrap: anywhere; }
+.st-result-row a:hover { color: var(--st-accent); }
+
+/* ============================================================
+   ۶. داشبورد و نمودار
+   ============================================================ */
+.st-dash-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.st-dash-head .st-h1 { font-size: 24px; }
+.st-dash-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (min-width: 1100px) { .st-dash-grid { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); } }
+.st-dash-grid > * { min-width: 0; }
+.st-dash-grid .st-card { margin-bottom: 0; }
+.st-stack { display: grid; gap: 16px; min-width: 0; }
+.st-dash-pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+@media (min-width: 720px) { .st-dash-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.st-dash-pair .st-card { margin: 0; }
+
+/* نوارِ کارِ سریع */
+.st-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+.st-action {
+    display: inline-flex; align-items: center; gap: 8px; text-decoration: none;
+    background: var(--st-surface); border: 1px solid var(--st-line-2); border-radius: var(--st-radius-sm);
+    color: var(--st-ink); font-weight: 600; font-size: 13.5px; padding: 0 14px; min-height: 38px; white-space: nowrap;
+    transition: background var(--st-fast) var(--st-ease);
+}
+.st-action:hover { background: var(--st-sunken); }
+.st-action.is-primary { background: var(--st-primary); border-color: var(--st-primary); color: var(--st-primary-ink); }
+.st-action.is-primary:hover { background: var(--st-primary-2); }
+.st-action-ico { flex: 0 0 auto; }
+@media (max-width: 560px) { .st-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .st-action { justify-content: center; } .st-action.is-primary { grid-column: 1 / -1; } }
+
+/* نمودار — جهتِ محورِ زمان همیشه چپ‌به‌راست */
+.st-chart { position: relative; direction: ltr; }
+.st-chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.st-chart .st-grid-line { stroke: var(--st-line); stroke-width: 1; }
+.st-chart .st-axis { fill: var(--st-ink-3); font-size: 10px; font-family: 'Vazirmatn', sans-serif; }
+.st-chart .st-l-in   { fill: none; stroke: var(--st-ok);  stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.st-chart .st-l-out  { fill: none; stroke: var(--st-err); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; opacity: .85; }
+.st-chart .st-l-net  { fill: none; stroke: var(--st-ink); stroke-width: 1.6; stroke-dasharray: 3 3; }
+.st-chart .st-a-in   { fill: color-mix(in srgb, var(--st-ok) 10%, transparent); }
+.st-chart .st-b-in   { fill: color-mix(in srgb, var(--st-accent) 78%, transparent); }
+.st-chart .st-b-out  { fill: color-mix(in srgb, var(--st-ink-3) 38%, transparent); }
+.st-chart .st-hit    { fill: transparent; }
+.st-chart .st-hit:hover + .st-guide, .st-chart .st-guide.is-on { opacity: 1; }
+.st-chart .st-guide  { stroke: var(--st-line-2); stroke-width: 1; opacity: 0; pointer-events: none; }
+.st-chart-tip {
+    position: absolute; z-index: 5; pointer-events: none; direction: rtl; text-align: right;
+    background: var(--st-surface); border: 1px solid var(--st-line); border-radius: 10px; box-shadow: var(--st-shadow-pop);
+    padding: 7px 10px; font-size: 12px; line-height: 1.6; white-space: nowrap; transform: translate(-50%, calc(-100% - 10px));
+}
+.st-chart-tip b { display: block; font-size: 12px; margin-bottom: 2px; }
+.st-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--st-ink-2); margin: 0 0 8px; padding: 0; list-style: none; }
+.st-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.st-legend i { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+.st-legend .is-in i { background: var(--st-ok); }
+.st-legend .is-out i { background: var(--st-err); }
+.st-legend .is-net i { background: var(--st-ink); height: 2px; }
+.st-legend .is-bin i { background: var(--st-accent); height: 8px; }
+.st-legend .is-bout i { background: color-mix(in srgb, var(--st-ink-3) 45%, transparent); height: 8px; }
+.st-range { display: inline-flex; gap: 2px; padding: 2px; background: var(--st-sunken); border: 1px solid var(--st-line); border-radius: 10px; flex-wrap: wrap; }
+.st-range a { font-size: 12px; text-decoration: none; color: var(--st-ink-2); padding: 3px 10px; border-radius: 8px; white-space: nowrap; }
+.st-range a.is-active { background: var(--st-surface); color: var(--st-ink); font-weight: 650; box-shadow: 0 1px 2px rgba(16,24,40,.08); }
+.st-chart-sum { display: flex; gap: 6px 22px; flex-wrap: wrap; margin: 0 0 10px; }
+.st-chart-sum div { display: flex; flex-direction: column; }
+.st-chart-sum span { font-size: 12px; color: var(--st-ink-3); }
+.st-chart-sum b { font-size: 17px; font-weight: 650; }
+
+/* دونات — سهمِ هزینه‌ها */
+.st-donut-wrap { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 16px; align-items: center; }
+@media (max-width: 420px) { .st-donut-wrap { grid-template-columns: minmax(0, 1fr); justify-items: center; } }
+.st-donut { width: 132px; height: 132px; direction: ltr; }
+.st-donut circle { fill: none; stroke-width: 16; }
+.st-donut .st-donut-bg { stroke: var(--st-sunken); }
+.st-donut-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; min-width: 0; width: 100%; }
+.st-donut-list li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: 8px; font-size: 12.5px; }
+.st-donut-list i { width: 10px; height: 10px; border-radius: 3px; }
+.st-donut-list span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-donut-list b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.st-c1 { stroke: var(--st-accent); background: var(--st-accent); }
+.st-c2 { stroke: #64748b; background: #64748b; }
+.st-c3 { stroke: #d97706; background: #d97706; }
+.st-c4 { stroke: #2563eb; background: #2563eb; }
+.st-c5 { stroke: #db2777; background: #db2777; }
+.st-c6 { stroke: #a3a8b3; background: #a3a8b3; }
+
+/* حساب‌ها روی داشبورد */
+.st-acc-rows { list-style: none; margin: 0; padding: 0; }
+.st-acc-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--st-line); }
+.st-acc-row:last-child { border-bottom: 0; }
+.st-acc-ico { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--st-sunken); color: var(--st-ink-2); }
+.st-acc-main { display: flex; flex-direction: column; min-width: 0; line-height: 1.45; }
+.st-acc-main b { font-weight: 600; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-acc-main span { font-size: 12px; color: var(--st-ink-3); }
+.st-acc-side { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.st-acc-side b { font-weight: 650; font-size: 14px; }
+.st-acc-acts { display: flex; gap: 4px; }
+.st-acc-acts a { font-size: 11.5px; color: var(--st-ink-3); text-decoration: none; border: 1px solid var(--st-line); border-radius: 7px; padding: 0 7px; white-space: nowrap; }
+.st-acc-acts a:hover { color: var(--st-ink); border-color: var(--st-line-2); }
+
+/* هشدارهای هوشمند */
+.st-alerts { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.st-alert {
+    display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 12px; align-items: center;
+    padding: 10px 12px; border: 1px solid var(--st-line); border-radius: 12px; background: var(--st-surface-2);
+}
+.st-alert > i { width: 8px; height: 8px; border-radius: 50%; background: var(--st-warn); }
+.st-alert.is-err > i { background: var(--st-err); }
+.st-alert.is-info > i { background: var(--st-info); }
+.st-alert-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.5; }
+.st-alert-text b { font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+.st-alert-text span { font-size: 12px; color: var(--st-ink-3); }
+.st-alert .st-btn { align-self: center; }
+
+/* فهرستِ طلب/بدهی و کالا */
+.st-mini-list { list-style: none; margin: 0; padding: 0; }
+.st-mini-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--st-line); min-width: 0; }
+.st-mini-row:last-child { border-bottom: 0; }
+.st-mini-row > a, .st-mini-row > span:first-child { color: var(--st-ink); text-decoration: none; font-weight: 550; font-size: 13.5px; min-width: 0; display: flex; flex-direction: column; line-height: 1.45; overflow-wrap: anywhere; }
+.st-mini-row > a:hover { color: var(--st-accent); }
+.st-mini-row small { font-size: 11.5px; color: var(--st-ink-3); font-weight: 400; }
+.st-mini-end { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: 0 0 auto; }
+.st-rank { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--st-line); }
+.st-rank:last-child { border-bottom: 0; }
+.st-rank > span:first-child { font-size: 12px; color: var(--st-ink-3); text-align: center; }
+.st-rank-name { display: flex; flex-direction: column; min-width: 0; line-height: 1.45; }
+.st-rank-name b { font-weight: 600; font-size: 13.5px; overflow-wrap: anywhere; }
+.st-rank-name small { font-size: 11.5px; color: var(--st-ink-3); }
+.st-subhead { font-size: 12px; font-weight: 600; color: var(--st-ink-3); margin: 14px 0 2px; }
+.st-subhead:first-child { margin-top: 0; }
+
+/* نمودارِ ستونیِ روزانه‌ی قدیمی (صفحه‌ی گزارش هنوز از آن استفاده می‌کند) */
+.st-bars {
+    direction: ltr; display: flex; align-items: flex-end; gap: 3px;
+    height: 140px; margin-top: 14px; border-bottom: 1px solid var(--st-line);
+}
+.st-bar { flex: 1 1 0; min-width: 0; min-height: 2px; background: color-mix(in srgb, var(--st-accent) 45%, transparent); border-radius: 4px 4px 1px 1px; }
+.st-bar.is-today { background: var(--st-accent); }
+.st-bars-axis { direction: ltr; display: flex; justify-content: space-between; font-size: 11px; color: var(--st-ink-3); margin-top: 4px; }
+.st-attn { border-color: color-mix(in srgb, var(--st-err) 30%, var(--st-line)); }
+.st-attn .st-list-row { flex-wrap: wrap; }
+.st-attn .st-list-row > a { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px; }
+.st-hello { margin-bottom: 16px; }
+
+/* ============================================================
+   ۷. صفحه‌ها
+   ============================================================ */
+
+/* ---------- ورود ---------- */
+.st-auth { min-height: 100vh; display: grid; place-items: center; padding: 16px; }
+.st-auth-box {
+    width: 100%; max-width: 390px;
+    background: var(--st-surface); border: 1px solid var(--st-line);
+    border-radius: var(--st-radius-lg); box-shadow: var(--st-shadow); padding: 30px 24px;
+}
+.st-auth-mark {
+    display: grid; place-items: center; width: 56px; height: 56px; margin: 0 auto 14px;
+    border-radius: 16px; background: var(--st-primary); color: var(--st-accent);
+}
+:root[data-st-theme="dark"] .st-auth-mark { color: var(--st-primary-ink); }
+.st-auth-box .st-h1 { text-align: center; margin-bottom: 18px; font-size: 19px; }
+.st-auth-note { margin: 14px 0 0; text-align: center; font-size: 12.5px; }
 
 /* ---------- ورود و خروجِ کالا ---------- */
 .st-io-opts { margin: 4px 0 14px; gap: 8px; }
-.st-badge.is-create { background: var(--st-ok-wash); color: var(--st-ok); border-color: transparent; }
-.st-badge.is-update { background: var(--st-wash); color: var(--st-accent-2); border-color: transparent; }
-.st-badge.is-error  { background: var(--st-err-wash); color: var(--st-err); border-color: transparent; }
-.st-table tr.is-error td { background: color-mix(in srgb, var(--st-err-wash) 45%, transparent); }
-.st-btn[disabled] { opacity: .45; cursor: not-allowed; }
-.st-field input[type="file"] { padding: 8px; }
-.st-head-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.st-head-actions .st-btn { align-self: auto; }
-@media (max-width: 560px) { .st-head-actions .st-btn { padding: 8px 14px; font-size: 14px; } }
-
-/* ============================================================
-   مرحله‌ی ۳ تا ۵ — اسناد، خزانه، گزارش، فروشِ سریع
-   ⛔ عدد چپ (`.st-num`)، بقیه راست؛ روی ۳۹۰ بدونِ اسکرولِ افقی.
-   ============================================================ */
-
-/* نشانِ وضعیتِ سند — کلیدها همان `BizInvoices::STATUS_LABELS` */
-.st-pill {
-    display: inline-block; white-space: nowrap; font-size: 12px; font-weight: 700;
-    border-radius: 999px; padding: 1px 10px; border: 1px solid transparent;
-    background: var(--st-bg); color: var(--st-ink-2);
-}
-.st-pill.is-draft   { border-color: var(--st-line); border-style: dashed; }
-.st-pill.is-open    { background: #dbeafe; color: #1d4ed8; }
-.st-pill.is-partial { background: var(--st-wash); color: var(--st-accent-2); }
-.st-pill.is-paid    { background: var(--st-ok-wash); color: var(--st-ok); }
-.st-pill.is-void    { text-decoration: line-through; opacity: .7; }
-@media (prefers-color-scheme: dark) { .st-pill.is-open { background: #172554; color: #93c5fd; } }
-
-/* منوی «+ ثبت» در نوارِ کناری — `<details>`، بی‌جاوااسکریپت */
-.st-new { margin: 0 0 10px; flex-shrink: 0; }
-.st-new-btn {
-    list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;
-    background: var(--st-accent); color: var(--st-accent-ink); font-weight: 700;
-    border-radius: 10px; padding: 9px 12px; user-select: none;
-}
-.st-new-btn::-webkit-details-marker { display: none; }
-.st-new[open] .st-new-btn { border-end-start-radius: 0; border-end-end-radius: 0; }
-.st-new-menu {
-    display: flex; flex-direction: column; background: rgba(250,250,249,.06);
-    border-radius: 0 0 10px 10px; padding: 4px;
-}
-.st-new-menu a {
-    color: var(--st-top-ink); text-decoration: none; font-size: 14px; text-align: right;
-    padding: 7px 10px; border-radius: 8px; white-space: nowrap;
-}
-.st-new-menu a:hover { background: rgba(250,250,249,.08); }
-
-/* زبانه‌ی «فاکتورها / برگشتی‌ها» */
-.st-segtabs {
-    /* ⚠ پنج نوعِ «دریافت و پرداخت» روی ۳۹۰ جا نمی‌شوند: خودش اسکرول می‌شود، نه صفحه */
-    display: flex; width: fit-content; max-width: 100%; overflow-x: auto; scrollbar-width: none;
-    gap: 2px; padding: 3px; margin-bottom: 12px;
-    background: var(--st-surface); border: 1px solid var(--st-line); border-radius: 12px;
-}
-.st-segtabs a {
-    flex: 0 0 auto; text-decoration: none; color: var(--st-ink-2); white-space: nowrap; font-size: 14px;
-    padding: 5px 14px; border-radius: 9px;
-}
-.st-segtabs a.is-active { background: var(--st-top); color: var(--st-top-ink); font-weight: 700; }
-.st-filters .st-date-in { flex: 0 1 150px; }
-.st-sumrow {
-    display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 10px;
-    font-size: 13px; color: var(--st-ink-2);
-}
-.st-sumrow b, .st-sumrow .st-num { color: var(--st-ink); }
 
 /* ---------- ویرایشگرِ سند ---------- */
+.st-sumrow {
+    display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 12px;
+    font-size: 12.5px; color: var(--st-ink-3);
+}
+.st-sumrow b, .st-sumrow .st-num { color: var(--st-ink); }
 .st-docform { display: block; }
-.st-field-link { font-size: 12px; font-weight: 400; text-decoration: none; margin-top: -2px; }
 .st-lines-card { padding: 0; overflow: hidden; }
 .st-lines-wrap { border: 0; border-radius: 0; margin: 0; box-shadow: none; }
 /* ⛔ جدولِ ردیف‌ها فشرده است («جدولش خیلی بزرگه فضا رو گرفته»): خانه‌های
    ۳۴ پیکسلی، ستون‌های عددیِ باریکِ ثابت، و نامِ کالا دیگر تمام‌عرض نیست —
    کنارش «شرحِ کالا» (IMEI برای گوشی، توضیح برای بقیه). */
 .st-lines { table-layout: fixed; width: 100%; font-size: 13.5px; }
-.st-lines th { padding: 8px 6px; font-size: 12px; }
+.st-lines th { padding: 8px 6px; font-size: 12px; border-radius: 0 !important; }
 .st-lines td { padding: 4px 4px; }
 .st-lines td:first-child { min-width: 0; }
-.st-lines th.st-line-no, .st-lines td.st-line-no { width: 30px; text-align: center; color: var(--st-ink-2); padding-inline: 2px; }
+.st-lines th.st-line-no, .st-lines td.st-line-no { width: 30px; text-align: center; color: var(--st-ink-3); padding-inline: 2px; }
 .st-lines input {
-    font: inherit; color: var(--st-ink); background: var(--st-bg); width: 100%; min-width: 0; height: 34px;
-    border: 1px solid transparent; border-radius: 8px; padding: 4px 8px;
+    font: inherit; color: var(--st-ink); background: var(--st-surface-2); width: 100%; min-width: 0; height: 34px;
+    border: 1px solid transparent; border-radius: var(--st-radius-xs); padding: 4px 8px;
 }
 .st-lines input:hover { border-color: var(--st-line); }
 .st-lines input[dir="ltr"] { text-align: left; }
-.st-lines input:focus { outline: 2px solid var(--st-accent); outline-offset: 0; border-color: transparent; background: var(--st-surface); }
+.st-lines input:focus { outline: none; box-shadow: var(--st-ring); border-color: var(--st-accent); background: var(--st-surface); }
 .st-lines .st-line-qty { width: 64px; }
 .st-lines .st-line-price { width: 112px; }
 .st-lines .st-line-disc { width: 92px; }
 .st-lines th.st-th-num:last-child, .st-lines td.st-td-num { width: 132px; white-space: nowrap; }
-.st-lines td.st-td-num { padding-inline: 8px; font-weight: 700; }
+.st-lines td.st-td-num { padding-inline: 8px; font-weight: 650; }
 .st-lines td.st-line-item, .st-lines td.st-line-desc { min-width: 0; }
+.st-lines tbody tr:hover td { background: transparent; }
 .st-line-desc input.st-line-notein { color: var(--st-ink-2); }
 .st-line.is-over input[data-qty] { border-color: var(--st-err); background: var(--st-err-wash); }
-.st-line-note { display: block; font-size: 11px; color: var(--st-ink-2); margin-top: 2px; }
+.st-line-note { display: block; font-size: 11px; color: var(--st-ink-3); margin-top: 2px; }
 .st-lines-tools { padding: 10px 14px; border-top: 1px solid var(--st-line); display: flex; flex-direction: column; gap: 4px; }
 .st-lines-tools .st-muted-i { font-size: 12px; }
-
 @media (max-width: 640px) {
     /* ردیفِ فاکتور روی گوشی: کالا یک خط، زیرش شرح، و زیرش تعداد/فی/جمع — نه اسکرولِ افقی */
     .st-lines { table-layout: auto; }
@@ -501,124 +1071,90 @@ a.st-kpi-card:hover { border-color: var(--st-accent); }
     .st-lines td.st-line-price { grid-area: price; }
     .st-lines td.st-td-num { grid-area: lt; align-self: center; min-width: 64px; text-align: left; }
     .st-lines input { border-color: var(--st-line); }
+    .st-lines tr.st-line td.st-hide-sm { display: none; }
 }
 
 /* ---------- فهرستِ کشوییِ پیشنهادِ کالا (`store.js`) ---------- */
 .st-ac {
     position: fixed; z-index: 60; max-height: 300px; overflow-y: auto; overscroll-behavior: contain;
     background: var(--st-surface); border: 1px solid var(--st-line); border-radius: 12px;
-    box-shadow: 0 12px 32px rgba(28,25,23,.18); padding: 4px; direction: rtl; text-align: right;
+    box-shadow: var(--st-shadow-pop); padding: 4px; direction: rtl; text-align: right;
 }
 .st-ac-opt { display: flex; flex-direction: column; gap: 0; padding: 7px 10px; border-radius: 8px; cursor: pointer; line-height: 1.5; }
-.st-ac-opt b { font-weight: 700; font-size: 14px; overflow-wrap: anywhere; }
-.st-ac-opt span { font-size: 12px; color: var(--st-ink-2); }
-.st-ac-opt:hover, .st-ac-opt.is-active { background: var(--st-wash); }
-.st-ac-opt.is-out b { color: var(--st-ink-2); }
-.st-ac-none { padding: 10px 12px; font-size: 13px; color: var(--st-ink-2); }
+.st-ac-opt b { font-weight: 600; font-size: 13.5px; overflow-wrap: anywhere; }
+.st-ac-opt span { font-size: 12px; color: var(--st-ink-3); }
+.st-ac-opt:hover, .st-ac-opt.is-active { background: var(--st-sunken); }
+.st-ac-opt.is-out b { color: var(--st-ink-3); }
+.st-ac-none { padding: 10px 12px; font-size: 13px; color: var(--st-ink-3); }
 
 /* ---------- مانده‌ی قبلی و کلِ طرف‌حساب ---------- */
-.st-balbox { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; padding: 10px 12px; border-radius: 10px; background: var(--st-bg); border: 1px dashed var(--st-line); }
+.st-balbox { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; padding: 10px 12px; border-radius: 12px; background: var(--st-surface-2); border: 1px dashed var(--st-line-2); }
 .st-balbox[hidden] { display: none; }
-.st-balbox .st-sum-line small { color: var(--st-ink-2); font-weight: 400; font-size: 12px; }
-.st-balbox .is-after { font-weight: 800; }
+.st-balbox .st-sum-line small { color: var(--st-ink-3); font-weight: 400; font-size: 12px; }
+.st-balbox .is-after { font-weight: 700; }
 .st-imei.is-note { font-style: normal; }
-
-.st-doc-foot { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; }
+.st-doc-foot { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 16px; }
 @media (min-width: 900px) { .st-doc-foot { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
 .st-sumbox { display: flex; flex-direction: column; gap: 8px; }
-.st-sum-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; }
+.st-sum-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13.5px; }
 .st-sum-line input {
-    font: inherit; color: var(--st-ink); background: var(--st-bg); text-align: left;
-    border: 1px solid var(--st-line); border-radius: 8px; padding: 6px 9px; width: 140px; min-width: 0;
+    font: inherit; color: var(--st-ink); background: var(--st-surface); text-align: left;
+    border: 1px solid var(--st-line-2); border-radius: var(--st-radius-xs); padding: 6px 9px; width: 140px; min-width: 0;
 }
-.st-sum-total { border-top: 1px solid var(--st-line); padding-top: 10px; font-size: 17px; font-weight: 800; }
-.st-sum-due { color: var(--st-err); font-weight: 700; }
+.st-sum-line input:focus { outline: none; border-color: var(--st-accent); box-shadow: var(--st-ring); }
+.st-sum-total { border-top: 1px solid var(--st-line); padding-top: 10px; font-size: 18px; font-weight: 700; }
+.st-sum-due { color: var(--st-err); font-weight: 650; }
 .st-paybox { display: flex; flex-direction: column; gap: 12px; }
-.st-seg-sm .st-seg-opt span { font-size: 13px; padding: 4px 12px; }
-.st-actionbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 4px 0 14px; }
+.st-actionbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 4px 0 16px; }
 .st-actionbar .st-btn { align-self: auto; }
 @media (max-width: 899px) {
     /* ⛔ بالای منوی پایین می‌ایستد، نه زیرش */
     .st-actionbar-sticky {
-        position: sticky; bottom: calc(66px + env(safe-area-inset-bottom)); z-index: 15;
-        background: var(--st-surface); border: 1px solid var(--st-line); border-radius: 12px;
-        padding: 10px; box-shadow: 0 -4px 18px rgba(28,25,23,.08);
+        position: sticky; bottom: calc(70px + env(safe-area-inset-bottom)); z-index: 15;
+        background: var(--st-surface); border: 1px solid var(--st-line); border-radius: 14px;
+        padding: 10px; box-shadow: var(--st-shadow-pop);
     }
     .st-actionbar-sticky .st-btn { flex: 1 1 auto; }
 }
 .st-after { margin-top: 6px; }
-.st-link-danger { color: var(--st-err); }
-.st-flash-warn { background: var(--st-wash); color: var(--st-accent-2); }
 
 /* ---------- نمای سندِ صادرشده ---------- */
-.st-docview { padding: 20px; }
+.st-docview { padding: 22px; }
 .st-docmeta {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr));
-    gap: 10px 16px; margin: 0 0 14px;
+    gap: 12px 18px; margin: 0 0 16px;
 }
 .st-docmeta div { min-width: 0; }
-.st-docmeta dt { font-size: 12px; color: var(--st-ink-2); }
+.st-docmeta dt { font-size: 12px; color: var(--st-ink-3); }
 .st-docmeta dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
-.st-flat { border: 1px solid var(--st-line); box-shadow: none; }
 .st-doc-totals {
-    display: flex; flex-direction: column; gap: 6px; margin: 14px 0 0 auto;
-    max-width: 340px; margin-inline-start: auto;
+    display: flex; flex-direction: column; gap: 6px; margin: 16px 0 0 auto;
+    max-width: 360px; margin-inline-start: auto;
 }
-.st-docnote { margin: 14px 0 0; padding: 10px 12px; background: var(--st-bg); border-radius: 10px; font-size: 14px; white-space: pre-line; }
-.st-danger-row form { margin: 0; }
-
-/* ---------- داشبورد ---------- */
-.st-actions {
-    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 14px;
-}
-@media (min-width: 720px) { .st-actions { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-.st-action {
-    display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none;
-    background: var(--st-surface); border: 1px solid var(--st-line); border-radius: 12px;
-    color: var(--st-ink); font-weight: 700; font-size: 14px; padding: 12px 8px; white-space: nowrap;
-}
-.st-action:hover { border-color: var(--st-accent); color: var(--st-accent); }
-.st-action.is-primary { background: var(--st-accent); border-color: var(--st-accent); color: var(--st-accent-ink); }
-.st-action.is-primary:hover { background: var(--st-accent-2); color: var(--st-accent-ink); }
-.st-action-ico { flex: 0 0 auto; }
-.st-attn { border-color: color-mix(in srgb, var(--st-err) 35%, var(--st-line)); }
-.st-attn .st-list-row { flex-wrap: wrap; }
-@media (min-width: 900px) { .st-cols-wide { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); } }
-/* نمودارِ ستونیِ روزانه — جهتِ نمودار همیشه چپ‌به‌راست (زمان) */
-.st-bars {
-    direction: ltr; display: flex; align-items: flex-end; gap: 3px;
-    height: 140px; margin-top: 14px; border-bottom: 1px solid var(--st-line);
-}
-.st-bar { flex: 1 1 0; min-width: 0; min-height: 2px; background: color-mix(in srgb, var(--st-accent) 45%, transparent); border-radius: 3px 3px 0 0; }
-.st-bar.is-today { background: var(--st-accent); }
-.st-bars-axis { direction: ltr; display: flex; justify-content: space-between; font-size: 11px; color: var(--st-ink-2); margin-top: 4px; }
+.st-docnote { margin: 14px 0 0; padding: 10px 12px; background: var(--st-surface-2); border: 1px solid var(--st-line); border-radius: 12px; font-size: 13.5px; white-space: pre-line; }
 
 /* ---------- گزارش ---------- */
-.st-catrow { padding: 8px 0; border-bottom: 1px solid var(--st-line); }
+.st-catrow { padding: 9px 0; border-bottom: 1px solid var(--st-line); }
 .st-catrow:last-child { border-bottom: 0; }
 .st-plain { border: 0; padding: 0 0 4px; }
-.st-meter { direction: ltr; height: 6px; background: var(--st-bg); border-radius: 999px; overflow: hidden; }
-.st-meter span { display: block; height: 100%; background: var(--st-accent); border-radius: 999px; }
 
 /* ---------- صندوق‌ها و دسته‌بندی ---------- */
-.st-acc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: 12px; margin-bottom: 14px; }
+.st-acc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); gap: 12px; margin-bottom: 16px; }
 .st-acc-grid .st-acc { margin: 0; }
 .st-acc.is-inactive { opacity: .6; }
-.st-acc-bal { margin: 6px 0 10px; font-size: 22px; font-weight: 800; display: flex; justify-content: flex-end; align-items: baseline; gap: 6px; }
-.st-acc-bal small { font-size: 13px; font-weight: 500; color: var(--st-ink-2); }
-.st-inline-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin: 0; }
-.st-inline-form .st-btn { align-self: flex-end; }
-.st-grow { flex: 1 1 200px; min-width: 0; }
-.st-open-list { background: var(--st-bg); border-radius: 10px; padding: 10px 12px; }
+.st-acc-bal { margin: 6px 0 10px; font-size: 22px; font-weight: 650; letter-spacing: -.4px; display: flex; justify-content: flex-end; align-items: baseline; gap: 6px; }
+.st-acc-bal small { font-size: 12.5px; font-weight: 500; color: var(--st-ink-3); letter-spacing: 0; }
+.st-acc-note { margin: 4px 0 0; font-size: 12px; }
+.st-open-list { background: var(--st-surface-2); border: 1px solid var(--st-line); border-radius: 12px; padding: 10px 12px; }
 .st-open-list .st-list { margin-top: 4px; }
 
 /* ---------- فروشِ سریع و برگشت ---------- */
-.st-scan input { font-size: 17px; padding: 12px 14px; }
+.st-scan input { font-size: 17px; padding: 12px 14px; min-height: 50px; }
 .st-qty-in {
-    font: inherit; color: var(--st-ink); background: var(--st-bg); text-align: left;
-    border: 1px solid var(--st-line); border-radius: 8px; padding: 6px 9px; width: 90px;
+    font: inherit; color: var(--st-ink); background: var(--st-surface); text-align: left;
+    border: 1px solid var(--st-line-2); border-radius: var(--st-radius-xs); padding: 6px 9px; width: 90px;
 }
-.st-qty-in:focus { outline: 2px solid var(--st-accent); outline-offset: 0; border-color: transparent; }
+.st-qty-in:focus { outline: none; border-color: var(--st-accent); box-shadow: var(--st-ring); }
 .st-scan input.is-miss { border-color: var(--st-err); background: var(--st-err-wash); }
 .st-table-compact td:first-child { min-width: 0; white-space: nowrap; }
 .st-table-compact .st-pill { font-size: 11px; padding: 1px 8px; }
@@ -629,248 +1165,69 @@ a.st-kpi-card:hover { border-color: var(--st-accent); }
     .st-table-compact, .st-table-compact tbody { display: block; }
     .st-table-compact tr {
         display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px;
-        padding: 10px 14px; border-bottom: 1px solid var(--st-line);
+        padding: 11px 14px; border-bottom: 1px solid var(--st-line);
     }
     .st-table-compact tr:last-child { border-bottom: 0; }
     .st-table-compact td { display: block; padding: 0; border: 0; min-width: 0; }
     .st-table-compact td.st-hide-sm { display: none; }
-    .st-table-compact td:nth-child(1) { grid-column: 1; grid-row: 1; font-weight: 700; }
+    .st-table-compact td:nth-child(1) { grid-column: 1; grid-row: 1; font-weight: 650; }
     .st-table-compact td:nth-child(4) { grid-column: 2; grid-row: 1; justify-self: end; }
     .st-table-compact td:nth-child(3) { grid-column: 1; grid-row: 2; }
-    .st-table-compact td.st-td-num { grid-column: 2; grid-row: 2 / span 2; align-self: center; font-weight: 700; }
-    .st-table-compact td:nth-child(2) { grid-column: 1; grid-row: 3; font-size: 12px; color: var(--st-ink-2); }
+    .st-table-compact td.st-td-num { grid-column: 2; grid-row: 2 / span 2; align-self: center; font-weight: 650; }
+    .st-table-compact td:nth-child(2) { grid-column: 1; grid-row: 3; font-size: 12px; color: var(--st-ink-3); }
 }
-/* ⛔ منوی گروه‌بندی‌شده + «ثبت» از ۹۰۰ پیکسل بلندتر است: خودِ فهرست اسکرول می‌شود،
-   وگرنه روی پایینِ نوار (دفتر شخصی / خروج) می‌افتاد */
-.st-side-nav { overflow-y: auto; overscroll-behavior: contain; }
-@media (max-width: 640px) { .st-lines tr.st-line td.st-hide-sm { display: none; } }
-/* ردیفِ لینک‌دارِ فهرست (آخرین اسناد، نیازمندِ اقدام): عنوان پررنگ، زیرش خاکستری */
-.st-list-row > a { color: var(--st-ink); text-decoration: none; font-weight: 600; min-width: 0;
-                   display: flex; flex-direction: column; gap: 0; }
-.st-list-row > a:hover { color: var(--st-accent); }
-.st-attn .st-list-row > a { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 8px; }
-.st-card-head > a { font-size: 13px; text-decoration: none; white-space: nowrap; }
-.st-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-@media (max-width: 719px) { .st-action.is-primary { grid-column: 1 / -1; } }
-@media (min-width: 720px) { .st-actions { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
-.st-pill.is-k-receipt, .st-pill.is-k-income { background: var(--st-ok-wash); color: var(--st-ok); }
-.st-pill.is-k-payment, .st-pill.is-k-expense { background: var(--st-err-wash); color: var(--st-err); }
-.st-pill.is-k-transfer { border-color: var(--st-line); }
 
-/* ============================================================
-   فروشگاهِ موبایل: «+» کنارِ خانه‌ی کالا، IMEIِ ردیف، پنلِ کالای تازه
-   ============================================================ */
+/* ---------- فروشگاهِ موبایل: «+» کنارِ خانه‌ی کالا، IMEIِ ردیف، پنلِ کالای تازه ---------- */
 /* «+» داخلِ خودِ خانه، در انتهای آن (سمتِ چپ در راست‌به‌چپ) */
 .st-item-wrap { position: relative; display: flex; align-items: stretch; }
 .st-item-wrap input[data-item] { padding-inline-end: 38px; }
 .st-plus {
     position: absolute; inset-inline-end: 3px; top: 3px; bottom: 3px; width: 30px;
     border: 0; border-radius: 6px; cursor: pointer; font: inherit; font-size: 18px; line-height: 1; font-weight: 700;
-    background: var(--st-wash); color: var(--st-accent-2);
+    background: var(--st-wash); color: var(--st-accent);
 }
-.st-plus:hover, .st-plus:focus-visible { background: var(--st-accent); color: #fff; outline: none; }
+.st-plus:hover, .st-plus:focus-visible { background: var(--st-accent); color: var(--st-accent-ink); outline: none; }
 .st-line-imei { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; margin-top: 6px; }
 .st-line-imei[hidden] { display: none; }
 .st-line-imei input { font-size: 13px; letter-spacing: .02em; }
-.st-np { border: 1px solid var(--st-accent); display: flex; flex-direction: column; gap: 12px; }
+.st-np { border: 1px solid color-mix(in srgb, var(--st-accent) 45%, var(--st-line)); display: flex; flex-direction: column; gap: 12px; }
 .st-np > * { margin-bottom: 0; }
 .st-np[hidden] { display: none; }
 .st-np-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .st-np .st-row2[hidden] { display: none; }
 /* شماره‌ی گوشی در سند و چاپ */
-.st-imei { display: block; font-size: 12px; color: var(--st-ink-2); text-align: right; }
+.st-imei { display: block; font-size: 12px; color: var(--st-ink-3); text-align: right; }
 .st-unit-list { display: flex; flex-direction: column; gap: 0; list-style: none; margin: 0; padding: 0; }
 .st-unit-list li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--st-line); }
 .st-unit-list li:last-child { border-bottom: 0; }
 .st-line-desc .st-line-imei { margin-top: 0; }
 .st-line-desc .st-line-imei:not([hidden]) + .st-line-notein:not([hidden]) { margin-top: 4px; }
 
-/* ============================================================
-   Ramp × Mercury × Linear
-   ============================================================
-   **خواسته‌ی مالکِ نصب:** «از این فورمول برای ساختِ ظاهر: Ramp × Mercury ×
-   Linear.» همان سه اصلِ حساب لند (بخشِ ۴۲ـِ `style.css`)، با لهجه‌ی خودِ
-   فروشگاه — کهربایی و نوارِ کناریِ تیره — تا دو محصول با هم قاطی نشوند:
-   - Linear: بومِ خنثی، پنلِ سفید با خطِ مو (توکن‌ها بالا)، منوی تیره با
-     قلمِ فعالِ آرام، تایپِ ریز.
-   - Mercury: عددِ درشتِ آرام و فشرده؛ یک کارتِ «قهرمان» (فروشِ امروز).
-   - Ramp: فیلد و دکمه‌ی ۸ پیکسلیِ تخت، جدولِ ردیف‌به‌ردیف، رنگ فقط برای معنا.
-   ============================================================ */
-.st-card, .st-kpi-card, .st-table-wrap { border-radius: 12px; }
-.st-h1 { font-size: 22px; font-weight: 700; letter-spacing: -.4px; }
-.st-h2 { font-size: 15px; font-weight: 600; }
-.st-kpi-label { font-size: 12.5px; font-weight: 500; }
-.st-kpi-value, .st-kpi-card .st-kpi-value { font-weight: 600; font-variant-numeric: proportional-nums; letter-spacing: -.7px; }
-.st-kpi-card.st-kpi-hero {
-    background: radial-gradient(120% 150% at 100% 0%, #3b2a10 0%, #121316 55%);
-    border-color: transparent; color: #fafaf9;
-}
-.st-kpi-card.st-kpi-hero .st-kpi-label, .st-kpi-card.st-kpi-hero .st-kpi-sub { color: rgba(250,250,249,.7); }
-.st-kpi-card.st-kpi-hero .st-kpi-value { color: #fcd34d; }
-a.st-kpi-card.st-kpi-hero:hover { border-color: #fcd34d; }
-a.st-kpi-card:hover, .st-action:hover { border-color: var(--st-ink-2); color: inherit; }
-/* فیلد و دکمه: ۸ پیکسل، تخت؛ فیلد روی پنل (نه بوم) با حلقه‌ی فوکوسِ نرم */
-.st-field input, .st-field textarea, .st-field select, .st-filters input, .st-filters select {
-    border-radius: 8px; background: var(--st-surface);
-}
-.st-field input:focus, .st-field textarea:focus, .st-field select:focus,
-.st-filters input:focus, .st-filters select:focus {
-    outline: none; border-color: var(--st-accent);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--st-accent) 18%, transparent);
-}
-.st-btn { border-radius: 8px; font-weight: 600; padding: 9px 18px; }
-.st-btn-ghost { color: var(--st-ink); border-color: var(--st-line); background: var(--st-surface); }
-.st-btn-ghost:hover { background: var(--st-surface); border-color: var(--st-ink-2); }
-.st-action { border-radius: 10px; font-weight: 600; }
-/* جدول: سرآیندِ ریز و خاکستری، ردیفِ آرام با رنگِ hover */
-.st-table th { font-size: 12px; font-weight: 500; }
-.st-table tbody tr:hover td { background: color-mix(in srgb, var(--st-ink) 2.5%, transparent); }
-.st-lines tbody tr:hover td { background: transparent; }
-.st-bar { border-radius: 4px 4px 1px 1px; }
-/* منوی کناری: Linear تیره — قلمِ فعال سفیدِ کم‌رنگ با آیکونِ کهربایی */
-.st-side-item { font-size: 13.5px; padding: 7px 10px; border-radius: 8px; }
-.st-side-item.is-active { background: rgba(250,250,249,.08); color: #fafaf9; font-weight: 600; }
-.st-side-item.is-active .st-side-ico { color: #fcd34d; }
-.st-side-title { font-size: 11px; font-weight: 600; }
-.st-side-nav { scrollbar-width: thin; scrollbar-color: rgba(250,250,249,.14) transparent; }
-
-/* ============================================================
-   رنگِ فروشگاه — منوی کناریِ طیف‌دار (همان زبانِ حساب لند)
-   ============================================================
-   **خواسته‌ی مالکِ نصب:** «ساید بار با تغییرِ رنگ تغییر کنه، طیف‌طور و
-   خوشگل… در بخشِ فروشگاهی هم همین استایل.»
-   ⛔ `Biz::PALETTES` تنها مرجعِ نام‌هاست و **اولین کلید (کهربایی) همین
-   `:root` است** — بلوکِ `data-st-palette` ندارد. سرور ویژگی را روی `<html>`
-   رندر می‌کند (`biz_settings.palette`)، پس نه اسکریپتی لازم است نه چشمکی.
-   ⛔ هر پالت فقط توکن عوض می‌کند (`--st-rb1..3` و لهجه)؛ قاعده‌ها یکی‌اند.
-   ⚠ پایه `--st-rb2 (۵۵٪) → --st-rb3` زیرِ پرده‌ی تیره‌ی ۱۰٪ است و `--st-rb1`
-   فقط درخششِ پشتِ نام: همان اعدادی که `test_store_theme` تضادشان را
-   می‌سنجد (متنِ منو ≥ ۴٫۵ در هر پالت، روز و شب). */
-:root { --st-rb1: #f59e0b; --st-rb2: #b45309; --st-rb3: #431407; }
-@media (prefers-color-scheme: dark) {
-    :root { --st-rb1: #d97706; --st-rb2: #92400e; --st-rb3: #1c0f06; }
-}
-html[data-st-palette="indigo"] {
-    --st-rb1: #6d5dfc; --st-rb2: #4a3fb5; --st-rb3: #2f2a6b;
-    --st-accent: #4a3fb5; --st-accent-2: #3b2f8f; --st-accent-ink: #ffffff; --st-wash: #ecebfd;
-}
-html[data-st-palette="emerald"] {
-    --st-rb1: #10b981; --st-rb2: #0b5d41; --st-rb3: #073f2c;
-    --st-accent: #047857; --st-accent-2: #065f46; --st-accent-ink: #ffffff; --st-wash: #d1fae5;
-}
-html[data-st-palette="ocean"] {
-    --st-rb1: #0891b2; --st-rb2: #0369a1; --st-rb3: #1e3a8a;
-    --st-accent: #0369a1; --st-accent-2: #075985; --st-accent-ink: #ffffff; --st-wash: #e0f2fe;
-}
-html[data-st-palette="lilac"] {
-    --st-rb1: #d946ef; --st-rb2: #9333ea; --st-rb3: #4c1d95;
-    --st-accent: #7e22ce; --st-accent-2: #6b21a8; --st-accent-ink: #ffffff; --st-wash: #f3e8ff;
-}
-html[data-st-palette="graphite"] {
-    --st-rb1: #4b5260; --st-rb2: #22262d; --st-rb3: #0e1013;
-    --st-accent: #1f2937; --st-accent-2: #111827; --st-accent-ink: #ffffff; --st-wash: #eef0f3;
-}
-/* ⚠ شب بعد از روز می‌آید و هم‌وزن است: بدونِ تکرارِ هر توکن، رنگِ روزِ همان
-   پالت در شب می‌ماند (همان درسِ بخشِ ۴۱ـِ style.css). */
-@media (prefers-color-scheme: dark) {
-    html[data-st-palette="indigo"] {
-        --st-rb1: #5b4ee0; --st-rb2: #3a318f; --st-rb3: #1e1a4d;
-        --st-accent: #8b83ff; --st-accent-2: #a59fff; --st-accent-ink: #0f0d24; --st-wash: #211d4a;
-    }
-    html[data-st-palette="emerald"] {
-        --st-rb1: #0f8a5f; --st-rb2: #0f4130; --st-rb3: #0a2c20;
-        --st-accent: #34d399; --st-accent-2: #10b981; --st-accent-ink: #052e1f; --st-wash: #0f2e22;
-    }
-    html[data-st-palette="ocean"] {
-        --st-rb1: #0b6f86; --st-rb2: #0a4f7a; --st-rb3: #152a66;
-        --st-accent: #38bdf8; --st-accent-2: #0ea5e9; --st-accent-ink: #062033; --st-wash: #0c2a3d;
-    }
-    html[data-st-palette="lilac"] {
-        --st-rb1: #a21caf; --st-rb2: #6d28d9; --st-rb3: #3b0d6e;
-        --st-accent: #c084fc; --st-accent-2: #a855f7; --st-accent-ink: #1e0736; --st-wash: #2a1245;
-    }
-    html[data-st-palette="graphite"] {
-        --st-rb1: #3a3f4a; --st-rb2: #1c1f24; --st-rb3: #0a0b0d;
-        --st-accent: #f0c05a; --st-accent-2: #d9a93f; --st-accent-ink: #1a1405; --st-wash: #2a2414;
-    }
-}
-
-/* منوی کناری (و سربرگِ گوشی): طیفِ همان پالت */
-.st-side {
-    background:
-        radial-gradient(120% 34% at 100% 0%, color-mix(in srgb, var(--st-rb1) 55%, transparent) 0%, transparent 70%),
-        linear-gradient(180deg, rgba(0,0,0,.1) 0%, rgba(0,0,0,.1) 45%, rgba(0,0,0,.26) 100%),
-        linear-gradient(172deg, color-mix(in srgb, var(--st-rb2) 55%, var(--st-rb3)) 0%, var(--st-rb3) 100%);
-    color: #fff;
-}
-.st-top {
-    background:
-        linear-gradient(0deg, rgba(0,0,0,.1), rgba(0,0,0,.1)),
-        linear-gradient(100deg, color-mix(in srgb, var(--st-rb2) 55%, var(--st-rb3)) 0%, var(--st-rb3) 100%);
-    color: #fff;
-}
-.st-side-brand, .st-side-foot { border-color: rgba(255,255,255,.14); }
-.st-side .st-brand-mark, .st-top .st-brand-mark {
-    background: rgba(255,255,255,.16); color: #fff; box-shadow: inset 0 0 0 1px rgba(255,255,255,.22);
-}
-.st-side-title { color: rgba(255,255,255,.55); opacity: 1; }
-.st-side-item { color: rgba(255,255,255,.84); opacity: 1; }
-.st-side-item:hover { background: rgba(255,255,255,.09); color: #fff; }
-.st-side-item.is-active {
-    background: rgba(255,255,255,.17); color: #fff; font-weight: 600;
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,.2), 0 6px 14px -8px rgba(0,0,0,.45);
-}
-.st-side-item.is-active .st-side-ico { color: #fff; }
-.st-side .st-new-btn {
-    background: rgba(255,255,255,.96); color: var(--st-rb3);
-    box-shadow: 0 8px 18px -10px rgba(0,0,0,.55);
-}
-.st-side .st-new-btn:hover { background: #fff; }
-.st-side .st-new-menu { background: rgba(255,255,255,.1); }
-.st-side .st-new-menu a { color: #fff; }
-.st-side .st-new-menu a:hover { background: rgba(255,255,255,.12); }
-.st-side .st-switch, .st-side .st-logout, .st-top .st-switch, .st-top .st-logout {
-    color: #fff; opacity: 1; border-color: rgba(255,255,255,.3);
-}
-.st-side .st-switch:hover, .st-side .st-logout:hover { background: rgba(255,255,255,.1); }
-.st-menu-btn:hover { background: rgba(255,255,255,.12); }
-.st-side-nav { scrollbar-color: rgba(255,255,255,.22) transparent; }
-
-/* کارتِ «فروشِ امروز» (Mercury): همان طیف، عددِ سفید */
-.st-kpi-card.st-kpi-hero {
-    background:
-        radial-gradient(90% 120% at 100% 0%, color-mix(in srgb, var(--st-rb1) 60%, transparent) 0%, transparent 65%),
-        linear-gradient(135deg, color-mix(in srgb, var(--st-rb2) 70%, var(--st-rb3)) 0%, var(--st-rb3) 100%);
-    color: #fff;
-}
-.st-kpi-card.st-kpi-hero .st-kpi-value { color: #fff; }
-.st-kpi-card.st-kpi-hero .st-kpi-label, .st-kpi-card.st-kpi-hero .st-kpi-sub { color: rgba(255,255,255,.78); }
-a.st-kpi-card.st-kpi-hero:hover { border-color: transparent; box-shadow: 0 10px 24px -14px var(--st-rb3); }
-
-/* انتخابگرِ رنگ در «تنظیمات فروشگاه» — رادیو، بی‌جاوااسکریپت */
+/* ---------- انتخابگرِ رنگ در «تنظیمات فروشگاه» — رادیو، بی‌جاوااسکریپت ----------
+   ⛔ هر نمونه رنگِ **خودِ** آن پالت را نشان می‌دهد (`--p-acc`ِ همان کلید)،
+   مستقل از پالتِ جاری. */
 .st-palettes { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(120px, 100%), 1fr)); gap: 10px; }
 .st-pal { position: relative; display: block; cursor: pointer; }
 .st-pal input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .st-pal-swatch {
-    display: block; height: 56px; border-radius: 10px;
-    box-shadow: inset 0 0 0 1px rgba(0,0,0,.08);
+    display: flex; align-items: center; justify-content: center; gap: 6px; height: 56px; border-radius: 12px;
+    background: var(--st-surface-2); border: 1px solid var(--st-line);
 }
-.st-pal-name { display: block; text-align: center; font-size: 13px; margin-top: 6px; color: var(--st-ink-2); }
+.st-pal-swatch::before, .st-pal-swatch::after { content: ''; width: 20px; height: 20px; border-radius: 50%; }
+.st-pal-swatch::before { background: var(--st-primary); }
+.st-pal-name { display: block; text-align: center; font-size: 12.5px; margin-top: 6px; color: var(--st-ink-2); }
 .st-pal input:checked ~ .st-pal-swatch { box-shadow: 0 0 0 2px var(--st-surface), 0 0 0 4px var(--st-accent); }
-.st-pal input:checked ~ .st-pal-name { color: var(--st-ink); font-weight: 700; }
+.st-pal input:checked ~ .st-pal-name { color: var(--st-ink); font-weight: 650; }
 .st-pal input:focus-visible ~ .st-pal-swatch { outline: 2px solid var(--st-accent); outline-offset: 3px; }
-.st-pal-swatch[data-pal="amber"]    { background: linear-gradient(135deg, #f59e0b, #b45309 55%, #431407); }
-.st-pal-swatch[data-pal="indigo"]   { background: linear-gradient(135deg, #6d5dfc, #4a3fb5 55%, #2f2a6b); }
-.st-pal-swatch[data-pal="emerald"]  { background: linear-gradient(135deg, #10b981, #0b5d41 55%, #073f2c); }
-.st-pal-swatch[data-pal="ocean"]    { background: linear-gradient(135deg, #0891b2, #0369a1 55%, #1e3a8a); }
-.st-pal-swatch[data-pal="lilac"]    { background: linear-gradient(135deg, #d946ef, #9333ea 55%, #4c1d95); }
-.st-pal-swatch[data-pal="graphite"] { background: linear-gradient(135deg, #4b5260, #22262d 55%, #0e1013); }
+.st-pal-swatch[data-pal="emerald"]::after  { background: #047857; }
+.st-pal-swatch[data-pal="indigo"]::after   { background: #4f46e5; }
+.st-pal-swatch[data-pal="ocean"]::after    { background: #0369a1; }
+.st-pal-swatch[data-pal="lilac"]::after    { background: #7e22ce; }
+.st-pal-swatch[data-pal="amber"]::after    { background: #b45309; }
+.st-pal-swatch[data-pal="graphite"]::after { background: #1f2937; box-shadow: 0 0 0 1px var(--st-line-2); }
 
-/* ==================================================================
-   «همه‌ی گزارش‌ها» — گروه‌ها کنارِ هم، هر گزارش یک ردیفِ فرم
-   (عنوان و توضیح راست، انتخاب و «نمایش» چپ؛ روی گوشی زیرِ هم).
-   ================================================================== */
-.st-hub { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(440px, 100%), 1fr)); gap: 14px; align-items: start; }
+/* ---------- «همه‌ی گزارش‌ها» ---------- */
+.st-hub { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(440px, 100%), 1fr)); gap: 16px; align-items: start; }
 .st-hub-list { list-style: none; margin: 0; padding: 0; }
 .st-hub-list li + li { border-top: 1px solid var(--st-line); }
 .st-hub-item { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 10px 0; }
@@ -878,30 +1235,27 @@ a.st-kpi-card.st-kpi-hero:hover { border-color: transparent; box-shadow: 0 10px 
 .st-hub-label { font-weight: 600; color: var(--st-ink); }
 .st-hub-ctl { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 0; }
 .st-hub-ctl select {
-    font: inherit; color: var(--st-ink); background: var(--st-surface); max-width: 190px; min-width: 0;
-    border: 1px solid var(--st-line); border-radius: 8px; padding: 7px 10px;
+    font: inherit; font-size: 13px; color: var(--st-ink); background: var(--st-surface); max-width: 190px; min-width: 0;
+    border: 1px solid var(--st-line-2); border-radius: var(--st-radius-xs); padding: 6px 10px;
 }
-.st-hub-ctl .st-btn { padding-block: 7px; }
+.st-hub-ctl .st-btn { min-height: 34px; }
 
 /* ---------- چک‌ها ---------- */
-.st-cheques { display: grid; gap: 10px; }
+.st-cheques { display: grid; gap: 12px; }
 @media (min-width: 900px) { .st-cheques { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
-.st-cheque { padding: 14px 16px; display: grid; gap: 8px; }
-.st-cheque.is-late { border-color: var(--st-err); }
+.st-cheque { padding: 16px; display: grid; gap: 8px; margin: 0; }
+.st-cheque.is-late { border-color: color-mix(in srgb, var(--st-err) 55%, var(--st-line)); }
 .st-cheque.is-bounced { opacity: .75; }
 .st-cheque-head { display: flex; gap: 10px; justify-content: space-between; align-items: flex-start; }
 .st-cheque-head > div { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
 .st-cheque-title { font-weight: 600; overflow-wrap: anywhere; }
-.st-cheque-amount { white-space: nowrap; font-weight: 600; }
-.st-cheque-meta { margin: 0; font-size: 13px; color: var(--st-ink-2); }
+.st-cheque-amount { white-space: nowrap; font-weight: 650; }
+.st-cheque-meta { margin: 0; font-size: 12.5px; color: var(--st-ink-3); }
 .st-cheque-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
 .st-cheque-clear { margin: 0; flex: 1 1 auto; }
 .st-cheque-clear select { flex: 1 1 9rem; }
 .st-cheque-clear .st-date-in { flex: 0 1 7.5rem; }
 .st-late { color: var(--st-err); }
-.st-btn-sm { padding: 6px 12px; font-size: 13px; }
-.st-kpi-card.is-warn { border-color: var(--st-err); }
-.st-acc-note { margin: 4px 0 0; font-size: 12px; }
 
 /* ---------- پاک‌سازیِ کالاهای استفاده‌نشده ---------- */
 .st-cleanup-all { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
@@ -915,21 +1269,20 @@ a.st-kpi-card.st-kpi-hero:hover { border-color: transparent; box-shadow: 0 10px 
 .st-cleanup-name .st-sku { display: inline; margin-inline-start: 6px; }
 
 /* ---------- طراحیِ فاکتور ---------- */
-.st-design { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+.st-design { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
 @media (min-width: 1100px) { .st-design { grid-template-columns: minmax(0, 380px) minmax(0, 1fr); } }
-.st-design-side { display: grid; gap: 14px; min-width: 0; }
-.st-design-preview { position: sticky; top: 12px; display: grid; gap: 8px; min-width: 0; }
-.st-design-preview iframe { width: 100%; height: min(78vh, 900px); border: 1px solid var(--st-line); border-radius: 10px; background: #f4f4f5; }
+.st-design-side { display: grid; gap: 16px; min-width: 0; }
+.st-design-side .st-card { margin: 0; }
+.st-design-preview { position: sticky; top: calc(var(--st-top-h) + 14px); display: grid; gap: 8px; min-width: 0; }
+/* ⛔ برگه‌ی پیش‌نمایش همیشه سفید است — کاغذ در حالتِ شب هم سفید چاپ می‌شود */
+.st-design-preview iframe { width: 100%; height: min(78vh, 900px); border: 1px solid var(--st-line); border-radius: 12px; background: #f4f4f5; }
 @media (max-width: 1099px) { .st-design-preview { position: static; } .st-design-preview iframe { height: 70vh; } }
-.st-logo-now { display: flex; justify-content: center; padding: 10px; border: 1px dashed var(--st-line); border-radius: 10px; background: #fff; }
+.st-logo-now { display: flex; justify-content: center; padding: 10px; border: 1px dashed var(--st-line-2); border-radius: 12px; background: #fff; }
 .st-logo-now img { max-height: 90px; max-width: 100%; object-fit: contain; }
 .st-logo-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .st-logo-form input[type="file"] { flex: 1 1 12rem; min-width: 0; font-size: 13px; }
-.st-seg-label { margin: 6px 0 4px; font-size: 13px; color: var(--st-ink-2); }
-.st-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-
 .st-tpl-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.st-tpl { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--st-line); border-radius: 10px; cursor: pointer; font-size: 12.5px; }
+.st-tpl { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--st-line); border-radius: 12px; cursor: pointer; font-size: 12.5px; }
 .st-tpl input { position: absolute; opacity: 0; pointer-events: none; }
 .st-tpl:has(input:checked) { border-color: var(--st-accent); box-shadow: 0 0 0 2px var(--st-accent) inset; }
 .st-tpl:has(input:focus-visible) { outline: 2px solid var(--st-accent); outline-offset: 2px; }
@@ -939,12 +1292,22 @@ a.st-kpi-card.st-kpi-hero:hover { border-color: transparent; box-shadow: 0 10px 
 .st-tpl-modern .st-tpl-thumb i:first-child { background: #1e3a8a; }
 .st-tpl-minimal .st-tpl-thumb i { background: transparent; border-bottom: 1px solid #a1a1aa; border-radius: 0; }
 .st-tpl-formal .st-tpl-thumb i { background: transparent; border: 1px solid #52525b; }
-
 .st-accents { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .st-accent { position: relative; cursor: pointer; }
 .st-accent input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
-.st-accent span[aria-hidden], .st-accent input[type="color"] { display: block; width: 30px; height: 30px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--st-line); }
+.st-accent span[aria-hidden], .st-accent input[type="color"] { display: block; width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--st-surface); box-shadow: 0 0 0 1px var(--st-line); }
 .st-accent input[type="color"] { padding: 0; cursor: pointer; background: none; }
 .st-accent:has(input[type="radio"]:checked) span[aria-hidden],
 .st-accent:has(input[type="radio"]:checked) input[type="color"] { box-shadow: 0 0 0 2px var(--st-ink); }
-.st-accent:has(input[type="radio"]:focus-visible) span[aria-hidden] { outline: 2px solid var(--st-accent); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}
+
+/* داشبورد روی گوشی و تبلت: «نیاز به توجه» و حساب‌ها پیش از نمودارها —
+   کارِ امروز پیش از روندِ ماه. */
+@media (max-width: 1099px) { .st-dash-side { order: -1; } }
+@media (max-width: 560px) {
+    .st-dash-head { flex-direction: column; align-items: stretch; }
+    .st-dash-head .st-actions { order: 2; }
+}

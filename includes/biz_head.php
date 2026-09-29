@@ -1,16 +1,24 @@
 <?php
 /**
- * ⛔ پوسته‌ی محیطِ فروشگاهی — سرآیند و نوارِ کناریِ سمتِ راست.
+ * ⛔ پوسته‌ی محیطِ فروشگاهی — سرآیند، نوارِ کناریِ سمتِ راست و نوارِ بالا.
  *
  * عمداً **هیچ** چیزی از پوسته‌ی شخصی (`header.php`/`sidebar.php`/
  * `footer.php`/`app.js`/`style.css`) لود نمی‌کند: آن‌ها منو، شیتِ ثبتِ
  * تراکنش، پیش‌گیریِ صفحه‌های شخصی، معرفیِ اولیه و صفِ پیامکِ بانک را با
  * خودشان می‌آوردند. استایلِ این محیط فایلِ خودش است (`store.css`).
  *
- * **خواسته‌ی مالکِ نصب:** «ساید بار سمت راست اضافه کن». روی دسکتاپ نوارِ
- * کناریِ ثابت، روی گوشی همان نوار به‌شکلِ کشو (با دکمه‌ی «منو»).
- * ⛔ کشو بی‌جاوااسکریپت است: یک چک‌باکسِ پنهان + `<label>`. کشویی که با
- *    نرسیدنِ اسکریپت باز نشود همان «دکمه‌ی بی‌کار» است.
+ * قاب (سیستمِ طراحیِ فروشگاه — بالای `store.css`):
+ * - **نوارِ کناری** (راست): شناسه‌ی فروشگاه، منوی گروه‌بندی‌شده از `Biz::NAV`،
+ *   و پایینش کاربر و راهِ برگشت به دفترِ شخصی. روی دسکتاپ با «جمع کردن»
+ *   فقط آیکون می‌ماند؛ روی گوشی کشو است.
+ *   ⛔ کشو بی‌جاوااسکریپت است: یک چک‌باکسِ پنهان + `<label>`. کشویی که با
+ *      نرسیدنِ اسکریپت باز نشود همان «دکمه‌ی بی‌کار» است.
+ * - **نوارِ بالا**: مسیر (breadcrumb)، جست‌وجو (فرمِ GET به `search.php`؛
+ *   `store.js` آن را فرمانِ سریعِ Ctrl+K می‌کند)، «+ ثبتِ جدید» (`<details>`)،
+ *   حالتِ شب و نمایه.
+ *
+ * ⛔ صفر کوئریِ اضافه نسبت به پوسته‌ی قبلی: شناسه‌ی فروشگاه و رنگ از همان
+ *    `Biz::settings()`، و بقیه از نشست.
  *
  * ورودیِ مستند فقط `$pageTitle` است؛ هر متغیرِ سراسریِ دیگرِ این فایل
  * پیشوندِ `__` دارد (قاعده ۵۰).
@@ -19,29 +27,42 @@ if (!defined('APP_BASE_PATH')) { http_response_code(404); exit; }
 
 $__bizUid   = (int)Auth::userId();
 $__bizSet   = Biz::settings($__bizUid);
-$__bizShop  = $__bizSet['shop_name'] !== '' ? $__bizSet['shop_name'] : Auth::fullName();
-$__bizPage  = Biz::navCurrent(basename((string)($_SERVER['SCRIPT_NAME'] ?? '')));
+$__bizShop  = $__bizSet['shop_name'] !== '' ? $__bizSet['shop_name'] : 'فروشگاه من';
+$__bizName  = Auth::fullName() !== '' ? Auth::fullName() : 'کاربر';
+$__bizInit  = mb_substr(trim($__bizName), 0, 1);
+$__bizType  = Biz::TYPES[$_SESSION['account_type'] ?? ''] ?? '';
+$__bizScript = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
+$__bizPage  = Biz::navCurrent($__bizScript);
 $__bizFlash = getFlash();
 // ⛔ رنگِ فروشگاه از `biz_settings` (همان کوئریِ `settings()` — صفر کوئریِ اضافه).
 //    پیش‌فرض ویژگی نمی‌گیرد: خودِ `:root`ِ `store.css` است.
 $__bizPal   = Biz::palette($__bizUid);
 $__bizPalA  = $__bizPal === array_key_first(Biz::PALETTES) ? '' : ' data-st-palette="' . h($__bizPal) . '"';
-// آیکونِ هر قلمِ منو — فقط شکل، نه فهرستِ صفحه‌ها (آن `Biz::NAV` است)
-$__bizIcons = [
-    'index.php'          => '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>',
-    'products.php'       => '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
-    'products-io.php'    => '<path d="M4 4h16v16H4z"/><path d="M8 9l3 3-3 3"/><path d="M13 15h3"/>',
-    'parties.php'        => '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14a6 6 0 0 1 3.5 6"/>',
-    'reports.php'        => '<path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/>',
-    'settings.php'       => '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3.1 15H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.1V4a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
-    'print-settings.php' => '<path d="M4 6h16"/><path d="M4 12h10"/><path d="M4 18h7"/><circle cx="18" cy="15" r="3"/>',
-    'quick-sale.php'     => '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
-    'sales.php'          => '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
-    'purchases.php'      => '<path d="M3 4h2l2.4 11h11L21 7H6.2"/><circle cx="9" cy="19.5" r="1.5"/><circle cx="17" cy="19.5" r="1.5"/>',
-    'payments.php'       => '<path d="M7 7h13l-3-3"/><path d="M17 17H4l3 3"/>',
-    'accounts.php'       => '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M16 15h2"/>',
-    'categories.php'     => '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
-];
+$__bizIcons = Biz::navIcons();
+
+// مسیر: گروه ← قلمِ منو ← (اگر صفحه‌ی جزئیات است) عنوانِ خودِ صفحه
+$__bizCrumbs = [];
+foreach (Biz::NAV as $__g => $__items) {
+    if (isset($__items[$__bizPage])) {
+        $__bizCrumbs[] = [$__g, ''];
+        $__bizCrumbs[] = [$__items[$__bizPage], $__bizPage !== $__bizScript ? Biz::url($__bizPage) : ''];
+        break;
+    }
+}
+// صفحه‌ی جزئیات (کالا، فاکتور، …) عنوانِ خودش را هم می‌گیرد
+if (($pageTitle ?? '') !== '' && ($__bizPage !== $__bizScript || !$__bizCrumbs)) {
+    $__bizCrumbs[] = [(string)$pageTitle, ''];
+}
+
+// ⛔ دادهٔ فرمانِ سریع: فقط برچسب و آدرسِ صفحه‌ها (هیچ رکوردی) — رکوردها را
+//    `search.php` با همان نشست و همان سنجشِ مالکیت می‌دهد.
+$__bizCmd = ['pages' => [], 'new' => [], 'search' => Biz::url('search.php')];
+foreach (Biz::NAV as $__g => $__items) {
+    foreach ($__items as $__f => $__l) {
+        if (is_file(__DIR__ . '/../' . Biz::DIR . '/' . $__f)) { $__bizCmd['pages'][] = ['t' => $__l, 'g' => $__g, 'u' => Biz::url($__f), 'k' => $__f]; }
+    }
+}
+foreach (Biz::NEW_MENU as $__h => $__l) { $__bizCmd['new'][] = ['t' => $__l, 'u' => Biz::url($__h), 'k' => $__h]; }
 ?>
 <!DOCTYPE html>
 <html lang="fa" dir="rtl"<?= $__bizPalA ?>>
@@ -49,37 +70,35 @@ $__bizIcons = [
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title><?= h(($pageTitle ?? '') !== '' ? $pageTitle . ' · ' . $__bizShop : $__bizShop) ?></title>
+    <script><?= Biz::bootScript() ?></script>
     <?php foreach (assetUrls(['css/store.css']) as $__u): ?>
     <link rel="stylesheet" href="<?= h($__u) ?>">
     <?php endforeach; ?>
-    <?php /* ⛔ `store.js` فقط **بهبود** می‌دهد (جمعِ زنده و افزودنِ ردیفِ فاکتور،
-             خواندنِ بارکد). هر فرم بی‌آن هم کار می‌کند و جمع را همیشه سرور حساب
-             می‌کند؛ کشوی منو و «+ ثبت» اصلاً به آن بند نیستند. */ ?>
+    <?php /* ⛔ `store.js` فقط **بهبود** می‌دهد (فرمانِ سریع، جمعِ زنده و افزودنِ
+             ردیفِ فاکتور، خواندنِ بارکد، Toast، حالتِ شب). هر فرم بی‌آن هم کار
+             می‌کند و جمع را همیشه سرور حساب می‌کند؛ کشوی منو، «+ ثبت» و
+             جست‌وجو اصلاً به آن بند نیستند. */ ?>
     <?php foreach (assetUrls(['js/store.js']) as $__u): ?>
     <script defer src="<?= h($__u) ?>"></script>
     <?php endforeach; ?>
     <meta name="theme-color" content="<?= h(Biz::PALETTES[$__bizPal]['theme']) ?>">
     <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="<?= h($__bizShop) ?>">
+    <script type="application/json" id="stCmdData"><?= json_encode($__bizCmd, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
 </head>
 <body class="st-body">
 <input type="checkbox" id="stNavToggle" class="st-nav-toggle" aria-hidden="true" tabindex="-1">
 <aside class="st-side" aria-label="منوی فروشگاه">
-    <a class="st-brand st-side-brand" href="<?= h(Biz::url()) ?>">
+    <a class="st-side-brand" href="<?= h(Biz::url()) ?>" title="<?= h($__bizShop) ?>">
         <span class="st-brand-mark" aria-hidden="true">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9h18v2a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0V9z"/><path d="M5 13v7h14v-7"/><path d="M10 20v-4h4v4"/></svg>
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l1.5-5h15L21 9"/><path d="M3 9h18v2a3 3 0 0 1-6 0 3 3 0 0 1-6 0 3 3 0 0 1-6 0V9z"/><path d="M5 13v7h14v-7"/><path d="M10 20v-4h4v4"/></svg>
         </span>
-        <span class="st-brand-name"><?= h($__bizShop) ?></span>
+        <span class="st-brand-text">
+            <span class="st-brand-name"><?= h($__bizShop) ?></span>
+            <span class="st-brand-sub">حساب‌لند · فروشگاه</span>
+        </span>
     </a>
-    <details class="st-new">
-        <summary class="st-new-btn"><span aria-hidden="true">+</span> ثبت</summary>
-        <div class="st-new-menu">
-            <?php foreach (Biz::NEW_MENU as $__href => $__label): ?>
-            <a href="<?= h(Biz::url($__href)) ?>"><?= h($__label) ?></a>
-            <?php endforeach; ?>
-        </div>
-    </details>
     <nav class="st-side-nav">
         <?php foreach (Biz::NAV as $__group => $__items):
             $__shown = array_filter($__items, fn($f) => is_file(__DIR__ . '/../' . Biz::DIR . '/' . $f), ARRAY_FILTER_USE_KEY);
@@ -87,7 +106,7 @@ $__bizIcons = [
         <div class="st-side-group">
             <p class="st-side-title"><?= h($__group) ?></p>
             <?php foreach ($__shown as $__file => $__label): ?>
-            <a href="<?= h(Biz::url($__file)) ?>"
+            <a href="<?= h(Biz::url($__file)) ?>" title="<?= h($__label) ?>"
                class="st-side-item<?= $__bizPage === $__file ? ' is-active' : '' ?>"
                <?= $__bizPage === $__file ? 'aria-current="page"' : '' ?>>
                 <svg class="st-side-ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><?= $__bizIcons[$__file] ?? '<circle cx="12" cy="12" r="4"/>' ?></svg>
@@ -98,12 +117,26 @@ $__bizIcons = [
         <?php endforeach; ?>
     </nav>
     <div class="st-side-foot">
-        <?php /* حسابِ «شخصی + فروشگاه» یک راهِ برگشت به حساب لندِ خودش دارد؛
-                 همان نشست است و ورودِ دوباره نمی‌خواهد. */ ?>
-        <?php if (!Biz::isStoreOnly()): ?>
-        <a class="st-switch" href="<?= h(Biz::personalUrl()) ?>" title="برگشت به دفترِ شخصی">دفتر شخصی</a>
-        <?php endif; ?>
-        <a class="st-logout" href="<?= h(Biz::url('logout.php')) ?>">خروج</a>
+        <div class="st-me" title="<?= h($__bizName) ?>">
+            <span class="st-avatar" aria-hidden="true"><?= h($__bizInit) ?></span>
+            <span class="st-me-text">
+                <span class="st-me-name"><?= h($__bizName) ?></span>
+                <span class="st-me-role"><?= h($__bizType) ?></span>
+            </span>
+        </div>
+        <div class="st-side-links">
+            <?php /* حسابِ «شخصی + فروشگاه» یک راهِ برگشت به حساب لندِ خودش دارد؛
+                     همان نشست است و ورودِ دوباره نمی‌خواهد. */ ?>
+            <?php if (!Biz::isStoreOnly()): ?>
+            <a class="st-switch" href="<?= h(Biz::personalUrl()) ?>" title="برگشت به دفترِ شخصی">دفتر شخصی</a>
+            <?php endif; ?>
+            <a class="st-logout" href="<?= h(Biz::url('logout.php')) ?>">خروج</a>
+        </div>
+        <?php /* ⚠ «جمع کردن» فقط با اسکریپت کار می‌کند، پس تا رسیدنش پنهان است. */ ?>
+        <button type="button" class="st-side-mini-btn" data-side-mini hidden aria-label="جمع کردنِ منو">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+            <span>جمع کردنِ منو</span>
+        </button>
     </div>
 </aside>
 <label for="stNavToggle" class="st-side-scrim" aria-hidden="true"></label>
@@ -111,15 +144,52 @@ $__bizIcons = [
 <header class="st-top">
     <div class="st-top-in">
         <label for="stNavToggle" class="st-menu-btn" role="button" aria-label="منو">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
         </label>
-        <a class="st-brand" href="<?= h(Biz::url()) ?>">
-            <span class="st-brand-name"><?= h($__bizShop) ?></span>
-        </a>
-        <a class="st-logout" href="<?= h(Biz::url('logout.php')) ?>">خروج</a>
+        <ol class="st-crumbs" aria-label="مسیر">
+            <?php if (!$__bizCrumbs): ?><li><span><?= h($__bizShop) ?></span></li><?php endif; ?>
+            <?php foreach ($__bizCrumbs as [$__ct, $__cu]): ?>
+            <li><?php if ($__cu !== ''): ?><a href="<?= h($__cu) ?>"><?= h($__ct) ?></a><?php else: ?><span><?= h($__ct) ?></span><?php endif; ?></li>
+            <?php endforeach; ?>
+        </ol>
+        <form class="st-search" role="search" method="get" action="<?= h(Biz::url('search.php')) ?>" data-cmd-open>
+            <svg class="st-search-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            <input type="search" name="q" placeholder="جستجو یا فرمان…" aria-label="جستجو در مشتری، کالا، فاکتور، چک و صندوق" autocomplete="off">
+            <kbd class="st-kbd">Ctrl K</kbd>
+        </form>
+        <div class="st-top-tools">
+            <a class="st-icon-btn st-search-mobile" href="<?= h(Biz::url('search.php')) ?>" aria-label="جستجو" data-cmd-link>
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            </a>
+            <details class="st-dd st-new-top">
+                <summary class="st-new-btn"><span aria-hidden="true">+</span> ثبتِ جدید</summary>
+                <div class="st-dd-menu">
+                    <?php foreach (Biz::NEW_MENU as $__href => $__label): ?>
+                    <a href="<?= h(Biz::url($__href)) ?>"><?= h($__label) ?></a>
+                    <?php endforeach; ?>
+                </div>
+            </details>
+            <button type="button" class="st-icon-btn st-theme-btn" data-theme-toggle hidden aria-label="حالتِ شب و روز">
+                <svg class="st-ico-moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+                <svg class="st-ico-sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+            </button>
+            <details class="st-dd st-profile">
+                <summary aria-label="حساب کاربری"><span class="st-avatar"><?= h($__bizInit) ?></span></summary>
+                <div class="st-dd-menu">
+                    <div class="st-dd-head"><b><?= h($__bizName) ?></b><span><?= h($__bizShop) ?> · <?= h($__bizType) ?></span></div>
+                    <a href="<?= h(Biz::url('settings.php')) ?>">تنظیمات فروشگاه</a>
+                    <a href="<?= h(Biz::url('invoice-design.php')) ?>">طراحی فاکتور</a>
+                    <?php if (!Biz::isStoreOnly()): ?>
+                    <a href="<?= h(Biz::personalUrl()) ?>">دفتر شخصی</a>
+                    <?php endif; ?>
+                    <div class="st-dd-sep"></div>
+                    <a href="<?= h(Biz::url('logout.php')) ?>">خروج</a>
+                </div>
+            </details>
+        </div>
     </div>
 </header>
 <main class="st-main">
 <?php if ($__bizFlash !== null): ?>
-    <div class="st-flash st-flash-<?= $__bizFlash['type'] === 'success' ? 'ok' : 'err' ?>" role="status"><?= h($__bizFlash['message']) ?></div>
+    <div class="st-flash st-flash-<?= $__bizFlash['type'] === 'success' ? 'ok' : 'err' ?>" role="status" data-toast><?= h($__bizFlash['message']) ?></div>
 <?php endif; ?>

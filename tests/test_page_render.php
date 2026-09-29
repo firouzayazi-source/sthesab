@@ -130,6 +130,7 @@ const EXPECT = [
     // ⛔ پس صفحه‌های `/store` باید ۴۰۴ بدهند — کاربرِ شخصی هیچ چیزی از
     //    فروشگاه نمی‌بیند. رفتارِ حسابِ فروشگاهی در `test_business_mode`.
     'store/index.php'       => 'blocked',
+    'store/search.php'      => 'blocked',
     'store/settings.php'    => 'blocked',
     'store/products.php'    => 'blocked',
     'store/product.php'     => 'blocked',

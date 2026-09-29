@@ -279,11 +279,11 @@ T::ok($c === 200 && str_contains($pr, 'دفترِ چک') && str_contains($pr, '�
 T::ok(str_contains($rp, 'value="cheques"'), 'در «همه‌ی گزارش‌ها»');
 $pdo->exec("UPDATE biz_payments SET cheque_due = DATE_SUB(CURDATE(), INTERVAL 1 DAY) WHERE user_id = {$a} AND id = {$out}");
 [, $ix] = $req('store/index.php');
-T::ok(!str_contains($ix, 'چکِ گذشته'), 'چکِ پاس‌شده در داشبورد نیست');
+T::ok(!str_contains($ix, 'روز گذشته'), 'چکِ پاس‌شده در داشبورد نیست');
 $c5 = (int)BizPay::create($a, ['kind' => 'receipt', 'party_id' => $cus, 'amount' => '90', 'account_id' => $cash, 'method' => 'cheque',
                                 'cheque_due' => date('Y-m-d', strtotime('-3 days'))])['id'];
 [, $ix] = $req('store/index.php');
-T::ok(str_contains($ix, 'چکِ گذشته') && str_contains($ix, 'cheques.php?f=overdue'), 'داشبورد چکِ سررسیدگذشته را در «نیازمندِ اقدام» دارد');
+T::ok(str_contains($ix, 'روز گذشته') && str_contains($ix, 'cheques.php?f=overdue'), 'داشبورد چکِ سررسیدگذشته را در «نیازمندِ اقدام» دارد');
 [$c, $pv] = $req('store/payment.php?id=' . $c5);
 T::ok($c === 200 && str_contains($pv, 'وضعیتِ چک'), 'صفحه‌ی سند وضعیتِ چک را دارد');
 

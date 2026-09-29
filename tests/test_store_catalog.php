@@ -358,7 +358,8 @@ if ($node === '') {
     T::skip('چیدمانِ فروشگاه در کرومیوم', 'node نیست');
 } else {
     $probePages = ['store/index.php', 'store/products.php', 'store/product.php?id=' . $p1,
-                   'store/parties.php', 'store/party.php?id=' . $c1, 'store/settings.php'];
+                   'store/parties.php', 'store/party.php?id=' . $c1, 'store/settings.php',
+                   'store/search.php?q=' . rawurlencode('بلند')];
     $out = (string)shell_exec(sprintf('%s %s %s %s %s %s 2>/dev/null', escapeshellarg($node),
         escapeshellarg(__DIR__ . '/store_probe.js'), escapeshellarg("http://127.0.0.1:{$port}/"),
         escapeshellarg(CPREFIX . 'a'), escapeshellarg(CPASS), escapeshellarg(json_encode($probePages)))
@@ -367,7 +368,7 @@ if ($node === '') {
     if (!is_array($pr) || empty($pr['ok'])) {
         T::skip('چیدمانِ فروشگاه در کرومیوم', 'کرومیوم در دسترس نیست: ' . ($pr['why'] ?? trim($out)));
     } else {
-        T::same(count($probePages) * 2, count($pr['res']), 'هر شش صفحه روی دو عرض سنجیده شد');
+        T::same(count($probePages) * 2, count($pr['res']), 'هر هفت صفحه (با جستجوی نامِ بلند) روی دو عرض سنجیده شد');
         foreach ($pr['res'] as $m) {
             T::ok($m['sw'] <= $m['W'] && !$m['out'], "«{$m['pg']}» روی {$m['w']}: بی‌اسکرولِ افقی و بی‌بیرون‌زدگی",
                 "scrollWidth={$m['sw']} width={$m['W']} " . implode(' | ', $m['out']));
