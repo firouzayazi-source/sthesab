@@ -483,3 +483,59 @@
         sync();
     });
 })();
+
+/* «انتخابِ همه» — چک‌باکسِ `js-check-all` همه‌ی `[data-group]`ِ هم‌نامش را
+   تیک می‌زند یا برمی‌دارد (پاک‌سازیِ کالاها). بی‌اسکریپت هر ردیف جدا تیک
+   می‌خورد و فرم همان کار را می‌کند. */
+(function () {
+    'use strict';
+    document.addEventListener('DOMContentLoaded', function () {
+        Array.prototype.forEach.call(document.querySelectorAll('.js-check-all'), function (all) {
+            var boxes = document.querySelectorAll('input[type="checkbox"][data-group="' + all.getAttribute('data-target') + '"]');
+            var sync = function () {
+                var on = 0;
+                Array.prototype.forEach.call(boxes, function (b) { if (b.checked) { on++; } });
+                all.checked = on === boxes.length;
+                all.indeterminate = on > 0 && on < boxes.length;
+            };
+            all.addEventListener('change', function () {
+                Array.prototype.forEach.call(boxes, function (b) { b.checked = all.checked; });
+                sync();
+            });
+            Array.prototype.forEach.call(boxes, function (b) { b.addEventListener('change', sync); });
+            sync();
+        });
+    });
+})();
+
+/* طراحیِ فاکتور: پیش‌نمایشِ زنده. ⛔ فقط آدرسِ قاب عوض می‌شود
+   (`print.php?…&preview=1`، فقط خواندنی)؛ ذخیره همچنان با دکمه‌ی فرم است و
+   بی‌اسکریپت پیش‌نمایش طراحیِ ذخیره‌شده را نشان می‌دهد. توکنِ CSRF و
+   `action` در آدرس نمی‌روند. */
+(function () {
+    'use strict';
+    document.addEventListener('DOMContentLoaded', function () {
+        var form  = document.querySelector('[data-design-form]');
+        var frame = document.querySelector('[data-design-preview]');
+        if (!form || !frame) { return; }
+        var picker = form.querySelector('[data-accent-picker]');
+        var custom = form.querySelector('[data-accent-custom]');
+        if (picker && custom) {
+            picker.addEventListener('input', function () { custom.value = picker.value; custom.checked = true; });
+            picker.addEventListener('click', function () { custom.checked = true; });
+        }
+        var t = null;
+        var refresh = function () {
+            var q = new URLSearchParams();
+            new FormData(form).forEach(function (v, k) {
+                if (k !== 'csrf_token' && k !== 'action' && typeof v === 'string') { q.append(k, v); }
+            });
+            q.set('preview', '1');
+            var base = frame.getAttribute('data-base');
+            frame.src = base + (base.indexOf('?') >= 0 ? '&' : '?') + q.toString();
+        };
+        var later = function () { clearTimeout(t); t = setTimeout(refresh, 350); };
+        form.addEventListener('input', later);
+        form.addEventListener('change', later);
+    });
+})();

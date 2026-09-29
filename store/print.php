@@ -230,57 +230,30 @@ case 'account':
     break;
 
 case 'invoice':
+    // ⛔ برگه‌ی فاکتور فقط از `BizInvoiceDesign::render()` — فاکتورِ واقعی، نمونه
+    //    و پیش‌نمایشِ زنده‌ی طراح یک رندرکننده دارند.
     require_once __DIR__ . '/../includes/biz_docview.php';
-    $inv = BizInvoices::get($userId, $id);
-    if (!$inv || $inv['status'] === 'draft') { Biz::notFound(); }
-    $isSaleSide = in_array($inv['kind'], ['sale', 'sale_return'], true);
-    $back = getParam('back') === 'quick' ? Biz::url('quick-sale.php') : Biz::url('invoice.php?id=' . $id);
-    BizPrint::head($userId, BizInvoices::title($inv) . ($inv['status'] === 'void' ? ' (باطل)' : ''), $back, [
-        'تاریخ'                              => toJalali((string)$inv['inv_date']),
-        'سررسید'                             => !empty($inv['due_date']) ? toJalali((string)$inv['due_date']) : '',
-        ($isSaleSide ? 'خریدار' : 'فروشنده') => $inv['party_id'] !== null ? (string)$inv['party_name'] : 'گذری',
-        'تلفن'                               => (string)($inv['party_phone'] ?? ''),
-        'نشانی'                              => (string)($inv['party_address'] ?? ''),
-        'کد اقتصادی'                          => (string)($inv['party_economic_code'] ?? ''),
-        'شناسه‌ی ملی'                         => (string)($inv['party_national_id'] ?? ''),
-        'کد پستی'                             => (string)($inv['party_postal_code'] ?? ''),
-        'فاکتورِ اصلی'                       => $inv['ref_invoice_id'] !== null ? toPersianDigits((string)$inv['ref_number']) : '',
-    ]); ?>
-    <table class="pr-table">
-        <thead><tr><th>#</th><th>کالا</th><th class="pr-c-num">تعداد</th><th class="pr-c-num">فی</th><th class="pr-c-num pr-wide">تخفیف</th><th class="pr-c-num">جمع</th></tr></thead>
-        <tbody>
-        <?php foreach ($inv['lines'] as $n => $l): ?>
-            <tr>
-                <td><span class="pr-num"><?= toPersianDigits((string)($n + 1)) ?></span></td>
-                <td><?= h((string)$l['description']) ?><?= BizDocView::lineSub($l, 'pr-imei') ?></td>
-                <td class="pr-c-num"><?= $qty($l['qty']) ?></td>
-                <td class="pr-c-num"><?= $money($l['unit_price']) ?></td>
-                <td class="pr-c-num pr-wide"><?= (int)$l['line_discount'] > 0 ? $money($l['line_discount']) : '' ?></td>
-                <td class="pr-c-num"><?= $money($l['line_total']) ?></td>
-            </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
-    <div class="pr-totals">
-        <?php if ((int)$inv['discount'] > 0 || (int)$inv['extra'] > 0): ?>
-        <div><span>جمعِ ردیف‌ها</span><span><?= $money($inv['subtotal']) ?></span></div>
-        <?php if ((int)$inv['discount'] > 0): ?><div><span>تخفیف</span><span>−<?= $money($inv['discount']) ?></span></div><?php endif; ?>
-        <?php if ((int)$inv['extra'] > 0): ?><div><span>حمل و هزینه‌ی دیگر</span><span><?= $money($inv['extra']) ?></span></div><?php endif; ?>
-        <?php endif; ?>
-        <div class="pr-grand"><span>مبلغِ کل</span><span><?= $money($inv['total']) ?> تومان</span></div>
-        <?php if ($inv['status'] === 'issued'): ?>
-        <div><span><?= BizInvoices::SETTLED_BY[$inv['kind']] === 'receipt' ? 'دریافت‌شده' : 'پرداخت‌شده' ?></span><span><?= $money($inv['paid']) ?></span></div>
-        <div><span>مانده</span><span><?= $money(BizInvoices::remaining($inv)) ?></span></div>
-        <?php endif; ?>
-        <?php
-        // ⛔ «مانده‌ی قبلی / کل» — کلیدش در تنظیماتِ چاپ (`show_balance`)
-        $ba = !empty(Biz::printPrefs($userId)['show_balance']) && $inv['status'] === 'issued' && $inv['party_id'] !== null
+    require_once __DIR__ . '/../includes/biz_invoice_design.php';
+    // پیش‌نمایشِ طراح: گزینه‌های هنوز‌ذخیره‌نشده از همین آدرس (فقط خواندنی)
+    $design = getParam('preview') === '1' ? BizInvoiceDesign::clean($_GET, true) : BizInvoiceDesign::get($userId);
+    if (getParam('sample') === '1') {
+        $inv  = BizInvoiceDesign::sample();
+        $ba   = ['prev' => 2500000, 'doc' => (int)$inv['total'], 'paid' => -(int)$inv['paid'], 'after' => 2500000 + (int)$inv['total'] - (int)$inv['paid']];
+        $back = Biz::url('invoice-design.php');
+    } else {
+        $inv = BizInvoices::get($userId, $id);
+        if (!$inv || $inv['status'] === 'draft') { Biz::notFound(); }
+        // ⛔ «مانده‌ی قبلی / کل» — کلیدش در طراحیِ فاکتور (`show_balance`)
+        $ba = $design['show_balance'] && $inv['status'] === 'issued' && $inv['party_id'] !== null
             ? BizParties::balanceAround($userId, (int)$inv['party_id'], $id) : null;
-        if ($ba !== null) { echo BizDocView::balanceRows($ba, (string)$inv['party_name'], $money, 'pr-bal'); }
-        ?>
-    </div>
-    <?php if ((string)$inv['note'] !== ''): ?><p class="pr-note"><?= nl2br(h((string)$inv['note'])) ?></p><?php endif; ?>
-    <?php BizPrint::foot($userId, $isSaleSide ? ['امضای فروشنده', 'امضای خریدار'] : ['امضای تحویل‌گیرنده', 'امضای فروشنده']);
+        $back = getParam('back') === 'quick' ? Biz::url('quick-sale.php') : Biz::url('invoice.php?id=' . $id);
+    }
+    BizInvoiceDesign::render($userId, $inv, $design, [
+        'back'    => $back,
+        'embed'   => getParam('embed') === '1',
+        'balance' => $ba,
+        'logo'    => $design['show_logo'] ? BizInvoiceDesign::logo($userId) : null,
+    ]);
     break;
 
 case 'payment':

@@ -215,9 +215,9 @@ $prefs = Biz::printPrefs($a);
 $prefs['show_balance'] = false;
 Biz::savePrintPrefs($a, array_map(fn($v) => is_bool($v) ? ($v ? '1' : '') : $v, $prefs));
 [, $pr] = $req('store/print.php?doc=invoice&id=' . $S1);
-T::ok(!str_contains($pr, 'pr-bal'), '⛔ با خاموش کردنِ کلید در تنظیماتِ چاپ نمی‌آید');
-[, $ps] = $req('store/print-settings.php');
-T::ok(str_contains($ps, 'name="show_balance"'), 'کلیدش در تنظیماتِ چاپ هست');
+T::ok(!str_contains($pr, 'pr-bal'), '⛔ تا فاکتور طراحی نشده، کلیدِ تنظیماتِ چاپ حاکم است');
+[, $ps] = $req('store/invoice-design.php');
+T::ok(str_contains($ps, 'name="show_balance"'), 'کلیدش حالا در طراحیِ فاکتور است');
 [, $pl] = $req('store/products.php?q=' . rawurlencode('شارژر سریع'));
 T::ok(!str_contains($pl, 'کالایی با این مشخصات'), '⛔ فهرستِ کالا: متنِ فارسی کالای «ي»دارِ migration‌نخورده را هم پیدا می‌کند');
 

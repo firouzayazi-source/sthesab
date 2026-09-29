@@ -13,6 +13,8 @@ require_once __DIR__ . '/../includes/functions.php';
 Auth::initSession();
 Biz::requirePage();
 require_once __DIR__ . '/../includes/biz_print.php';
+require_once __DIR__ . '/../includes/biz_catalog.php';
+require_once __DIR__ . '/../includes/biz_invoice_design.php';
 
 $userId = (int)Auth::userId();
 $self   = Biz::url('print-settings.php');
@@ -57,10 +59,16 @@ require __DIR__ . '/../includes/biz_head.php';
 
         <fieldset class="st-fieldset">
             <legend>روی برگه بیاید</legend>
-            <?php foreach (Biz::PRINT_FLAGS as $k => $l): ?>
+            <?php foreach (Biz::PRINT_FLAGS as $k => $l):
+                // ⛔ «مانده‌ی قبلی» فقط مالِ فاکتور است و حالا در طراحیِ فاکتور است
+                if ($k === 'show_balance') { continue; } ?>
             <label class="st-check"><input type="checkbox" name="<?= h($k) ?>" value="1"<?= $p[$k] ? ' checked' : '' ?>> <?= h($l) ?></label>
             <?php endforeach; ?>
         </fieldset>
+        <p class="st-muted-i"><?= BizInvoiceDesign::saved($userId)
+            ? 'فاکتور ظاهر و بخش‌هایش را از «طراحیِ فاکتور» می‌گیرد؛ این کلیدها برای گزارش‌ها و رسیدهاست.'
+            : 'تا وقتی فاکتور را طراحی نکرده‌اید، این کلیدها روی فاکتور هم اثر دارند.' ?>
+            <a href="<?= h(Biz::url('invoice-design.php')) ?>">طراحیِ فاکتور و لوگو</a></p>
         <button type="submit" class="st-btn">ذخیره‌ی تنظیمات</button>
     </form>
 

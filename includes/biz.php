@@ -79,7 +79,7 @@ final class Biz
         'انبار و کالا' => ['products.php' => 'کالاها', 'categories.php' => 'دسته‌بندی‌ها', 'products-io.php' => 'ورود و خروجِ اکسل'],
         'اشخاص'        => ['parties.php' => 'مشتری و تأمین‌کننده'],
         'گزارش و چاپ'  => ['reports.php' => 'گزارش و چاپ'],
-        'تنظیمات'      => ['settings.php' => 'تنظیمات فروشگاه', 'print-settings.php' => 'تنظیمات چاپ'],
+        'تنظیمات'      => ['settings.php' => 'تنظیمات فروشگاه', 'print-settings.php' => 'تنظیمات چاپ', 'invoice-design.php' => 'طراحی فاکتور'],
     ];
 
     /**
@@ -91,6 +91,7 @@ final class Biz
     /** صفحه‌ی جزئیات کدام قلمِ منو را روشن می‌کند (مگر صفحه خودش `$navActive` بگذارد). */
     public const NAV_PARENT = [
         'product.php'      => 'products.php',
+        'products-cleanup.php' => 'products.php',
         'party.php'        => 'parties.php',
         'invoice.php'      => 'sales.php',
         'invoice-edit.php' => 'sales.php',
@@ -456,6 +457,7 @@ final class Biz
         }
         self::$paletteCache[$userId] = $row ? (string)($row['palette'] ?? '') : '';
         self::$invoiceRaw[$userId]   = $row ? (string)($row['invoice_prefs'] ?? '') : '';
+        self::$designRaw[$userId]    = $row ? (string)($row['invoice_design'] ?? '') : '';
         if ($row) { self::$infoReady = array_key_exists('invoice_prefs', $row); }
         return self::$settingsCache[$userId] = $out;
     }
@@ -500,6 +502,21 @@ final class Biz
     ];
 
     private static array $invoiceRaw = [];
+
+    /** JSONِ خامِ طراحیِ فاکتور از همان `SELECT *`ِ `settings()` — صفر کوئریِ اضافه. */
+    private static array $designRaw = [];
+
+    public static function invoiceDesignRaw(int $userId): string
+    {
+        self::settings($userId);
+        return self::$designRaw[$userId] ?? '';
+    }
+
+    /** بعد از ذخیره‌ی طراحی — همان درخواست مقدارِ تازه را بخواند. */
+    public static function forgetSettings(int $userId): void
+    {
+        unset(self::$settingsCache[$userId], self::$designRaw[$userId], self::$invoiceRaw[$userId]);
+    }
 
     /** @return array{update_buy_price:bool, update_sell_price:bool, warn_below_cost:bool, show_profit:bool, default_party:int} */
     public static function invoicePrefs(int $userId): array

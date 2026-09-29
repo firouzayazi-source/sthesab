@@ -102,3 +102,84 @@ body.pr-body {
 
 /* زیرسطرِ کم‌رنگ (IMEI دوم، طرفِ سند در گزارش IMEI) */
 .pr-sub { color: #555; font-size: .88em; }
+
+/* ============================================================
+   فاکتورِ طراحی‌شده — `BizInvoiceDesign::render()`
+   ============================================================
+   `--pr-accent` و `--pr-logo-h` از طراحیِ کاربر؛ قالب با `pr-t-*`.
+   ⛔ رنگِ زمینه در چاپ فقط با `print-color-adjust: exact` می‌ماند —
+   بدونش نوارِ رنگیِ قالبِ مدرن روی کاغذ سفید درمی‌آمد.
+   ============================================================ */
+.pr-inv { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.pr-ihead { display: flex; align-items: center; gap: 12px; padding-bottom: 8px; margin-bottom: 8px; border-bottom: 2px solid var(--pr-accent, #111); }
+.pr-ihead.pr-logo-center { flex-direction: column; text-align: center; }
+.pr-ihead.pr-logo-center .pr-contact { justify-content: center; }
+.pr-ihead.pr-logo-end { flex-direction: row-reverse; }
+.pr-ihead.pr-logo-start .pr-contact, .pr-ihead.pr-logo-end .pr-contact { justify-content: flex-start; }
+.pr-ihead.pr-logo-end .pr-ishop { text-align: right; }
+.pr-ishop { flex: 1 1 auto; min-width: 0; }
+.pr-logo { height: var(--pr-logo-h, 18mm); width: auto; max-width: 45%; object-fit: contain; flex: 0 0 auto; }
+.pr-inv .pr-shop { color: var(--pr-accent, #111); }
+
+.pr-ititle { display: flex; justify-content: space-between; align-items: center; gap: 8px 16px; flex-wrap: wrap; margin: 6px 0 4px; }
+.pr-inv .pr-title { color: var(--pr-accent, #111); }
+.pr-void { color: #b91c1c; font-size: .8em; }
+.pr-idoc { display: flex; flex-wrap: wrap; gap: 2px 14px; margin: 0; }
+.pr-idoc div { display: flex; gap: 6px; }
+.pr-idoc dt { color: #555; }
+.pr-idoc dd { margin: 0; font-weight: 800; }
+.pr-printed { margin: 0 0 6px; font-size: .8em; color: #666; }
+
+.pr-parties { display: flex; gap: 10px; margin: 6px 0 10px; }
+.pr-pbox { flex: 1 1 0; min-width: 0; }
+.pr-pbox h3 { margin: 0 0 2px; font-size: .95em; color: var(--pr-accent, #111); }
+.pr-pbox .pr-meta { margin: 0; }
+
+.pr-itable .pr-c-row { width: 2.2em; text-align: center; }
+.pr-ifoot { display: flex; gap: 14px; align-items: flex-start; margin-top: 10px; }
+.pr-ileft { flex: 1 1 auto; min-width: 0; display: grid; gap: 6px; }
+.pr-ifoot .pr-totals { margin: 0; flex: 0 0 auto; }
+.pr-inv .pr-totals .pr-grand { border-color: var(--pr-accent, #111); }
+.pr-words { margin: 0; padding: 5px 8px; border: 1px dashed #999; border-radius: 6px; font-weight: 700; }
+.pr-words span { font-weight: 400; color: #555; }
+.pr-terms { font-size: .85em; color: #333; border-inline-start: 3px solid var(--pr-accent, #111); padding: 2px 8px; }
+.pr-inv .pr-note { margin: 0; }
+.pr-stamp { border: 1px dashed #777; border-radius: 50%; aspect-ratio: 1; max-width: 32mm; min-height: 32mm; flex: 0 0 32mm; display: flex; align-items: center; justify-content: center; }
+
+/* ---------- قالبِ مدرن: نوارِ رنگی ---------- */
+.pr-t-modern .pr-ihead { border-bottom: 0; background: var(--pr-accent, #111); color: #fff; padding: 10px 12px; border-radius: 8px; }
+.pr-t-modern .pr-shop, .pr-t-modern .pr-contact { color: #fff; }
+.pr-t-modern .pr-logo { background: #fff; border-radius: 6px; padding: 2px; }
+.pr-t-modern .pr-itable th { background: var(--pr-accent, #111); color: #fff; border-color: var(--pr-accent, #111); }
+.pr-t-modern .pr-itable td { border-width: 0 0 1px; border-color: #ddd; }
+.pr-t-modern .pr-itable tbody tr:nth-child(even) td { background: #f7f7f8; }
+.pr-t-modern .pr-totals .pr-grand { background: var(--pr-accent, #111); color: #fff; }
+
+/* ---------- قالبِ ساده: بی‌خط ---------- */
+.pr-t-minimal .pr-ihead { border-bottom-width: 1px; }
+.pr-t-minimal .pr-itable th { background: transparent; border-width: 0 0 2px; border-color: var(--pr-accent, #111); }
+.pr-t-minimal .pr-itable td { border-width: 0 0 1px; border-color: #e5e5e5; }
+.pr-t-minimal .pr-totals .pr-grand { border-width: 0; border-top: 2px solid var(--pr-accent, #111); border-radius: 0; }
+
+/* ---------- قالبِ رسمی: کادرِ فروشنده و خریدار ---------- */
+.pr-t-formal .pr-ihead { border: 2px solid var(--pr-accent, #111); border-radius: 6px; padding: 8px 10px; }
+.pr-t-formal .pr-ititle { border: 1px solid var(--pr-accent, #111); border-radius: 6px; padding: 4px 10px; }
+.pr-t-formal .pr-pbox { border: 1px solid var(--pr-accent, #111); border-radius: 6px; padding: 6px 8px; }
+.pr-t-formal .pr-itable th { border-color: var(--pr-accent, #111); }
+
+/* ---------- رول و پیش‌نمایش ---------- */
+.pr-roll .pr-parties, .pr-roll .pr-ifoot { flex-direction: column; gap: 6px; }
+.pr-roll .pr-ifoot .pr-totals { width: 100%; }
+.pr-roll .pr-logo { max-width: 60%; }
+.pr-roll .pr-stamp { display: none; }
+.pr-embed { background: #f4f4f5; }
+.pr-embed .pr-sheet { margin: 12px auto; }
+/* ⚠ روی صفحه‌ی باریکِ گوشی جدولِ پرستون اسکرول می‌شود، نه اینکه کلِ صفحه
+   پهن شود؛ در چاپ (`@media print`) همان جدولِ کامل است. */
+.pr-scroll { overflow-x: auto; }
+@media print { .pr-scroll { overflow: visible; } }
+@media screen and (max-width: 640px) {
+    .pr-parties, .pr-ifoot { flex-direction: column; }
+    .pr-ifoot .pr-totals { width: 100%; }
+}
+.pr-itable .pr-c-sku { white-space: nowrap; }

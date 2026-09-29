@@ -7017,8 +7017,8 @@ foreach (['store/invoice-edit.php', 'store/quick-sale.php'] as $f70) {
 if (!str_contains($dv70, 'تعداد</th>') || !str_contains($dv70, "'<span class=\"' . h(\$class) . ' is-note\">' . h(\$n)")) {
     $bBad[] = 'biz_docview.php — lineHead() «تعداد» ندارد یا lineSub() شرح را فرار نمی‌دهد';
 }
-if (!str_contains((string)file_get_contents(__DIR__ . '/../store/print.php'), "Biz::printPrefs(\$userId)['show_balance']")) {
-    $bBad[] = 'store/print.php — مانده‌ی قبلی باید پشتِ کلیدِ show_balance باشد';
+if (!str_contains((string)file_get_contents(__DIR__ . '/../store/print.php'), "\$design['show_balance'] && \$inv['status'] === 'issued'")) {
+    $bBad[] = 'store/print.php — مانده‌ی قبلی باید پشتِ کلیدِ show_balance ِ طراحیِ فاکتور باشد';
 }
 
 T::bulk(81, $bBad, 'محیطِ فروشگاهی: دروازه‌ی بی‌کوئری، سه نوعِ حساب، تنها نویسنده، دفترِ جدا از پولِ شخصی، و طرفِ شخصیِ دست‌نخورده');
@@ -7090,5 +7090,103 @@ if (!preg_match('/FOREIGN KEY IF NOT EXISTS \(`cheque_settle_id`\)\s*REFERENCES 
     $cBad[] = 'cheque_settle_id باید روی انتقالِ وصول، رو به چک، با کلیدِ خارجیِ SET NULL باشد';
 }
 T::bulk(17, $cBad, 'دفترِ چک: صندوقِ جدا از نقد، تنها نویسنده، وصول/برگشتِ سازگار، و فرم‌های سریعِ بی‌چک');
+
+// =================================================================
+// قاعده ۷۰ج — پاک‌سازیِ کالاهای استفاده‌نشده و طراحیِ فاکتور با لوگو.
+// رفتار در test_store_design است و بی‌دیتابیس blocked می‌شود؛ این شکل را
+// برای ماشینِ بی‌دیتابیس نگه می‌دارد.
+// =================================================================
+T::group('قاعده ۷۰ج — پاک‌سازیِ کالا و طراحیِ فاکتور');
+$gBad = [];
+$strip70 = function (string $src): string {
+    $o = '';
+    foreach (token_get_all($src) as $t) {
+        if (is_array($t) && in_array($t[0], [T_COMMENT, T_DOC_COMMENT], true)) { continue; }
+        $o .= is_array($t) ? $t[1] : $t;
+    }
+    return $o;
+};
+$cat70g = $strip70((string)file_get_contents(__DIR__ . '/../includes/biz_catalog.php'));
+$des70  = $strip70((string)file_get_contents(__DIR__ . '/../includes/biz_invoice_design.php'));
+$cln70  = $strip70((string)file_get_contents(__DIR__ . '/../store/products-cleanup.php'));
+$idp70  = $strip70((string)file_get_contents(__DIR__ . '/../store/invoice-design.php'));
+$prt70  = (string)file_get_contents(__DIR__ . '/../store/print.php');
+$js70   = (string)file_get_contents(__DIR__ . '/../assets/js/store.js');
+
+// ۱. «استفاده‌نشده» یک تعریف دارد و روی خودِ DELETE می‌نشیند
+if (!preg_match('/UNUSED_SQL\s*=\s*\'NOT EXISTS \(SELECT 1 FROM biz_invoice_lines ul WHERE ul\.product_id = p\.id AND ul\.user_id = :uu1\)\s*AND NOT EXISTS \(SELECT 1 FROM biz_stock_moves um WHERE um\.product_id = p\.id AND um\.user_id = :uu2 AND um\.ref_type IS NOT NULL\)\'/', $cat70g)) {
+    $gBad[] = 'biz_catalog.php — UNUSED_SQL باید هر دو شرط (ردیفِ سند، حرکتِ سندداری) را با user_id داشته باشد';
+}
+if (!preg_match('/\$where\s*=\s*\[\'p\.user_id = :u\', self::UNUSED_SQL\]/', $cat70g)) {
+    $gBad[] = 'biz_catalog.php — unusedWhere() باید با p.user_id و UNUSED_SQL شروع شود';
+}
+$du70 = preg_match('/function deleteUnused\(.*?\n    \}\n/s', $cat70g, $m70) ? $m70[0] : '';
+if ($du70 === '' || substr_count($du70, 'self::unusedWhere(') < 2 || !str_contains($du70, 'DELETE p FROM biz_products p') || !str_contains($du70, 'WHERE {$w}')) {
+    $gBad[] = 'biz_catalog.php — deleteUnused() باید در هر دو حالت (انتخاب و همه) شرطِ unusedWhere() را روی خودِ DELETE بگذارد';
+}
+if (preg_match('/DELETE\s+(p\s+)?FROM\s+biz_products/i', $cln70) || !str_contains($cln70, 'BizProducts::deleteUnused(')) {
+    $gBad[] = 'store/products-cleanup.php — حذف فقط از BizProducts::deleteUnused()';
+}
+if (strpos($cln70, 'Csrf::verifyOrFail') === false || strpos($cln70, 'Csrf::verifyOrFail') > strpos($cln70, 'deleteUnused(')) {
+    $gBad[] = 'store/products-cleanup.php — CSRF پیش از حذف';
+}
+if (!preg_match('/CLEANUP_LIST_MAX\s*=\s*(\d+);/', $cat70g, $mx70) || (int)$mx70[1] > 900) {
+    $gBad[] = 'biz_catalog.php — CLEANUP_LIST_MAX باید زیرِ max_input_vars (۱۰۰۰) بماند';
+}
+
+// ۲. لوگو: نوع از محتوا، ابعاد پیش از باز کردن، بازسازی با GD، فهرستِ بسته
+$sl70 = preg_match('/function saveLogoBytes\(.*?\n    \}\n/s', $des70, $m70) ? $m70[0] : '';
+$pF = strpos($sl70, 'finfo(FILEINFO_MIME_TYPE)'); $pG = strpos($sl70, 'getimagesizefromstring('); $pC = strpos($sl70, 'imagecreatefromstring(');
+if ($pF === false || $pG === false || $pC === false || !($pF < $pC && $pG < $pC) || !str_contains($sl70, 'LOGO_MAX_PIXELS')
+    || !str_contains($sl70, 'if (!in_array($mime, self::LOGO_INPUT, true))')) {
+    $gBad[] = 'biz_invoice_design.php — saveLogoBytes(): نوع (finfo) و ابعاد پیش از imagecreatefromstring';
+}
+if (!str_contains($sl70, 'imagecopyresampled(') || !preg_match('/\$b64\s*=\s*base64_encode\(\$out\)/', $sl70)) {
+    $gBad[] = 'biz_invoice_design.php — ذخیره فقط خروجیِ بازسازی‌شده‌ی GD، نه بایت‌های کاربر';
+}
+if (!preg_match("/LOGO_MIMES\s*=\s*\['image\/png', 'image\/jpeg'\]/", $des70)) {
+    $gBad[] = 'biz_invoice_design.php — LOGO_MIMES باید فهرستِ بسته‌ی png/jpeg باشد';
+}
+$lg70 = preg_match('/function logo\(int \$userId\).*?\n    \}\n/s', $des70, $m70) ? $m70[0] : '';
+if (!str_contains($lg70, "in_array(\$r['mime'], self::LOGO_MIMES, true)") || !str_contains($lg70, "preg_match('/^[A-Za-z0-9+\\/]+={0,2}\$/'")
+    || !str_contains($lg70, 'WHERE user_id = :u')) {
+    $gBad[] = 'biz_invoice_design.php — logo() باید نوع و base64 را هنگامِ خواندن بسنجد و فقط لوگوی همین کاربر را بخواند';
+}
+
+// ۳. رنگ فقط #rrggbb و متن‌ها فرار داده شده
+if (!str_contains($des70, "preg_match('/^#[0-9a-f]{6}\$/', \$v)") || !preg_match('/\$out\[\'accent\'\]\s*=\s*self::validAccent\(/', $des70)) {
+    $gBad[] = 'biz_invoice_design.php — رنگ فقط از validAccent() (#rrggbb) — وگرنه از <style> بیرون می‌زند';
+}
+foreach (["h(\$title)", "nl2br(h(\$d['terms']))", "h(\$s)", "h(\$shop)"] as $n70) {
+    if (!str_contains($des70, $n70)) { $gBad[] = "biz_invoice_design.php — {$n70} باید فرار داده شود"; }
+}
+
+// ۴. برگه‌ی فاکتور یک رندرکننده دارد؛ پیش‌نمایش ذخیره نمی‌کند
+$ic70 = preg_match("/case 'invoice':.*?break;/s", $prt70, $m70) ? $m70[0] : '';
+if (!str_contains($ic70, 'BizInvoiceDesign::render(') || str_contains($ic70, 'pr-table') || str_contains($ic70, 'BizPrint::head(')) {
+    $gBad[] = 'store/print.php — فاکتور فقط از BizInvoiceDesign::render()';
+}
+if (!str_contains($ic70, "getParam('preview') === '1' ? BizInvoiceDesign::clean(\$_GET, true)") || str_contains($ic70, '::save(')) {
+    $gBad[] = 'store/print.php — پیش‌نمایش گزینه‌ها را از آدرس پاک‌سازی می‌کند و هرگز ذخیره نمی‌کند';
+}
+if (preg_match('/REQUEST_METHOD|\$_POST/', $prt70)) {
+    $gBad[] = 'store/print.php — فقط خواندنی';
+}
+if (strpos($idp70, 'Csrf::verifyOrFail') === false || !str_contains($idp70, 'enctype="multipart/form-data"') || preg_match('/INSERT|UPDATE\s+biz_|DELETE\s+FROM/i', $idp70)) {
+    $gBad[] = 'store/invoice-design.php — CSRF، فرمِ multipart، و نوشتن فقط از BizInvoiceDesign';
+}
+if (!preg_match("/k !== 'csrf_token' && k !== 'action'/", $js70)) {
+    $gBad[] = 'store.js — پیش‌نمایشِ زنده نباید توکنِ CSRF را در آدرس بگذارد';
+}
+
+// ۵. ثبت‌ها
+$mig70g = (string)file_get_contents(__DIR__ . '/../deploy/migrate.sh');
+if (!preg_match('/^\s+migration_biz_invoice_design\.sql$/m', $mig70g) || !str_contains($mig70g, '[migration_biz_invoice_design.sql]="biz_settings.invoice_design"')) {
+    $gBad[] = 'deploy/migrate.sh — migration_biz_invoice_design باید در MIGRATIONS و SENTINEL باشد';
+}
+if (!str_contains((string)file_get_contents(__DIR__ . '/../includes/admin_insights.php'), "'biz_logos'")) {
+    $gBad[] = 'admin_insights.php — biz_logos باید در NON_ACTIVITY_TABLES باشد';
+}
+T::bulk(20, $gBad, 'پاک‌سازی فقط کالای بی‌سندِ همین فروشگاه، لوگوی بازسازی‌شده و بسته، و فاکتور با یک رندرکننده');
 
 exit(T::report());

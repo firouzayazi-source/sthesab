@@ -902,3 +902,49 @@ a.st-kpi-card.st-kpi-hero:hover { border-color: transparent; box-shadow: 0 10px 
 .st-btn-sm { padding: 6px 12px; font-size: 13px; }
 .st-kpi-card.is-warn { border-color: var(--st-err); }
 .st-acc-note { margin: 4px 0 0; font-size: 12px; }
+
+/* ---------- پاک‌سازیِ کالاهای استفاده‌نشده ---------- */
+.st-cleanup-all { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
+.st-cleanup-all p { margin: 0; }
+.st-cleanup-form { display: grid; gap: 10px; }
+.st-cleanup-head { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.st-cleanup-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.st-cleanup-list li { display: flex; flex-wrap: wrap; gap: 2px 12px; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--st-line); }
+.st-cleanup-list li:last-child { border-bottom: 0; }
+.st-cleanup-name { overflow-wrap: anywhere; }
+.st-cleanup-name .st-sku { display: inline; margin-inline-start: 6px; }
+
+/* ---------- طراحیِ فاکتور ---------- */
+.st-design { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (min-width: 1100px) { .st-design { grid-template-columns: minmax(0, 380px) minmax(0, 1fr); } }
+.st-design-side { display: grid; gap: 14px; min-width: 0; }
+.st-design-preview { position: sticky; top: 12px; display: grid; gap: 8px; min-width: 0; }
+.st-design-preview iframe { width: 100%; height: min(78vh, 900px); border: 1px solid var(--st-line); border-radius: 10px; background: #f4f4f5; }
+@media (max-width: 1099px) { .st-design-preview { position: static; } .st-design-preview iframe { height: 70vh; } }
+.st-logo-now { display: flex; justify-content: center; padding: 10px; border: 1px dashed var(--st-line); border-radius: 10px; background: #fff; }
+.st-logo-now img { max-height: 90px; max-width: 100%; object-fit: contain; }
+.st-logo-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.st-logo-form input[type="file"] { flex: 1 1 12rem; min-width: 0; font-size: 13px; }
+.st-seg-label { margin: 6px 0 4px; font-size: 13px; color: var(--st-ink-2); }
+.st-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.st-tpl-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.st-tpl { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--st-line); border-radius: 10px; cursor: pointer; font-size: 12.5px; }
+.st-tpl input { position: absolute; opacity: 0; pointer-events: none; }
+.st-tpl:has(input:checked) { border-color: var(--st-accent); box-shadow: 0 0 0 2px var(--st-accent) inset; }
+.st-tpl:has(input:focus-visible) { outline: 2px solid var(--st-accent); outline-offset: 2px; }
+.st-tpl-thumb { display: grid; gap: 3px; height: 44px; padding: 5px; border-radius: 6px; background: #fff; border: 1px solid #e5e5e5; }
+.st-tpl-thumb i { display: block; border-radius: 2px; background: #d4d4d8; }
+.st-tpl-thumb i:first-child { background: #52525b; }
+.st-tpl-modern .st-tpl-thumb i:first-child { background: #1e3a8a; }
+.st-tpl-minimal .st-tpl-thumb i { background: transparent; border-bottom: 1px solid #a1a1aa; border-radius: 0; }
+.st-tpl-formal .st-tpl-thumb i { background: transparent; border: 1px solid #52525b; }
+
+.st-accents { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.st-accent { position: relative; cursor: pointer; }
+.st-accent input[type="radio"] { position: absolute; opacity: 0; pointer-events: none; }
+.st-accent span[aria-hidden], .st-accent input[type="color"] { display: block; width: 30px; height: 30px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--st-line); }
+.st-accent input[type="color"] { padding: 0; cursor: pointer; background: none; }
+.st-accent:has(input[type="radio"]:checked) span[aria-hidden],
+.st-accent:has(input[type="radio"]:checked) input[type="color"] { box-shadow: 0 0 0 2px var(--st-ink); }
+.st-accent:has(input[type="radio"]:focus-visible) span[aria-hidden] { outline: 2px solid var(--st-accent); outline-offset: 2px; }

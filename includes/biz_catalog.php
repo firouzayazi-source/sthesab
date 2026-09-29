@@ -29,6 +29,38 @@ final class BizCommon
         return '%' . strtr($term, ['!' => '!!', '%' => '!%', '_' => '!_']) . '%';
     }
 
+    /**
+     * عدد به حروف — «مبلغ به حروف»ِ فاکتور. سه‌رقمی‌ها با « و » به هم
+     * می‌پیوندند (۱٬۲۰۰٬۰۵۰ → «یک میلیون و دویست هزار و پنجاه»)، و «یکصد»
+     * نه «صد»، چون متنِ رسمیِ فاکتور همین را می‌خواهد. کلِ بازه‌ی BIGINT.
+     */
+    public static function words(int $n): string
+    {
+        if ($n === 0) { return 'صفر'; }
+        static $ones  = ['', 'یک', 'دو', 'سه', 'چهار', 'پنج', 'شش', 'هفت', 'هشت', 'نه'];
+        static $teens = ['ده', 'یازده', 'دوازده', 'سیزده', 'چهارده', 'پانزده', 'شانزده', 'هفده', 'هجده', 'نوزده'];
+        static $tens  = ['', '', 'بیست', 'سی', 'چهل', 'پنجاه', 'شصت', 'هفتاد', 'هشتاد', 'نود'];
+        static $hund  = ['', 'یکصد', 'دویست', 'سیصد', 'چهارصد', 'پانصد', 'ششصد', 'هفتصد', 'هشتصد', 'نهصد'];
+        static $scale = ['', 'هزار', 'میلیون', 'میلیارد', 'تریلیون', 'کوادریلیون', 'کوینتیلیون'];
+        $three = static function (int $x) use ($ones, $teens, $tens, $hund): string {
+            $p = [];
+            if ($x >= 100) { $p[] = $hund[intdiv($x, 100)]; $x %= 100; }
+            if ($x >= 20)  { $p[] = $tens[intdiv($x, 10)]; $x %= 10; }
+            if ($x >= 10)  { $p[] = $teens[$x - 10]; $x = 0; }
+            if ($x > 0)    { $p[] = $ones[$x]; }
+            return implode(' و ', $p);
+        };
+        // ⚠ روی رقم‌های رشته، نه `-$n`: قدرِ مطلقِ PHP_INT_MIN در int نمی‌گنجد
+        $digits = ltrim((string)$n, '-');
+        $parts  = [];
+        for ($i = 0, $end = strlen($digits); $end > 0; $i++, $end -= 3) {
+            $g = (int)substr($digits, max(0, $end - 3), $end - max(0, $end - 3));
+            if ($g === 0) { continue; }
+            array_unshift($parts, trim($three($g) . ' ' . $scale[$i]));
+        }
+        return ($n < 0 ? 'منفی ' : '') . implode(' و ', $parts);
+    }
+
     /** یک‌خطی، بی‌فاصله‌ی اضافه. */
     public static function line(string $v): string
     {
@@ -401,6 +433,124 @@ final class BizProducts
         return $st->rowCount() > 0
             ? ['ok' => true, 'message' => 'کالا حذف شد.']
             : ['ok' => false, 'message' => 'کالا پیدا نشد.'];
+    }
+
+    /* ------------------------------------------------------------
+       پاک‌سازیِ دسته‌جمعیِ کالاهای استفاده‌نشده
+       ------------------------------------------------------------ */
+
+    /**
+     * ⛔ تنها تعریفِ «استفاده‌نشده» — همان دو شرطِ `delete()`: هیچ ردیفِ
+     *    سندی (حتی پیش‌نویس؛ کلیدِ خارجیِ RESTRICT) و هیچ حرکتِ انبارِ
+     *    سندداری. موجودیِ اول دوره و انبارگردانی (`ref_type IS NULL`) مانع
+     *    نیستند و با CASCADE همراهِ کالا می‌روند.
+     *    ⚠ شرطِ دوم امروز افزونه است (حرکتِ سندداری فقط از ردیفِ سند می‌آید و
+     *    سندِ صادرشده حذف نمی‌شود) و جهشِ برداشتنش زنده می‌ماند — همان شرطِ
+     *    `delete()` است و نگه داشته شد تا دو تعریف از هم دور نیفتند.
+     *    ⚠ روی ستون‌های `p` و با پارامترهای `:uu1`/`:uu2` — پارامترِ جدا،
+     *    نه یک `:u` تکراری (EMULATE_PREPARES = false).
+     */
+    private const UNUSED_SQL = 'NOT EXISTS (SELECT 1 FROM biz_invoice_lines ul WHERE ul.product_id = p.id AND ul.user_id = :uu1)
+        AND NOT EXISTS (SELECT 1 FROM biz_stock_moves um WHERE um.product_id = p.id AND um.user_id = :uu2 AND um.ref_type IS NOT NULL)';
+
+    /** دامنه‌ی پاک‌سازی — `empty`: فقط بی‌موجودی (پیش‌فرض)، `all`: با موجودیِ اول دوره هم. */
+    public const CLEANUP_SCOPES = [
+        'empty' => 'فقط کالاهای بی‌موجودی',
+        'all'   => 'همه، حتی با موجودیِ اول دوره',
+    ];
+
+    /** سقفِ ردیف‌های فهرستِ انتخابی — زیرِ `max_input_vars`ِ پیش‌فرضِ PHP (۱۰۰۰). */
+    public const CLEANUP_LIST_MAX = 300;
+
+    /** @return array{0:string, 1:array} */
+    private static function unusedWhere(int $userId, string $scope, string $category): array
+    {
+        $where  = ['p.user_id = :u', self::UNUSED_SQL];
+        $params = ['u' => $userId, 'uu1' => $userId, 'uu2' => $userId];
+        if (($scope === '' ? 'empty' : $scope) !== 'all') {
+            // ⚠ خدمت موجودی ندارد، پس همیشه «بی‌موجودی» است
+            $where[] = '(p.track_stock = 0 OR p.stock_qty = 0)';
+        }
+        if ($category !== '') {
+            $where[] = 'c.name = :c';
+            $params['c'] = $category;
+        }
+        return [implode(' AND ', $where), $params];
+    }
+
+    /**
+     * کالاهای استفاده‌نشده — فهرستِ صفحه‌ی پاک‌سازی، با سقف و شمارِ کل
+     * (فهرستِ بریده صریح گفته می‌شود).
+     * @return array{rows:array, total:int, capped:bool}
+     */
+    public static function unused(int $userId, string $scope = 'empty', string $category = ''): array
+    {
+        [$w, $params] = self::unusedWhere($userId, $scope, $category);
+        $pdo = Database::getConnection();
+        $st = $pdo->prepare(self::SELECT_SQL . " WHERE {$w} ORDER BY p.name, p.id LIMIT :lim");
+        foreach ($params as $k => $v) { $st->bindValue($k, $v); }
+        $st->bindValue('lim', self::CLEANUP_LIST_MAX + 1, PDO::PARAM_INT);
+        $st->execute();
+        $rows   = $st->fetchAll();
+        $capped = count($rows) > self::CLEANUP_LIST_MAX;
+        $total  = count($rows);
+        if ($capped) {
+            $st = $pdo->prepare("SELECT COUNT(*) FROM biz_products p LEFT JOIN biz_categories c ON c.id = p.category_id WHERE {$w}");
+            $st->execute($params);
+            $total = (int)$st->fetchColumn();
+        }
+        return ['rows' => array_slice($rows, 0, self::CLEANUP_LIST_MAX), 'total' => $total, 'capped' => $capped];
+    }
+
+    /**
+     * حذفِ دسته‌جمعی. `$ids` = null یعنی «همه‌ی استفاده‌نشده‌های همین دامنه»
+     * (فهرستِ بلندتر از سقف هم پاک می‌شود)؛ آرایه یعنی فقط همین شناسه‌ها.
+     *
+     * ⛔ شرطِ «استفاده‌نشده» روی خودِ `DELETE` است، نه فقط در فهرستی که
+     *    کاربر دیده: بینِ دیدنِ صفحه و زدنِ دکمه ممکن است کالایی در
+     *    فاکتور آمده باشد، و شناسه‌ها از فرم می‌آیند. کالای کاربرِ دیگر و
+     *    کالای استفاده‌شده «رد شده» شمرده می‌شوند، نه حذف.
+     * @param int[]|null $ids
+     * @return array{ok:bool, message:string, deleted:int, skipped:int}
+     */
+    public static function deleteUnused(int $userId, ?array $ids, string $scope = 'empty', string $category = ''): array
+    {
+        if ($ids !== null) {
+            $ids = array_values(array_unique(array_filter(array_map('intval', $ids), fn($v) => $v > 0)));
+            if (!$ids) {
+                return ['ok' => false, 'message' => 'هیچ کالایی انتخاب نشده است.', 'deleted' => 0, 'skipped' => 0];
+            }
+            // انتخابِ دستی به دامنه بند نیست: کاربر خودش کالای با موجودی را تیک زده
+            [$w, $params] = self::unusedWhere($userId, 'all', '');
+            $in = [];
+            foreach ($ids as $n => $id) { $in[] = ':id' . $n; $params['id' . $n] = $id; }
+            $w .= ' AND p.id IN (' . implode(',', $in) . ')';
+        } else {
+            [$w, $params] = self::unusedWhere($userId, $scope, $category);
+        }
+        $pdo = Database::getConnection();
+        $pdo->beginTransaction();
+        try {
+            // ⚠ MariaDB در DELETE با زیرکوئری روی جدولِ دیگر مشکلی ندارد؛
+            //   JOIN به دسته فقط برای صافیِ نام.
+            $st = $pdo->prepare("DELETE p FROM biz_products p LEFT JOIN biz_categories c ON c.id = p.category_id WHERE {$w}");
+            $st->execute($params);
+            $deleted = $st->rowCount();
+            $pdo->commit();
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            Log::error('biz.products_cleanup', $e);
+            return ['ok' => false, 'message' => 'پاک‌سازی انجام نشد.', 'deleted' => 0, 'skipped' => 0];
+        }
+        $skipped = $ids !== null ? count($ids) - $deleted : 0;
+        if ($deleted === 0) {
+            return ['ok' => false, 'message' => 'کالای استفاده‌نشده‌ای برای حذف نبود.', 'deleted' => 0, 'skipped' => $skipped];
+        }
+        $msg = toPersianDigits((string)$deleted) . ' کالای استفاده‌نشده حذف شد.';
+        if ($skipped > 0) {
+            $msg .= ' ' . toPersianDigits((string)$skipped) . ' کالا در این فاصله در سندی آمده بود یا پیدا نشد و ماند.';
+        }
+        return ['ok' => true, 'message' => $msg, 'deleted' => $deleted, 'skipped' => $skipped];
     }
 
     /**
