@@ -274,5 +274,46 @@ if ($nginx === '' || $ip === '' || !$isRoot || $stgSite === '') {
     shell_exec('rm -rf ' . escapeshellarg($N));
 }
 
+// =====================================================================
+T::group('سنجشِ سلامت — نصبِ تازه (ریدایرکت به setup.php) سالم است');
+
+// ⛔ اولین استقرارِ واقعیِ staging با «کد 302 — سایت سالم نیست» ایستاد: دیتابیسِ
+//    تازه هیچ کاربری ندارد و login.php به setup.php می‌رود. `curl` اینجا یک
+//    تابعِ bash است که همان پاسخ‌ها را می‌دهد؛ منطقِ سنجش همان فایلِ واقعی.
+$curlStub = function (string $loginMode, string $setupBody) use ($hl): string {
+    return <<<SH
+source $hl
+DOMAIN=staging.x.ir
+curl() {
+    local a url='' w=''
+    for a in "\$@"; do case "\$a" in https://*) url="\$a" ;; esac; done
+    local prev=''
+    for a in "\$@"; do [[ "\$prev" == "-w" ]] && w="\$a"; prev="\$a"; done
+    case "\$url" in
+      */login.php)
+        case "$loginMode" in
+          setup) [[ "\$w" == '%{http_code}' ]] && printf 302; [[ "\$w" == '%{redirect_url}' ]] && printf 'https://staging.x.ir/setup.php'; [[ -z "\$w" ]] && printf 'redirect' ;;
+          other) [[ "\$w" == '%{http_code}' ]] && printf 302; [[ "\$w" == '%{redirect_url}' ]] && printf 'https://evil.x/'; [[ -z "\$w" ]] && printf 'redirect' ;;
+          ok)    [[ "\$w" == '%{http_code}' ]] && printf 200; [[ -z "\$w" ]] && printf '<html></html>' ;;
+        esac ;;
+      */setup.php)
+        [[ "\$w" == '%{http_code}' ]] && printf 200; [[ -z "\$w" ]] && printf '%s' '$setupBody' ;;
+      *api/v1*) printf '{"ok":true}' ;;
+    esac
+    return 0
+}
+sleep() { SECONDS=\$((SECONDS + 5)); }
+if health_check; then echo "RC=0"; else echo "RC=1"; fi
+SH;
+};
+[, $o] = $bash($curlStub('setup', '<html>setup</html>'));
+T::ok(str_contains($o, 'RC=0') && str_contains($o, 'نصبِ تازه'), 'login → setup.php و setup کامل رندر شد: سالم' . (str_contains($o, 'RC=0') ? '' : " — $o"));
+[, $o] = $bash($curlStub('setup', '<html>cut'));
+T::ok(str_contains($o, 'RC=1'), 'setup.php نصفه (بی </html>): رد');
+[, $o] = $bash($curlStub('other', '<html></html>'));
+T::ok(str_contains($o, 'RC=1'), 'ریدایرکت به هر جای دیگری: همچنان رد');
+[, $o] = $bash($curlStub('ok', ''));
+T::ok(str_contains($o, 'RC=0'), 'صفحه‌ی ورودِ عادی (۲۰۰): سالم');
+
 shell_exec('rm -rf ' . escapeshellarg($tmp));
 exit(T::report());

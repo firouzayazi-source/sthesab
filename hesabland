@@ -200,6 +200,27 @@ health_check() {
             api_ping_check "$base" "$resolve" "$quiet" || return 1
             return 0
         fi
+        # ⛔ نصبِ تازه (هنوز هیچ کاربری ندارد) login.php را به setup.php
+        #    می‌فرستد و این **سالم** است، نه خرابی. اولین استقرارِ staging
+        #    دقیقاً همین حالت بود و سنجش «کد 302 — سایت سالم نیست» می‌گفت.
+        #    فقط همین یک مقصد پذیرفته می‌شود و خودِ آن صفحه هم باید کامل
+        #    رندر شود — ریدایرکتِ دیگری (مثلاً به صفحه‌ی خطا) همچنان رد است.
+        if [[ "$code" == "302" ]]; then
+            local loc
+            loc=$("${CURL[@]}" -o /dev/null -w '%{redirect_url}' "${base}/login.php" 2>/dev/null || true)
+            if [[ "$loc" == "${base}/setup.php" ]]; then
+                body=$("${CURL[@]}" "${base}/setup.php" 2>/dev/null || true)
+                code=$("${CURL[@]}" -o /dev/null -w '%{http_code}' "${base}/setup.php" 2>/dev/null || true)
+                if [[ "${code:-000}" == "200" && "$body" == *"</html>"* ]]; then
+                    [[ -n "$quiet" ]] || green "✓ نصبِ تازه: صفحه‌ی راه‌اندازی ۲۰۰ و رندر کامل (هنوز کاربری ساخته نشده)"
+                    api_ping_check "$base" "$resolve" "$quiet" || return 1
+                    return 0
+                fi
+                last="نصبِ تازه ولی setup.php کد ${code:-000} داد"
+                sleep 1
+                continue
+            fi
+        fi
         last="کد $code"
         [[ "$code" == "200" ]] && last="کد ۲۰۰ ولی رندر نصفه است (</html> نیامد)"
         sleep 1
