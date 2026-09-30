@@ -64,6 +64,7 @@ if ($__loggedIn):
     <meta name="theme-color" content="#2a3563">
 </head>
 <body>
+<?= envBanner() ?>
 <div class="privacy-shell">
     <h1 class="privacy-title"><?= h(defined('APP_NAME') ? APP_NAME : 'حساب لند') ?> — حریم خصوصی</h1>
 <?php endif; ?>

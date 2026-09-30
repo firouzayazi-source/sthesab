@@ -88,6 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="theme-color" content="#2a3563">
 </head>
 <body class="auth-body">
+<?= envBanner() ?>
     <div class="auth-box auth-box-wide">
         <div class="auth-logo">
             <img src="<?= iconUrl('icon-180.png') ?>" alt="" class="auth-avatar">

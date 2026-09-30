@@ -326,6 +326,34 @@ cd /opt/hesab/app && ./deploy.sh
 
 `deploy.sh` آخرین نسخه را می‌گیرد، دسترسی‌ها را درست می‌کند، pool مربوط به PHP را reload می‌کند و اگر migration جدیدی بود هشدار می‌دهد. `config/config.php` و `uploads/` را دست نمی‌زند.
 
+### با نسخه‌ی آزمایشی (staging) — روالِ پیشنهادی
+
+وقتی staging ساخته شده باشد، هیچ چیزی بی‌آنکه دیده شود روی سایتِ اصلی نمی‌رود:
+
+```bash
+cd /opt/hesab/app
+sudo ./hesabland staging     # ۱. کدِ تازه روی staging.hesab.stland.ir
+                              #    (روی گوشی باز کنید؛ بالای صفحه «نسخه‌ی آزمایشی · abc1234»)
+sudo ./hesabland release     # ۲. اگر درست بود: دقیقاً همان abc1234 روی سایتِ اصلی
+```
+
+- `release` فقط **همان کامیتی** را منتشر می‌کند که آخرین بار روی staging سبز شد. کامیت‌های تازه‌تری که هنوز در staging دیده نشده‌اند منتشر نمی‌شوند و صریح گفته می‌شوند.
+- migration ای که در staging اعمال شده، در `release` هم (بعد از بکاپ) اعمال می‌شود.
+- `sudo ./hesabland` ی معمولی هم کار می‌کند، ولی اگر نسخه‌اش در staging دیده نشده باشد اول می‌پرسد.
+- `sudo ./hesabland status` می‌گوید staging و سایتِ اصلی هر کدام روی کدام نسخه‌اند.
+
+**ساختنِ staging (یک بار):**
+
+```bash
+cd /opt/hesab/app
+sudo bash deploy/vps-setup.sh --staging --domain staging.hesab.stland.ir           # اول فقط نگاه کنید
+sudo bash deploy/vps-setup.sh --staging --domain staging.hesab.stland.ir --apply   # بعد اجرا
+```
+
+بعدش سه کار: در کلادفلر رکوردِ A برای `staging.hesab` (ابرِ نارنجی، مثلِ سایتِ اصلی)، `sudo certbot --nginx -d staging.hesab.stland.ir`، و `sudo ./hesabland staging`. بعد `https://staging.hesab.stland.ir/setup.php` یک مدیر می‌سازد. رمزِ صفحه‌ی ورودِ staging (نام: `hesab`) در پایانِ `--apply` چاپ می‌شود؛ رمزِ تازه: `sudo ./hesabland staging --password`.
+
+staging همه‌چیزش جداست: پوشه‌ی `/opt/hesab/staging`، کاربرِ `hesabstg`، دیتابیسِ `hesab_staging`، و ایمیل و پیامک و cron ندارد. برای آزمایش با داده‌ی واقعی: `sudo ./hesabland staging --clone-db` (آخرین بکاپِ سایتِ اصلی).
+
 ---
 
 ## اگر چیزی خراب شد

@@ -113,6 +113,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="theme-color" content="#2a3563">
 </head>
 <body class="auth-body">
+<?= envBanner() ?>
     <div class="auth-box auth-box-wide">
         <div class="auth-logo">
             <span class="brand-icon">⚙️</span>

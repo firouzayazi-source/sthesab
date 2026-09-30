@@ -99,6 +99,7 @@ foreach (Biz::NEW_MENU as $__h => $__l) { $__bizCmd['new'][] = ['t' => $__l, 'u'
     <script type="application/json" id="stCmdData"><?= json_encode($__bizCmd, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
 </head>
 <body class="st-body">
+<?= envBanner() ?>
 <input type="checkbox" id="stNavToggle" class="st-nav-toggle" aria-hidden="true" tabindex="-1">
 <aside class="st-side" aria-label="منوی فروشگاه">
     <a class="st-side-brand" href="<?= h(Biz::url()) ?>" title="<?= h($__bizShop) ?>">

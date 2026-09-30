@@ -24,8 +24,38 @@
 #     sudo bash deploy/vps-setup.sh --domain hesab.stland.ir --apply   # واقعاً اجرا می‌کند
 #
 # پیش از --apply حتماً یک بار بدون آن اجرا کنید و خروجی را بخوانید.
+#
+# ─── نسخه‌ی آزمایشی (staging) ─────────────────────────────────────────
+#     sudo bash deploy/vps-setup.sh --staging --domain staging.hesab.stland.ir --apply
+#
+# همین اسکریپت و همین قالب‌ها — فقط با نام‌های staging:
+#     /opt/hesab/staging، کاربر hesabstg، سایت و pool به نامِ hesab-staging،
+#     دیتابیسِ hesab_staging با کاربرِ 'hesab_stg'@'localhost'
+#     (GRANT فقط روی hesab_staging.*)، و /etc/nginx/hesab-staging.htpasswd
+#
+# ⛔ چرا همین اسکریپت و نه یک اسکریپتِ دوم: قالبِ nginx (CSP، بستنِ var/،
+#    deploy/، tests/، قاعده‌ی api/v1، sw.js) و pool (open_basedir،
+#    disable_functions) باید در هر دو **یکی** باشند. با نسخه‌ی دوم، staging
+#    دیر یا زود چیزی را نشان می‌داد که سایتِ اصلی ندارد — و آن‌وقت «در
+#    staging درست بود» دیگر هیچ چیزی را ثابت نمی‌کرد.
+#
+# سه چیز فقط در staging اضافه می‌شود: رمزِ ورود جلوی کلِ سایت (جز خودِ
+# سرور، برای سنجشِ سلامت)، X-Robots-Tag: noindex، و pool کوچکِ ondemand.
 
 set -euo pipefail
+
+# ⛔ --staging پیش از مقدارهای پیش‌فرض خوانده می‌شود، تا نام‌ها از اول
+#    staging باشند و هیچ مسیری حتی یک لحظه روی نام‌های سایتِ اصلی نرود.
+STAGING=0
+for __a in "$@"; do [[ "$__a" == "--staging" ]] && STAGING=1; done
+PROD_DIR="${PROD_DIR:-/opt/hesab/app}"
+if [[ $STAGING -eq 1 ]]; then
+    APP_DIR="${APP_DIR:-/opt/hesab/staging}"
+    APP_USER="${APP_USER:-hesabstg}"
+    DB_NAME="${DB_NAME:-hesab_staging}"
+    DB_USER="${DB_USER:-hesab_stg}"
+    SITE_NAME="${SITE_NAME:-hesab-staging}"
+fi
 
 APP_DIR="${APP_DIR:-/opt/hesab/app}"
 APP_USER="${APP_USER:-hesab}"
@@ -41,12 +71,24 @@ while [[ $# -gt 0 ]]; do
         --domain) DOMAIN="${2:-}"; shift 2 ;;
         --repo)   REPO_URL="${2:-}"; shift 2 ;;
         --apply)  APPLY=1; shift ;;
-        -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
+        --staging) shift ;;
+        -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
         *) echo "گزینه ناشناخته: $1"; exit 1 ;;
     esac
 done
 
 [[ -z "$DOMAIN" ]] && { echo "دامنه را بدهید:  --domain hesab.stland.ir"; exit 1; }
+
+# ⛔ staging هرگز روی نام‌های سایتِ اصلی نمی‌نشیند — حتی اگر کسی با متغیرِ
+#    محیطی اشتباه این کار را بخواهد. یک migration آزمایشی روی hesab_db یا
+#    یک chown روی /opt/hesab/app یعنی خواباندنِ سایتِ واقعی.
+if [[ $STAGING -eq 1 ]]; then
+    if [[ "$APP_DIR" == "$PROD_DIR" || "$APP_USER" == "hesab" || "$SITE_NAME" == "hesab" \
+          || "$DB_NAME" == "hesab_db" || "$DB_USER" == "hesab_user" ]]; then
+        echo "⛔ staging نمی‌تواند نام‌های سایتِ اصلی را بگیرد (پوشه، کاربر، سایت یا دیتابیس)."
+        exit 1
+    fi
+fi
 
 green() { printf '\033[0;32m%s\033[0m\n' "$1"; }
 red()   { printf '\033[0;31m%s\033[0m\n' "$1"; }
@@ -58,10 +100,13 @@ step()  { printf '\n\033[1m── %s\033[0m\n' "$1"; }
 PHP_VER=""
 assert_allowed() {
     local path="$1" p
+    local extra=''
+    [[ $STAGING -eq 1 ]] && extra="/etc/nginx/${SITE_NAME}.htpasswd"
     for p in "$APP_DIR" \
              "/etc/nginx/sites-available/$SITE_NAME" \
              "/etc/nginx/sites-enabled/$SITE_NAME" \
-             "/etc/php/${PHP_VER}/fpm/pool.d/${SITE_NAME}.conf"; do
+             "/etc/php/${PHP_VER}/fpm/pool.d/${SITE_NAME}.conf" \
+             "$extra"; do
         [[ -n "$p" && ( "$path" == "$p" || "$path" == "$p"/* ) ]] && return 0
     done
     red "⛔ توقف: تلاش برای نوشتن خارج از محدوده‌ی مجاز این پروژه:"
@@ -172,6 +217,16 @@ step "۳. فایل‌های پروژه در $APP_DIR"
 assert_allowed "$APP_DIR"
 if [[ -d "$APP_DIR/.git" ]]; then
     green "مخزن از قبل هست — با ./deploy.sh به‌روزش کنید."
+elif [[ $STAGING -eq 1 && -z "$REPO_URL" && -d "$PROD_DIR/.git" ]]; then
+    # ⛔ از روی مخزنِ خودِ سرور کپی می‌شود و بعد origin به همان آدرسِ سایتِ
+    #    اصلی برمی‌گردد — همراهِ همان کلیدِ استقرار (core.sshCommand). پس
+    #    staging دقیقاً همان کدی را می‌گیرد که سایتِ اصلی می‌گیرد، بی‌آنکه
+    #    کلید یا دسترسیِ تازه‌ای به گیت‌هاب لازم باشد.
+    info "کپی از مخزنِ سایتِ اصلی ($PROD_DIR) — همان origin و همان کلیدِ استقرار."
+    run "git clone --quiet '$PROD_DIR' '$APP_DIR'"
+    run "git -C '$APP_DIR' remote set-url origin \"\$(git -C '$PROD_DIR' remote get-url origin)\""
+    run "__ssh=\"\$(git -C '$PROD_DIR' config --get core.sshCommand || true)\"; [ -n \"\$__ssh\" ] && git -C '$APP_DIR' config core.sshCommand \"\$__ssh\" || true"
+    run "git -C '$APP_DIR' fetch --quiet origin"
 elif [[ -n "$REPO_URL" ]]; then
     run "mkdir -p '$APP_DIR'"
     run "git clone '$REPO_URL' '$APP_DIR'"
@@ -200,6 +255,51 @@ run "chmod 700 '$APP_DIR/var/sessions'"
 # ---------- ۴. دیتابیس ----------
 step "۴. دیتابیس"
 info "دسترسی کاربر دیتابیس فقط روی «$DB_NAME» است — نه روی دیتابیس ربات‌ها."
+if [[ $STAGING -eq 1 ]]; then
+    # ⛔ در staging خودکار است، نه چند دستورِ چاپ‌شده: پیستِ چندخطی روی
+    #    SSH موبایل به هم می‌ریزد (درسِ --verify-pass). و فقط روی نام‌هایی
+    #    که نگهبانِ بالا سنجیده: GRANT فقط روی `$DB_NAME`.*، نه *.*.
+    STG_CONF="$APP_DIR/config/config.php"
+    if [[ $APPLY -eq 1 && -f "$STG_CONF" ]]; then
+        info "config.php این نسخه از قبل هست — دیتابیس و رمزش دست‌نخورده می‌مانند."
+    elif [[ $APPLY -eq 1 ]]; then
+        STG_DB_PASS="$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 28)"
+        mysql -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_persian_ci;"
+        mysql -e "CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$STG_DB_PASS';"
+        mysql -e "ALTER USER '$DB_USER'@'localhost' IDENTIFIED BY '$STG_DB_PASS';"
+        mysql -e "GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_USER'@'localhost';"
+        mysql -e "FLUSH PRIVILEGES;"
+        green "  دیتابیسِ $DB_NAME و کاربرِ $DB_USER آماده شد."
+
+        # ⛔ config از روی config.example.php ساخته می‌شود، **نه** از کانفیگِ
+        #    سایتِ اصلی: آن یکی کلیدِ رمزنگاری، کلیدِ پنلِ پیامک، رمزِ SMTP و
+        #    توکنِ فروشگاه دارد، و هیچ‌کدام نباید در نسخه‌ی آزمایشی باشند.
+        #    ایمیل و پیامک خاموش‌اند، پس از staging هیچ پیامی به کسی نمی‌رود.
+        mkdir -p "$APP_DIR/config"
+        STG_SECRET="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+        php -r '
+            [$f, $out, $db, $user, $pass, $url, $secret] = array_slice($argv, 1);
+            $s = file_get_contents($f);
+            $set = ["DB_NAME" => $db, "DB_USER" => $user, "DB_PASSWORD" => $pass,
+                    "APP_URL" => $url, "APP_SECRET_KEY" => $secret, "APP_ENV" => "staging",
+                    "APP_ENCRYPTION_KEY" => "", "MAIL_METHOD" => "", "SMS_METHOD" => "",
+                    "STORE_API_URL" => "", "STORE_API_TOKEN" => ""];
+            foreach ($set as $k => $v) {
+                $s = preg_replace("/define\\(\x27" . $k . "\x27,\\s*\x27[^\x27]*\x27\\);/",
+                                  "define(\x27" . $k . "\x27, " . var_export($v, true) . ");", $s, 1);
+            }
+            $s = preg_replace("/define\\(\x27APP_FORCE_HTTPS\x27,\\s*false\\);/", "define(\x27APP_FORCE_HTTPS\x27, true);", $s, 1);
+            file_put_contents($out, $s);
+        ' "$APP_DIR/config/config.example.php" "$STG_CONF" "$DB_NAME" "$DB_USER" "$STG_DB_PASS" \
+          "https://$DOMAIN" "$STG_SECRET"
+        chown root:"$APP_USER" "$STG_CONF" && chmod 640 "$STG_CONF"
+        sudo -u "$APP_USER" test -r "$STG_CONF" || chmod 644 "$STG_CONF"
+        green "  نوشته شد: $STG_CONF  (APP_ENV=staging، ایمیل و پیامک خاموش)"
+    else
+        printf '  \033[0;90m→ دیتابیسِ %s و کاربرِ %s را با رمزِ تصادفی می‌سازد\033[0m\n' "$DB_NAME" "$DB_USER"
+        printf '  \033[0;90m→ می‌نویسد: %s  (از config.example.php، نه کانفیگِ سایتِ اصلی)\033[0m\n' "$APP_DIR/config/config.php"
+    fi
+else
 cat <<SQL
 
   # این‌ها را خودتان اجرا کنید (رمز را جای YOUR_STRONG_PASSWORD بگذارید):
@@ -210,8 +310,24 @@ cat <<SQL
 
   # توجه: GRANT فقط روی $DB_NAME.* است، نه *.* — این عمدی است.
 SQL
+fi
 
 # ---------- ۵. pool اختصاصی php-fpm ----------
+if [[ $STAGING -eq 1 ]]; then
+    # staging را فقط شما باز می‌کنید: پروسه‌ها تا درخواستِ بعدی نمی‌مانند،
+    # پس روزهایی که کسی نگاهش نمی‌کند هیچ حافظه‌ای از سایتِ اصلی نمی‌گیرد.
+    POOL_PM="pm = ondemand
+pm.max_children = 3
+pm.process_idle_timeout = 60s
+pm.max_requests = 500"
+else
+    POOL_PM="pm = dynamic
+pm.max_children = 12
+pm.start_servers = 2
+pm.min_spare_servers = 1
+pm.max_spare_servers = 3
+pm.max_requests = 500"
+fi
 step "۵. pool اختصاصی php-fpm"
 info "این pool تازه است و pool های موجود (اگر باشند) دست‌نخورده می‌مانند."
 info "با open_basedir، کد PHP این اپ حتی به‌طور تصادفی هم نمی‌تواند بیرون از $APP_DIR را بخواند."
@@ -237,12 +353,7 @@ listen.mode  = 0660
 ; حالا دو پروسه همیشه گرم می‌مانند (حافظه‌ی ناچیز) و سقف بالاتر است.
 ; ضمناً CSS/JS اصلاً از PHP نمی‌گذرند، پس هر بارگذاری صفحه فقط یک
 ; پروسه می‌خواهد نه چهار تا.
-pm = dynamic
-pm.max_children = 12
-pm.start_servers = 2
-pm.min_spare_servers = 1
-pm.max_spare_servers = 3
-pm.max_requests = 500
+${POOL_PM}
 
 ; حصار امنیتی: PHP این اپ فقط همین مسیرها را می‌بیند.
 ; هر تلاشی برای خواندن مسیر ربات‌ها یا هر جای دیگر سرور، خطا می‌دهد.
@@ -263,6 +374,25 @@ php_admin_value[date.timezone] = Asia/Tehran
 POOL
 
 # ---------- ۶. سایت nginx ----------
+STAGING_NGINX=''
+if [[ $STAGING -eq 1 ]]; then
+    # ⛔ «satisfy any» + allow 127.0.0.1: رمز برای همه جز خودِ سرور.
+    #    `hesabland staging` سلامت را از 127.0.0.1 می‌سنجد (--resolve)؛ بدونِ
+    #    این استثنا هر سنجش ۴۰۱ می‌گرفت و «سایت خراب است» می‌گفت. پشتِ
+    #    کلادفلر هم کسی نمی‌تواند 127.0.0.1 باشد.
+    # ⚠ چالشِ certbot (/.well-known/acme-challenge) با `return` جواب داده
+    #   می‌شود که در فازِ rewrite و پیش از رمز اجرا می‌شود — گواهی می‌گیرد.
+    STAGING_NGINX="
+    # ⛔ نسخه‌ی آزمایشی: رمز جلوی همه، ایندکس نشود.
+    satisfy any;
+    allow 127.0.0.1;
+    allow ::1;
+    deny all;
+    auth_basic \"HesabLand staging\";
+    auth_basic_user_file /etc/nginx/${SITE_NAME}.htpasswd;
+    add_header X-Robots-Tag \"noindex, nofollow\" always;
+"
+fi
 step "۶. سایت nginx"
 if [[ $SKIP_NGINX -eq 1 ]]; then
     info "رد شد — سایت گواهی‌دار موجود دست‌نخورده ماند."
@@ -309,13 +439,13 @@ server {
     add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'" always;
 
     client_max_body_size 12M;
-
+${STAGING_NGINX}
     # ---- api/v1 : آدرس تمیز برای اپ‌های موبایل ----
     # بدون این قاعده، اپ باید /api/v1/index.php/... صدا بزند (که کار
     # می‌کند و عمداً هم پشتیبانی می‌شود). با آن، /api/v1/transactions.
     #
     # ⛔ اینجا هرگز ^~ نگذارید. ^~ ارزیابیِ location های regex را متوقف
-    # می‌کند — از جمله `location ~ \.php$` — پس nginx فایل PHP را به‌جای
+    # می‌کند — از جمله \`location ~ \.php$\` — پس nginx فایل PHP را به‌جای
     # اجرا، به‌صورت فایل ثابت تحویل می‌دهد و **سورس لو می‌رود**. یک بار
     # همین اتفاق روی سرور افتاد: /api/v1/ping متنِ خامِ index.php را داد.
     # با prefix ساده، regex ها ارزیابی می‌شوند و .php به fastcgi می‌رسد.
@@ -372,6 +502,19 @@ server {
 }
 NGINX
 
+if [[ $STAGING -eq 1 ]]; then
+    HTPASS="/etc/nginx/${SITE_NAME}.htpasswd"
+    assert_allowed "$HTPASS"
+    if [[ $APPLY -eq 1 && ! -s "$HTPASS" ]]; then
+        STG_WEB_PASS="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 12)"
+        printf 'hesab:%s\n' "$(openssl passwd -apr1 "$STG_WEB_PASS")" > "$HTPASS"
+        chown root:www-data "$HTPASS"; chmod 640 "$HTPASS"
+        green "  رمزِ ورودِ staging ساخته شد (پایین چاپ می‌شود)."
+    elif [[ $APPLY -eq 0 ]]; then
+        printf '  \033[0;90m→ می‌نویسد: %s  (نام: hesab، رمزِ تصادفی)\033[0m\n' "$HTPASS"
+    fi
+fi
+
 assert_allowed "/etc/nginx/sites-enabled/${SITE_NAME}"
 run "ln -sfn '/etc/nginx/sites-available/${SITE_NAME}' '/etc/nginx/sites-enabled/${SITE_NAME}'"
 fi
@@ -385,6 +528,25 @@ run "systemctl reload php${PHP_VER}-fpm"
 
 # ---------- ۸. باقی‌مانده ----------
 step "۸. کارهایی که خودتان باید انجام دهید"
+if [[ $STAGING -eq 1 ]]; then
+cat <<NEXT
+
+  ۱. در کلادفلر یک رکورد A بسازید:  ${DOMAIN%%.*}  →  آی‌پیِ همین سرور
+     (مثلِ سایتِ اصلی، ابرِ نارنجی و SSL روی Full (strict)).
+
+  ۲. گواهی:
+       sudo certbot --nginx -d $DOMAIN
+
+  ۳. اولین استقرار (ساختارِ دیتابیس هم ساخته می‌شود):
+       cd $PROD_DIR && sudo ./hesabland staging
+
+  ۴. https://$DOMAIN/setup.php را باز کنید و یک مدیر بسازید.
+
+  نام کاربریِ صفحه‌ی رمز: hesab
+  رمز:                   ${STG_WEB_PASS:-(از قبل ساخته شده — برای رمزِ تازه: sudo ./hesabland staging --password)}
+
+NEXT
+else
 cat <<NEXT
 
   ۱. تنظیمات:
@@ -404,6 +566,7 @@ cat <<NEXT
   ۴. آزمایش: آدرس https://$DOMAIN را باز کنید.
 
 NEXT
+fi
 
 if [[ $APPLY -eq 0 ]]; then
     printf '\033[1;33mهیچ تغییری اعمال نشد (حالت نمایشی).\033[0m\n\n'

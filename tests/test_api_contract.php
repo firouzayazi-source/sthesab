@@ -422,8 +422,10 @@ if ($deploySrc !== '') {
     // ⛔ کدِ ورودی پیش از `git reset --hard` سنجیده می‌شود، نه بعدش:
     //    با فرود آمدن، opcache همان لحظه می‌بیندش و سایت پیش از هر
     //    سنجشی خوابیده است.
-    $preflightAt = strpos($deployCode, 'preflight_syntax "origin/${BRANCH}"');
-    $landAt      = strpos($deployCode, 'git reset --hard "origin/${BRANCH}"');
+    // ⚠ هدف از staging به بعد `$TARGET` است (پیش‌فرض origin/BRANCH، در release
+    //   همان کامیتِ دیده‌شده) — ترتیب همان است: اول نحو، بعد فرود.
+    $preflightAt = strpos($deployCode, 'preflight_syntax "$TARGET"');
+    $landAt      = strpos($deployCode, 'git reset --hard "$TARGET"');
     T::ok(
         $preflightAt !== false && $landAt !== false && $preflightAt < $landAt,
         '⛔ نحوِ کدِ ورودی **پیش از** نشستنش روی دیسک سنجیده می‌شود'
@@ -7369,5 +7371,75 @@ if (!preg_match('/createImageBitmap\(f\)/', $js70e) || !str_contains($js70e, 'rd
     $eBad[] = 'store.js — کوچک‌سازیِ تصویر با createImageBitmap و FileReader (نه blob:)';
 }
 T::bulk(21, $eBad, 'پیش‌گیری و فونت در پوسته، مانده‌ها یک بار، اتصالِ کالا با کلیدِ اصلی، و تصویرِ شخصی از یک مسیر');
+
+// ---------------------------------------------------------------------
+// ⛔ قاعده ۷۱ — نسخه‌ی آزمایشی (staging) و انتشارِ «همان چیزی که دیده شد».
+//    رفتار در tests/test_staging.php (با مخزن‌های واقعیِ git و nginxِ
+//    واقعی)؛ اینجا شکل، برای ماشینی که آن تست بخشی‌اش را رد می‌کند.
+//
+//    و یک خرابیِ واقعی که همین کار پیدا کرد: قالبِ nginxِ vps-setup.sh یک
+//    `heredoc`ِ بی‌کوتیشن است و داخلش یک بک‌تیکِ فرارنداده («`location ~
+//    \.php$`» در یک کامنت) **اجرا** می‌شد — `location: command not found`
+//    وسطِ نصب، و جای آن متن خالی. قاعده ۳۶ فقط رشته‌ی دابل‌کوت را می‌دید.
+// ---------------------------------------------------------------------
+T::group('قاعده ۷۱ — staging و انتشار');
+$bad71 = [];
+$hl71 = (string)file_get_contents(__DIR__ . '/../hesabland');
+$vps71 = (string)file_get_contents(__DIR__ . '/../deploy/vps-setup.sh');
+
+foreach ([
+    'cmd_release() {'                                        => 'hesabland — فرمانِ release',
+    'if cmd_deploy "--to=$sha"'                              => 'release فقط کامیتِ staging را می‌برد (--to)',
+    'git merge-base --is-ancestor "$sha" "origin/${BRANCH}"' => 'release: کامیت باید روی شاخه‌ی سایتِ اصلی باشد',
+    'if [[ "$now" != "$seen" ]]; then'                       => 'release: staging باید روی همان کامیتِ سبز باشد',
+    'git reset --hard "$TARGET" --quiet'                     => 'deploy روی همان هدفی می‌نشیند که سنجیده شد',
+    'preflight_syntax "$TARGET"'                             => 'نحو روی همان هدف سنجیده می‌شود',
+    'در staging دیده نشده'                                   => 'deploy مستقیمِ نسخه‌ی دیده‌نشده می‌پرسد',
+    'bash "$SELF" deploy --no-backup --migrate --force'      => 'staging همان deploy است، روی پوشه‌ی staging',
+    'staging)  cmd_staging "$@" ;;'                          => 'فرمانِ staging',
+    'release)  cmd_release "$@" ;;'                          => 'فرمانِ release',
+] as $needle => $what) {
+    if (!str_contains($hl71, $needle)) { $bad71[] = $what; }
+}
+if (!preg_match('/staging_guard\(\) \{.*?"\$sdb" == "\$pdb".*?"\$sh" == "\$ph".*?\n\}/s', $hl71)) {
+    $bad71[] = 'staging_guard: دیتابیس و آدرسِ staging باید با سایتِ اصلی فرق کنند';
+}
+foreach (['satisfy any;', 'allow 127.0.0.1;', 'auth_basic_user_file /etc/nginx/${SITE_NAME}.htpasswd;',
+          'X-Robots-Tag \\"noindex, nofollow\\"', 'GRANT ALL PRIVILEGES ON \\`$DB_NAME\\`.* TO',
+          '"$APP_DIR/config/config.example.php" "$STG_CONF"', '"APP_ENV" => "staging"', '"MAIL_METHOD" => ""'] as $n) {
+    if (!str_contains($vps71, $n)) { $bad71[] = "vps-setup.sh --staging: {$n}"; }
+}
+if (preg_match('#PROD_DIR/config/config\.php#', $vps71)) {
+    $bad71[] = '⛔ کانفیگِ staging از کانفیگِ سایتِ اصلی کپی نمی‌شود (کلیدها و رمزها)';
+}
+if (!preg_match('/"\$APP_DIR" == "\$PROD_DIR" \|\| "\$APP_USER" == "hesab"/', $vps71)) {
+    $bad71[] = 'vps-setup.sh: نگهبانِ «staging روی نام‌های سایتِ اصلی نه»';
+}
+foreach (['includes/header.php', 'includes/biz_head.php', 'login.php', 'store/login.php'] as $f) {
+    if (!preg_match('/^<body[^\n]*\n<\?= envBanner\(\) \?>/m', (string)file_get_contents(__DIR__ . '/../' . $f))) {
+        $bad71[] = "{$f}: نوارِ «نسخه‌ی آزمایشی» درست بعد از <body>";
+    }
+}
+
+// بک‌تیکِ فرارنداده داخلِ heredocِ بی‌کوتیشن = اجرای فرمان.
+$shFiles71 = array_merge(glob(__DIR__ . '/../deploy/*.sh') ?: [], [__DIR__ . '/../hesabland', __DIR__ . '/../deploy.sh']);
+$heredocs71 = 0;
+foreach ($shFiles71 as $f) {
+    $lines = explode("\n", (string)file_get_contents($f));
+    $end = null;
+    foreach ($lines as $i => $ln) {
+        if ($end !== null) {
+            if (rtrim($ln) === $end || ltrim($ln, "\t") === $end) { $end = null; continue; }
+            if (preg_match('/(?<!\\\\)`/', $ln)) { $bad71[] = basename($f) . ':' . ($i + 1) . ' — بک‌تیکِ فرارنداده در heredoc اجرا می‌شود'; }
+            continue;
+        }
+        if (preg_match('/<<-?\s*([A-Za-z_][A-Za-z0-9_]*)\b/', preg_replace('/#.*$/', '', $ln), $m)
+            && !preg_match('/<<-?\s*[\'"]/', $ln)) {
+            $end = $m[1]; $heredocs71++;
+        }
+    }
+}
+if ($heredocs71 < 5) { $bad71[] = "پیمایشِ heredoc فقط {$heredocs71} مورد یافت — خودِ سنجه کور شده"; }
+T::bulk(26, $bad71, 'release فقط کامیتِ دیده‌شده، staging جدا و پشتِ رمز، و هیچ بک‌تیکی در heredoc اجرا نمی‌شود');
 
 exit(T::report());

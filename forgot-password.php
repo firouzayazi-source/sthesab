@@ -63,6 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $mailReady) {
     <meta name="theme-color" content="#2a3563">
 </head>
 <body class="auth-body">
+<?= envBanner() ?>
     <div class="auth-box">
         <div class="auth-logo">
             <img src="<?= iconUrl('icon-192.png') ?>" alt="" class="brand-icon brand-icon-img" width="64" height="64">

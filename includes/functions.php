@@ -8,6 +8,36 @@ function h(?string $string): string
     return htmlspecialchars($string ?? '', ENT_QUOTES, 'UTF-8');
 }
 
+/**
+ * نوارِ «نسخه‌ی آزمایشی» — فقط وقتی `APP_ENV` برابرِ `staging` است.
+ *
+ * ⛔ دلیلش «دیده نشد» است: روی گوشی، staging و سایتِ اصلی عینِ هم‌اند و
+ *    آدم نمی‌فهمد کدام را باز کرده یا کدام کامیت را می‌بیند. این نوار
+ *    شناسه‌ی همان کامیت را می‌گوید، پس «در staging دیدم» یعنی «این کامیت
+ *    را دیدم» — همان چیزی که `hesabland release` منتشر می‌کند.
+ *
+ * بی‌کوئری (فقط `var/version.txt`) و با استایلِ درون‌خطی، تا به هیچ CSS
+ * و هیچ صفحه‌ای وابسته نباشد؛ و `pointer-events: none` تا جلوی هیچ دکمه‌ای
+ * را نگیرد. روی سایتِ اصلی رشته‌ی خالی است — یک بایت هم عوض نمی‌شود.
+ */
+function envBanner(): string
+{
+    if (!defined('APP_ENV') || strtolower(trim((string)APP_ENV)) !== 'staging') {
+        return '';
+    }
+    $v = '';
+    $f = __DIR__ . '/../var/version.txt';
+    if (is_readable($f)) {
+        $v = trim((string)strtok((string)file_get_contents($f), "\n"));
+    }
+    $label = 'نسخه‌ی آزمایشی' . ($v !== '' ? ' · ' . $v : '');
+    return '<div class="env-banner" aria-hidden="true" style="position:fixed;z-index:2147483000;'
+         . 'top:calc(2px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);'
+         . 'background:#b45309;color:#fff;font:600 11px/1.7 Vazirmatn,Tahoma,sans-serif;'
+         . 'padding:0 10px;border-radius:999px;pointer-events:none;opacity:.92;direction:rtl;'
+         . 'white-space:nowrap">' . h($label) . '</div>';
+}
+
 function formatMoney($amount): string
 {
     // جداکننده‌ی هزارگان فارسی (٬) — کامای لاتین در متن فارسی بیگانه به نظر می‌رسد

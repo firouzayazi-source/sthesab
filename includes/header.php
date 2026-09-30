@@ -91,6 +91,7 @@ if (!isset($pageDesk)) {
     <?php endif; ?>
 </head>
 <body>
+<?= envBanner() ?>
 <div class="app-shell">
     <?php include __DIR__ . '/sidebar.php'; ?>
 

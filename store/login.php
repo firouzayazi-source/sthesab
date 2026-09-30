@@ -63,6 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <?= Biz::webAppTags('فروشگاه') ?>
 </head>
 <body class="st-body st-auth">
+<?= envBanner() ?>
     <main class="st-auth-box">
         <div class="st-auth-mark is-logo" aria-hidden="true"><img src="<?= h(Biz::icon('180')) ?>" alt="" width="64" height="64"></div>
         <h1 class="st-h1">ورود به پنل فروشگاه</h1>

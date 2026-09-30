@@ -79,6 +79,7 @@ if (!$check['ok']) {
     <meta name="referrer" content="no-referrer">
 </head>
 <body class="auth-body">
+<?= envBanner() ?>
     <div class="auth-box">
         <div class="auth-logo">
             <img src="<?= iconUrl('icon-192.png') ?>" alt="" class="brand-icon brand-icon-img" width="64" height="64">

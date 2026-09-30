@@ -42,6 +42,16 @@ APP_DIR="${APP_DIR:-/opt/hesab/app}"
 APP_USER="${APP_USER:-hesab}"
 CONFIG="${CONFIG:-$APP_DIR/config/config.php}"
 
+# ⛔ نسخه‌ی آزمایشی (staging) — همین کد، پوشه و کاربر و دیتابیسِ جدا.
+#    `HESAB_ROLE=staging` را فقط خودِ `hesabland staging` می‌گذارد، وقتی
+#    همین اسکریپت را برای پوشه‌ی staging دوباره اجرا می‌کند.
+PROD_DIR="${PROD_DIR:-/opt/hesab/app}"
+STAGING_DIR="${STAGING_DIR:-/opt/hesab/staging}"
+STAGING_USER="${STAGING_USER:-hesabstg}"
+STAGING_SITE="${STAGING_SITE:-hesab-staging}"
+HESAB_ROLE="${HESAB_ROLE:-prod}"
+SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")"
+
 # ⛔ نشانه‌ی «آخرین استقرارِ **موفق**» — نه آخرین اجرا.
 #    امروز معلوم شد دیپلویِ پروژه‌ی دیگر از ۱۶ سپتامبر مرده بود و هیچ‌کس
 #    خبر نداشت، چون هیچ‌جا نمی‌گفت «آخرین بارِ موفق کِی بود». همان الگوی
@@ -77,7 +87,18 @@ hesabland — کارهای سرورِ حساب لند، همه از یک جا
   backup            بکاپِ فوریِ دیتابیس
   rollback          برگشت به نسخه‌ی قبلی
   logs              آخرین خطاهای ثبت‌شده‌ی اپ
+  staging           استقرار روی نسخه‌ی آزمایشی (اول آنجا ببینید)
+  release           انتشارِ **همان** نسخه‌ای که در staging دیدید روی سایتِ اصلی
   help              همین راهنما
+
+روالِ پیشنهادی — دو فرمان، و هیچ‌چیزِ دیده‌نشده به سایتِ اصلی نمی‌رسد:
+  sudo ./hesabland staging     ← روی گوشی staging را باز کنید و ببینید
+  sudo ./hesabland release     ← اگر درست بود، دقیقاً همان منتشر می‌شود
+
+گزینه‌های staging:
+  --branch NAME     شاخه‌ی دیگری را آزمایش کن (پیش‌فرض: شاخه‌ی سایتِ اصلی)
+  --clone-db        دیتابیسِ staging را با آخرین بکاپِ سایتِ اصلی پر کن
+  --password        رمزِ تازه برای صفحه‌ی ورودِ staging
 
 گزینه‌های deploy:
   --migrate         migration های تازه را هم اعمال کن (پیش‌فرض: فقط وضعیت)
@@ -367,6 +388,23 @@ cmd_status() {
     step "سلامتِ سایت"
     health_check || true
 
+    if [[ -d "$STAGING_DIR/.git" && "$HESAB_ROLE" != "staging" ]]; then
+        step "نسخه‌ی آزمایشی (staging)"
+        local sb sat sc
+        sb="$(read_beat "$STAGING_DIR" || true)"
+        if [[ -n "$sb" ]]; then
+            read -r sat sc <<< "$sb"
+            info "  آخرین نسخه‌ی سبزِ staging: $sc — $(( ($(date +%s) - ${sat:-0}) / 60 )) دقیقه پیش"
+            if [[ "$sc" == "$(git rev-parse --short HEAD)" ]]; then
+                info "  سایتِ اصلی همان نسخه است."
+            else
+                info "  سایتِ اصلی: $(git rev-parse --short HEAD) — برای انتشارِ نسخه‌ی staging:  sudo ./hesabland release"
+            fi
+        else
+            warn "  staging ساخته شده ولی هنوز هیچ استقرارِ سبزی ندارد."
+        fi
+    fi
+
     step "migration"
     [[ -x deploy/migrate.sh ]] && bash deploy/migrate.sh 2>&1 | sed 's/^/  /' || true
 
@@ -585,10 +623,243 @@ preflight_config() {
 }
 
 # ---------------------------------------------------------------------
+# نسخه‌ی آزمایشی (staging) و انتشار
+#
+# ⛔ کلِ نکته یک جمله است: **چیزی که روی سایتِ اصلی می‌نشیند باید همان
+#    کامیتی باشد که در staging دیده شد.** نه «آخرین کد»، نه «تقریباً همان».
+#    `release` شناسه‌ی کامیت را از نشانه‌ی سبزِ staging می‌خواند و فقط
+#    همان را منتشر می‌کند؛ کامیت‌های تازه‌تری که هنوز دیده نشده‌اند منتشر
+#    **نمی‌شوند** و صریح گفته می‌شوند. پس «کد زدیم ولی دیده نشد» ممکن
+#    نیست: یا دیده شده و منتشر می‌شود، یا دیده نشده و جلویش گرفته می‌شود.
+# ---------------------------------------------------------------------
+
+# مقدارِ یک ثابت از یک فایلِ کانفیگِ مشخص (نه `$CONFIG`ِ جاری).
+conf_get() {
+    php -r 'require $argv[1]; echo defined($argv[2]) ? (string)constant($argv[2]) : "";' \
+        "$1" "$2" 2>/dev/null || true
+}
+
+url_host() { local u="${1#http://}"; u="${u#https://}"; printf '%s' "${u%%/*}"; }
+
+# ⛔ نگهبانِ اصلی: staging هرگز روی سایتِ اصلی نمی‌نشیند. یک migrationِ
+#    آزمایشی روی hesab_db، یا یک `chown` روی /opt/hesab/app، یعنی خواباندنِ
+#    سایتِ واقعی — و همه‌ی این‌ها فقط با یک کانفیگِ کپی‌شده‌ی اشتباه.
+#    خروجیِ خالی یعنی سالم؛ هر خطِ خروجی یک علتِ رد است.
+staging_guard() {
+    local prod_conf="$1" stg_conf="$2" prod_dir="$3" stg_dir="$4"
+    local a b
+    a="$(readlink -f "$prod_dir" 2>/dev/null || printf '%s' "$prod_dir")"
+    b="$(readlink -f "$stg_dir" 2>/dev/null || printf '%s' "$stg_dir")"
+    if [[ "$a" == "$b" ]]; then
+        echo "پوشه‌ی staging همان پوشه‌ی سایتِ اصلی است ($b)."; return 1
+    fi
+    if [[ ! -d "$stg_dir/.git" ]]; then
+        echo "staging هنوز ساخته نشده ($stg_dir). اول:"
+        echo "  sudo bash deploy/vps-setup.sh --staging --domain staging.hesab.stland.ir --apply"
+        return 1
+    fi
+    if [[ ! -r "$stg_conf" ]]; then
+        echo "کانفیگِ staging نیست یا خوانده نمی‌شود: $stg_conf"; return 1
+    fi
+    if ! php -l "$stg_conf" >/dev/null 2>&1; then
+        echo "کانفیگِ staging خطای نحوی دارد: $(php -l "$stg_conf" 2>&1 | head -1)"; return 1
+    fi
+    if [[ "$(conf_get "$stg_conf" APP_ENV)" != "staging" ]]; then
+        echo "در کانفیگِ staging باید باشد:  define('APP_ENV', 'staging');"; return 1
+    fi
+    local pdb sdb ph sh
+    pdb="$(conf_get "$prod_conf" DB_NAME)"; sdb="$(conf_get "$stg_conf" DB_NAME)"
+    ph="$(url_host "$(conf_get "$prod_conf" APP_URL)")"; sh="$(url_host "$(conf_get "$stg_conf" APP_URL)")"
+    if [[ -z "$sdb" || "$sdb" == "$pdb" ]]; then
+        echo "دیتابیسِ staging («${sdb:-خالی}») باید با دیتابیسِ سایتِ اصلی فرق کند."; return 1
+    fi
+    if [[ -z "$sh" || "$sh" == "$ph" ]]; then
+        echo "آدرسِ staging («${sh:-خالی}») باید با آدرسِ سایتِ اصلی فرق کند."; return 1
+    fi
+    return 0
+}
+
+# ایمیل، پیامک یا اتصالِ فروشگاه در staging روشن است؟ هر خط یک مورد.
+staging_outbound() {
+    local c="$1" m
+    m="$(conf_get "$c" MAIL_METHOD)"; [[ -n "$m" ]] && echo "ایمیل روشن است (MAIL_METHOD=$m)"
+    m="$(conf_get "$c" SMS_METHOD)";  [[ -n "$m" && "$m" != "log" ]] && echo "پیامک روشن است (SMS_METHOD=$m)"
+    m="$(conf_get "$c" STORE_API_URL)"; [[ -n "$m" ]] && echo "اتصال به حسابداریِ فروشگاه روشن است (STORE_API_URL)"
+    return 0
+}
+
+# «اولین کامیت + زمان» از نشانه‌ی آخرین استقرارِ **سبز**.
+read_beat() { local f="$1/var/deploy-ok.beat"; [[ -r "$f" ]] && head -1 "$f"; }
+
+cmd_staging() {
+    local branch='' clone=0 pass=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --branch)    branch="${2:-}"; shift 2 ;;
+            --clone-db)  clone=1; shift ;;
+            --password)  pass=1; shift ;;
+            *) red "گزینه‌ی ناشناخته برای staging: $1"; return 1 ;;
+        esac
+    done
+
+    local stg_conf="$STAGING_DIR/config/config.php" why
+    bold "══ نسخه‌ی آزمایشی (staging) ══"
+    if ! why="$(staging_guard "$PROD_DIR/config/config.php" "$stg_conf" "$PROD_DIR" "$STAGING_DIR")"; then
+        red "⛔ $why"
+        return 1
+    fi
+    local host; host="$(url_host "$(conf_get "$stg_conf" APP_URL)")"
+
+    # ---------- رمزِ تازه ----------
+    if (( pass )); then
+        local hp="/etc/nginx/${STAGING_SITE}.htpasswd" pw
+        pw="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 12)"
+        cp -p "$hp" "$hp.bak" 2>/dev/null || true
+        printf 'hesab:%s\n' "$(openssl passwd -apr1 "$pw")" > "$hp"
+        chown root:www-data "$hp" 2>/dev/null || true; chmod 640 "$hp"
+        if nginx -t >/dev/null 2>&1 && systemctl reload nginx; then
+            green "✓ رمزِ تازه‌ی staging — نام: hesab   رمز: $pw"
+            return 0
+        fi
+        [[ -f "$hp.bak" ]] && mv "$hp.bak" "$hp"
+        red "⛔ nginx -t رد شد؛ رمزِ قبلی برگشت."
+        return 1
+    fi
+
+    # ---------- گواهی ----------
+    local site="/etc/nginx/sites-available/${STAGING_SITE}"
+    if [[ -r "$site" ]] && ! grep -q ssl_certificate "$site"; then
+        red "⛔ staging هنوز گواهی ندارد. اول رکوردِ DNS و بعد:"
+        red "   sudo certbot --nginx -d $host"
+        return 1
+    fi
+
+    # ---------- ایمیل و پیامک ----------
+    local out; out="$(staging_outbound "$stg_conf")"
+    if [[ -n "$out" ]]; then
+        warn "⚠ در کانفیگِ staging:"
+        printf '%s\n' "$out" | sed 's/^/     /'
+        warn "  نسخه‌ی آزمایشی نباید به کسی پیام بفرستد — در $stg_conf خاموششان کنید."
+    fi
+
+    # ---------- کپیِ دیتابیس ----------
+    if (( clone )); then
+        # ⛔ با داده‌ی واقعی، ایمیل یا پیامکِ روشن یعنی staging به کاربرانِ
+        #    واقعی پیام می‌فرستد (بازیابیِ رمز، یادآوری) — پس اینجا اخطار
+        #    کافی نیست، جلویش گرفته می‌شود.
+        if [[ -n "$out" ]]; then
+            red "⛔ کپیِ دیتابیسِ واقعی با ایمیل/پیامکِ روشن انجام نمی‌شود."
+            return 1
+        fi
+        local bk; bk="$(ls -1t /opt/hesab/backups/*.sql.gz 2>/dev/null | head -1 || true)"
+        [[ -n "$bk" ]] || { red "⛔ هیچ بکاپی نیست. اول:  sudo ./hesabland backup"; return 1; }
+        step "پر کردنِ دیتابیسِ staging با $(basename "$bk")"
+        warn "  ⚠ داده‌ی واقعیِ کاربران در staging می‌نشیند (پشتِ رمز، بی‌ایمیل و بی‌پیامک)."
+        APP_DIR="$PROD_DIR" bash "$PROD_DIR/deploy/restore.sh" --admin \
+            --into "$(conf_get "$stg_conf" DB_NAME)" "$bk" 2>&1 | sed 's/^/  /'
+        [[ ${PIPESTATUS[0]} -eq 0 ]] || { red "⛔ کپیِ دیتابیس شکست خورد."; return 1; }
+    fi
+
+    # ---------- شاخه ----------
+    [[ -n "$branch" ]] || branch="$(git -C "$PROD_DIR" rev-parse --abbrev-ref HEAD)"
+    git -C "$STAGING_DIR" fetch --all --quiet
+    if ! git -C "$STAGING_DIR" rev-parse --verify --quiet "origin/$branch" >/dev/null; then
+        red "⛔ شاخه‌ی «$branch» روی گیت‌هاب پیدا نشد."
+        return 1
+    fi
+    # ⚠ فقط اشاره‌گرِ شاخه جابه‌جا می‌شود، نه فایل‌ها: فرود را خودِ deploy
+    #   انجام می‌دهد، **بعد از** سنجشِ نحو — همان ترتیبِ سایتِ اصلی.
+    if [[ "$(git -C "$STAGING_DIR" rev-parse --abbrev-ref HEAD)" != "$branch" ]]; then
+        git -C "$STAGING_DIR" checkout -q -B "$branch" HEAD
+    fi
+    git -C "$STAGING_DIR" branch -q --set-upstream-to="origin/$branch" "$branch" 2>/dev/null || true
+
+    # ---------- همان استقرار، روی پوشه‌ی staging ----------
+    # بکاپ لازم نیست (نسخه‌ی دورریختنی است) و migration همیشه اعمال
+    # می‌شود — staging دقیقاً همان جایی است که migration باید اول آنجا
+    # آزموده شود.
+    if APP_DIR="$STAGING_DIR" APP_USER="$STAGING_USER" CONFIG="$stg_conf" HESAB_ROLE=staging \
+         bash "$SELF" deploy --no-backup --migrate --force; then
+        local c; c="$(git -C "$STAGING_DIR" rev-parse --short HEAD)"
+        echo
+        bold "نسخه‌ی $c روی staging است:  https://$host"
+        info "  بالای هر صفحه نوشته «نسخه‌ی آزمایشی · $c» — همان را ببینید."
+        info "  اگر درست بود:  sudo ./hesabland release"
+        return 0
+    fi
+    return 1
+}
+
+cmd_release() {
+    local yes=0
+    for a in "$@"; do [[ "$a" == "--yes" ]] && yes=1; done
+    if [[ "$HESAB_ROLE" == "staging" ]]; then red "release فقط روی سایتِ اصلی."; return 1; fi
+
+    bold "══ انتشار روی سایتِ اصلی ══"
+    local beat at seen
+    beat="$(read_beat "$STAGING_DIR" || true)"
+    if [[ -z "$beat" ]]; then
+        red "⛔ staging هنوز هیچ استقرارِ سبزی ندارد. اول:  sudo ./hesabland staging"
+        return 1
+    fi
+    read -r at seen <<< "$beat"
+    local now; now="$(git -C "$STAGING_DIR" rev-parse --short HEAD 2>/dev/null || true)"
+    if [[ "$now" != "$seen" ]]; then
+        red "⛔ staging الان روی $now است ولی آخرین استقرارِ سبزش $seen بود —"
+        red "   یعنی آخرین استقرارِ staging سالم تمام نشد. اول درستش کنید."
+        return 1
+    fi
+    local sha; sha="$(git -C "$STAGING_DIR" rev-parse HEAD)"
+
+    git fetch --all --quiet
+    local BRANCH; BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+    if ! git cat-file -e "${sha}^{commit}" 2>/dev/null \
+         || ! git merge-base --is-ancestor "$sha" "origin/${BRANCH}" 2>/dev/null; then
+        red "⛔ نسخه‌ی staging ($seen) روی شاخه‌ی سایتِ اصلی («$BRANCH») نیست."
+        red "   staging شاخه‌ی دیگری را نشان می‌دهد:  sudo ./hesabland staging"
+        return 1
+    fi
+
+    local cur; cur="$(git rev-parse --short HEAD)"
+    if [[ "$(git rev-parse HEAD)" == "$sha" ]]; then
+        green "✓ سایتِ اصلی همین حالا همان نسخه‌ی staging است ($seen). کاری لازم نیست."
+        return 0
+    fi
+
+    local age=$(( ($(date +%s) - ${at:-0}) / 60 ))
+    info "نسخه‌ی دیده‌شده در staging: $seen  ($age دقیقه پیش سبز شد)"
+    info "سایتِ اصلی الان:            $cur"
+    info "آنچه منتشر می‌شود:"
+    git log --oneline "HEAD..$sha" | sed 's/^/  /'
+    local newer; newer="$(git rev-list --count "$sha..origin/${BRANCH}")"
+    if (( newer > 0 )); then
+        warn "⚠ $newer کامیتِ تازه‌تر روی گیت‌هاب هست که در staging دیده نشده — **منتشر نمی‌شوند**."
+    fi
+
+    local mig=()
+    if [[ -n "$(git diff --name-only HEAD "$sha" -- 'migration_*.sql' 'schema.sql')" ]]; then
+        mig=(--migrate)
+        info "این نسخه migration دارد (در staging اعمال و آزموده شد) — اینجا هم اعمال می‌شود، بعد از بکاپ."
+    fi
+
+    if (( ! yes )); then
+        read -r -p "این همان نسخه‌ای است که در staging دیدید و درست بود؟ منتشر شود؟ (y/N) " a
+        [[ "${a,,}" == "y" ]] || { info "لغو شد. چیزی عوض نشد."; return 1; }
+    fi
+
+    if cmd_deploy "--to=$sha" ${mig[@]+"${mig[@]}"}; then
+        green "سایتِ اصلی حالا دقیقاً همان نسخه‌ای است که در staging دیدید: $seen"
+        return 0
+    fi
+    return 1
+}
+
+# ---------------------------------------------------------------------
 cmd_deploy() {
-    local do_migrate=0 do_backup=1 do_health=1 force=0
+    local do_migrate=0 do_backup=1 do_health=1 force=0 to=''
     for a in "$@"; do
         case "$a" in
+            --to=*)       to="${a#--to=}" ;;
             --migrate)    do_migrate=1 ;;
             --no-backup)  do_backup=0 ;;
             --no-health)  do_health=0 ;;
@@ -598,7 +869,11 @@ cmd_deploy() {
         esac
     done
 
-    bold "══ استقرارِ حساب لند ══"
+    if [[ "$HESAB_ROLE" == "staging" ]]; then
+        bold "══ استقرار روی نسخه‌ی آزمایشی ($APP_DIR) ══"
+    else
+        bold "══ استقرارِ حساب لند ══"
+    fi
 
     # ---------- تغییراتِ محلیِ سرور ----------
     if ! git diff --quiet || ! git diff --cached --quiet; then
@@ -619,17 +894,32 @@ cmd_deploy() {
     BEFORE=$(git rev-parse --short HEAD)
     git fetch --all --quiet
     BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    local TARGET="${to:-origin/${BRANCH}}"
 
-    if git diff --quiet HEAD "origin/${BRANCH}" 2>/dev/null; then
+    if git diff --quiet HEAD "$TARGET" 2>/dev/null; then
         info "تغییری نبود (نسخه $BEFORE)."
     else
         info "تغییراتِ ورودی:"
-        git log --oneline "HEAD..origin/${BRANCH}" | sed 's/^/  /'
+        git log --oneline "HEAD..$TARGET" | sed 's/^/  /'
+    fi
+
+    # ⛔ وقتی staging هست، استقرارِ مستقیمِ چیزی که آنجا دیده نشده یک
+    #    تصمیمِ صریح است، نه پیش‌فرض. `release` همان دیده‌شده را می‌برد.
+    if [[ "$HESAB_ROLE" != "staging" && -z "$to" && $force -eq 0 && -d "$STAGING_DIR/.git" ]]; then
+        local __seen
+        __seen="$(read_beat "$STAGING_DIR" | awk '{print $2}' || true)"
+        if [[ "$(git rev-parse --short "$TARGET")" != "${__seen:-}" ]] \
+           && ! git diff --quiet HEAD "$TARGET" 2>/dev/null; then
+            warn "⚠ این نسخه ($(git rev-parse --short "$TARGET")) در staging دیده نشده."
+            warn "  برای انتشارِ همان چیزی که دیدید:  sudo ./hesabland release"
+            read -r -p "با این حال مستقیم روی سایتِ اصلی برود؟ (y/N) " __a
+            [[ "${__a,,}" == "y" ]] || { info "لغو شد. چیزی عوض نشد."; exit 1; }
+        fi
     fi
 
     # ---------- نحو، پیش از فرود ----------
     step "بررسیِ نحوِ کدِ ورودی (پیش از نشستن روی دیسک)"
-    preflight_syntax "origin/${BRANCH}" || exit 1
+    preflight_syntax "$TARGET" || exit 1
 
     preflight_config || exit 1
 
@@ -652,7 +942,7 @@ cmd_deploy() {
     fi
 
     # ---------- فرود ----------
-    git reset --hard "origin/${BRANCH}" --quiet
+    git reset --hard "$TARGET" --quiet
     AFTER=$(git rev-parse --short HEAD)
     if [[ "$BEFORE" == "$AFTER" ]]; then
         info "نسخه همان $AFTER ماند."
@@ -762,6 +1052,8 @@ case "$CMD" in
     backup)   cmd_backup "$@" ;;
     rollback) cmd_rollback "$@" ;;
     logs)     cmd_logs ;;
+    staging)  cmd_staging "$@" ;;
+    release)  cmd_release "$@" ;;
     help|-h|--help) usage ;;
     --*)      cmd_deploy "$CMD" "$@" ;;
     *)        red "فرمانِ ناشناخته: $CMD"; echo; usage; exit 1 ;;

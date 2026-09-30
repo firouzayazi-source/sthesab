@@ -109,6 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="theme-color" content="#2a3563">
 </head>
 <body class="auth-body">
+<?= envBanner() ?>
     <div class="auth-box">
         <div class="auth-logo">
             <?php if ($loginAvatar !== null): ?>
