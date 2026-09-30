@@ -342,6 +342,18 @@ sudo ./hesabland release     # ۲. اگر درست بود: دقیقاً همان
 - `sudo ./hesabland` ی معمولی هم کار می‌کند، ولی اگر نسخه‌اش در staging دیده نشده باشد اول می‌پرسد.
 - `sudo ./hesabland status` می‌گوید staging و سایتِ اصلی هر کدام روی کدام نسخه‌اند.
 
+**فعلاً مستقیم روی سایتِ اصلی (staging محفوظ می‌ماند):**
+
+```bash
+cd /opt/hesab/app && sudo ./hesabland staging --pause
+```
+
+از آن به بعد `sudo ./hesabland` بی‌پرسش مستقیم روی سایتِ اصلی می‌رود. برگشت به روالِ staging:
+
+```bash
+cd /opt/hesab/app && sudo ./hesabland staging --resume
+```
+
 **ساختنِ staging (یک بار):**
 
 ```bash

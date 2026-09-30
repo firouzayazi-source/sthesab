@@ -46,6 +46,11 @@ CONFIG="${CONFIG:-$APP_DIR/config/config.php}"
 #    `HESAB_ROLE=staging` را فقط خودِ `hesabland staging` می‌گذارد، وقتی
 #    همین اسکریپت را برای پوشه‌ی staging دوباره اجرا می‌کند.
 PROD_DIR="${PROD_DIR:-/opt/hesab/app}"
+# ⛔ «فعلاً مستقیم روی سایتِ اصلی» یک نشانه‌ی صریح است، نه پاک کردنِ staging:
+#    پوشه، دیتابیس، سایت و رمزِ staging دست‌نخورده می‌مانند و با --resume
+#    همه‌چیز همان‌جا که بود ادامه پیدا می‌کند. فقط پرسشِ «در staging دیده
+#    نشده» خاموش می‌شود — آن هم آگاهانه و قابلِ دیدن در `status`.
+STAGING_PAUSE="${STAGING_PAUSE:-$PROD_DIR/var/staging-paused}"
 STAGING_DIR="${STAGING_DIR:-/opt/hesab/staging}"
 STAGING_USER="${STAGING_USER:-hesabstg}"
 STAGING_SITE="${STAGING_SITE:-hesab-staging}"
@@ -99,6 +104,8 @@ hesabland — کارهای سرورِ حساب لند، همه از یک جا
   --branch NAME     شاخه‌ی دیگری را آزمایش کن (پیش‌فرض: شاخه‌ی سایتِ اصلی)
   --clone-db        دیتابیسِ staging را با آخرین بکاپِ سایتِ اصلی پر کن
   --password        رمزِ تازه برای صفحه‌ی ورودِ staging
+  --pause           فعلاً مستقیم روی سایتِ اصلی (deploy دیگر نمی‌پرسد؛ staging سرِ جایش می‌ماند)
+  --resume          دوباره: اول staging، بعد release
 
 گزینه‌های deploy:
   --migrate         migration های تازه را هم اعمال کن (پیش‌فرض: فقط وضعیت)
@@ -411,6 +418,10 @@ cmd_status() {
 
     if [[ -d "$STAGING_DIR/.git" && "$HESAB_ROLE" != "staging" ]]; then
         step "نسخه‌ی آزمایشی (staging)"
+        if [[ -e "$STAGING_PAUSE" ]]; then
+            warn "  کنار گذاشته شده (--pause): استقرار مستقیم روی سایتِ اصلی می‌رود."
+            info "  برگشت:  sudo ./hesabland staging --resume"
+        fi
         local sb sat sc
         sb="$(read_beat "$STAGING_DIR" || true)"
         if [[ -n "$sb" ]]; then
@@ -719,6 +730,16 @@ cmd_staging() {
             --branch)    branch="${2:-}"; shift 2 ;;
             --clone-db)  clone=1; shift ;;
             --password)  pass=1; shift ;;
+            --pause)
+                mkdir -p "$(dirname "$STAGING_PAUSE")" 2>/dev/null || true
+                date +%s > "$STAGING_PAUSE"
+                green "✓ staging کنار گذاشته شد — از این به بعد  sudo ./hesabland  مستقیم روی سایتِ اصلی می‌رود."
+                info "  staging (پوشه، دیتابیس، رمز) سرِ جایش است. برگشت:  sudo ./hesabland staging --resume"
+                return 0 ;;
+            --resume)
+                rm -f "$STAGING_PAUSE"
+                green "✓ staging دوباره فعال است: اول  sudo ./hesabland staging  و بعد  sudo ./hesabland release"
+                return 0 ;;
             *) red "گزینه‌ی ناشناخته برای staging: $1"; return 1 ;;
         esac
     done
@@ -931,7 +952,7 @@ cmd_deploy() {
 
     # ⛔ وقتی staging هست، استقرارِ مستقیمِ چیزی که آنجا دیده نشده یک
     #    تصمیمِ صریح است، نه پیش‌فرض. `release` همان دیده‌شده را می‌برد.
-    if [[ "$HESAB_ROLE" != "staging" && -z "$to" && $force -eq 0 && -d "$STAGING_DIR/.git" ]]; then
+    if [[ "$HESAB_ROLE" != "staging" && -z "$to" && $force -eq 0 && -d "$STAGING_DIR/.git" && ! -e "$STAGING_PAUSE" ]]; then
         local __seen
         __seen="$(read_beat "$STAGING_DIR" | awk '{print $2}' || true)"
         if [[ "$(git rev-parse --short "$TARGET")" != "${__seen:-}" ]] \

@@ -212,6 +212,19 @@ $before = $sha("$R/prod");
 T::ok($rc !== 0 && str_contains($o, 'در staging دیده نشده'), 'deploy مستقیمِ نسخه‌ی دیده‌نشده (C) می‌پرسد');
 T::same($before, $sha("$R/prod"), 'با «n» سایتِ اصلی دست نخورد');
 
+// --pause: فعلاً مستقیم روی سایتِ اصلی، بی‌پرسش — و staging دست‌نخورده
+$pauseEnv = "\nSTAGING_PAUSE='$R/prod/var/staging-paused'\n";
+[$rc, $o] = $bash($stub . $pauseEnv . "cmd_staging --pause");
+T::ok($rc === 0 && is_file("$R/prod/var/staging-paused") && is_dir("$R/stag/.git"), '--pause نشانه می‌گذارد و staging سرِ جایش می‌ماند');
+[$rc, $o] = $bash($stub . $pauseEnv . "cmd_deploy", "n\n");
+T::ok($rc === 0 && !str_contains($o, 'در staging دیده نشده'), 'با --pause، deploy بی‌پرسش روی سایتِ اصلی می‌رود' . ($rc ? " — " . substr($o, -300) : ''));
+T::same($sha("$R/prod", 'origin/main'), $sha("$R/prod"), 'و سایتِ اصلی روی آخرین کامیت نشست');
+[$rc, $o] = $bash($stub . $pauseEnv . "cmd_staging --resume");
+T::ok($rc === 0 && !is_file("$R/prod/var/staging-paused"), '--resume نشانه را برمی‌دارد');
+$bash("cd '$R/prod' && git reset -q --hard origin/main~1");
+[$rc, $o] = $bash($stub . $pauseEnv . "cmd_deploy", "n\n");
+T::ok($rc !== 0 && str_contains($o, 'در staging دیده نشده'), 'بعد از --resume، deploy دوباره می‌پرسد');
+
 // =====================================================================
 T::group('staging — همان استقرار، روی پوشه‌ی staging');
 
