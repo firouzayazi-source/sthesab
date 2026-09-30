@@ -734,9 +734,14 @@ cmd_staging() {
     # ---------- رمزِ تازه ----------
     if (( pass )); then
         local hp="/etc/nginx/${STAGING_SITE}.htpasswd" pw
-        pw="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 12)"
+        # ⛔ رمز فقط حروفِ کوچک و رقم است و نامِ کاربری با «H»ِ بزرگ هم پذیرفته
+        #    می‌شود: کادرِ ورودِ سافاری روی آیفون حرفِ اول را خودش بزرگ می‌کند، پس
+        #    «hesab» به «Hesab» تبدیل می‌شد و رمزِ درست هم رد می‌شد (اولین ورودِ
+        #    واقعی همین بود). حروفِ شبیه‌به‌هم (l، o، 0، 1) هم عمداً نیستند.
+        pw="$(head -c 64 /dev/urandom | tr -dc 'a-km-np-z2-9' | head -c 10)"
         cp -p "$hp" "$hp.bak" 2>/dev/null || true
-        printf 'hesab:%s\n' "$(openssl passwd -apr1 "$pw")" > "$hp"
+        local h; h="$(openssl passwd -apr1 "$pw")"
+        printf 'hesab:%s\nHesab:%s\n' "$h" "$h" > "$hp"
         chown root:www-data "$hp" 2>/dev/null || true; chmod 640 "$hp"
         if nginx -t >/dev/null 2>&1 && systemctl reload nginx; then
             green "✓ رمزِ تازه‌ی staging — نام: hesab   رمز: $pw"

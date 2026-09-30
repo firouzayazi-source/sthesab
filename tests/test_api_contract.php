@@ -7398,6 +7398,7 @@ foreach ([
     'bash "$SELF" deploy --no-backup --migrate --force'      => 'staging همان deploy است، روی پوشه‌ی staging',
     'staging)  cmd_staging "$@" ;;'                          => 'فرمانِ staging',
     'release)  cmd_release "$@" ;;'                          => 'فرمانِ release',
+    "printf 'hesab:%s\\nHesab:%s\\n'"                        => '--password: «Hesab»ِ بزرگ‌شده‌ی آیفون هم پذیرفته می‌شود',
 ] as $needle => $what) {
     if (!str_contains($hl71, $needle)) { $bad71[] = $what; }
 }
@@ -7406,7 +7407,7 @@ if (!preg_match('/staging_guard\(\) \{.*?"\$sdb" == "\$pdb".*?"\$sh" == "\$ph".*
 }
 foreach (['satisfy any;', 'allow 127.0.0.1;', 'auth_basic_user_file /etc/nginx/${SITE_NAME}.htpasswd;',
           'X-Robots-Tag \\"noindex, nofollow\\"', 'GRANT ALL PRIVILEGES ON \\`$DB_NAME\\`.* TO',
-          '"$APP_DIR/config/config.example.php" "$STG_CONF"', '"APP_ENV" => "staging"', '"MAIL_METHOD" => ""'] as $n) {
+          '"$APP_DIR/config/config.example.php" "$STG_CONF"', "printf 'hesab:%s\\nHesab:%s\\n'", "tr -dc 'a-km-np-z2-9'", '"APP_ENV" => "staging"', '"MAIL_METHOD" => ""'] as $n) {
     if (!str_contains($vps71, $n)) { $bad71[] = "vps-setup.sh --staging: {$n}"; }
 }
 if (preg_match('#PROD_DIR/config/config\.php#', $vps71)) {
@@ -7440,6 +7441,6 @@ foreach ($shFiles71 as $f) {
     }
 }
 if ($heredocs71 < 5) { $bad71[] = "پیمایشِ heredoc فقط {$heredocs71} مورد یافت — خودِ سنجه کور شده"; }
-T::bulk(26, $bad71, 'release فقط کامیتِ دیده‌شده، staging جدا و پشتِ رمز، و هیچ بک‌تیکی در heredoc اجرا نمی‌شود');
+T::bulk(29, $bad71, 'release فقط کامیتِ دیده‌شده، staging جدا و پشتِ رمز، و هیچ بک‌تیکی در heredoc اجرا نمی‌شود');
 
 exit(T::report());

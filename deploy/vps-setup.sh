@@ -509,8 +509,13 @@ if [[ $STAGING -eq 1 ]]; then
     HTPASS="/etc/nginx/${SITE_NAME}.htpasswd"
     assert_allowed "$HTPASS"
     if [[ $APPLY -eq 1 && ! -s "$HTPASS" ]]; then
-        STG_WEB_PASS="$(head -c 24 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 12)"
-        printf 'hesab:%s\n' "$(openssl passwd -apr1 "$STG_WEB_PASS")" > "$HTPASS"
+        # ⛔ رمز فقط حروفِ کوچک و رقم است و نامِ کاربری با «H»ِ بزرگ هم پذیرفته
+        #    می‌شود: کادرِ ورودِ سافاری روی آیفون حرفِ اول را خودش بزرگ می‌کند، پس
+        #    «hesab» به «Hesab» تبدیل می‌شد و رمزِ درست هم رد می‌شد (اولین ورودِ
+        #    واقعی همین بود). حروفِ شبیه‌به‌هم (l، o، 0، 1) هم عمداً نیستند.
+        STG_WEB_PASS="$(head -c 64 /dev/urandom | tr -dc 'a-km-np-z2-9' | head -c 10)"
+        __h="$(openssl passwd -apr1 "$STG_WEB_PASS")"
+        printf 'hesab:%s\nHesab:%s\n' "$__h" "$__h" > "$HTPASS"
         chown root:www-data "$HTPASS"; chmod 640 "$HTPASS"
         green "  رمزِ ورودِ staging ساخته شد (پایین چاپ می‌شود)."
     elif [[ $APPLY -eq 0 ]]; then
