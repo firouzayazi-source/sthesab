@@ -537,7 +537,7 @@ final class BizInvoices
         if ($inv['status'] !== 'draft') { return ['ok' => false, 'message' => 'این سند از قبل صادر شده است.']; }
         $kind = (string)$inv['kind'];
 
-        $st = $pdo->prepare('SELECT l.*, pr.track_stock FROM biz_invoice_lines l
+        $st = $pdo->prepare('SELECT l.*, pr.track_stock, pr.avg_cost FROM biz_invoice_lines l
                              LEFT JOIN biz_products pr ON pr.id = l.product_id AND pr.user_id = l.user_id
                              WHERE l.invoice_id = :id AND l.user_id = :u ORDER BY l.line_no, l.id');
         $st->execute(['id' => $id, 'u' => $userId]);
@@ -583,24 +583,28 @@ final class BizInvoices
             }
             $moves[(int)$l['product_id']][] = ['qty' => $sign * $q, 'unit_cost' => $cost, 'date' => (string)$inv['inv_date']];
         }
-        $post = BizStock::postDoc($userId, $kind, $id, $moves);
-        if (!$post['ok']) { return $post; }
-        // ⛔ IMEI پس از قفلِ ردیفِ کالا (همان postDoc) سنجیده می‌شود: دو صدورِ
-        //    هم‌زمانِ یک گوشی پشتِ هم می‌افتند، نه کنارِ هم.
-        $imeiErr = BizSerial::check($pdo, $userId, $kind, $id, $lines);
-        if ($imeiErr !== null) { return ['ok' => false, 'message' => $imeiErr]; }
 
-        // بهای تمام‌شده‌ی هر ردیف — برای سودِ ناخالص. فروش: میانگینِ همان لحظه.
+        // بهای تمام‌شده‌ی هر ردیف — برای سودِ ناخالص. ⛔ **پیش از** `postDoc()`:
+        //    برای فروش این فقط عددِ اولیه است؛ `BizStock::recalc()` (داخلِ همان
+        //    postDoc) بهای درست را می‌نویسد — میانگینِ **تاریخِ همین سند**، یا بهای
+        //    خریدِ همان گوشی — و هر بار که خریدی پیش از آن ثبت یا اصلاح شود دوباره.
         $up = $pdo->prepare('UPDATE biz_invoice_lines SET unit_cost = :c WHERE id = :id AND user_id = :u');
         foreach ($lines as $l) {
             $pid = $l['product_id'] !== null ? (int)$l['product_id'] : 0;
             if ($pid === 0) { $c = null; }
             elseif ($kind === 'purchase') { $q = (float)$l['qty']; $c = $q > 0 ? (int)round((int)$l['net_total'] / $q) : 0; }
             elseif ($l['ref_line_id'] !== null && isset($refCost[(int)$l['ref_line_id']])) { $c = $refCost[(int)$l['ref_line_id']]; }
-            elseif ((int)$l['track_stock'] === 1) { $c = (int)round($post['avg'][$pid] ?? 0); }
+            elseif ((int)$l['track_stock'] === 1) { $c = (int)round((float)$l['avg_cost']); }
             else { $c = 0; }                                                              // خدمت: بهای تمام‌شده‌ی صفر
             $up->execute(['c' => $c, 'id' => (int)$l['id'], 'u' => $userId]);
         }
+
+        $post = BizStock::postDoc($userId, $kind, $id, $moves);
+        if (!$post['ok']) { return $post; }
+        // ⛔ IMEI پس از قفلِ ردیفِ کالا (همان postDoc) سنجیده می‌شود: دو صدورِ
+        //    هم‌زمانِ یک گوشی پشتِ هم می‌افتند، نه کنارِ هم.
+        $imeiErr = BizSerial::check($pdo, $userId, $kind, $id, $lines);
+        if ($imeiErr !== null) { return ['ok' => false, 'message' => $imeiErr]; }
 
         $pdo->prepare("UPDATE biz_invoices SET status = 'issued', number = :n, issued_at = NOW(), voided_at = NULL
                        WHERE id = :id AND user_id = :u")->execute(['n' => $number, 'id' => $id, 'u' => $userId]);
@@ -643,8 +647,9 @@ final class BizInvoices
     }
 
     /**
-     * صادرشده → پیش‌نویس (برای اصلاح). فقط وقتی هیچ دریافت/پرداختی به آن
-     * نخورده و هیچ برگشتی از آن نیست؛ شماره می‌ماند.
+     * صادرشده → پیش‌نویس (برای اصلاح)؛ شماره می‌ماند. فقط وقتی هیچ برگشتی از
+     * آن نیست. دریافت/پرداختِ همراهش باطل می‌شود و دریافتِ جدا روی حسابِ
+     * طرف‌حساب می‌ماند و با صدورِ دوباره برمی‌گردد (`undo()`).
      * @return array{ok:bool, message:string}
      */
     public static function unissue(int $userId, int $id): array
@@ -681,14 +686,22 @@ final class BizInvoices
             $pays = $pdo->prepare("SELECT id, origin_invoice FROM biz_payments WHERE invoice_id = :id AND user_id = :u AND status = 'ok'");
             $pays->execute(['id' => $id, 'u' => $userId]);
             $linked = $pays->fetchAll();
-            if ($to === 'draft') {
-                $al = $pdo->prepare('SELECT COUNT(*) FROM biz_allocations WHERE invoice_id = :id AND user_id = :u');
-                $al->execute(['id' => $id, 'u' => $userId]);
-                if ($linked || (int)$al->fetchColumn() > 0) {
-                    $pdo->rollBack();
-                    return ['ok' => false, 'message' => 'به این سند دریافت/پرداخت خورده؛ برای اصلاح آن را باطل کنید و سندِ تازه بزنید.'];
+            // ⛔ «برای اصلاح» با دریافت/پرداخت هم مجاز است: دریافتِ **همراهِ** فاکتور
+            //    (`origin_invoice`) مثلِ ابطال باطل می‌شود و هنگامِ صدورِ دوباره از
+            //    نو ثبت می‌شود؛ دریافتِ **جدا** سرِ جایش روی حسابِ طرف‌حساب می‌ماند
+            //    (پیش‌پرداخت) و با صدورِ دوباره `reallocateTx()` آن را به همین فاکتور
+            //    برمی‌گرداند — پولی که واقعاً جابه‌جا شده هیچ‌وقت پاک نمی‌شود.
+            //    ⚠ جز فاکتورِ گذری: پولِ جدای آن طرف‌حسابی ندارد که رویش بماند، و
+            //    صدورِ دوباره تسویه‌ی کامل می‌خواهد — پس همان پول دو بار می‌آمد.
+            if ($to === 'draft' && $inv['party_id'] === null) {
+                foreach ($linked as $p) {
+                    if ((int)$p['origin_invoice'] !== 1) {
+                        $pdo->rollBack();
+                        return ['ok' => false, 'message' => 'به این فاکتورِ گذری دریافت/پرداختِ جدا خورده؛ برای اصلاح آن را باطل کنید و سندِ تازه بزنید.'];
+                    }
                 }
             }
+            $voidedOrigin = count(array_filter($linked, fn($p) => (int)$p['origin_invoice'] === 1));
 
             $cl = $pdo->prepare('SELECT DISTINCT product_id FROM biz_stock_moves WHERE user_id = :u AND ref_type = :rt AND ref_id = :r');
             $cl->execute(['u' => $userId, 'rt' => BizStock::REF_INVOICE, 'r' => $id]);
@@ -719,7 +732,10 @@ final class BizInvoices
             if ($pdo->inTransaction()) { $pdo->rollBack(); }
             throw $e;
         }
-        return ['ok' => true, 'message' => $to === 'void' ? 'سند باطل شد و اثرش برگشت.' : 'سند به پیش‌نویس برگشت.'];
+        if ($to === 'void') { return ['ok' => true, 'message' => 'سند باطل شد و اثرش برگشت.']; }
+        $side = self::SETTLED_BY[(string)$inv['kind']] === 'receipt' ? 'دریافتِ' : 'پرداختِ';
+        return ['ok' => true, 'message' => 'سند به پیش‌نویس برگشت.'
+            . ($voidedOrigin > 0 ? ' ' . $side . 'همراهش باطل شد — هنگامِ صدورِ دوباره ثبتش کنید.' : '')];
     }
 
     /** حذفِ پیش‌نویس — سندِ صادرشده حذف نمی‌شود. */
@@ -737,23 +753,24 @@ final class BizInvoices
 
     /**
      * مقدارِ برگشت‌پذیرِ هر ردیفِ فاکتورِ اصلی = مقدارِ ردیف − آنچه در
-     * برگشت‌های باطل‌نشده آمده.
-     * @return array<int,array{line:array, left:float}> کلید = شناسه‌ی ردیف
+     * برگشت‌های باطل‌نشده آمده؛ `amount` = مبلغی که تا اینجا برگشته.
+     * @return array<int,array{line:array, left:float, amount:int}> کلید = شناسه‌ی ردیف
      */
     public static function returnable(int $userId, array $orig): array
     {
         $st = Database::getConnection()->prepare(
-            "SELECT l.ref_line_id, SUM(l.qty) AS q FROM biz_invoice_lines l
+            "SELECT l.ref_line_id, SUM(l.qty) AS q, SUM(l.net_total) AS a FROM biz_invoice_lines l
              JOIN biz_invoices i ON i.id = l.invoice_id AND i.user_id = l.user_id
              WHERE i.ref_invoice_id = :r AND i.user_id = :u AND i.status <> 'void' AND l.ref_line_id IS NOT NULL
              GROUP BY l.ref_line_id"
         );
         $st->execute(['r' => (int)$orig['id'], 'u' => $userId]);
-        $done = [];
-        foreach ($st->fetchAll() as $r) { $done[(int)$r['ref_line_id']] = (float)$r['q']; }
+        $done = []; $amt = [];
+        foreach ($st->fetchAll() as $r) { $done[(int)$r['ref_line_id']] = (float)$r['q']; $amt[(int)$r['ref_line_id']] = (int)$r['a']; }
         $out = [];
         foreach ($orig['lines'] as $l) {
-            $out[(int)$l['id']] = ['line' => $l, 'left' => max(0.0, round((float)$l['qty'] - ($done[(int)$l['id']] ?? 0.0), 3))];
+            $out[(int)$l['id']] = ['line' => $l, 'left' => max(0.0, round((float)$l['qty'] - ($done[(int)$l['id']] ?? 0.0), 3)),
+                                   'amount' => $amt[(int)$l['id']] ?? 0];
         }
         return $out;
     }
@@ -789,7 +806,12 @@ final class BizInvoices
                 return ['ok' => false, 'message' => 'تعدادِ «' . $o['description'] . '» باید عددِ صحیح باشد.'];
             }
             $unitNet = (float)$o['qty'] > 0 ? (int)$o['net_total'] / (float)$o['qty'] : 0;
-            $lt = (int)round($q * $unitNet);
+            // ⛔ آخرین برگشتِ یک ردیف «باقیمانده‌ی دقیق» است، نه مقدار × فی: سه
+            //    برگشتِ تک‌تایی از ردیفِ ۳تاییِ ۱۰۰ تومانی ۳۳+۳۳+۳۳ می‌شد و یک
+            //    تومان برای همیشه روی فاکتور «تسویه‌نشده» می‌ماند.
+            $lt = abs($q - $left[$lineId]['left']) < 0.0005
+                ? (int)$o['net_total'] - $left[$lineId]['amount']
+                : (int)round($q * $unitNet);
             $lines[] = ['product_id' => $o['product_id'] !== null ? (int)$o['product_id'] : null, 'ref_line_id' => $lineId,
                         'description' => (string)$o['description'], 'unit' => (string)$o['unit'], 'qty' => round($q, 3),
                         'unit_price' => (int)round($unitNet), 'line_discount' => 0, 'line_total' => $lt, 'net_total' => $lt,
@@ -1082,29 +1104,41 @@ final class BizPay
     public static function reallocateTx(PDO $pdo, int $userId, ?int $partyId, ?int $invoiceId = null): void
     {
         if ($partyId !== null) {
-            $inv = $pdo->prepare("SELECT id, kind, total, status, ref_invoice_id FROM biz_invoices WHERE user_id = :u AND party_id = :p ORDER BY inv_date, id FOR UPDATE");
+            $inv = $pdo->prepare("SELECT id, kind, total, paid, status, ref_invoice_id FROM biz_invoices WHERE user_id = :u AND party_id = :p ORDER BY inv_date, id FOR UPDATE");
             $inv->execute(['u' => $userId, 'p' => $partyId]);
-            $pay = $pdo->prepare("SELECT id, kind, amount, invoice_id, status FROM biz_payments
+            $pay = $pdo->prepare("SELECT id, kind, amount, allocated, invoice_id, status FROM biz_payments
                                   WHERE user_id = :u AND party_id = :p AND kind IN ('receipt','payment') ORDER BY pay_date, id FOR UPDATE");
             $pay->execute(['u' => $userId, 'p' => $partyId]);
         } elseif ($invoiceId !== null) {
-            $inv = $pdo->prepare('SELECT id, kind, total, status, ref_invoice_id FROM biz_invoices WHERE user_id = :u AND id = :i FOR UPDATE');
+            $inv = $pdo->prepare('SELECT id, kind, total, paid, status, ref_invoice_id FROM biz_invoices WHERE user_id = :u AND id = :i FOR UPDATE');
             $inv->execute(['u' => $userId, 'i' => $invoiceId]);
-            $pay = $pdo->prepare("SELECT id, kind, amount, invoice_id, status FROM biz_payments
+            $pay = $pdo->prepare("SELECT id, kind, amount, allocated, invoice_id, status FROM biz_payments
                                   WHERE user_id = :u AND invoice_id = :i AND party_id IS NULL ORDER BY pay_date, id FOR UPDATE");
             $pay->execute(['u' => $userId, 'i' => $invoiceId]);
         } else {
             return;
         }
-        $invoices = []; foreach ($inv->fetchAll() as $r) { $invoices[(int)$r['id']] = $r + ['open' => $r['status'] === 'issued' ? (int)$r['total'] : 0, 'paid' => 0]; }
+        // ⛔ سرعت: همه‌چیز در حافظه از نو ساخته می‌شود ولی فقط **آنچه عوض شده**
+        //    نوشته می‌شود. نسخه‌ی قبلی `paid`ِ همه‌ی فاکتورهای طرف‌حساب را با
+        //    هر صدور و دریافت دوباره می‌نوشت: مشتریِ ثابت با ۱۵۰۰ فاکتور = ۱۱۲ ms
+        //    و ۱۵۰۰ UPDATE برای ثبتِ **یک** فاکتورِ نسیه.
+        $invoices = []; $paidWas = [];
+        foreach ($inv->fetchAll() as $r) {
+            $paidWas[(int)$r['id']] = (int)$r['paid'];
+            $invoices[(int)$r['id']] = $r + ['open' => $r['status'] === 'issued' ? (int)$r['total'] : 0];
+            $invoices[(int)$r['id']]['paid'] = 0;
+        }
         $payments = $pay->fetchAll();
 
+        $allocWas = [];
         if ($payments) {
             $ids = array_map(fn($p) => (int)$p['id'], $payments);
-            $pdo->prepare('DELETE FROM biz_allocations WHERE user_id = ? AND payment_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')')
-                ->execute(array_merge([$userId], $ids));
+            $in  = implode(',', array_fill(0, count($ids), '?'));
+            $ex  = $pdo->prepare("SELECT payment_id, invoice_id, amount FROM biz_allocations WHERE user_id = ? AND payment_id IN ({$in}) ORDER BY id");
+            $ex->execute(array_merge([$userId], $ids));
+            foreach ($ex->fetchAll() as $x) { $allocWas[] = [(int)$x['payment_id'], (int)$x['invoice_id'], (int)$x['amount']]; }
         }
-        $insA = $pdo->prepare('INSERT INTO biz_allocations (user_id, payment_id, invoice_id, amount) VALUES (:u, :p, :i, :a)');
+        $allocNew = [];
         $upP  = $pdo->prepare('UPDATE biz_payments SET allocated = :a WHERE id = :id AND user_id = :u');
         foreach ($payments as $p) {
             $left = $p['status'] === 'ok' ? (int)$p['amount'] : 0;
@@ -1118,12 +1152,21 @@ final class BizPay
                 $iv = $invoices[$iid];
                 if (!in_array($iv['kind'], $kinds, true) || $iv['open'] <= 0) { continue; }
                 $x = min($left, $iv['open']);
-                $insA->execute(['u' => $userId, 'p' => (int)$p['id'], 'i' => $iid, 'a' => $x]);
+                $allocNew[] = [(int)$p['id'], $iid, $x];
                 $invoices[$iid]['open'] -= $x;
                 $invoices[$iid]['paid'] += $x;
                 $left -= $x; $alloc += $x;
             }
-            $upP->execute(['a' => $alloc, 'id' => (int)$p['id'], 'u' => $userId]);
+            if ((int)$p['allocated'] !== $alloc) { $upP->execute(['a' => $alloc, 'id' => (int)$p['id'], 'u' => $userId]); }
+        }
+        // ردیف‌های تخصیص: اگر همان‌اند دست نمی‌خورند، وگرنه یک‌جا جایگزین
+        $norm = function (array $rows): array { usort($rows, fn($x, $y) => $x <=> $y); return $rows; };
+        if ($norm($allocWas) !== $norm($allocNew)) {
+            $ids = array_map(fn($p) => (int)$p['id'], $payments);
+            $pdo->prepare('DELETE FROM biz_allocations WHERE user_id = ? AND payment_id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')')
+                ->execute(array_merge([$userId], $ids));
+            $insA = $pdo->prepare('INSERT INTO biz_allocations (user_id, payment_id, invoice_id, amount) VALUES (:u, :p, :i, :a)');
+            foreach ($allocNew as [$pid, $iid, $x]) { $insA->execute(['u' => $userId, 'p' => $pid, 'i' => $iid, 'a' => $x]); }
         }
         // ⛔ برگشتِ نسیه یک «اعتبار» است: باقیمانده‌اش (آنچه پس داده نشده) اول
         //    به فاکتورِ اصلیِ خودش و بعد به قدیمی‌ترین فاکتورِ بازِ هم‌جهت می‌خورد.
@@ -1146,7 +1189,9 @@ final class BizPay
             }
         }
         $upI = $pdo->prepare('UPDATE biz_invoices SET paid = :p WHERE id = :id AND user_id = :u');
-        foreach ($invoices as $iid => $iv) { $upI->execute(['p' => $iv['paid'], 'id' => $iid, 'u' => $userId]); }
+        foreach ($invoices as $iid => $iv) {
+            if ($paidWas[$iid] !== $iv['paid']) { $upI->execute(['p' => $iv['paid'], 'id' => $iid, 'u' => $userId]); }
+        }
     }
 
     public static function get(int $userId, int $id): ?array
@@ -1176,7 +1221,7 @@ final class BizPay
     public static function forInvoice(int $userId, int $invoiceId): array
     {
         $st = Database::getConnection()->prepare(
-            'SELECT y.id, y.kind, y.number, y.pay_date, y.method, y.status, al.amount AS applied, y.amount, a.name AS account_name
+            'SELECT y.id, y.kind, y.number, y.pay_date, y.method, y.status, y.origin_invoice, al.amount AS applied, y.amount, a.name AS account_name
              FROM biz_allocations al
              JOIN biz_payments y ON y.id = al.payment_id AND y.user_id = al.user_id
              LEFT JOIN biz_accounts a ON a.id = y.account_id AND a.user_id = y.user_id

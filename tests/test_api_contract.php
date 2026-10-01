@@ -6898,7 +6898,10 @@ foreach ($allFiles70 as $f) {
 if ($allocW70 !== ['biz_docs.php' => 4]) {
     $bBad[] = 'تخصیص یا paid/allocated جز در BizPay::reallocateTx() نوشته می‌شود: ' . json_encode($allocW70);
 }
-if (!preg_match('/function reallocateTx\(.*?INSERT INTO biz_allocations.*?SET allocated.*?SET paid.*?\n    \}/s', $docs70)) {
+// ⚠ ترتیب آزاد است (از «فقط تغییر را بنویس» به بعد `allocated` پیش از تخصیص‌ها
+//    نوشته می‌شود)؛ آنچه سنجیده می‌شود این است که هر چهار داخلِ **همان** بدنه‌اند.
+$realloc70 = preg_match('/function reallocateTx\(.*?\n    \}\n/s', $docs70, $rm70) ? $rm70[0] : '';
+if (preg_match_all('/INSERT\s+INTO\s+biz_allocations|DELETE\s+FROM\s+biz_allocations|UPDATE\s+biz_invoices\s+SET\s+paid\s*=|UPDATE\s+biz_payments\s+SET\s+allocated\s*=/i', $realloc70) !== 4) {
     $bBad[] = 'biz_docs.php — نوشتنِ تخصیص/paid/allocated بیرون از بدنه‌ی reallocateTx() است';
 }
 // ⛔ سند فقط از BizStock::postDoc() به موجودی می‌رسد
@@ -7371,6 +7374,59 @@ if (!preg_match('/createImageBitmap\(f\)/', $js70e) || !str_contains($js70e, 'rd
     $eBad[] = 'store.js — کوچک‌سازیِ تصویر با createImageBitmap و FileReader (نه blob:)';
 }
 T::bulk(21, $eBad, 'پیش‌گیری و فونت در پوسته، مانده‌ها یک بار، اتصالِ کالا با کلیدِ اصلی، و تصویرِ شخصی از یک مسیر');
+
+// ---------------------------------------------------------------------
+// ⛔ قاعده ۷۰و — بهای تمام‌شده‌ی زنجیره‌ای و سودِ خالص.
+//    رفتار (با برابریِ حسابداری و هفده جهش) در `test_store_cost`؛ اینجا
+//    شکل: بهای فروش فقط از `recalc()`، سودِ خالص فقط از `BizReports::profit()`.
+T::group('قاعده ۷۰و — بهای تمام‌شده و سودِ خالص');
+$fBad = [];
+$docs70f = $strip70e((string)file_get_contents(__DIR__ . '/../includes/biz_docs.php'));
+$costWriters = [];
+foreach (array_merge(glob(__DIR__ . '/../*.php') ?: [], glob(__DIR__ . '/../{api,store,includes,admin,deploy}/*.php', GLOB_BRACE) ?: []) as $f) {
+    $n = preg_match_all('/UPDATE\s+biz_invoice_lines\s+SET\s+unit_cost\b/i', $strip70e((string)file_get_contents($f)));
+    if ($n) { $costWriters[basename($f)] = $n; }
+}
+ksort($costWriters);
+if ($costWriters !== ['biz_catalog.php' => 1, 'biz_docs.php' => 2]) {
+    $fBad[] = '⛔ بهای ردیف فقط در recalc() (زنجیره)، issueTx (عددِ اولیه) و undo (پاک کردن): ' . json_encode($costWriters);
+}
+$posCost = strpos($docs70f, "elseif ((int)\$l['track_stock'] === 1) { \$c = (int)round((float)\$l['avg_cost']); }");
+$posPost = strpos($docs70f, '$post = BizStock::postDoc($userId, $kind, $id, $moves);');
+if ($posCost === false || $posPost === false || $posCost > $posPost) {
+    $fBad[] = 'issueTx — بهای اولیه‌ی ردیف **پیش از** postDoc (وگرنه میانگینِ امروز روی بهای درستِ recalc() می‌نشست)';
+}
+if (!str_contains($cat70e, "if (\$kind === 'purchase_return' && \$m['unit_cost'] !== null) {")
+    || !str_contains($cat70e, '$out = $unitCost[$unit];')
+    || !str_contains($cat70e, "\$cost = (float)\$lineCost[(int)\$line['ref_line_id']];")) {
+    $fBad[] = 'recalc — برگشت از خرید به بهای اصلی، گوشی به بهای خودش، برگشت از فروش به بهای فروشِ اصلی';
+}
+if (!str_contains($cat70e, 'if (count($ls) !== ($count[$rid] ?? 0)) { unset($out[$rid]); }')) {
+    $fBad[] = 'docLines — سندی که شمارِ ردیف و حرکتش یکی نیست جفت نمی‌شود (حدس ممنوع)';
+}
+if (!str_contains($rep70e, 'GROUP BY i.kind" . self::OTHER_SQL') || !str_contains($rep70e, 'return $gross - $other + $income - $expense;')) {
+    $fBad[] = 'BizReports — `other` در همان کوئریِ sales() و profit() تنها فرمول';
+}
+if (!preg_match_all("/m\.kind = 'adjust'|p\.track_stock = 0/", $dash70e) || substr_count($dash70e, "m.kind = 'adjust'") !== 1 || substr_count($dash70e, 'p.track_stock = 0') !== 1) {
+    $fBad[] = 'BizDash::salesDaily — همان دو جزءِ `other` (کسری و خریدِ بی‌انبار)';
+}
+foreach (['store/index.php' => 3, 'store/reports.php' => 1, 'store/print.php' => 1] as $rel => $min) {
+    $s = $strip70e((string)file_get_contents(__DIR__ . '/../' . $rel));
+    if (substr_count($s, 'BizReports::profit(') < $min || preg_match("/\['gross'\]\s*[+-]\s*\\\$(?:ca|rCash|c)\[/", $s)) {
+        $fBad[] = "{$rel} — سودِ خالص فقط از BizReports::profit()، نه فرمولِ دستی";
+    }
+}
+$ua70f = $strip70e((string)file_get_contents(__DIR__ . '/../deploy/user-admin.php'));
+if (!str_contains($ua70f, "\$cmd === '--store-recost'") || !str_contains($ua70f, 'BizStock::rebuild($uid)')) {
+    $fBad[] = 'user-admin.php --store-recost فقط از BizStock::rebuild()';
+}
+if (!str_contains($docs70f, "? (int)\$o['net_total'] - \$left[\$lineId]['amount']")) {
+    $fBad[] = 'createReturn — آخرین برگشتِ یک ردیف باقیمانده‌ی دقیق است';
+}
+if (!preg_match("/if \(\\\$to === 'draft' && \\\$inv\['party_id'\] === null\) \{/", $docs70f)) {
+    $fBad[] = 'undo — فاکتورِ گذری با پولِ جدا به پیش‌نویس برنمی‌گردد';
+}
+T::bulk(10, $fBad, 'بهای فروش فقط از زنجیره‌ی recalc()، سودِ خالص از یک فرمول، و بازسازی از یک مسیر');
 
 // ---------------------------------------------------------------------
 // ⛔ قاعده ۷۱ — نسخه‌ی آزمایشی (staging) و انتشارِ «همان چیزی که دیده شد».

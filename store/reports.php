@@ -77,9 +77,10 @@ require __DIR__ . '/../includes/biz_head.php';
         <span class="st-kpi-sub"><?= $rSales['margin'] !== null ? 'حاشیه‌ی ' . toPersianDigits((string)$rSales['margin']) . '٪ · ' : '' ?>بهای تمام‌شده <?= formatMoney($rSales['cogs']) ?></span>
     </div>
     <div class="st-kpi-card">
+        <?php $rNet = BizReports::profit($rSales['gross'], $rSales['other'], $rCash['income'], $rCash['expense']); ?>
         <span class="st-kpi-label">هزینه‌های فروشگاه</span>
         <span class="st-kpi-value st-num"><?= formatMoney($rCash['expense']) ?></span>
-        <span class="st-kpi-sub">سودِ پس از هزینه <?= ($rSales['gross'] + $rCash['income'] - $rCash['expense'] < 0 ? '−' : '') . formatMoney(abs($rSales['gross'] + $rCash['income'] - $rCash['expense'])) ?></span>
+        <span class="st-kpi-sub">سودِ خالص <?= ($rNet < 0 ? '−' : '') . formatMoney(abs($rNet)) ?><?= $rSales['other'] !== 0 ? ' · کسریِ انبار و خریدِ بی‌انبار ' . ($rSales['other'] < 0 ? '−' : '') . formatMoney(abs($rSales['other'])) : '' ?></span>
     </div>
     <div class="st-kpi-card">
         <span class="st-kpi-label">میانگینِ هر فاکتور</span>
@@ -87,7 +88,7 @@ require __DIR__ . '/../includes/biz_head.php';
         <span class="st-kpi-sub">دریافت <?= formatMoney($rCash['receipt']) ?> · پرداخت <?= formatMoney($rCash['payment']) ?></span>
     </div>
 </div>
-<p class="st-muted st-unit-note">مبلغ‌ها به تومان. سود = فروشِ خالص − بهای تمام‌شده‌ی کالای فروخته (به میانگینِ خریدِ لحظه‌ی فروش)؛ «پس از هزینه» هزینه‌ها و درآمدهای متفرقه‌ی همین بازه را هم حساب می‌کند.</p>
+<p class="st-muted st-unit-note">مبلغ‌ها به تومان. سود = فروشِ خالص − بهای تمام‌شده‌ی کالای فروخته (میانگینِ خرید در تاریخِ فروش؛ گوشی: بهای خریدِ همان گوشی)؛ «سودِ خالص» هزینه‌ها و درآمدهای متفرقه، کسریِ انبارگردانی و خریدِ بی‌انبار (خدمت و شرحِ آزاد در فاکتورِ خرید) را هم حساب می‌کند.</p>
 
 <div class="st-cols">
     <section class="st-card">

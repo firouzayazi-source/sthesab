@@ -68,8 +68,34 @@ final class BizReports
     }
 
     /**
-     * جمعِ فروش در بازه.
-     * @return array{sales:int, returns:int, net:int, cogs:int, gross:int, margin:?float, docs:int, avg:int}
+     * ⛔ دو هزینه‌ی کالایی که از «بهای تمام‌شده‌ی فروش» نمی‌آیند ولی سود را کم
+     *    می‌کنند — بدونشان سودِ خالص بیشتر از واقعیت بود:
+     *    - `shrink`: کسریِ انبارگردانی به ارزشِ همان لحظه (`unit_cost`ِ حرکت که
+     *      `BizStock::recalc()` می‌نویسد؛ حرکتِ قدیمیِ بی‌بها با میانگینِ امروز).
+     *      منفی یعنی اضافه‌ی انبار.
+     *    - `nonstock`: خریدِ بی‌انبار — ردیفِ شرحِ آزاد یا کالای «خدمت» در
+     *      فاکتورِ خرید (کرایه، تعمیر، کالایی که تعریف نشده)، خالصِ برگشت. آن
+     *      پول به فروشنده بدهکار می‌شود ولی نه به انبار می‌رود نه به سود.
+     *    یک کوئری با فروش (`UNION ALL`)، پس هیچ صفحه‌ای کوئریِ تازه نگرفت.
+     */
+    private const OTHER_SQL = "
+        UNION ALL
+        SELECT 'shrink', 0, COALESCE(-SUM(ROUND(m.qty * COALESCE(m.unit_cost, p.avg_cost))), 0), 0
+        FROM biz_stock_moves m JOIN biz_products p FORCE INDEX (PRIMARY) ON p.id = m.product_id AND p.user_id = m.user_id
+        WHERE m.user_id = :u2 AND m.kind = 'adjust' AND m.move_date BETWEEN :f2 AND :t2
+        UNION ALL
+        SELECT 'nonstock', 0, COALESCE(SUM(CASE WHEN i.kind = 'purchase' THEN l.net_total ELSE -l.net_total END), 0), 0
+        FROM biz_invoices i JOIN biz_invoice_lines l ON l.invoice_id = i.id AND l.user_id = i.user_id
+        LEFT JOIN biz_products p FORCE INDEX (PRIMARY) ON p.id = l.product_id AND p.user_id = l.user_id
+        WHERE i.user_id = :u3 AND i.status = 'issued' AND i.kind IN ('purchase','purchase_return')
+          AND i.inv_date BETWEEN :f3 AND :t3 AND (l.product_id IS NULL OR p.track_stock = 0)";
+
+    /**
+     * جمعِ فروش در بازه، با دو هزینه‌ی کالاییِ دیگر (`OTHER_SQL`).
+     * `other` = `shrink` + `nonstock`؛ سودِ خالص = `gross` − `other` + درآمد − هزینه
+     * (`profit()` — تنها فرمول).
+     * @return array{sales:int, returns:int, net:int, cogs:int, gross:int, margin:?float, docs:int, avg:int,
+     *               shrink:int, nonstock:int, other:int}
      */
     public static function sales(int $userId, string $from, string $to): array
     {
@@ -80,10 +106,12 @@ final class BizReports
              FROM biz_invoices i JOIN biz_invoice_lines l ON l.invoice_id = i.id AND l.user_id = i.user_id
              WHERE i.user_id = :u AND i.status = 'issued' AND i.kind IN ('sale','sale_return')
                AND i.inv_date BETWEEN :f AND :t
-             GROUP BY i.kind"
+             GROUP BY i.kind" . self::OTHER_SQL
         );
-        $st->execute(['u' => $userId, 'f' => $from, 't' => $to]);
-        $r = ['sale' => ['rev' => 0, 'cost' => 0, 'docs' => 0], 'sale_return' => ['rev' => 0, 'cost' => 0, 'docs' => 0]];
+        $st->execute(['u' => $userId, 'f' => $from, 't' => $to, 'u2' => $userId, 'f2' => $from, 't2' => $to,
+                      'u3' => $userId, 'f3' => $from, 't3' => $to]);
+        $r = ['sale' => ['rev' => 0, 'cost' => 0, 'docs' => 0], 'sale_return' => ['rev' => 0, 'cost' => 0, 'docs' => 0],
+              'shrink' => ['cost' => 0], 'nonstock' => ['cost' => 0]];
         foreach ($st->fetchAll() as $row) { $r[$row['kind']] = ['rev' => (int)$row['rev'], 'cost' => (int)$row['cost'], 'docs' => (int)$row['docs']]; }
         $net   = $r['sale']['rev'] - $r['sale_return']['rev'];
         $cogs  = $r['sale']['cost'] - $r['sale_return']['cost'];
@@ -92,7 +120,15 @@ final class BizReports
             'sales' => $r['sale']['rev'], 'returns' => $r['sale_return']['rev'], 'net' => $net, 'cogs' => $cogs,
             'gross' => $gross, 'margin' => $net > 0 ? round($gross / $net * 100, 1) : null,
             'docs' => $r['sale']['docs'], 'avg' => $r['sale']['docs'] > 0 ? (int)round($r['sale']['rev'] / $r['sale']['docs']) : 0,
+            'shrink' => $r['shrink']['cost'], 'nonstock' => $r['nonstock']['cost'],
+            'other' => $r['shrink']['cost'] + $r['nonstock']['cost'],
         ];
+    }
+
+    /** ⛔ تنها فرمولِ «سودِ خالص» (صفحه‌ی گزارش، چاپِ سود و زیان، داشبورد). */
+    public static function profit(int $gross, int $other, int $income, int $expense): int
+    {
+        return $gross - $other + $income - $expense;
     }
 
     /** فروشِ خالصِ هر روز (برای نمودارِ میله‌ای) — روزهای بی‌فروش هم صفر می‌آیند. @return array<string,int> */

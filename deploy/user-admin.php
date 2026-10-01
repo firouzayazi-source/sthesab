@@ -19,6 +19,7 @@
  *   php deploy/user-admin.php --test-mail you@gmail.com
  *   php deploy/user-admin.php --merge-categories
  *   php deploy/user-admin.php --merge-categories 12 7
+ *   php deploy/user-admin.php --store-recost
  */
 
 // ---------- نگهبان: فقط خط فرمان ----------
@@ -54,6 +55,8 @@ function usage(): void
     out("  $me --sms-check 09123456789            چرا کدِ ورود برای این شماره نمی‌رود؟");
     out("  $me --set-role ali support             نقش: admin / support / colleague / user");
     out("  $me --set-account ali both             نوعِ حساب: personal / both (شخصی + فروشگاه) / business (فقط فروشگاه)");
+    out("  $me --store-recost                     بازسازیِ بهای تمام‌شده‌ی همه‌ی فروشگاه‌ها (یک بار بعد از به‌روزرسانی)");
+    out("  $me --store-recost ali                 همان، فقط برای یک فروشگاه");
     out("  $me --mark-colleagues                  چه کسانی به فروشگاه وصل‌اند (فقط نمایش)");
     out("  $me --mark-colleagues --apply          همان‌ها را «همکار» کن");
     out("  $me --stats-check ali                  عددِ «آمار استفاده» این کاربر از کجا می‌آید؟");
@@ -355,6 +358,40 @@ if ($cmd === '--set-account') {
     if (!empty($res['changed']) && in_array($typeIn, Biz::STORE_TYPES, true)) {
         out('ورودِ فروشگاهِ این حساب:  ' . rtrim((string)(defined('APP_URL') ? APP_URL : ''), '/') . Biz::url());
     }
+    exit(0);
+}
+
+// ---------------------------------------------------------------
+// ⛔ بازسازیِ بهای تمام‌شده‌ی فروشگاه — یک بار بعد از به‌روزرسانی.
+//
+//    از «بهای تمام‌شده‌ی زنجیره‌ای» به بعد هر حرکتِ تازه‌ی یک کالا بهای
+//    فروش‌های همان کالا را درست می‌کند؛ این فرمان همان را برای **همه‌ی**
+//    کالاها یک‌جا می‌زند تا گزارشِ سودِ داده‌ی قدیمی هم درست شود (فروشِ
+//    تاریخ‌گذشته، اصلاحِ بهای اول دوره بعد از فروش، برگشت از خرید، کسریِ
+//    انبار). فقط `BizStock::rebuild()` — هیچ `UPDATE`ِ دستی؛ موجودی، مبلغِ
+//    فاکتور و مانده‌ها دست نمی‌خورند. بی‌نام = همه‌ی فروشگاه‌ها.
+if ($cmd === '--store-recost') {
+    require_once __DIR__ . '/../includes/auth.php';
+    require_once __DIR__ . '/../includes/biz_catalog.php';
+    if (!tableExists('biz_products')) { fail('جدول‌های فروشگاه نیست — اول migration ها را اعمال کنید.'); }
+
+    $targets = [];
+    if (isset($argvIn[1])) {
+        $user = $findUser($argvIn[1]);
+        $targets[(int)$user['id']] = (string)$user['username'];
+    } else {
+        foreach ($pdo->query('SELECT u.id, u.username FROM users u WHERE EXISTS (SELECT 1 FROM biz_products p WHERE p.user_id = u.id) ORDER BY u.id') as $r) {
+            $targets[(int)$r['id']] = (string)$r['username'];
+        }
+    }
+    if (!$targets) { info('هیچ فروشگاهی کالا ندارد؛ کاری نبود.'); exit(0); }
+    $bad = 0;
+    foreach ($targets as $uid => $uname) {
+        $r = BizStock::rebuild($uid);
+        out("«{$uname}»: " . $r['products'] . ' کالا، ' . $r['lines'] . ' ردیفِ فاکتور بهای تازه گرفت.');
+        foreach ($r['failed'] as $f) { red('  ✗ ' . $f); $bad++; }
+    }
+    $bad === 0 ? ok('بهای تمام‌شده بازسازی شد.') : fail("{$bad} کالا بازسازی نشد (بالا).");
     exit(0);
 }
 

@@ -79,18 +79,20 @@ $incCur  = $saleM['net'] + BizDash::sum($cash, 'inc', $mStart, $today);
 $incPrev = BizDash::sum($sales, 'rev', $pmFrom, $pmTo) + BizDash::sum($cash, 'inc', $pmFrom, $pmTo);
 $expCur  = BizDash::sum($cash, 'exp', $mStart, $today);
 $expPrev = BizDash::sum($cash, 'exp', $pmFrom, $pmTo);
-$netCur  = $saleM['gross'] + BizDash::sum($cash, 'inc', $mStart, $today) - $expCur;
-$netPrev = BizDash::sum($sales, 'rev', $pmFrom, $pmTo) - BizDash::sum($sales, 'cost', $pmFrom, $pmTo) + BizDash::sum($cash, 'inc', $pmFrom, $pmTo) - $expPrev;
+// ⛔ سودِ خالص فقط از `BizReports::profit()` — با کسریِ انبار و خریدِ بی‌انبار (`other`)
+$netCur  = BizReports::profit($saleM['gross'], $saleM['other'], BizDash::sum($cash, 'inc', $mStart, $today), $expCur);
+$netPrev = BizReports::profit(BizDash::sum($sales, 'rev', $pmFrom, $pmTo) - BizDash::sum($sales, 'cost', $pmFrom, $pmTo),
+                              BizDash::sum($sales, 'other', $pmFrom, $pmTo), BizDash::sum($cash, 'inc', $pmFrom, $pmTo), $expPrev);
 $mDays   = BizDash::fill($sales + [], $mStart, $today, fn($v) => 0);
 $incSer  = [];
 $expSer  = [];
 $netSer  = [];
 $runN = 0;
 foreach ($mDays as $d => $_) {
-    $s = $sales[$d] ?? ['rev' => 0, 'cost' => 0]; $c = $cash[$d] ?? ['inc' => 0, 'exp' => 0];
+    $s = $sales[$d] ?? ['rev' => 0, 'cost' => 0, 'other' => 0]; $c = $cash[$d] ?? ['inc' => 0, 'exp' => 0];
     $incSer[] = $s['rev'] + $c['inc'];
     $expSer[] = $c['exp'];
-    $runN += $s['rev'] - $s['cost'] + $c['inc'] - $c['exp'];
+    $runN += BizReports::profit($s['rev'] - $s['cost'], $s['other'], $c['inc'], $c['exp']);
     $netSer[] = $runN;
 }
 

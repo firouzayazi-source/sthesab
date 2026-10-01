@@ -184,8 +184,11 @@ require __DIR__ . '/../includes/biz_head.php';
 <?php if ($inv['status'] === 'issued'): ?>
 <section class="st-card st-danger">
     <div class="st-danger-row">
-        <?php if (!$pays && !$returns): ?>
-        <form method="post" action="<?= h($self) ?>">
+        <?php
+        // همان قاعده‌ی `BizInvoices::undo()`: بی‌برگشت؛ و فاکتورِ گذری بی‌پولِ جدا
+        $canUnissue = !$returns && ($inv['party_id'] !== null || !array_filter($pays, fn($p) => (int)$p['origin_invoice'] !== 1));
+        if ($canUnissue): ?>
+        <form method="post" action="<?= h($self) ?>"<?= $pays ? " onsubmit=\"return confirm('سند برای اصلاح به پیش‌نویس برگردد؟ دریافت/پرداختی که همراهِ همین فاکتور ثبت شده بود باطل می‌شود (هنگامِ صدورِ دوباره ثبتش کنید)؛ دریافت/پرداخت‌های جدا روی حسابِ طرف‌حساب می‌مانند و دوباره به همین فاکتور می‌خورند.');\"" : '' ?>>
             <?= Csrf::field() ?><input type="hidden" name="action" value="unissue">
             <button type="submit" class="st-btn st-btn-ghost">برگشت به پیش‌نویس (برای اصلاح)</button>
         </form>

@@ -721,43 +721,205 @@ final class BizStock
     private const EPS = 0.0005;
 
     /**
-     * ⛔ تنها نویسنده‌ی `stock_qty` و `avg_cost`.
+     * ⛔ تنها نویسنده‌ی `stock_qty` و `avg_cost` — و تنها نویسنده‌ی بهای
+     *    تمام‌شده‌ی **ردیف‌های فروش و برگشت از فروش** (`unit_cost`ِ حرکت و ردیف).
      *
      * حرکت‌ها به ترتیبِ زمان پیموده می‌شوند (موجودیِ اول دوره همیشه اول) و
-     * **میانگینِ موزونِ متحرک** ساخته می‌شود: هر ورود با بهای خودش (یا اگر
-     * بها ندارد، با میانگینِ جاری) در میانگین می‌نشیند و هر خروج میانگین را
-     * عوض نمی‌کند. کمینه‌ی موجودیِ پیموده‌شده هم برگردانده می‌شود تا
-     * فراخواننده «منفی شدن در هر لحظه» را رد کند، نه فقط در پایان.
+     * **ارزشِ انبار** (`v`) کنارِ موجودی (`q`) نگه داشته می‌شود؛ میانگین
+     * همیشه `v ÷ q` است:
+     *   - ورود با بهای خودش (خرید: خالصِ ردیف با سهمِ حمل/تخفیف؛ بی‌بها:
+     *     میانگینِ جاری). برگشت از فروش با **بهای ردیفِ فروشِ اصلی** — همان
+     *     که در همین پیمایش برایش حساب شد.
+     *   - فروش به **میانگینِ همان نقطه از زمان**، نه میانگینِ امروز؛ و گوشیِ
+     *     IMEIدار به **بهای خریدِ همان گوشی** (شناساییِ ویژه — گوشیِ کارکرده
+     *     هر کدام قیمتِ خودش را دارد). بی‌سابقه‌ی IMEI (اول دوره) ← میانگین.
+     *   - برگشت از خرید به **بهای ردیفِ خریدِ اصلی** بیرون می‌رود و میانگینِ
+     *     بقیه را جابه‌جا می‌کند — پولی که از فروشنده برمی‌گردد همان است که
+     *     داده شد، پس انبار هم دقیقاً همان را از دست می‌دهد.
+     *   - انبارگردانی (کم یا زیاد) به میانگینِ جاری.
+     *   - موجودیِ صفر یعنی ارزشِ صفر؛ ورودِ بعدی میانگینِ تازه می‌سازد.
      *
-     * @return array{qty:float, avg:float, min:float}
+     * ⛔ چرا بهای فروش اینجا **دوباره** ساخته می‌شود و نه یک بار هنگامِ صدور:
+     *    فاکتورِ تاریخ‌گذشته (خریدی که دیرتر ثبت شد، فروشی با تاریخِ دیروز) یا
+     *    اصلاحِ بهای اول دوره بعد از فروش، بهای فروش‌های **بعد از آن** را عوض
+     *    می‌کند. بهای منجمد یعنی سودِ غلط و انباری که با جمعِ خرید نمی‌خواند
+     *    (ورودی ≠ بهای فروش + ارزشِ مانده). هر حرکتِ تازه همین پیمایش را
+     *    دارد، پس زنجیره همیشه درست است — `test_store_cost` همین برابری را
+     *    می‌سنجد. فقط ردیفی که عددش واقعاً عوض شده نوشته می‌شود.
+     *
+     * کمینه‌ی موجودیِ پیموده‌شده هم برگردانده می‌شود تا فراخواننده «منفی شدن
+     * در هر لحظه» را رد کند، نه فقط در پایان.
+     *
+     * @return array{qty:float, avg:float, min:float, value:float}
      */
     public static function recalc(int $userId, int $productId): array
     {
         $pdo = Database::getConnection();
         $st  = $pdo->prepare(
-            "SELECT qty, unit_cost FROM biz_stock_moves
+            "SELECT id, kind, qty, unit_cost, ref_type, ref_id FROM biz_stock_moves
              WHERE product_id = :p AND user_id = :u
              ORDER BY (kind = 'opening') DESC, move_date, id"
         );
         $st->execute(['p' => $productId, 'u' => $userId]);
+        $moves = $st->fetchAll();
+        $lines = self::docLines($pdo, $userId, $productId, $moves);
 
-        $q = 0.0; $avg = 0.0; $min = 0.0;
-        foreach ($st->fetchAll() as $m) {
-            $qty = (float)$m['qty'];
+        $q = 0.0; $v = 0.0; $avg = 0.0; $min = 0.0;
+        $taken = []; $lineCost = []; $fixMove = []; $fixLine = [];
+        // گوشی‌های IMEIدارِ در انبار: یک کلید برای هر دستگاه (IMEI ۱ و ۲ یک
+        // گوشی‌اند)، با بها. جمع و شمارشان جدا نگه داشته می‌شود تا گوشیِ بی‌سابقه
+        // (اول دوره) از «بقیه‌ی انبار» بها بگیرد، نه از میانگینی که گوشی‌های
+        // گرانِ IMEIدار را هم دارد.
+        $unitOf = []; $unitCost = []; $kSum = 0.0;
+        foreach ($moves as $m) {
+            $qty  = (float)$m['qty'];
+            $kind = (string)$m['kind'];
+            // ردیفِ سندِ همین حرکت: k-امین حرکتِ یک سند برای این کالا همان
+            // k-امین ردیفِ آن است (`postDoc()` به ترتیبِ ردیف می‌نویسد)
+            $line = null;
+            if ($m['ref_type'] === self::REF_INVOICE && isset($lines[(int)$m['ref_id']])) {
+                $rid  = (int)$m['ref_id'];
+                $k    = $taken[$rid] = ($taken[$rid] ?? -1) + 1;
+                $line = $lines[$rid][$k] ?? null;
+            }
+            $imeis = $line !== null ? array_values(array_filter([$line['imei1'], $line['imei2']], fn($x) => $x !== null && $x !== '')) : [];
+            $unit  = null;
+            foreach ($imeis as $im) { if (isset($unitOf[$im], $unitCost[$unitOf[$im]])) { $unit = $unitOf[$im]; break; } }
+
             if ($qty > 0) {
-                $cost = $m['unit_cost'] !== null ? (float)$m['unit_cost'] : $avg;
+                $cost = $m['unit_cost'] !== null && $kind !== 'adjust' ? (float)$m['unit_cost'] : $avg;
+                if ($kind === 'adjust') { self::fix($fixMove, $fixLine, $m, null, (int)round($cost)); }
+                if ($kind === 'sale_return' && $line !== null && $line['ref_line_id'] !== null
+                    && isset($lineCost[(int)$line['ref_line_id']])) {
+                    $cost = (float)$lineCost[(int)$line['ref_line_id']];
+                    self::fix($fixMove, $fixLine, $m, $line, (int)round($cost));
+                }
                 $base = max($q, 0.0);
-                $avg  = ($base * $avg + $qty * $cost) / ($base + $qty);
+                $v    = ($base > 0 ? max($v, 0.0) : 0.0) + $qty * $cost;
+                $avg  = $v / ($base + $qty);
+                if ($line !== null) { $lineCost[(int)$line['id']] = (int)round($cost); }
+                if ($imeis && $unit === null) {
+                    $unit = $imeis[0];
+                    foreach ($imeis as $im) { $unitOf[$im] = $unit; }
+                    $unitCost[$unit] = $cost; $kSum += $cost;
+                }
+            } else {
+                $out = $avg;
+                if ($unit !== null) {
+                    $out = $unitCost[$unit];                    // ⛔ شناساییِ ویژه: همان گوشی
+                } else {
+                    // بی‌سابقه (گوشیِ اول دوره، یا کسریِ انبارگردانی): از «بقیه‌ی انبار»،
+                    // منهای گوشی‌های IMEIدار — وگرنه کسریِ یک گوشیِ ارزان از ارزشِ
+                    // گوشی‌های گران کم می‌شد
+                    $rest = $q - count($unitCost);
+                    if ($unitCost && $rest > self::EPS) { $out = max($v - $kSum, 0.0) / $rest; }
+                }
+                if ($kind === 'purchase_return' && $m['unit_cost'] !== null) {
+                    $out = (float)$m['unit_cost'];              // همان بهای خریدِ اصلی
+                }
+                if ($kind === 'sale') {
+                    $c = (int)round($out);
+                    if ($line !== null) { $lineCost[(int)$line['id']] = $c; }
+                    self::fix($fixMove, $fixLine, $m, $line, $c);
+                } elseif ($kind === 'adjust') {
+                    self::fix($fixMove, $fixLine, $m, null, (int)round($out));   // ارزشِ کسری — برای سود و زیان
+                }
+                if ($unit !== null) { $kSum -= $unitCost[$unit]; unset($unitCost[$unit]); }
+                $v += $qty * $out;
             }
             $q   = round($q + $qty, 3);
             $min = min($min, $q);
+            if ($q > self::EPS) {
+                if ($qty < 0) { $v = max($v, 0.0); $avg = $v / $q; }
+            } else {
+                // بی‌موجودی = بی‌ارزش (ورودِ بعدی با `$base = 0` ارزشِ مانده را
+                // دور می‌ریزد)؛ میانگین فقط برای نمایش می‌ماند، و هیچ گوشی‌ای در انبار نیست
+                $unitCost = []; $kSum = 0.0;
+            }
         }
         $avg = round($avg, 2);
 
         $pdo->prepare('UPDATE biz_products SET stock_qty = :q, avg_cost = :a WHERE id = :p AND user_id = :u')
             ->execute(['q' => $q, 'a' => $avg, 'p' => $productId, 'u' => $userId]);
+        if ($fixMove) {
+            $um = $pdo->prepare('UPDATE biz_stock_moves SET unit_cost = :c WHERE id = :id AND user_id = :u');
+            foreach ($fixMove as $id => $c) { $um->execute(['c' => $c, 'id' => $id, 'u' => $userId]); }
+        }
+        if ($fixLine) {
+            $ul = $pdo->prepare('UPDATE biz_invoice_lines SET unit_cost = :c WHERE id = :id AND user_id = :u');
+            foreach ($fixLine as $id => $c) { $ul->execute(['c' => $c, 'id' => $id, 'u' => $userId]); }
+        }
+        self::$fixedLines = count($fixLine);
 
-        return ['qty' => $q, 'avg' => $avg, 'min' => $min];
+        return ['qty' => $q, 'avg' => $avg, 'min' => $min, 'value' => $q > self::EPS ? round($v, 2) : 0.0];
+    }
+
+    /**
+     * پیمایشِ دوباره‌ی همه‌ی کالاهای دارای موجودیِ یک فروشگاه — هر کدام از
+     * همان `write()` (قفل، `recalc()`، سدِ منفی) با تغییرِ تهی. برای داده‌ای
+     * که پیش از «بهای تمام‌شده‌ی زنجیره‌ای» صادر شده: بهای فروش‌های
+     * تاریخ‌گذشته، ارزشِ برگشت از خرید و ارزشِ انبارگردانی‌ها درست می‌شوند.
+     * چیزی جز بها عوض نمی‌شود (نه موجودی، نه مبلغِ فاکتور، نه مانده).
+     *
+     * @return array{products:int, lines:int, failed:list<string>}
+     */
+    public static function rebuild(int $userId): array
+    {
+        $st = Database::getConnection()->prepare('SELECT id, name FROM biz_products WHERE user_id = :u AND track_stock = 1 ORDER BY id');
+        $st->execute(['u' => $userId]);
+        $rows = $st->fetchAll();
+        $lines = 0; $failed = [];
+        foreach ($rows as $p) {
+            self::$fixedLines = 0;
+            $r = self::write($userId, (int)$p['id'], fn(): ?string => null);
+            if ($r['ok']) { $lines += self::$fixedLines; } else { $failed[] = (string)$p['name'] . ': ' . $r['message']; }
+        }
+        return ['products' => count($rows), 'lines' => $lines, 'failed' => $failed];
+    }
+
+    /** شمارِ ردیف‌های سندی که آخرین `recalc()` بهایشان را عوض کرد (برای `rebuild()`). */
+    private static int $fixedLines = 0;
+
+    /** بهای تازه‌ی یک حرکت و ردیفش — فقط اگر واقعاً عوض شده. */
+    private static function fix(array &$fixMove, array &$fixLine, array $m, ?array $line, int $c): void
+    {
+        if ($m['unit_cost'] === null || (int)$m['unit_cost'] !== $c) { $fixMove[(int)$m['id']] = $c; }
+        if ($line !== null && ($line['unit_cost'] === null || (int)$line['unit_cost'] !== $c)) { $fixLine[(int)$line['id']] = $c; }
+    }
+
+    /**
+     * ردیف‌های سندیِ حرکت‌های یک کالا، به ترتیبِ ردیف — فقط برای سندی که
+     * شمارِ ردیف‌هایش با شمارِ حرکت‌هایش یکی است (کالایی که بعداً از «خدمت»
+     * به «کالا» تغییر کرده ردیفِ بی‌حرکت دارد؛ آنجا جفت کردن حدس می‌شد، پس
+     * آن سند به میانگین برمی‌گردد و ردیفش دست نمی‌خورد).
+     * @return array<int, list<array>> شناسه‌ی سند ← ردیف‌ها
+     */
+    private static function docLines(PDO $pdo, int $userId, int $productId, array $moves): array
+    {
+        $count = [];
+        foreach ($moves as $m) {
+            if ($m['ref_type'] === self::REF_INVOICE) { $count[(int)$m['ref_id']] = ($count[(int)$m['ref_id']] ?? 0) + 1; }
+        }
+        if (!$count) { return []; }
+        try {
+            $st = $pdo->prepare(
+                "SELECT id, invoice_id, ref_line_id, qty, unit_cost, imei1, imei2 FROM biz_invoice_lines
+                 WHERE user_id = :u AND product_id = :p
+                   AND invoice_id IN (SELECT ref_id FROM biz_stock_moves WHERE user_id = :u2 AND product_id = :p2 AND ref_type = :rt)
+                 ORDER BY invoice_id, line_no, id"
+            );
+            $st->execute(['u' => $userId, 'p' => $productId, 'u2' => $userId, 'p2' => $productId, 'rt' => self::REF_INVOICE]);
+        } catch (PDOException $e) {
+            // نصبی که جدولِ سند یا ستونِ IMEI را هنوز ندارد: بی‌زنجیره، مثلِ قبل
+            if (in_array((string)$e->getCode(), ['42S02', '42S22'], true)) { return []; }
+            throw $e;
+        }
+        $out = [];
+        foreach ($st->fetchAll() as $l) { $out[(int)$l['invoice_id']][] = $l; }
+        foreach ($out as $rid => $ls) {
+            if (count($ls) !== ($count[$rid] ?? 0)) { unset($out[$rid]); }
+        }
+        return $out;
     }
 
     /**

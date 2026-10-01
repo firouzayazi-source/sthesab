@@ -88,23 +88,42 @@ final class BizDash
     }
 
     /**
-     * فروشِ خالص و بهای تمام‌شده به تفکیکِ روز — همان تعریفِ `BizReports::sales()`.
-     * @return array<string,array{rev:int,cost:int}>
+     * فروشِ خالص، بهای تمام‌شده و `other` (کسریِ انبار + خریدِ بی‌انبار) به
+     * تفکیکِ روز — همان تعریف‌های `BizReports::sales()`، در **یک** کوئری.
+     * @return array<string,array{rev:int,cost:int,other:int}>
      */
     public static function salesDaily(int $userId, string $from, string $to): array
     {
         $st = Database::getConnection()->prepare(
-            "SELECT i.inv_date AS d,
-                    SUM(CASE WHEN i.kind = 'sale' THEN l.net_total ELSE -l.net_total END) AS rev,
-                    SUM(CASE WHEN i.kind = 'sale' THEN 1 ELSE -1 END * ROUND(COALESCE(l.unit_cost, 0) * l.qty)) AS cost
-             FROM biz_invoices i JOIN biz_invoice_lines l ON l.invoice_id = i.id AND l.user_id = i.user_id
-             WHERE i.user_id = :u AND i.status = 'issued' AND i.kind IN ('sale','sale_return')
-               AND i.inv_date BETWEEN :f AND :t
-             GROUP BY i.inv_date"
+            "SELECT d, SUM(rev) AS rev, SUM(cost) AS cost, SUM(other) AS other FROM (
+                SELECT i.inv_date AS d,
+                       SUM(CASE WHEN i.kind = 'sale' THEN l.net_total ELSE -l.net_total END) AS rev,
+                       SUM(CASE WHEN i.kind = 'sale' THEN 1 ELSE -1 END * ROUND(COALESCE(l.unit_cost, 0) * l.qty)) AS cost,
+                       0 AS other
+                FROM biz_invoices i JOIN biz_invoice_lines l ON l.invoice_id = i.id AND l.user_id = i.user_id
+                WHERE i.user_id = :u AND i.status = 'issued' AND i.kind IN ('sale','sale_return')
+                  AND i.inv_date BETWEEN :f AND :t
+                GROUP BY i.inv_date
+                UNION ALL
+                SELECT m.move_date, 0, 0, -SUM(ROUND(m.qty * COALESCE(m.unit_cost, p.avg_cost)))
+                FROM biz_stock_moves m JOIN biz_products p FORCE INDEX (PRIMARY) ON p.id = m.product_id AND p.user_id = m.user_id
+                WHERE m.user_id = :u2 AND m.kind = 'adjust' AND m.move_date BETWEEN :f2 AND :t2
+                GROUP BY m.move_date
+                UNION ALL
+                SELECT i.inv_date, 0, 0, SUM(CASE WHEN i.kind = 'purchase' THEN l.net_total ELSE -l.net_total END)
+                FROM biz_invoices i JOIN biz_invoice_lines l ON l.invoice_id = i.id AND l.user_id = i.user_id
+                LEFT JOIN biz_products p FORCE INDEX (PRIMARY) ON p.id = l.product_id AND p.user_id = l.user_id
+                WHERE i.user_id = :u3 AND i.status = 'issued' AND i.kind IN ('purchase','purchase_return')
+                  AND i.inv_date BETWEEN :f3 AND :t3 AND (l.product_id IS NULL OR p.track_stock = 0)
+                GROUP BY i.inv_date
+             ) x GROUP BY d"
         );
-        $st->execute(['u' => $userId, 'f' => $from, 't' => $to]);
+        $st->execute(['u' => $userId, 'f' => $from, 't' => $to, 'u2' => $userId, 'f2' => $from, 't2' => $to,
+                      'u3' => $userId, 'f3' => $from, 't3' => $to]);
         $out = [];
-        foreach ($st->fetchAll() as $r) { $out[(string)$r['d']] = ['rev' => (int)$r['rev'], 'cost' => (int)$r['cost']]; }
+        foreach ($st->fetchAll() as $r) {
+            $out[(string)$r['d']] = ['rev' => (int)$r['rev'], 'cost' => (int)$r['cost'], 'other' => (int)$r['other']];
+        }
         return $out;
     }
 
