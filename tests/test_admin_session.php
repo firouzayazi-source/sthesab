@@ -162,6 +162,31 @@ T::ok(Auth::isAdmin(), 'isAdmin() درست است');
 $setRole('user');
 
 // ===============================================================
+T::group('۵ب. روشن شدنِ فروشگاه — درگاه بدونِ خروج و ورودِ دوباره');
+// «چرا نمی‌بینم ورود به حسابداریِ فروشگاهی‌شو»: نوعِ حساب فقط هنگامِ ورود در
+// نشست می‌نشست و با «این دستگاه را به خاطر بسپار» ورود هفته‌ها می‌ماند.
+if (Biz::available()) {
+    $setType = fn(string $t) => $pdo->prepare('UPDATE users SET account_type = :t WHERE id = :id')->execute(['t' => $t, 'id' => $userId]);
+    $setType('both');
+    $session('user');
+    $_SESSION['account_type'] = 'personal';                  // نشستی که پیش از روشن شدن ساخته شده
+    T::ok(Auth::isLoggedIn(), 'کاربر وارد می‌ماند');
+    T::same('both', $_SESSION['account_type'] ?? null, '⛔ نوعِ حسابِ نشست از همان سنجشِ دقیقه‌ای تازه شد');
+    T::ok(Biz::hasStore() && Biz::personalGateway('home') !== '', '⛔ و درگاهِ «حسابداری فروشگاه» دیده می‌شود');
+    $setType('personal');
+    $session('user');
+    $_SESSION['account_type'] = 'both';
+    Auth::isLoggedIn();
+    T::ok(!Biz::hasStore() && Biz::personalGateway('home') === '', 'خاموش شدن هم: درگاه با همان سنجش رفت');
+    $session('user', 10);                                      // سنجشِ تازه — دیتابیس پرسیده نمی‌شود
+    $_SESSION['account_type'] = 'both';
+    Auth::isLoggedIn();
+    T::same('both', $_SESSION['account_type'] ?? null, 'زیرِ یک دقیقه نشست دست نمی‌خورد (سقفِ هزینه همان است)');
+} else {
+    T::skip('روشن شدنِ فروشگاه', 'ستونِ users.account_type نیست');
+}
+
+// ===============================================================
 T::group('۶. مهرِ ابطال — نشستِ قدیمی‌تر می‌رود، تازه‌تر می‌ماند');
 
 if (!$hasRevoke) {

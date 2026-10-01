@@ -94,18 +94,24 @@ $findUser = function (string $username) use ($pdo): array {
 // ---------------------------------------------------------------
 if ($cmd === '--list') {
     $cols = $hasEmailColumn ? 'id, username, full_name, role, is_active, email' : 'id, username, full_name, role, is_active';
+    // نوعِ حساب (شخصی / شخصی + فروشگاه / فقط فروشگاه) — تا «چرا درگاهِ فروشگاه را
+    // نمی‌بینم» با یک نگاه جواب بگیرد. نصبِ بی‌ستون: «—».
+    $hasType = usersHaveColumn($pdo, 'account_type');
+    if ($hasType) { $cols .= ', account_type'; }
     $rows = $pdo->query("SELECT $cols FROM users ORDER BY id")->fetchAll();
     if (!$rows) { out('هیچ کاربری در دیتابیس نیست.'); exit(0); }
 
     out('');
-    printf("  %-4s %-16s %-22s %-7s %-8s %s\n", 'id', 'نام کاربری', 'نام', 'نقش', 'وضعیت', $hasEmailColumn ? 'ایمیل' : '');
-    out('  ' . str_repeat('─', 76));
+    printf("  %-4s %-16s %-22s %-7s %-8s %-9s %s\n", 'id', 'نام کاربری', 'نام', 'نقش', 'وضعیت', 'نوع', $hasEmailColumn ? 'ایمیل' : '');
+    out('  ' . str_repeat('─', 86));
     foreach ($rows as $r) {
-        printf("  %-4s %-16s %-22s %-7s %-8s %s\n",
+        printf("  %-4s %-16s %-22s %-7s %-8s %-9s %s\n",
             $r['id'], $r['username'], $r['full_name'], $r['role'],
             $r['is_active'] ? 'فعال' : 'غیرفعال',
+            $hasType ? (string)($r['account_type'] ?? 'personal') : '—',
             $hasEmailColumn ? ($r['email'] ?? '—') : '');
     }
+    out('  نوع: personal = شخصی، both = شخصی + فروشگاه، business = فقط فروشگاه');
     out('');
     if (!$hasEmailColumn) {
         out("  ستون ایمیل هنوز ساخته نشده — migration را اجرا کنید:");

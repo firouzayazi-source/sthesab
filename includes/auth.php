@@ -513,8 +513,11 @@ class Auth
             try {
                 // ⛔ مقایسه‌ی زمان در **دیتابیس**، نه در PHP — همان درسِ
                 //    لینکِ بازیابیِ رمز: ساعتِ دو طرف یکی نیست.
+                // ⚠ `*` نه فهرستِ ستون: `account_type` (migration_business_mode) روی
+                //   نصبِ عقب‌مانده نیست و نبودنش نباید سنجشِ ابطال را به کوئریِ دوم
+                //   (بی‌`revoked`) بیندازد.
                 $st = $pdo->prepare(
-                    'SELECT is_active, role,
+                    'SELECT *,
                             (access_revoked_at IS NOT NULL
                              AND access_revoked_at > FROM_UNIXTIME(:login)) AS revoked
                      FROM users WHERE id = :id LIMIT 1'
@@ -526,7 +529,7 @@ class Auth
                 // خطای دیگری به catchِ بیرونی می‌رود؛ وگرنه یک قطعیِ گذرا
                 // بی‌صدا سنجشِ ابطال را خاموش می‌کرد.
                 if ((string)$e->getCode() !== '42S22') { throw $e; }
-                $st = $pdo->prepare('SELECT is_active, role, 0 AS revoked FROM users WHERE id = :id LIMIT 1');
+                $st = $pdo->prepare('SELECT *, 0 AS revoked FROM users WHERE id = :id LIMIT 1');
                 $st->execute(['id' => $userId]);
                 $row = $st->fetch();
             }
@@ -539,6 +542,16 @@ class Auth
         }
 
         $_SESSION['role'] = $row['role'];
+        // ⛔ نوعِ حساب هم از همین ردیف — صفر کوئریِ اضافه. پیش از این فقط هنگامِ
+        //    ورود نوشته می‌شد، و با «این دستگاه را به خاطر بسپار» ورود هفته‌ها
+        //    می‌ماند: فروشگاهی که مدیر بعد از ورود روشن کرده بود، درگاهِ «حسابداری
+        //    فروشگاه» (`Biz::personalGateway()`) را تا ورودِ بعدی پنهان نگه می‌داشت
+        //    («چرا نمی‌بینم ورود به حسابداریِ فروشگاهی‌شو»). حالا حداکثر ۶۰ ثانیه.
+        //    ابطالِ دسترسی جداست: تغییری که دروازه را عوض کند (`business`) خودش
+        //    `revokeAllAccessFor()` را صدا زده و این نشست بالاتر بسته شده است.
+        if (isset($row['account_type']) && isset(Biz::TYPES[(string)$row['account_type']])) {
+            $_SESSION['account_type'] = (string)$row['account_type'];
+        }
         return true;
     }
 
