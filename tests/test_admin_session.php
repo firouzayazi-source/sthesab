@@ -172,12 +172,12 @@ if (Biz::available()) {
     $_SESSION['account_type'] = 'personal';                  // نشستی که پیش از روشن شدن ساخته شده
     T::ok(Auth::isLoggedIn(), 'کاربر وارد می‌ماند');
     T::same('both', $_SESSION['account_type'] ?? null, '⛔ نوعِ حسابِ نشست از همان سنجشِ دقیقه‌ای تازه شد');
-    T::ok(Biz::hasStore() && Biz::personalGateway('home') !== '', '⛔ و درگاهِ «حسابداری فروشگاه» دیده می‌شود');
+    T::ok(Biz::hasStore() && Biz::personalGateway('sheet') !== '', '⛔ و درگاهِ «حسابداری فروشگاه» دیده می‌شود');
     $setType('personal');
     $session('user');
     $_SESSION['account_type'] = 'both';
     Auth::isLoggedIn();
-    T::ok(!Biz::hasStore() && Biz::personalGateway('home') === '', 'خاموش شدن هم: درگاه با همان سنجش رفت');
+    T::ok(!Biz::hasStore() && Biz::personalGateway('sheet') === '', 'خاموش شدن هم: درگاه با همان سنجش رفت');
     $session('user', 10);                                      // سنجشِ تازه — دیتابیس پرسیده نمی‌شود
     $_SESSION['account_type'] = 'both';
     Auth::isLoggedIn();

@@ -234,8 +234,13 @@ final class Biz
             && in_array($_SESSION['account_type'] ?? '', self::STORE_TYPES, true);
     }
 
-    /** جاهای مجازِ درگاه در طرفِ شخصی — فهرستِ بسته. */
-    public const GATEWAY_SPOTS = ['nav', 'sheet', 'home'];
+    /**
+     * جاهای مجازِ درگاه در طرفِ شخصی — فهرستِ بسته: پایینِ منوی کناریِ
+     * دسکتاپ (`nav`، کنارِ «حساب کاربری من») و شیتِ «بیشتر»ِ گوشی (`sheet`).
+     * ⚠ کارتِ خانه عمداً نیست — خواسته‌ی مالکِ نصب: «از خانه بردار، همون در
+     *   بیشتر باشه؛ در دسکتاپ هم پایین یه جای مناسب».
+     */
+    public const GATEWAY_SPOTS = ['nav', 'sheet'];
 
     /**
      * ⛔ درگاهِ «حسابداری فروشگاه» در حساب لندِ شخصی — **تنها** نشانِ فروشگاه
@@ -254,7 +259,7 @@ final class Biz
      *     می‌بیند؛ خاموش کردن هم تا آن وقت درگاه را نگه می‌دارد ولی خودِ `/store`
      *     همان لحظه ۴۰۴ می‌دهد (`requirePage()` از دیتابیس می‌خواند).
      *   - حسابِ «فقط فروشگاه» اصلاً به صفحه‌های شخصی نمی‌رسد (دروازه).
-     * @param string $spot یکی از `GATEWAY_SPOTS`: منوی کناری، شیتِ «بیشتر»، خانه
+     * @param string $spot یکی از `GATEWAY_SPOTS`: پایینِ منوی کناری، شیتِ «بیشتر»
      */
     public static function personalGateway(string $spot): string
     {
@@ -263,21 +268,14 @@ final class Biz
         $icon = h(self::icon('96'));
         $name = 'حسابداری فروشگاه';
         if ($spot === 'nav') {
-            return '<li><a href="' . $url . '" class="store-gate-nav">'
+            // همان شکلِ «حساب کاربری من» در پایینِ منو (`.logout-link`)
+            return '<a href="' . $url . '" class="logout-link store-gate-nav">'
                  . '<img src="' . $icon . '" alt="" width="20" height="20" class="store-gate-ico">'
-                 . '<span>' . $name . '</span></a></li>';
-        }
-        if ($spot === 'sheet') {
-            return '<a href="' . $url . '" class="tool-card tool-card-wide store-gate-tool" style="--tc1:#f59e0b; --tc2:#ea580c;">'
-                 . '<img src="' . $icon . '" alt="" width="26" height="26" class="store-gate-ico">'
                  . '<span>' . $name . '</span></a>';
         }
-        return '<a href="' . $url . '" class="card store-gate-card">'
-             . '<img src="' . $icon . '" alt="" width="44" height="44" class="store-gate-logo">'
-             . '<span class="store-gate-text"><b>' . $name . '</b>'
-             . '<small>فاکتور، انبار، چک و گزارشِ مغازه — جدا از دفترِ شخصی</small></span>'
-             . '<svg class="store-gate-go" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>'
-             . '</a>';
+        return '<a href="' . $url . '" class="tool-card tool-card-wide store-gate-tool" style="--tc1:#f59e0b; --tc2:#ea580c;">'
+             . '<img src="' . $icon . '" alt="" width="26" height="26" class="store-gate-ico">'
+             . '<span>' . $name . '</span></a>';
     }
 
     /**

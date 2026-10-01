@@ -69,9 +69,6 @@ if (Auth::isLoggedIn()) {
                 <span>داشبورد</span>
             </a>
         </li>
-        <?php /* ⛔ درگاهِ «حسابداری فروشگاه» — فقط برای حسابی که فروشگاهش روشن است؛
-                 برای بقیه رشته‌ی خالی. آدرس و آیکون فقط در `Biz::personalGateway()`. */ ?>
-        <?= Biz::personalGateway('nav') ?>
         <li>
             <a href="<?= APP_BASE_PATH ?>/wallets.php" class="<?= $__currentPage === 'wallets.php' ? 'active' : '' ?>">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 7.5h15a2.5 2.5 0 012.5 2.5v7a2.5 2.5 0 01-2.5 2.5H5.5A2.5 2.5 0 013 17V7.5z" stroke="currentColor" stroke-width="2"/><path d="M3 7.5l12-3v3" stroke="currentColor" stroke-width="2"/><circle cx="17" cy="13.5" r="1.3" fill="currentColor"/></svg>
@@ -227,6 +224,9 @@ if (Auth::isLoggedIn()) {
     </ul>
 
     <div class="sidebar-footer">
+        <?php /* ⛔ درگاهِ «حسابداری فروشگاه» — پایینِ منو، کنارِ «حساب کاربری من»؛ فقط
+                 برای حسابی که فروشگاهش روشن است. آدرس و آیکون فقط در `Biz::personalGateway()`. */ ?>
+        <?= Biz::personalGateway('nav') ?>
         <a href="<?= APP_BASE_PATH ?>/profile.php" class="logout-link">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2"/><path d="M4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             <span>حساب کاربری من</span>
