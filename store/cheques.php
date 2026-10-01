@@ -1,7 +1,8 @@
 <?php
 /**
  * چک‌ها — دفترِ چک‌های دریافتی و پرداختیِ فروشگاه: در جریان، سررسید گذشته،
- * وصول‌شده و برگشتی؛ با «وصول» و «برگشت خورد».
+ * وصول‌شده، واگذارشده و برگشتی؛ با «وصول»، «واگذاری به فروشنده» (چکِ خرجی)،
+ * «برگشت از واگذاری» و «برگشت خورد».
  *
  * ⛔ چک ردیفِ جدایی نیست؛ همان دریافت/پرداختی است که روشش «چک» است
  *    (`BizCheques`). این صفحه فقط وضعیتش را جلو می‌برد، و هر نوشتن POST +
@@ -31,6 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         case 'clear':   $r = BizCheques::clear($userId, $cid, (int)postParam('bank_id'), BizDocView::gDate((string)postParam('clear_date'))); break;
         case 'unclear': $r = BizCheques::unclear($userId, $cid); break;
         case 'bounce':  $r = BizCheques::bounce($userId, $cid); break;
+        case 'endorse': $r = BizCheques::endorse($userId, $cid, (int)postParam('party_id'), BizDocView::gDate((string)postParam('endorse_date'))); break;
+        case 'unendorse': $r = BizCheques::unendorse($userId, $cid); break;
         default:        $r = ['ok' => false, 'message' => 'درخواست نامعتبر است.'];
     }
     redirectWithMessage($self, $r['ok'] ? 'success' : 'error', $r['message']);
@@ -38,6 +41,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $list  = $ready ? BizCheques::list($userId, $filter, $page) : ['rows' => [], 'total' => 0, 'page' => 1, 'pages' => 1, 'in' => 0, 'out' => 0, 'overdue' => 0];
 $banks = $ready ? BizDocView::accounts($userId) : [];
+// طرف‌حساب‌ها برای «واگذاری» — فقط اگر در همین صفحه چکِ دریافتیِ در جریانی هست (یک کوئری، بی‌مانده)
+$hasIn = (bool)array_filter($list['rows'], fn($r) => $r['kind'] === 'receipt' && $r['cheque_status'] === 'pending');
+$payees = $hasIn ? array_values(array_filter(BizParties::all($userId, '', 3000, false)['rows'], fn($p) => (int)$p['is_active'] === 1)) : [];
 $today = BizDocView::jDate(date('Y-m-d'));
 $url   = fn(array $o): string => Biz::url('cheques.php') . '?' . http_build_query(array_filter(array_merge($keep, $o), fn($v) => $v !== '' && $v !== null));
 
@@ -93,6 +99,7 @@ require __DIR__ . '/../includes/biz_head.php';
             <?php if ($late): ?> · <b class="st-late">گذشته</b><?php endif; ?>
             · <?= h(BizCheques::STATUSES[$st] ?? '') ?>
             <?php if ($st === 'cleared' && $r['settle_date'] !== null): ?> در <?= h((string)$r['settle_account']) ?> · <span class="st-num"><?= h(toJalali((string)$r['settle_date'])) ?></span><?php endif; ?>
+            <?php if ($st === 'endorsed' && $r['endorse_date'] !== null): ?> به <a href="<?= h(Biz::url('party.php?id=' . (int)$r['endorse_party_id'])) ?>"><?= h((string)$r['endorse_party']) ?></a> · <span class="st-num"><?= h(toJalali((string)$r['endorse_date'])) ?></span><?php endif; ?>
         </p>
         <?php if ($st === 'pending'): ?>
         <div class="st-cheque-actions">
@@ -106,6 +113,19 @@ require __DIR__ . '/../includes/biz_head.php';
                 <input type="text" name="clear_date" value="<?= h($today) ?>" dir="ltr" class="st-date-in" aria-label="تاریخِ وصول">
                 <button type="submit" class="st-btn st-btn-sm"><?= $in ? 'وصول شد' : 'پاس شد' ?></button>
             </form>
+            <?php if ($in && $payees): ?>
+            <form method="post" action="<?= h($self) ?>" class="st-filters st-cheque-clear">
+                <?= Csrf::field() ?>
+                <input type="hidden" name="action" value="endorse">
+                <input type="hidden" name="cheque_id" value="<?= (int)$r['id'] ?>">
+                <select name="party_id" aria-label="واگذاری به">
+                    <option value="">واگذاری به…</option>
+                    <?php foreach ($payees as $pp): if ((int)$pp['id'] === (int)$r['party_id']) { continue; } ?><option value="<?= (int)$pp['id'] ?>"><?= h((string)$pp['name']) ?></option><?php endforeach; ?>
+                </select>
+                <input type="text" name="endorse_date" value="<?= h($today) ?>" dir="ltr" class="st-date-in" aria-label="تاریخِ واگذاری">
+                <button type="submit" class="st-btn st-btn-sm st-btn-ghost">خرج کردن (واگذاری)</button>
+            </form>
+            <?php endif; ?>
             <form method="post" action="<?= h($self) ?>" onsubmit="return confirm('این چک برگشت خورد؟ سندش باطل و مبلغ دوباره به حسابِ طرف‌حساب برمی‌گردد.');">
                 <?= Csrf::field() ?>
                 <input type="hidden" name="action" value="bounce">
@@ -113,6 +133,13 @@ require __DIR__ . '/../includes/biz_head.php';
                 <button type="submit" class="st-link-btn st-link-danger">برگشت خورد</button>
             </form>
         </div>
+        <?php elseif ($st === 'endorsed'): ?>
+        <form method="post" action="<?= h($self) ?>" onsubmit="return confirm('فروشنده چک را پس داد (یا نزدِ او برگشت خورد)؟ پرداختِ واگذاری باطل، بدهیِ شما به او برمی‌گردد و چک دوباره در جریان می‌شود.');">
+            <?= Csrf::field() ?>
+            <input type="hidden" name="action" value="unendorse">
+            <input type="hidden" name="cheque_id" value="<?= (int)$r['id'] ?>">
+            <button type="submit" class="st-link-btn">برگشت از واگذاری</button>
+        </form>
         <?php elseif ($st === 'cleared'): ?>
         <form method="post" action="<?= h($self) ?>" onsubmit="return confirm('وصول برگردد و چک دوباره در جریان شود؟');">
             <?= Csrf::field() ?>

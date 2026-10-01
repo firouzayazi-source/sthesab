@@ -13,6 +13,7 @@ Auth::initSession();
 Biz::requirePage();
 require_once __DIR__ . '/../includes/biz_catalog.php';
 require_once __DIR__ . '/../includes/avatar.php';
+require_once __DIR__ . '/../includes/biz_docview.php';
 
 $userId   = (int)Auth::userId();
 $error    = '';
@@ -34,6 +35,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (postParam('action') === 'palette') {
         $res = Biz::savePalette($userId, (string)postParam('palette'));
         redirectWithMessage(Biz::url('settings.php') . '#palette', $res['ok'] ? 'success' : 'error', $res['message']);
+    }
+    // ⛔ بستنِ دوره — فقط `Biz::saveLock()` (تاریخِ شمسیِ فرم → میلادی)
+    if (postParam('action') === 'lock') {
+        $raw = (string)postParam('lock_quick') !== '' ? (string)postParam('lock_quick') : BizDocView::gDate((string)postParam('lock_date'));
+        if ((string)postParam('lock_date') !== '' && (string)postParam('lock_quick') === '' && $raw === '') {
+            redirectWithMessage(Biz::url('settings.php') . '#lock', 'error', 'تاریخ را به شکلِ ۱۴۰۵/۰۶/۳۱ بنویسید.');
+        }
+        $res = Biz::saveLock($userId, $raw, postParam('confirm_unlock') === '1');
+        redirectWithMessage(Biz::url('settings.php') . '#lock', $res['ok'] ? 'success' : 'error', $res['message']);
     }
     if (postParam('action') === 'invoice_prefs') {
         $res = Biz::saveInvoicePrefs($userId, $_POST);
@@ -184,4 +194,33 @@ require __DIR__ . '/../includes/biz_head.php';
     <p class="st-muted">صندوق‌ها حالا صفحه‌ی خودشان را دارند، با موجودی و گردشِ هر کدام.</p>
     <a class="st-btn st-btn-ghost" href="<?= h(Biz::url('accounts.php')) ?>">صندوق و بانک</a>
 </section>
+<?php
+$lockAt   = Biz::lockDate($userId);
+$prevEnd  = date('Y-m-d', strtotime(startOfJalaliMonth() . ' -1 day'));   // پایانِ ماهِ شمسیِ قبل
+?>
+<h2 class="st-h2 st-section-title" id="lock">بستنِ دوره</h2>
+<form method="post" class="st-card st-form" action="<?= h(Biz::url('settings.php')) ?>">
+    <?= Csrf::field() ?>
+    <input type="hidden" name="action" value="lock">
+    <p class="st-muted">وقتی حسابِ یک ماه را بستید و گزارشش را گرفتید، آن را قفل کنید: هیچ فاکتور، برگشت، دریافت/پرداخت، وصول یا انبارگردانی با تاریخِ تا آن روز دیگر ثبت، باطل یا اصلاح نمی‌شود — پس سود، بهای تمام‌شده و مانده‌های آن دوره دیگر عوض نمی‌شوند.</p>
+    <p><?= $lockAt !== null
+        ? 'الان بسته تا <b class="st-num">' . h(toJalali($lockAt)) . '</b>.'
+        : 'الان هیچ دوره‌ای بسته نیست.' ?></p>
+    <label class="st-field">
+        <span>بستن تا تاریخِ (خالی = باز کردنِ همه)</span>
+        <input type="text" name="lock_date" value="<?= $lockAt !== null ? h(BizDocView::jDate($lockAt)) : '' ?>" placeholder="۱۴۰۵/۰۶/۳۱" dir="ltr" class="st-date-in">
+    </label>
+    <?php if ($lockAt !== null): ?>
+    <label class="st-check">
+        <input type="checkbox" name="confirm_unlock" value="1">
+        <span>می‌خواهم دوره‌ای را که بسته بود دوباره باز کنم (برای عقب بردن یا خالی کردنِ تاریخ لازم است)</span>
+    </label>
+    <?php endif; ?>
+    <div class="st-head-actions">
+        <button type="submit" class="st-btn">ذخیره</button>
+        <?php if ($lockAt === null || $lockAt < $prevEnd): ?>
+        <button type="submit" name="lock_quick" value="<?= h($prevEnd) ?>" class="st-btn st-btn-ghost">بستن تا پایانِ ماهِ قبل (<?= h(toJalali($prevEnd)) ?>)</button>
+        <?php endif; ?>
+    </div>
+</form>
 <?php require __DIR__ . '/../includes/biz_foot.php'; ?>

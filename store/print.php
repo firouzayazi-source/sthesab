@@ -187,7 +187,7 @@ case 'cheques':
                 <td><?= $r['kind'] === 'receipt' ? 'دریافتی' : 'پرداختی' ?></td>
                 <td><?= h(BizCheques::label($r)) ?></td>
                 <td><?= h((string)($r['party_name'] ?? '')) ?></td>
-                <td><?= h(BizCheques::STATUSES[$r['cheque_status']] ?? '') ?><?php if ($r['cheque_status'] === 'cleared' && $r['settle_date'] !== null): ?><br><span class="pr-sub"><?= h((string)$r['settle_account']) ?> · <span class="pr-num"><?= h(toJalali((string)$r['settle_date'])) ?></span></span><?php endif; ?></td>
+                <td><?= h(BizCheques::STATUSES[$r['cheque_status']] ?? '') ?><?php if ($r['cheque_status'] === 'cleared' && $r['settle_date'] !== null): ?><br><span class="pr-sub"><?= h((string)$r['settle_account']) ?> · <span class="pr-num"><?= h(toJalali((string)$r['settle_date'])) ?></span></span><?php endif; ?><?php if ($r['cheque_status'] === 'endorsed' && $r['endorse_date'] !== null): ?><br><span class="pr-sub">به <?= h((string)$r['endorse_party']) ?> · <span class="pr-num"><?= h(toJalali((string)$r['endorse_date'])) ?></span></span><?php endif; ?></td>
                 <td class="pr-c-num"><?= $money($r['amount']) ?></td>
             </tr>
         <?php endforeach; ?>

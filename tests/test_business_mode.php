@@ -70,7 +70,7 @@ const STORE_BUDGET = [
     'store/payments.php'       => 7,
     'store/payment.php'        => 6,
     'store/accounts.php'       => 5,
-    'store/cheques.php'        => 9,
+    'store/cheques.php'        => 10,  // +۱: منوی طرف‌حساب‌ها برای «واگذاری» (فقط وقتی چکِ دریافتیِ در جریانی هست)
     'store/categories.php'     => 5,
 ];
 const STORE_NO_BUDGET = ['store/login.php', 'store/logout.php'];
@@ -491,6 +491,9 @@ $bDraft = (int)BizInvoices::saveDraft($bid, 'sale', ['party_id' => (int)$bpt['id
     'lines' => [['item' => 'کالای بودجه', 'qty' => '1', 'price' => '150']]])['id'];
 $bPay = (int)BizPay::create($bid, ['kind' => 'receipt', 'party_id' => (int)$bpt['id'], 'account_id' => $bAcc, 'amount' => '30'])['id'];
 BizPay::create($bid, ['kind' => 'expense', 'account_id' => $bAcc, 'amount' => '10', 'title' => 'قبض']);
+// چکِ دریافتیِ در جریان — تا فرمِ «واگذاری» (منوی طرف‌حساب‌ها) هم در بودجه‌ی صفحه‌ی چک‌ها شمرده شود
+BizPay::create($bid, ['kind' => 'receipt', 'party_id' => (int)$bpt['id'], 'account_id' => $bAcc, 'amount' => '20',
+                      'method' => 'cheque', 'cheque_due' => date('Y-m-d', strtotime('+3 days'))]);
 $budgetUrl = ['store/search.php' => 'store/search.php?q=' . rawurlencode('بودجه'),
               'store/product.php' => 'store/product.php?id=' . (int)$bp['id'],
               'store/party.php'   => 'store/party.php?id=' . (int)$bpt['id'],

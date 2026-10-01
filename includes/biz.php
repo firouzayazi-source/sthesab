@@ -610,8 +610,68 @@ final class Biz
         self::$paletteCache[$userId] = $row ? (string)($row['palette'] ?? '') : '';
         self::$invoiceRaw[$userId]   = $row ? (string)($row['invoice_prefs'] ?? '') : '';
         self::$designRaw[$userId]    = $row ? (string)($row['invoice_design'] ?? '') : '';
+        self::$lockCache[$userId]    = $row ? (string)($row['lock_date'] ?? '') : '';
         if ($row) { self::$infoReady = array_key_exists('invoice_prefs', $row); }
         return self::$settingsCache[$userId] = $out;
+    }
+
+    /* ============================================================
+       بستنِ دوره (migration_biz_lock → biz_settings.lock_date)
+       ============================================================ */
+
+    private static array $lockCache = [];
+
+    /** آخرین روزِ بسته (میلادی) یا null — از همان `SELECT *`ِ `settings()`، صفر کوئریِ اضافه. */
+    public static function lockDate(int $userId): ?string
+    {
+        self::settings($userId);
+        $d = (string)(self::$lockCache[$userId] ?? '');
+        return isValidDate($d) ? $d : null;
+    }
+
+    /**
+     * ⛔ تنها سنجه‌ی «دوره‌ی بسته». هر نوشتنی که عددِ یک روزِ گذشته را عوض
+     *    می‌کند (صدور، ابطال، برگشت به پیش‌نویس، برگشت، دریافت/پرداخت و ابطالش،
+     *    وصول/برگشت/واگذاریِ چک، انبارگردانی، موجودی و مانده‌ی اول دوره) با
+     *    تاریخِ **خودِ آن سند** اینجا را می‌پرسد. تاریخِ تا روزِ قفل → پیامِ خطا.
+     *    دلیل: بی‌قفل، یک خریدِ تاریخ‌گذشته بهای تمام‌شده و سودِ ماهی را که
+     *    حسابش بسته و گزارشش داده شده بی‌صدا عوض می‌کرد (زنجیره‌ی `recalc()`).
+     * @return string|null پیامِ خطا، یا null یعنی «دوره باز است»
+     */
+    public static function lockError(int $userId, string $date, string $what = 'این سند'): ?string
+    {
+        $lock = self::lockDate($userId);
+        if ($lock === null || $date === '' || $date > $lock) { return null; }
+        return 'دوره تا ' . toJalali($lock) . ' بسته است؛ ' . $what . ' با تاریخِ ' . toJalali($date)
+            . ' ثبت یا اصلاح نمی‌شود (تنظیماتِ فروشگاه ← بستنِ دوره).';
+    }
+
+    /**
+     * بستن یا باز کردنِ دوره. `$date` خالی = باز کردنِ همه. ⛔ عقب بردن یا باز
+     * کردن (دوره‌ای که بسته بود دوباره باز شود) تأییدِ صریح می‌خواهد — جلوتر
+     * بردن نه. قفل تا امروز است، نه آینده: روزِ آینده هنوز سندی ندارد که بسته شود.
+     * @return array{ok:bool, message:string}
+     */
+    public static function saveLock(int $userId, string $date, bool $confirmUnlock = false): array
+    {
+        if (!self::hasColumn('biz_settings', 'lock_date')) {
+            return ['ok' => false, 'message' => 'بستنِ دوره هنوز راه نیفتاده است (migration_biz_lock).'];
+        }
+        $date = trim($date);
+        if ($date !== '' && !isValidDate($date)) { return ['ok' => false, 'message' => 'تاریخِ بستن معتبر نیست.']; }
+        if ($date !== '' && $date > date('Y-m-d')) { return ['ok' => false, 'message' => 'دوره فقط تا امروز بسته می‌شود، نه آینده.']; }
+        $cur = self::lockDate($userId);
+        $unlock = $cur !== null && ($date === '' || $date < $cur);
+        if ($unlock && !$confirmUnlock) {
+            return ['ok' => false, 'message' => 'برای باز کردنِ دوره‌ای که بسته بود، گزینه‌ی تأیید را بزنید.'];
+        }
+        unset(self::$settingsCache[$userId], self::$lockCache[$userId]);
+        Database::getConnection()->prepare(
+            'INSERT INTO biz_settings (user_id, lock_date) VALUES (:u, :d)
+             ON DUPLICATE KEY UPDATE lock_date = VALUES(lock_date)'
+        )->execute(['u' => $userId, 'd' => $date === '' ? null : $date]);
+        if ($date === '') { return ['ok' => true, 'message' => 'همه‌ی دوره‌ها باز شد.']; }
+        return ['ok' => true, 'message' => 'دوره تا ' . toJalali($date) . ' بسته شد' . ($unlock ? ' (از ' . toJalali((string)$cur) . ' عقب آمد).' : '.')];
     }
 
     /** از ردیفِ `SELECT *`ِ `settings()` — بی‌کوئریِ نقشه‌ی ساختار؛ null = هنوز نمی‌دانیم. */

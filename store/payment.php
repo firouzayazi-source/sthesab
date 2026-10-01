@@ -53,6 +53,8 @@ if ($id > 0) {
         <?php if (($pay['cheque_status'] ?? null) !== null): ?>
             <div><dt>چک</dt><dd><?= h(BizCheques::label($pay)) ?> · سررسید <span class="st-num"><?= h(toJalali((string)$pay['cheque_due'])) ?></span></dd></div>
             <div><dt>وضعیتِ چک</dt><dd><a href="<?= h(Biz::url('cheques.php?f=all')) ?>"><?= h(BizCheques::STATUSES[$pay['cheque_status']] ?? '') ?></a></dd></div>
+        <?php elseif ($pay['kind'] === 'payment' && ($pay['cheque_settle_id'] ?? null) !== null): ?>
+            <div><dt>چکِ خرجی</dt><dd>با <a href="<?= h(Biz::url('payment.php?id=' . (int)$pay['cheque_settle_id'])) ?>">چکِ دریافتی</a> پرداخت شد — پولی از صندوق نرفت</dd></div>
         <?php endif; ?>
     </dl>
     <?php if (in_array($pay['kind'], ['receipt', 'payment'], true)): ?>

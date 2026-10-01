@@ -136,6 +136,7 @@ MIGRATIONS=(
     migration_biz_cheques.sql
     migration_biz_invoice_design.sql
     migration_biz_perf.sql
+    migration_biz_lock.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -339,6 +340,7 @@ declare -A SENTINEL=(
     [migration_biz_cheques.sql]="biz_payments.cheque_status"
     [migration_biz_invoice_design.sql]="biz_settings.invoice_design"
     [migration_biz_perf.sql]="biz_payments:idx_biz_payments_to_sum"
+    [migration_biz_lock.sql]="biz_settings.lock_date"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

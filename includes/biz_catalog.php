@@ -19,6 +19,7 @@
  */
 
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/biz.php';      // `Biz::lockError()` — بستنِ دوره
 
 /** ابزارهای مشترکِ این فایل. */
 final class BizCommon
@@ -976,6 +977,9 @@ final class BizStock
             if (!BizProducts::qtyFits((string)$p['unit'], $qty)) {
                 return 'موجودی برای واحدِ «' . $p['unit'] . '» باید عددِ صحیح باشد.';
             }
+            // ⛔ اول دوره تاریخِ ساختِ کالا را دارد و بهای همه‌ی فروش‌های بعدی از آن
+            //    ساخته می‌شود؛ کالای قدیمی در دوره‌ی بسته دیگر اول دوره‌اش عوض نمی‌شود
+            if (($e = Biz::lockError($userId, substr((string)$p['created_at'], 0, 10), 'موجودیِ اول دوره‌ی این کالا')) !== null) { return $e; }
             $pdo->prepare("DELETE FROM biz_stock_moves WHERE product_id = :p AND user_id = :u AND kind = 'opening'")
                 ->execute(['p' => $productId, 'u' => $userId]);
             if ($qty > 0) {
@@ -996,6 +1000,7 @@ final class BizStock
     public static function adjustTo(int $userId, int $productId, float $actual, string $note = ''): array
     {
         if ($actual < 0) { return ['ok' => false, 'message' => 'موجودیِ واقعی نمی‌تواند منفی باشد.']; }
+        if (($e = Biz::lockError($userId, date('Y-m-d'), 'انبارگردانی')) !== null) { return ['ok' => false, 'message' => $e]; }
         $note = mb_substr(BizCommon::line($note), 0, 200);
         $changed = false;
         $res = self::write($userId, $productId, function (PDO $pdo, array $p) use ($userId, $productId, $actual, $note, &$changed): ?string {
@@ -1077,7 +1082,7 @@ final class BizStock
     public static function deleteMove(int $userId, int $moveId): array
     {
         $st = Database::getConnection()->prepare(
-            'SELECT product_id, kind FROM biz_stock_moves WHERE id = :id AND user_id = :u LIMIT 1'
+            'SELECT product_id, kind, move_date FROM biz_stock_moves WHERE id = :id AND user_id = :u LIMIT 1'
         );
         $st->execute(['id' => $moveId, 'u' => $userId]);
         $m = $st->fetch();
@@ -1085,6 +1090,7 @@ final class BizStock
         if ($m['kind'] !== 'adjust') {
             return ['ok' => false, 'message' => 'فقط انبارگردانی از اینجا حذف می‌شود.'];
         }
+        if (($e = Biz::lockError($userId, (string)$m['move_date'], 'این انبارگردانی')) !== null) { return ['ok' => false, 'message' => $e]; }
         return self::write($userId, (int)$m['product_id'], function (PDO $pdo) use ($userId, $moveId): ?string {
             $pdo->prepare('DELETE FROM biz_stock_moves WHERE id = :id AND user_id = :u')
                 ->execute(['id' => $moveId, 'u' => $userId]);
@@ -1382,7 +1388,14 @@ final class BizParties
         $row = ['u' => $userId, 'n' => $name, 'k' => $kind, 'ph' => $phone === '' ? null : $phone,
                 'a' => $address === '' ? null : $address, 'no' => $note === '' ? null : $note, 'ob' => $opening];
         if ($id > 0) {
-            if (!self::get($userId, $id)) { return ['ok' => false, 'message' => 'طرف‌حساب پیدا نشد.']; }
+            $cur = self::get($userId, $id);
+            if (!$cur) { return ['ok' => false, 'message' => 'طرف‌حساب پیدا نشد.']; }
+            // ⛔ مانده‌ی اول دوره پیش از همه‌ی اسناد است؛ طرف‌حسابی که در دوره‌ی
+            //    بسته ساخته شده، دیگر عوضش نمی‌کند (نام و تلفن آزادند)
+            if ((int)$cur['opening_balance'] !== $opening
+                && ($e = Biz::lockError($userId, substr((string)$cur['created_at'], 0, 10), 'مانده‌ی اول دوره‌ی این طرف‌حساب')) !== null) {
+                return ['ok' => false, 'message' => $e];
+            }
             $pdo->prepare(
                 'UPDATE biz_parties SET name = :n, kind = :k, phone = :ph, address = :a, note = :no, opening_balance = :ob
                  WHERE id = :id AND user_id = :u'
@@ -1557,10 +1570,15 @@ final class BizCash
         $pdo = Database::getConnection();
         if ($id > 0) {
             // ⛔ صندوقِ چک از فرم ویرایش نمی‌شود — نوعش تنها نشانه‌ی آن است
-            $ck = $pdo->prepare('SELECT kind FROM biz_accounts WHERE id = :id AND user_id = :u');
+            $ck = $pdo->prepare('SELECT kind, opening_balance, created_at FROM biz_accounts WHERE id = :id AND user_id = :u');
             $ck->execute(['id' => $id, 'u' => $userId]);
-            if (in_array((string)$ck->fetchColumn(), self::CHEQUE_KINDS, true)) {
+            $cur = $ck->fetch() ?: ['kind' => '', 'opening_balance' => $ob, 'created_at' => ''];
+            if (in_array((string)$cur['kind'], self::CHEQUE_KINDS, true)) {
                 return ['ok' => false, 'message' => 'صندوقِ چک را خودِ برنامه نگه می‌دارد و ویرایش نمی‌شود.'];
+            }
+            if ((int)$cur['opening_balance'] !== $ob
+                && ($e = Biz::lockError($userId, substr((string)$cur['created_at'], 0, 10), 'موجودیِ اولیه‌ی این حساب')) !== null) {
+                return ['ok' => false, 'message' => $e];
             }
             $st = $pdo->prepare('UPDATE biz_accounts SET name = :n, kind = :k, opening_balance = :o WHERE id = :id AND user_id = :u');
             $st->execute(['n' => $name, 'k' => $kind, 'o' => $ob, 'id' => $id, 'u' => $userId]);

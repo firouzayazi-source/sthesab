@@ -7429,6 +7429,61 @@ if (!preg_match("/if \(\\\$to === 'draft' && \\\$inv\['party_id'\] === null\) \{
 T::bulk(10, $fBad, 'بهای فروش فقط از زنجیره‌ی recalc()، سودِ خالص از یک فرمول، و بازسازی از یک مسیر');
 
 // ---------------------------------------------------------------------
+// ⛔ قاعده ۷۰ز — بستنِ دوره و چکِ خرجی.
+//    رفتار (با ۲۷ جهش، هر در جدا) در `test_store_lock`؛ اینجا شکل: هر مسیرِ
+//    نوشتنِ تاریخ‌دار از `Biz::lockError()` می‌پرسد، `lock_date` فقط از
+//    `Biz::saveLock()` نوشته می‌شود، و پرچمِ داخلیِ واگذاری از هیچ فرمی نمی‌رسد.
+T::group('قاعده ۷۰ز — بستنِ دوره و چکِ خرجی');
+$gBad = [];
+$bodyOf = function (string $src, string $class, string $fn): string {
+    $cls = preg_match('/final class ' . $class . '\b.*?(?=\nfinal class |\z)/s', $src, $cm) ? $cm[0] : '';
+    return preg_match('/function ' . $fn . '\(.*?\n    \}\n/s', $cls, $fm) ? $fm[0] : '';
+};
+$need = [
+    'biz_docs.php'    => ['BizInvoices' => ['saveDraft', 'issueTx', 'undo'], 'BizPay' => ['createTx', 'void'],
+                          'BizCheques' => ['unclear', 'bounce', 'unendorse']],
+    'biz_catalog.php' => ['BizStock' => ['setOpening', 'adjustTo', 'deleteMove'], 'BizParties' => ['save'], 'BizCash' => ['save']],
+];
+foreach ($need as $file => $classes) {
+    $src = $strip70e((string)file_get_contents(__DIR__ . '/../includes/' . $file));
+    foreach ($classes as $cls => $fns) {
+        foreach ($fns as $fn) {
+            $body = $bodyOf($src, $cls, $fn);
+            if ($body === '' || !str_contains($body, 'Biz::lockError(')) { $gBad[] = "⛔ {$cls}::{$fn}() از Biz::lockError() نمی‌پرسد"; }
+        }
+    }
+}
+$lockW = [];
+foreach (array_merge(glob(__DIR__ . '/../*.php') ?: [], glob(__DIR__ . '/../{api,store,includes,admin,deploy}/*.php', GLOB_BRACE) ?: []) as $f) {
+    if (preg_match('/\block_date\s*=\s*VALUES|INSERT INTO biz_settings \([^)]*lock_date/', $strip70e((string)file_get_contents($f)))) { $lockW[] = basename($f); }
+}
+if ($lockW !== ['biz.php'] || !str_contains($bodyOf($biz70e, 'Biz', 'saveLock'), 'lock_date')) {
+    $gBad[] = 'lock_date فقط از Biz::saveLock() نوشته می‌شود: ' . implode(', ', $lockW);
+}
+if (!str_contains($bodyOf($biz70e, 'Biz', 'saveLock'), 'if ($unlock && !$confirmUnlock) {')) {
+    $gBad[] = 'saveLock — باز کردنِ دوره‌ی بسته تأییدِ صریح می‌خواهد';
+}
+$flagUse = 0;
+foreach (array_merge(glob(__DIR__ . '/../*.php') ?: [], glob(__DIR__ . '/../{api,store,includes,admin,deploy}/*.php', GLOB_BRACE) ?: []) as $f) {
+    $src = $strip70e((string)file_get_contents($f));
+    $flagUse += substr_count($src, "'_cheque_endorse' => 1");
+    if (str_starts_with(basename(dirname($f)), 'store') && preg_match('/BizPay::create\(\$userId,\s*\$_POST/', $src)) {
+        $gBad[] = basename($f) . ' — $_POST خام به BizPay::create (پرچم‌های داخلی از فرم می‌رسیدند)';
+    }
+}
+if ($flagUse !== 1 || !str_contains($bodyOf($docs70f, 'BizCheques', 'endorse'), "'_cheque_endorse' => 1")) {
+    $gBad[] = "پرچمِ _cheque_endorse فقط در BizCheques::endorse() ({$flagUse} بار)";
+}
+if (!str_contains($docs70f, "if (\$p['kind'] === 'payment' && \$refSt === 'endorsed') {") || !str_contains($docs70f, "if ((\$p['cheque_status'] ?? null) === 'endorsed') {")) {
+    $gBad[] = 'BizPay::void — نه دریافتِ چکِ واگذارشده نه پرداختِ واگذاری جدا باطل نمی‌شوند';
+}
+$mig70g = (string)file_get_contents(__DIR__ . '/../deploy/migrate.sh');
+if (!preg_match('/^\s+migration_biz_lock\.sql$/m', $mig70g) || !str_contains($mig70g, '[migration_biz_lock.sql]="biz_settings.lock_date"')) {
+    $gBad[] = 'migrate.sh — migration_biz_lock.sql باید در MIGRATIONS و SENTINEL باشد';
+}
+T::bulk(19, $gBad, 'هر مسیرِ نوشتنِ تاریخ‌دار از قفل می‌پرسد، قفل از یک مسیر نوشته می‌شود، و واگذاری درِ پشتی ندارد');
+
+// ---------------------------------------------------------------------
 // ⛔ قاعده ۷۱ — نسخه‌ی آزمایشی (staging) و انتشارِ «همان چیزی که دیده شد».
 //    رفتار در tests/test_staging.php (با مخزن‌های واقعیِ git و nginxِ
 //    واقعی)؛ اینجا شکل، برای ماشینی که آن تست بخشی‌اش را رد می‌کند.
