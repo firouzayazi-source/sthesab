@@ -7484,6 +7484,33 @@ if (!preg_match('/^\s+migration_biz_lock\.sql$/m', $mig70g) || !str_contains($mi
 T::bulk(19, $gBad, 'هر مسیرِ نوشتنِ تاریخ‌دار از قفل می‌پرسد، قفل از یک مسیر نوشته می‌شود، و واگذاری درِ پشتی ندارد');
 
 // ---------------------------------------------------------------------
+// ⛔ قاعده ۷۰ح — درگاهِ «حسابداری فروشگاه» در طرفِ شخصی.
+//    «فقط اونایی فروشگاه فعال دارن ببینن»: تنها روزنه‌ی قاعده‌ی «طرفِ شخصی
+//    هیچ نشانی از فروشگاه ندارد» همین تابع است، با نگهبانِ `hasStore()`ِ
+//    بی‌کوئری. رفتار (شخصی هیچ، «شخصی + فروشگاه» سه جا) در `test_business_mode`.
+T::group('قاعده ۷۰ح — درگاهِ فروشگاه در حساب لندِ شخصی');
+$hBad = [];
+$gw = $bodyOf($biz70e, 'Biz', 'personalGateway');
+if (!str_contains($gw, "if (!self::hasStore() || !in_array(\$spot, self::GATEWAY_SPOTS, true)) { return ''; }")) {
+    $hBad[] = 'Biz::personalGateway — اولین خط باید نگهبانِ hasStore() و فهرستِ بسته‌ی جاها باشد';
+}
+if (preg_match('/Database::|->prepare\(|->query\(/', $gw)) { $hBad[] = 'Biz::personalGateway — صفر کوئری (نوع از نشست)'; }
+$spots = [];
+foreach ($personal70 as $f) {
+    if (preg_match_all("/Biz::personalGateway\('([a-z]+)'\)/", (string)file_get_contents($f), $gm)) {
+        foreach ($gm[1] as $sp) { $spots[] = basename($f) . ':' . $sp; }
+    }
+    if (preg_match('/Biz::(?!personalGateway\()[a-zA-Z]+\(/', $strip70e((string)file_get_contents($f)), $om)) {
+        $hBad[] = basename($f) . " — طرفِ شخصی جز personalGateway() چیزی از Biz نمی‌گیرد ({$om[0]})";
+    }
+}
+sort($spots);
+if ($spots !== ['footer.php:sheet', 'index.php:home', 'sidebar.php:nav']) {
+    $hBad[] = 'درگاه دقیقاً سه جا: منوی کناری، شیتِ «بیشتر»، خانه — ' . implode(', ', $spots);
+}
+T::bulk(4, $hBad, 'تنها راهِ طرفِ شخصی به فروشگاه یک تابعِ بی‌کوئری با نگهبانِ hasStore() است، در سه جای ثابت');
+
+// ---------------------------------------------------------------------
 // ⛔ قاعده ۷۱ — نسخه‌ی آزمایشی (staging) و انتشارِ «همان چیزی که دیده شد».
 //    رفتار در tests/test_staging.php (با مخزن‌های واقعیِ git و nginxِ
 //    واقعی)؛ اینجا شکل، برای ماشینی که آن تست بخشی‌اش را رد می‌کند.

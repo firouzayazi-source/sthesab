@@ -234,6 +234,52 @@ final class Biz
             && in_array($_SESSION['account_type'] ?? '', self::STORE_TYPES, true);
     }
 
+    /** جاهای مجازِ درگاه در طرفِ شخصی — فهرستِ بسته. */
+    public const GATEWAY_SPOTS = ['nav', 'sheet', 'home'];
+
+    /**
+     * ⛔ درگاهِ «حسابداری فروشگاه» در حساب لندِ شخصی — **تنها** نشانِ فروشگاه
+     *    در طرفِ شخصی، و فقط برای حسابی که فروشگاهش روشن است (`both`).
+     *
+     * **خواسته‌ی مالکِ نصب:** «یک لندینگ به حسابداری حسابلند بذاریم، فقط اونایی
+     * فروشگاه فعال دارن ببینن.» پیش از این حسابِ «شخصی + فروشگاه» هیچ راهی از
+     * دفترِ شخصی به `/store` نداشت جز تایپِ آدرس.
+     *   - **صفر کوئری:** نوعِ حساب از نشست (`hasStore()`)؛ حسابِ شخصی هیچ
+     *     بایتی از فروشگاه نمی‌بیند (رشته‌ی خالی) — همان قاعده‌ی «حسابِ شخصی
+     *     هیچ چیزی از /store نمی‌بیند».
+     *   - طرفِ شخصی خودش آدرس، کلاس یا آیکونِ فروشگاه نمی‌نویسد (قاعده ۷۰)؛
+     *     فقط همین تابع را صدا می‌زند، پس همه‌ی نشان‌ها یک‌جا عوض می‌شوند.
+     *   - ⚠ نوعِ نشست هنگامِ ورود نوشته می‌شود: کسی که مدیر همین حالا برایش
+     *     فروشگاه روشن کرده، درگاه را با ورودِ بعدی (یا یک بار باز کردنِ `/store`)
+     *     می‌بیند؛ خاموش کردن هم تا آن وقت درگاه را نگه می‌دارد ولی خودِ `/store`
+     *     همان لحظه ۴۰۴ می‌دهد (`requirePage()` از دیتابیس می‌خواند).
+     *   - حسابِ «فقط فروشگاه» اصلاً به صفحه‌های شخصی نمی‌رسد (دروازه).
+     * @param string $spot یکی از `GATEWAY_SPOTS`: منوی کناری، شیتِ «بیشتر»، خانه
+     */
+    public static function personalGateway(string $spot): string
+    {
+        if (!self::hasStore() || !in_array($spot, self::GATEWAY_SPOTS, true)) { return ''; }
+        $url  = h(self::url());
+        $icon = h(self::icon('96'));
+        $name = 'حسابداری فروشگاه';
+        if ($spot === 'nav') {
+            return '<li><a href="' . $url . '" class="store-gate-nav">'
+                 . '<img src="' . $icon . '" alt="" width="20" height="20" class="store-gate-ico">'
+                 . '<span>' . $name . '</span></a></li>';
+        }
+        if ($spot === 'sheet') {
+            return '<a href="' . $url . '" class="tool-card tool-card-wide store-gate-tool" style="--tc1:#f59e0b; --tc2:#ea580c;">'
+                 . '<img src="' . $icon . '" alt="" width="26" height="26" class="store-gate-ico">'
+                 . '<span>' . $name . '</span></a>';
+        }
+        return '<a href="' . $url . '" class="card store-gate-card">'
+             . '<img src="' . $icon . '" alt="" width="44" height="44" class="store-gate-logo">'
+             . '<span class="store-gate-text"><b>' . $name . '</b>'
+             . '<small>فاکتور، انبار، چک و گزارشِ مغازه — جدا از دفترِ شخصی</small></span>'
+             . '<svg class="store-gate-go" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>'
+             . '</a>';
+    }
+
     /**
      * نوع را از دیتابیس تازه می‌کند و در نشست می‌نویسد — فقط در صفحه‌های
      * `store/` (یک کوئری). بدونِ آن، کاربری که مدیر همین حالا برایش

@@ -276,6 +276,11 @@ include __DIR__ . '/includes/header.php';
 <div class="home-main">
 <?php endif; ?>
 
+<?php /* ⛔ درگاهِ حسابداریِ فروشگاه — فقط حسابِ «شخصی + فروشگاه» می‌بیند
+         (`Biz::personalGateway()`، بی‌کوئری). زیرِ کارتِ «شروع» و بالای عددها:
+         خودش عدد نیست که پیش از هشدارِ «عددها هنوز درست نیستند» خوانده شود. */ ?>
+<?= Biz::personalGateway('home') ?>
+
 <div class="home-carousel">
     <div class="home-slides" id="homeSlides">
         <div class="balance-ribbon">

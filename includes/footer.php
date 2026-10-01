@@ -49,6 +49,7 @@ $__moreActive = in_array($__bottomPage, $__morePages, true);
             <button type="button" class="modal-close js-close-more" aria-label="بستن">&times;</button>
         </div>
         <div class="tools-grid">
+            <?= Biz::personalGateway('sheet') /* فقط حسابِ دارای فروشگاه — همان قلمِ منوی کناری */ ?>
             <?php if (tradesEnabled(Database::getConnection(), (int)Auth::userId())): ?>
             <a href="<?= APP_BASE_PATH ?>/trades.php" class="tool-card tool-card-wide" style="--tc1:#b8862f; --tc2:#94620d;">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M7 4L3.5 7.5M7 4l3.5 3.5M17 20V4M17 20l3.5-3.5M17 20l-3.5-3.5"/></svg>

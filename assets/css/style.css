@@ -5765,3 +5765,25 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 }
 .season-card .season-name { color: var(--ink); }
 .season-card.is-current { box-shadow: none; border-color: var(--season-c); }
+
+/* ============================================================
+   ۴۳. درگاهِ «حسابداری فروشگاه» — فقط حسابِ «شخصی + فروشگاه»
+   (`Biz::personalGateway()`). ⛔ هیچ توکنِ رنگی تعریف نمی‌شود و هیچ کلاسِ
+   `st-` نیست (قاعده ۷۰/۵۸): لهجه همان پالتِ حساب لند است و فقط لوگوی
+   فروشگاه رنگِ خودش را دارد — تا معلوم باشد به محصولِ دیگری می‌رود.
+   ============================================================ */
+.store-gate-ico { border-radius: 6px; flex-shrink: 0; display: block; }
+.store-gate-tool { flex-direction: row; align-items: center; justify-content: flex-start; min-height: 0; }
+.store-gate-tool .store-gate-ico { border-radius: 8px; }
+.store-gate-card {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px;
+    color: var(--ink); text-decoration: none;
+    border: 1px solid var(--line);
+}
+.store-gate-card:active { transform: scale(.99); }
+.store-gate-logo { width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0; display: block; }
+.store-gate-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.store-gate-text b { font-size: 14px; font-weight: 700; }
+.store-gate-text small { font-size: 12px; color: var(--muted); line-height: 1.6; }
+.store-gate-go { color: var(--muted); flex-shrink: 0; }

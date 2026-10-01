@@ -276,7 +276,7 @@ foreach (['store/index.php', 'store/settings.php'] as $pg) {
 }
 foreach (['index.php', 'transactions.php', 'wallets.php', 'profile.php', 'dashboard.php'] as $pg) {
     [, $b] = $asP($pg);
-    T::ok(!preg_match('~/store/|store\.css~', $b), "⛔ «{$pg}» هیچ لینکی به محیطِ فروشگاه ندارد");
+    T::ok(!preg_match('~/store/|store\.css|store-gate|حسابداری فروشگاه~', $b), "⛔ «{$pg}» هیچ لینکی به محیطِ فروشگاه ندارد (درگاه هم نه)");
 }
 [$c, , $loc] = $asP('store/login.php');
 T::ok($c === 302 && str_ends_with($loc, '/index.php'), 'حسابِ شخصیِ واردشده از ورودِ فروشگاه به خانه‌ی خودش می‌رود', "{$c} {$loc}");
@@ -431,6 +431,15 @@ foreach (['index.php', 'transactions.php', 'wallets.php', 'profile.php'] as $pg)
 }
 [$c] = $asW('api/day_detail.php?date=' . date('Y-m-d'), null, ['X-Requested-With: XMLHttpRequest']);
 T::ok($c !== 403, '⛔ اندپوینت‌های شخصی هم برایش باز است', "کد: {$c}");
+// ⛔ درگاهِ «حسابداری فروشگاه» (`Biz::personalGateway()`): کارتِ خانه، قلمِ منوی
+//    کناری (دسکتاپ) و کارتِ شیتِ «بیشتر» (گوشی) — هر سه به خودِ /store
+[, $wh] = $asW('index.php');
+$storeHref = preg_quote(Biz::url(), '~');
+T::ok(preg_match('~<a href="' . $storeHref . '" class="card store-gate-card">~', $wh) === 1, '⛔ خانه‌ی شخصی کارتِ «حسابداری فروشگاه» را دارد');
+T::ok(preg_match('~<a href="' . $storeHref . '" class="store-gate-nav">~', $wh) === 1, 'منوی کناری هم (روی دسکتاپ تنها راه است)');
+T::ok(preg_match('~<a href="' . $storeHref . '" class="tool-card tool-card-wide store-gate-tool"[^>]*>~', $wh) === 1, 'و شیتِ «بیشتر»ِ گوشی هم');
+[, $wt] = $asW('transactions.php');
+T::ok(str_contains($wt, 'store-gate-nav') && !str_contains($wt, 'store-gate-card'), 'صفحه‌های دیگر فقط منو و شیت را دارند، کارت فقط روی خانه است');
 [$c, $sd] = $asW('store/index.php');
 T::ok($c === 200 && str_contains($sd, 'store.css'), 'با همان نشست /store هم باز می‌شود — ورودِ دوباره لازم نیست', "کد: {$c}");
 T::ok(!str_contains($sd, formatMoney(7777777)), '⛔ موجودیِ حساب‌های شخصی روی داشبوردِ فروشگاه نیست — دو دفترِ جدا');
@@ -459,9 +468,13 @@ T::same(404, $c, 'حسابِ شخصی: /store پیدا نمی‌شود');
 Biz::setType($pid, 'both');
 [$c] = $asP3('store/index.php');
 T::same(200, $c, '⛔ مدیر فروشگاه را روشن کرد ← همان نشستِ باز بدونِ خروج به /store می‌رسد');
-[$c] = $asP3('index.php');
+[$c, $p3h] = $asP3('index.php');
 T::same(200, $c, '⛔ و حساب لندش سرِ جایش است');
+T::ok(str_contains($p3h, 'store-gate-card'), 'و بعد از یک بار باز کردنِ /store درگاه در خانه‌ی شخصی هم پیدا شد (نوعِ نشست تازه شد)');
 Biz::setType($pid, 'personal');
+[$c] = $asP3('store/index.php');
+[, $p3h] = $asP3('index.php');
+T::ok($c === 404 && !str_contains($p3h, 'store-gate'), '⛔ خاموش شد ← /store ۴۰۴ و درگاه هم با همان رفت');
 
 // =================================================================
 T::group('۹ — بودجه‌ی کوئریِ صفحه‌های فروشگاه (فهرستِ بسته)');
