@@ -4,7 +4,7 @@
  *
  * منوی پایین: داشبورد، حساب‌ها، **«+ ثبت»** (وسط)، فروش، **بیشتر** (کشوی منو).
  * کلیدها از `Biz::TABBAR`، برچسب‌ها از `Biz::NAV` (یا کوتاهش در
- * `Biz::TABBAR_SHORT`) و قلم‌های «+» از `Biz::NEW_MENU` — فهرستِ دومی نیست.
+ * `Biz::TABBAR_SHORT`) و کاشی‌های «+» از `Biz::newMenuHtml()` (چیدمانِ همین فروشگاه) — فهرستِ دومی نیست.
  * ⛔ «+» یک `<details>` است و «بیشتر» یک `<label>` برای همان چک‌باکسِ کشو:
  *    هر دو بی‌جاوااسکریپت کار می‌کنند.
  */
@@ -23,11 +23,7 @@ $__bizFootI     = 0;
         if ($__bizFootI++ === Biz::TABBAR_NEW_AT): ?>
     <details class="st-dd st-tab-new">
         <summary aria-label="ثبتِ جدید"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></summary>
-        <div class="st-dd-menu">
-            <?php foreach (Biz::NEW_MENU as $__href => $__label): ?>
-            <a href="<?= h(Biz::url($__href)) ?>"><?= h($__label) ?></a>
-            <?php endforeach; ?>
-        </div>
+        <div class="st-dd-menu st-new-menu"><?= Biz::newMenuHtml((int)Auth::userId()) ?></div>
     </details>
         <?php endif; ?>
     <a href="<?= h(Biz::url($__file)) ?>"

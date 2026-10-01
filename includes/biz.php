@@ -109,9 +109,11 @@ final class Biz
     ];
 
     /**
-     * ⛔ منوی «+ ثبتِ جدید» (نوارِ بالا و دکمه‌ی وسطِ منوی پایین) — تنها
-     *    مرجع؛ `<details>`ِ بومی است، پس بی‌جاوااسکریپت باز و بسته می‌شود.
-     *    فرمانِ سریع هم همین‌ها را پیشنهاد می‌دهد.
+     * ⛔ کاتالوگِ منوی «+ ثبتِ جدید» (نوارِ بالا و دکمه‌ی وسطِ منوی پایین) — تنها
+     *    مرجع. هر فروشگاه از همین فهرست برمی‌دارد و کنار می‌گذارد (`newMenu()`)؛
+     *    ترتیبِ نمایش همیشه ترتیبِ همین کاتالوگ است. فرمانِ سریع **همه** را
+     *    پیشنهاد می‌دهد، نه فقط انتخاب‌شده‌ها.
+     *    کلید = آدرس، مقدار = برچسبِ کامل (فرمانِ سریع، `title`ِ کاشی).
      */
     public const NEW_MENU = [
         'quick-sale.php'              => 'فروش سریع',
@@ -120,10 +122,103 @@ final class Biz
         'payment.php?k=receipt'       => 'دریافت از مشتری',
         'payment.php?k=payment'       => 'پرداخت به تأمین‌کننده',
         'payment.php?k=expense'       => 'هزینه‌ی فروشگاه',
+        'payment.php?k=income'        => 'درآمدِ متفرقه',
+        'payment.php?k=transfer'      => 'انتقال بین صندوق‌ها',
         'payment.php?k=receipt&method=cheque' => 'ثبتِ چکِ دریافتی',
+        'payment.php?k=payment&method=cheque' => 'ثبتِ چکِ پرداختی',
         'party.php'                   => 'مشتری یا تأمین‌کننده',
         'product.php'                 => 'محصول',
     ];
+
+    /**
+     * کاشیِ هر قلم: نامِ کوتاه، رنگ (`is-tone-*` در `store.css`) و آیکون. ⛔ هر
+     * کلیدِ `NEW_MENU` اینجا هست و برعکس (تست می‌سنجد) — قلمِ بی‌کاشی نامرئی بود.
+     */
+    public const NEW_TILES = [
+        'quick-sale.php'              => ['فروش سریع',   'green',  '<path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/>'],
+        'invoice-edit.php?k=sale'     => ['فاکتور فروش', 'green',  '<path d="M12 3l2 1.6 2.5-.4.9 2.4 2.4.9-.4 2.5L21 12l-1.6 2 .4 2.5-2.4.9-.9 2.4-2.5-.4L12 21l-2-1.6-2.5.4-.9-2.4-2.4-.9.4-2.5L3 12l1.6-2-.4-2.5 2.4-.9.9-2.4 2.5.4z"/><path d="M14.2 9.6c-.4-.6-1.2-1-2.2-1-1.3 0-2.2.7-2.2 1.6 0 2.2 4.6 1.2 4.6 3.5 0 .9-1 1.7-2.4 1.7-1 0-1.9-.4-2.3-1.1M12 7.4v1.2M12 15.4v1.2"/>'],
+        'invoice-edit.php?k=purchase' => ['فاکتور خرید', 'orange', '<path d="M20 12V8l-8-4.5L4 8v8l8 4.5"/><path d="M4 8l8 4.5L20 8M12 12.5V21"/><path d="M18 15v6M15 18h6"/>'],
+        'payment.php?k=receipt'       => ['دریافت',      'teal',   '<path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/>'],
+        'payment.php?k=payment'       => ['پرداخت',      'amber',  '<path d="M12 20V9M7 13.5l5-5 5 5M5 4h14"/>'],
+        'payment.php?k=expense'       => ['هزینه',       'red',    '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 11h6"/>'],
+        'payment.php?k=income'        => ['درآمد',       'green',  '<circle cx="12" cy="12" r="8.5"/><path d="M12 8v8M8 12h8"/>'],
+        'payment.php?k=transfer'      => ['انتقال',      'slate',  '<path d="M7 7h13M16 3l4 4-4 4M17 17H4M8 13l-4 4 4 4"/>'],
+        'payment.php?k=receipt&method=cheque' => ['چکِ دریافتی', 'indigo', '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 14h5M15 10.5v3M13.5 12l1.5 1.5 1.5-1.5"/>'],
+        'payment.php?k=payment&method=cheque' => ['چکِ پرداختی', 'indigo', '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 14h5M15 13.5v-3M13.5 12l1.5-1.5 1.5 1.5"/>'],
+        'party.php'                   => ['شخص جدید',    'blue',   '<circle cx="9.5" cy="8" r="3.5"/><path d="M3 20c.6-3.4 3.2-5.5 6.5-5.5s5.9 2.1 6.5 5.5M18.5 8v6M15.5 11h6"/>'],
+        'product.php'                 => ['کالای جدید',  'purple', '<path d="M12 3l4 2.2v4.4L12 12 8 9.6V5.2z"/><path d="M8 9.6l4 2.4v4.6l-4 2.2-4-2.2V12z"/><path d="M16 9.6l4 2.4v4.6l-4 2.2-4-2.2V12z"/>'],
+    ];
+
+    /**
+     * پیش‌فرضِ کاشی‌ها — شش کارِ روزانه‌ی مغازه. ⛔ «مشتری یا تأمین‌کننده» و
+     * «محصول» عمداً نیستند (خواسته‌ی مالکِ نصب: «الزامی نداره… نباشن بهتره»)؛
+     * آن دو از فرمِ فاکتور («+» کنارِ کالا) و صفحه‌ی خودشان ساخته می‌شوند، و
+     * هر فروشگاه می‌تواند اضافه‌شان کند.
+     */
+    public const NEW_DEFAULT = [
+        'quick-sale.php', 'invoice-edit.php?k=sale', 'invoice-edit.php?k=purchase',
+        'payment.php?k=receipt', 'payment.php?k=payment', 'payment.php?k=expense',
+    ];
+
+    /** JSONِ خامِ `biz_settings.new_menu` از همان `SELECT *`ِ `settings()`. */
+    private static array $newMenuRaw = [];
+
+    /**
+     * کلیدهای منوی «+» این فروشگاه، به ترتیبِ کاتالوگ — صفر کوئریِ اضافه.
+     * `NULL`، JSONِ خراب یا فهرستی که هیچ کلیدِ شناخته‌ای ندارد ← پیش‌فرض.
+     * @return list<string>
+     */
+    public static function newMenu(int $userId): array
+    {
+        self::settings($userId);
+        $in = json_decode((string)(self::$newMenuRaw[$userId] ?? ''), true);
+        if (!is_array($in)) { return self::NEW_DEFAULT; }
+        $keep = array_values(array_filter(array_keys(self::NEW_MENU), fn($k) => in_array($k, $in, true)));
+        return $keep ?: self::NEW_DEFAULT;
+    }
+
+    /**
+     * ⛔ تنها نویسنده‌ی چیدمانِ «+». فقط کلیدهای کاتالوگ؛ دست‌کم یکی (منوی خالی
+     * دکمه‌ای بود که هیچ کاری نمی‌کرد). همان پیش‌فرض ← `NULL`، تا پیش‌فرضِ فردا برسد.
+     * @param string[] $keys
+     * @return array{ok:bool, message:string}
+     */
+    public static function saveNewMenu(int $userId, array $keys): array
+    {
+        if (!self::hasColumn('biz_settings', 'new_menu')) {
+            return ['ok' => false, 'message' => 'چیدمانِ منو هنوز راه نیفتاده است (migration_biz_new_menu).'];
+        }
+        $keys = array_map('strval', $keys);
+        $pick = array_values(array_filter(array_keys(self::NEW_MENU), fn($k) => in_array($k, $keys, true)));
+        if (!$pick) { return ['ok' => false, 'message' => 'دست‌کم یک قلم را برای منوی «+» نگه دارید.']; }
+        $val = $pick === self::NEW_DEFAULT ? null : json_encode($pick, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        unset(self::$settingsCache[$userId], self::$newMenuRaw[$userId]);
+        Database::getConnection()->prepare(
+            'INSERT INTO biz_settings (user_id, new_menu) VALUES (:u, :m)
+             ON DUPLICATE KEY UPDATE new_menu = VALUES(new_menu)'
+        )->execute(['u' => $userId, 'm' => $val]);
+        return ['ok' => true, 'message' => 'منوی «+» ذخیره شد (' . toPersianDigits((string)count($pick)) . ' قلم).'];
+    }
+
+    /**
+     * ⛔ تنها رندرِ منوی «+» — نوارِ بالا و دکمه‌ی وسطِ منوی پایین هر دو همین را
+     *    می‌گیرند (دو نسخه دیر یا زود از هم دور می‌افتادند). کاشی‌ها به ترتیبِ
+     *    کاتالوگ، و پایینش «چیدمانِ این منو را عوض کنید».
+     */
+    public static function newMenuHtml(int $userId): string
+    {
+        $out = '<div class="st-new-grid">';
+        foreach (self::newMenu($userId) as $k) {
+            [$short, $tone, $svg] = self::NEW_TILES[$k] ?? [self::NEW_MENU[$k], 'slate', '<circle cx="12" cy="12" r="4"/>'];
+            $out .= '<a class="st-new-tile is-tone-' . h($tone) . '" href="' . h(self::url($k)) . '" title="' . h(self::NEW_MENU[$k]) . '">'
+                  . '<span class="st-new-ico"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $svg . '</svg></span>'
+                  . '<span class="st-new-name">' . h($short) . '</span></a>';
+        }
+        return $out . '</div>'
+            . '<a class="st-new-edit" href="' . h(self::url('settings.php')) . '#newmenu">'
+            . '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>'
+            . '<span>چیدمانِ این منو را عوض کنید</span></a>';
+    }
 
     /**
      * قلمِ فعالِ منو که خودِ صفحه تعیین می‌کند — مثلاً صفحه‌ی یک فاکتورِ
@@ -655,6 +750,7 @@ final class Biz
         self::$invoiceRaw[$userId]   = $row ? (string)($row['invoice_prefs'] ?? '') : '';
         self::$designRaw[$userId]    = $row ? (string)($row['invoice_design'] ?? '') : '';
         self::$lockCache[$userId]    = $row ? (string)($row['lock_date'] ?? '') : '';
+        self::$newMenuRaw[$userId]   = $row ? (string)($row['new_menu'] ?? '') : '';
         if ($row) { self::$infoReady = array_key_exists('invoice_prefs', $row); }
         return self::$settingsCache[$userId] = $out;
     }

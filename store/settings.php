@@ -45,6 +45,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $res = Biz::saveLock($userId, $raw, postParam('confirm_unlock') === '1');
         redirectWithMessage(Biz::url('settings.php') . '#lock', $res['ok'] ? 'success' : 'error', $res['message']);
     }
+    // ⛔ چیدمانِ منوی «+» — فقط `Biz::saveNewMenu()` (کلیدهای کاتالوگ، دست‌کم یکی)
+    if (postParam('action') === 'new_menu') {
+        $res = Biz::saveNewMenu($userId, is_array($_POST['menu'] ?? null) ? $_POST['menu'] : []);
+        redirectWithMessage(Biz::url('settings.php') . '#newmenu', $res['ok'] ? 'success' : 'error', $res['message']);
+    }
     if (postParam('action') === 'invoice_prefs') {
         $res = Biz::saveInvoicePrefs($userId, $_POST);
         redirectWithMessage(Biz::url('settings.php') . '#invoice', $res['ok'] ? 'success' : 'error', $res['message']);
@@ -117,6 +122,22 @@ require __DIR__ . '/../includes/biz_head.php';
         <?php endforeach; ?>
     </div>
     <button type="submit" class="st-btn">ذخیره‌ی رنگ</button>
+</form>
+<h2 class="st-h2 st-section-title" id="newmenu">منوی «+ ثبتِ جدید»</h2>
+<form method="post" class="st-card st-form" action="<?= h(Biz::url('settings.php')) ?>">
+    <?= Csrf::field() ?>
+    <input type="hidden" name="action" value="new_menu">
+    <p class="st-muted">هر کاری که زیاد انجام می‌دهید را روشن کنید تا در منوی «+» (دکمه‌ی وسطِ پایینِ گوشی و «ثبتِ جدید» بالای صفحه) کاشی داشته باشد؛ بقیه را خاموش کنید. همه‌ی کارها از فرمانِ سریع (جستجو) هم در دسترس‌اند.</p>
+    <div class="st-new-pick">
+        <?php $__nm = Biz::newMenu($userId); foreach (Biz::NEW_MENU as $__k => $__l): [$__s, $__t, $__svg] = Biz::NEW_TILES[$__k]; ?>
+        <label class="st-new-opt is-tone-<?= h($__t) ?>">
+            <input type="checkbox" name="menu[]" value="<?= h($__k) ?>"<?= in_array($__k, $__nm, true) ? ' checked' : '' ?>>
+            <span class="st-new-ico"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><?= $__svg ?></svg></span>
+            <span><?= h($__l) ?></span>
+        </label>
+        <?php endforeach; ?>
+    </div>
+    <button type="submit" class="st-btn">ذخیره‌ی منو</button>
 </form>
 <h2 class="st-h2 st-section-title">سربرگِ فاکتور</h2>
 

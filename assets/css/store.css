@@ -1323,3 +1323,54 @@ html.st-locked, html.st-locked body { overflow: hidden; }
     .st-dash-head { flex-direction: column; align-items: stretch; }
     .st-dash-head .st-actions { order: 2; }
 }
+
+/* ---------- منوی «+ ثبتِ جدید» — کاشی‌ها (`Biz::newMenuHtml()`) ----------
+   **خواسته‌ی مالکِ نصب:** «مثلِ عکسِ دوم» — کاشیِ سه‌ستونه با آیکونِ رنگی و
+   «چیدمانِ این منو را عوض کنید». هر کار یک رنگِ ثابت دارد (`is-tone-*`)، جدا
+   از پالتِ فروشگاه: «فروش» همیشه سبز است تا با یک نگاه پیدا شود. شب همان
+   رنگ‌ها روشن‌ترند (هر دو درِ حالتِ شب). */
+.st-dd-menu.st-new-menu { min-width: 0; width: 392px; padding: 14px; gap: 0; }
+.st-new-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.st-dd-menu a.st-new-tile {
+    flex-direction: column; justify-content: center; gap: 10px;
+    padding: 14px 6px 12px; min-height: 104px;
+    background: var(--st-sunken); border-radius: 16px;
+    white-space: normal; text-align: center; font-weight: 650; font-size: 13.5px; line-height: 1.45;
+    transition: background var(--st-fast) var(--st-ease), transform var(--st-fast) var(--st-ease);
+}
+.st-dd-menu a.st-new-tile:hover { background: color-mix(in srgb, var(--tone) 10%, var(--st-sunken)); }
+.st-dd-menu a.st-new-tile:active { transform: scale(.97); }
+.st-new-ico {
+    width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center;
+    background: color-mix(in srgb, var(--tone) 16%, transparent);
+}
+.st-dd-menu .st-new-ico svg { color: var(--tone); }
+.st-dd-menu a.st-new-edit { justify-content: center; margin-top: 10px; color: var(--st-ink-3); font-size: 13px; }
+.st-dd-menu a.st-new-edit:hover { color: var(--st-ink); }
+.is-tone-green  { --tone: #2f8f6b; } .is-tone-orange { --tone: #d9622b; } .is-tone-teal   { --tone: #2b8a86; }
+.is-tone-amber  { --tone: #c97a1e; } .is-tone-red    { --tone: #c84646; } .is-tone-slate  { --tone: #5b6676; }
+.is-tone-indigo { --tone: #5b5bd6; } .is-tone-blue   { --tone: #3b7fc4; } .is-tone-purple { --tone: #7c4ddb; }
+:root[data-st-theme="dark"] .is-tone-green  { --tone: #4cc79a; } :root[data-st-theme="dark"] .is-tone-orange { --tone: #f08a52; }
+:root[data-st-theme="dark"] .is-tone-teal   { --tone: #46c2bc; } :root[data-st-theme="dark"] .is-tone-amber  { --tone: #f0a447; }
+:root[data-st-theme="dark"] .is-tone-red    { --tone: #f07a7a; } :root[data-st-theme="dark"] .is-tone-slate  { --tone: #9aa6b8; }
+:root[data-st-theme="dark"] .is-tone-indigo { --tone: #8f8ff0; } :root[data-st-theme="dark"] .is-tone-blue   { --tone: #6eaee8; }
+:root[data-st-theme="dark"] .is-tone-purple { --tone: #a68af0; }
+@media (prefers-color-scheme: dark) {
+    :root:not([data-st-theme]) .is-tone-green  { --tone: #4cc79a; } :root:not([data-st-theme]) .is-tone-orange { --tone: #f08a52; }
+    :root:not([data-st-theme]) .is-tone-teal   { --tone: #46c2bc; } :root:not([data-st-theme]) .is-tone-amber  { --tone: #f0a447; }
+    :root:not([data-st-theme]) .is-tone-red    { --tone: #f07a7a; } :root:not([data-st-theme]) .is-tone-slate  { --tone: #9aa6b8; }
+    :root:not([data-st-theme]) .is-tone-indigo { --tone: #8f8ff0; } :root:not([data-st-theme]) .is-tone-blue   { --tone: #6eaee8; }
+    :root:not([data-st-theme]) .is-tone-purple { --tone: #a68af0; }
+}
+@media (max-width: 899px) {
+    .st-tab-new .st-dd-menu.st-new-menu { width: auto; border-radius: 22px; padding: 14px 14px 10px; }
+}
+/* انتخابگرِ همان کاشی‌ها در «تنظیماتِ فروشگاه» (`#newmenu`) */
+.st-new-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+.st-new-opt {
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px; cursor: pointer;
+    border: 1px solid var(--st-line); border-radius: var(--st-radius-sm); font-size: 13.5px;
+}
+.st-new-opt:has(input:checked) { border-color: color-mix(in srgb, var(--tone) 55%, var(--st-line)); background: color-mix(in srgb, var(--tone) 7%, transparent); }
+.st-new-opt .st-new-ico { width: 34px; height: 34px; border-radius: 10px; flex: 0 0 auto; }
+.st-new-opt .st-new-ico svg { color: var(--tone); }

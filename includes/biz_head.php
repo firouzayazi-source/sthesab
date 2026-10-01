@@ -173,11 +173,7 @@ foreach (Biz::NEW_MENU as $__h => $__l) { $__bizCmd['new'][] = ['t' => $__l, 'u'
             </a>
             <details class="st-dd st-new-top">
                 <summary class="st-new-btn"><span aria-hidden="true">+</span> ثبتِ جدید</summary>
-                <div class="st-dd-menu">
-                    <?php foreach (Biz::NEW_MENU as $__href => $__label): ?>
-                    <a href="<?= h(Biz::url($__href)) ?>"><?= h($__label) ?></a>
-                    <?php endforeach; ?>
-                </div>
+                <div class="st-dd-menu st-new-menu"><?= Biz::newMenuHtml($__bizUid) ?></div>
             </details>
             <button type="button" class="st-icon-btn st-theme-btn" data-theme-toggle hidden aria-label="حالتِ شب و روز">
                 <svg class="st-ico-moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
