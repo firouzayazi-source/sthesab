@@ -36,6 +36,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'save') {
         $res = BizProducts::save($userId, $_POST, $id);
         if ($res['ok']) {
+            // ⛔ قیمتِ ارزی جدا ذخیره می‌شود (`saveRate()`)، فقط وقتی فرم آن را فرستاده.
+            if (isset($_POST['rate_code'])) {
+                $rr = BizProducts::saveRate($userId, (int)$res['id'], $_POST);
+                if (!$rr['ok']) { redirectWithMessage(Biz::url('product.php?id=' . (int)$res['id']), 'error', 'کالا ذخیره شد، ولی قیمتِ ارزی نه: ' . $rr['message']); }
+                if ($rr['message'] !== '') { $res['message'] .= ' ' . $rr['message']; }
+            }
             redirectWithMessage(Biz::url('product.php?id=' . (int)$res['id']), 'success', $res['message']);
         }
         $error = $res['message'];
@@ -68,6 +74,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+require_once __DIR__ . '/../includes/biz_rates.php';
+$rateReady = Rates::available() && tableHasColumn('biz_products', 'rate_code');
+$rateOn    = $rateReady && Rates::isCode((string)($form['rate_code'] ?? ''));
 $cats    = BizProducts::categories($userId);
 $tracked = $product && (int)$product['track_stock'] === 1;
 $ptype   = BizProducts::typeOf($form);
@@ -154,10 +163,40 @@ require __DIR__ . '/../includes/biz_head.php';
             <input type="text" name="buy_price" inputmode="numeric" dir="ltr" value="<?= h($numVal($form['buy_price'])) ?>">
         </label>
         <label class="st-field">
-            <span>قیمتِ فروش (تومان)</span>
-            <input type="text" name="sell_price" inputmode="numeric" dir="ltr" value="<?= h($numVal($form['sell_price'])) ?>">
+            <span>قیمتِ فروش (تومان)<?= $rateOn ? ' <small class="st-muted">— از نرخِ روز</small>' : '' ?></span>
+            <input type="text" name="sell_price" inputmode="numeric" dir="ltr" value="<?= h($numVal($form['sell_price'])) ?>"<?= $rateOn ? ' readonly' : '' ?>>
         </label>
     </div>
+    <?php /* ⛔ قیمتِ فروش از نرخِ روز (`includes/rates.php`) — اختیاری. وصل که
+             باشد، قیمتِ فروش را `BizRates::apply()` با هر نرخِ تازه می‌نویسد
+             و خانه‌ی بالا فقط خواندنی است. */ ?>
+    <?php if ($rateReady): ?>
+    <details class="st-card st-rate-box"<?= $rateOn ? ' open' : '' ?>>
+        <summary>قیمتِ فروش از نرخِ روز <small class="st-muted">(دلار، طلا، سکه — اختیاری)</small></summary>
+        <div class="st-row3">
+            <label class="st-field">
+                <span>بر پایه‌ی</span>
+                <select name="rate_code"><?= Rates::optionsHtml($rateOn ? (string)$form['rate_code'] : null, 'ندارد — قیمت دستی') ?></select>
+            </label>
+            <label class="st-field">
+                <span>قیمتِ پایه</span>
+                <input type="text" name="rate_base" inputmode="decimal" dir="ltr" value="<?= h($rateOn ? rtrim(rtrim((string)$form['rate_base'], '0'), '.') : '') ?>" placeholder="مثلاً 250 (دلار، گرم، عدد…)">
+            </label>
+            <label class="st-field">
+                <span>درصدِ سود <small class="st-muted">(اختیاری)</small></span>
+                <input type="text" name="rate_margin" inputmode="decimal" dir="ltr" value="<?= h($rateOn && (float)$form['rate_margin'] != 0 ? rtrim(rtrim((string)$form['rate_margin'], '0'), '.') : '') ?>" placeholder="0">
+            </label>
+        </div>
+        <p class="st-muted">
+            قیمتِ فروش = پایه × نرخ × (۱ + سود٪)، گرد به <?= h(BizRates::ROUNDS[Biz::rateRound($userId)] ?? 'هزار تومان') ?>
+            (<a href="<?= h(Biz::url('settings.php#rates')) ?>">تنظیم</a>). با هر نرخِ تازه خودش به‌روز می‌شود؛ فاکتورِ صادرشده هرگز عوض نمی‌شود.
+            <?php if ($rateOn && Rates::price((string)$form['rate_code']) !== null): ?>
+                <br>نرخِ امروزِ <?= h(Rates::label((string)$form['rate_code'])) ?>: <b class="ltr-num"><?= formatMoney((int)Rates::price((string)$form['rate_code'])) ?></b> تومان
+                (<?= h(Rates::ago(Rates::all()[(string)$form['rate_code']]['fetched_at'] ?? null)) ?>)
+            <?php endif; ?>
+        </p>
+    </details>
+    <?php endif; ?>
     <div class="st-row2">
         <label class="st-field">
             <span>واحد</span>

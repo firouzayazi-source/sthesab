@@ -49,6 +49,7 @@ final class CronHealth
         'store-sync' => ['هم‌گام‌سازی سهم فروشگاه',    1, 'deploy/store-sync.php'],
         // ⚠ همان استدلالِ store-sync: هر دقیقه، ولی دوره ۱ ساعت نوشته شده.
         'push'       => ['اعلانِ گوشی (Web Push)',      1, 'deploy/push-send.php'],
+        'rates'      => ['نرخِ ارز، طلا و سکه',         6, 'deploy/rates.php'],
     ];
 
     /** پوشه‌ی نشانه‌ها — همان `var/` که `deploy.sh` نوشتنی نگه می‌دارد. */

@@ -120,6 +120,7 @@ const EXPECT = [
     'admin/insights.php'    => 'page',
     'admin/errors.php'      => 'page',
     'admin/store-share.php' => 'page',
+    'admin/rates.php'       => 'page',
     'admin/support.php'     => 'page',
     'admin/support-content.php' => 'page',
     // ⛔ partial است، نه صفحه. nginx مسیرِ `/admin/` را نمی‌بندد، پس

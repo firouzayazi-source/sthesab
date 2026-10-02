@@ -7,9 +7,10 @@
  *    تورمی حرفِ بی‌معنایی است. برای کاربر ایرانی طلا و دلار ابزارِ اصلیِ
  *    پس‌انداز است و ارزشِ سکه‌ی پارسال هیچ ربطی به قیمتِ پارسال ندارد.
  *
- * ⚠ نرخ دستی است و از هیچ سرویسِ بیرونی نمی‌آید — همان دلیلی که
- *   Chart.js را محلی کرد: اینترنتِ داخلی و تحریم. سرویسی که نصفِ روزها
- *   در دسترس نباشد، از نبودنش بدتر است.
+ * ⚠ نرخِ دستی همین‌جا می‌ماند؛ نرخِ **خودکار** (`rate_code`، `includes/rates.php`)
+ *   هرگز هنگامِ درخواست از بیرون گرفته نمی‌شود — cron هر ۶ ساعت می‌گیرد و
+ *   این اندپوینت فقط وصل می‌کند. سرویسی که نصفِ روزها در دسترس نباشد نباید
+ *   صفحه را کند کند (`docs/decisions/rates.md`).
  */
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
@@ -41,6 +42,31 @@ if ($price !== null && $price < 0) {
 if ($price === 0) { $price = null; }   // صفر یعنی پاک کردن، نه نرخِ صفر
 
 $pdo = Database::getConnection();
+
+// ⛔ نرخِ خودکار (`includes/rates.php`). فرستاده نشد = دست نزن (فرمِ قدیمی).
+//    کدِ معتبر ⇒ وصل و قیمت همین حالا از نرخِ روز؛ خالی ⇒ قطع، و قیمتِ دستی.
+if (isset($_POST['rate_code']) && tableHasColumn('asset_types', 'rate_code')) {
+    require_once __DIR__ . '/../includes/rates.php';
+    $rc = trim((string)$_POST['rate_code']);
+    if ($rc !== '' && !Rates::isCode($rc)) {
+        jsonResponse(['success' => false, 'message' => 'نرخِ انتخاب‌شده معتبر نیست.'], 422);
+    }
+    if ($rc !== '') {
+        $st = $pdo->prepare('UPDATE asset_types SET rate_code = :rc WHERE id = :id AND user_id = :u');
+        $st->execute(['rc' => $rc, 'id' => $typeId, 'u' => $userId]);
+        $own = $pdo->prepare('SELECT id FROM asset_types WHERE id = :id AND user_id = :u');
+        $own->execute(['id' => $typeId, 'u' => $userId]);
+        if (!$own->fetchColumn()) { jsonResponse(['success' => false, 'message' => 'این نوع دارایی پیدا نشد.'], 404); }
+        Rates::applyToAssets($userId);
+        $now = Rates::price($rc);
+        jsonResponse(['success' => true, 'price' => $now,
+            'message' => $now === null
+                ? 'وصل شد؛ هنوز نرخی برای «' . Rates::label($rc) . '» نیامده — تا آن موقع همان قیمتِ قبلی می‌ماند.'
+                : 'وصل شد؛ قیمتِ هر واحد از نرخِ روزِ «' . Rates::label($rc) . '» می‌آید.']);
+    }
+    $pdo->prepare('UPDATE asset_types SET rate_code = NULL WHERE id = :id AND user_id = :u')
+        ->execute(['id' => $typeId, 'u' => $userId]);
+}
 
 // ⛔ شرطِ `user_id` روی خودِ UPDATE است، نه بررسیِ جدا: بدون آن هر
 //    کاربری می‌توانست نرخِ نوعِ دارایی کاربرِ دیگری را عوض کند و ارزشِ

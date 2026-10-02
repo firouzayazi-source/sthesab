@@ -6815,9 +6815,28 @@ foreach (array_merge(glob(__DIR__ . '/../*.php') ?: [], glob(__DIR__ . '/../api/
                      glob(__DIR__ . '/../admin/*.php') ?: [], glob(__DIR__ . '/../includes/*.php') ?: []) as $f) {
     $b = basename($f);
     if (str_starts_with($b, 'biz') || $b === 'admin_insights.php') { continue; }
-    if (preg_match('/\bbiz_[a-z_]+\b/', $strip70((string)file_get_contents($f)), $bm)) {
+    $src70 = $strip70((string)file_get_contents($f));
+    // ⛔ تنها استثنا: صفحه‌ی مدیرِ نرخ‌ها لایه‌ی فروشگاهیِ نرخ را بار می‌کند تا
+    //    «دریافتِ همین حالا» به قیمتِ کالای ارزی هم برسد (`Rates::listen()`).
+    //    فقط **همین یک خط** برداشته می‌شود؛ هر نامِ جدولِ فروشگاهیِ دیگری در
+    //    همان فایل هنوز گرفته می‌شود.
+    if (str_ends_with(str_replace('\\', '/', $f), '/admin/rates.php')) {
+        $src70 = str_replace("require_once __DIR__ . '/../includes/biz_rates.php';", '', $src70, $n70);
+        if ($n70 !== 1) { $bBad[] = 'admin/rates.php — لایه‌ی فروشگاهیِ نرخ (biz_rates.php) بار نمی‌شود؛ نرخِ دستی به قیمتِ کالا نمی‌رسد'; }
+    }
+    if (preg_match('/\bbiz_[a-z_]+\b/', $src70, $bm)) {
         $bBad[] = "{$b} — جدولِ فروشگاهی ({$bm[0]}) را از طرفِ شخصی می‌خواند";
     }
+}
+// ⛔ و هسته‌ی نرخ (`includes/rates.php`) هیچ نشانی از فروشگاه ندارد — طرفِ
+//    شخصی بارش می‌کند؛ قیمتِ کالا فقط در `biz_rates.php` (با `Rates::listen()`).
+$rt70 = $strip70((string)@file_get_contents(__DIR__ . '/../includes/rates.php'));
+if ($rt70 === '' || preg_match('/\bBiz[A-Z]\w*|\bbiz_\w+/', $rt70, $rm70)) {
+    $bBad[] = 'includes/rates.php — نشانی از فروشگاه (' . ($rm70[0] ?? 'فایل نیست') . ')';
+}
+$br70 = $strip70((string)@file_get_contents(__DIR__ . '/../includes/biz_rates.php'));
+if (!preg_match('/Rates::listen\(/', $br70) || !preg_match('/UPDATE biz_products SET sell_price = :sp WHERE id = :id AND user_id = :u/', $br70)) {
+    $bBad[] = 'includes/biz_rates.php — خودش را با Rates::listen() ثبت نمی‌کند یا نوشتنِ قیمت بی user_id است';
 }
 
 // ۶. migration ثبت شده، و هیچ پوشه‌ی PHPِ تازه‌ای بیرونِ پوششِ تست‌ها نمانده
@@ -6878,12 +6897,15 @@ if (!str_contains($io70, 'BizProducts::save($userId, $in)') || !str_contains($io
 if (!preg_match("/SELECT id, name, sku FROM biz_products WHERE user_id = :u'/", $io70)) {
     $bBad[] = 'biz_io.php — تطبیقِ پیش‌نمایش فقط میانِ کالاهای همین کاربر نیست';
 }
-// ⛔ سدِ SSRF: IPِ سنجیده سنجاق، ریدایرکت دستی و هر بار سنجیده، فقط http(s)، پرچمِ آزمون فقط در cli
-if (!preg_match('/for \(\$hop = 0;.*?\$c = self::check\(\$url\);.*?CURLOPT_RESOLVE\s*=> \[\$c\[\'host\'\]/s', $io70)
-    || !str_contains($io70, 'CURLOPT_FOLLOWLOCATION => false') || !str_contains($io70, 'CURLPROTO_HTTP | CURLPROTO_HTTPS')
-    || !str_contains($io70, 'return self::$allowLoopbackForTests && PHP_SAPI === \'cli\';')
-    || !str_contains($io70, 'FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE')) {
-    $bBad[] = 'biz_io.php — سدِ SSRF (سنجاقِ IP، سنجشِ هر ریدایرکت، فقط http(s)، پرچمِ آزمونِ فقط-cli) ناقص است';
+// ⛔ سدِ SSRF: IPِ سنجیده سنجاق، ریدایرکت دستی و هر بار سنجیده، فقط http(s)، پرچمِ آزمون فقط در cli.
+//    پیاده‌سازی در `safe_fetch.php` است (مشترک با نرخِ ارز و طلا) و `BizFetch` همان را ارث می‌برد.
+$sf70 = $strip70((string)@file_get_contents(__DIR__ . '/../includes/safe_fetch.php'));
+if (!preg_match('/for \(\$hop = 0;.*?\$c = self::check\(\$url\);.*?CURLOPT_RESOLVE\s*=> \[\$c\[\'host\'\]/s', $sf70)
+    || !str_contains($sf70, 'CURLOPT_FOLLOWLOCATION => false') || !str_contains($sf70, 'CURLPROTO_HTTP | CURLPROTO_HTTPS')
+    || !str_contains($sf70, 'return self::$allowLoopbackForTests && PHP_SAPI === \'cli\';')
+    || !str_contains($sf70, 'FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE')
+    || !str_contains($io70, 'final class BizFetch extends SafeFetch {}')) {
+    $bBad[] = 'safe_fetch.php/biz_io.php — سدِ SSRF (سنجاقِ IP، سنجشِ هر ریدایرکت، فقط http(s)، پرچمِ آزمونِ فقط-cli) ناقص است';
 }
 foreach (array_merge(glob(__DIR__ . '/../*.php') ?: [], glob(__DIR__ . '/../store/*.php') ?: [], glob(__DIR__ . '/../includes/*.php') ?: [],
                      glob(__DIR__ . '/../api/*.php') ?: []) as $f) {

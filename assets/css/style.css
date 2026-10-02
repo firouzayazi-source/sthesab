@@ -5871,3 +5871,56 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .sidebar-footer .store-gate-nav { margin-bottom: 2px; }
 .store-gate-tool { flex-direction: row; align-items: center; justify-content: flex-start; min-height: 0; }
 .store-gate-tool .store-gate-ico { border-radius: 8px; }
+
+/* ============================================================
+   ۴۴. نرخِ ارز، طلا و سکه (`includes/rates.php`)
+   — صفحه‌ی مدیر (`admin/rates.php`) و نشانِ نرخ کنارِ نوعِ دارایی.
+   ============================================================ */
+.alert-warning { background: var(--warn-wash); color: var(--warn-ink); }
+.rates-list { display: flex; flex-direction: column; }
+.rates-row {
+    display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr) minmax(0, 1.5fr);
+    gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid var(--line-soft);
+}
+.rates-row:first-child { border-top: 0; }
+.rates-name b { display: block; font-size: 14px; }
+.rates-name small, .rates-val small { display: block; font-size: 11.5px; color: var(--muted); }
+.rates-price { font-size: 15px; font-weight: 800; }
+.rates-chg { font-size: 11.5px; font-weight: 700; margin-inline-start: 6px; }
+.rates-chg.is-up { color: var(--in); }
+.rates-chg.is-down { color: var(--out); }
+.rates-row.is-stale .rates-price { color: var(--muted); }
+.rates-old { color: var(--warn-ink); }
+.rates-edit { display: flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.rates-edit input { width: 150px; min-width: 0; }
+.rate-src { border: 1px solid var(--line); border-radius: var(--r); padding: 14px; margin-bottom: 12px; }
+.rate-src-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.rate-src-state { display: inline-flex; align-items: center; gap: 8px; }
+.rate-src-state small { color: var(--muted); font-size: 11.5px; }
+.rate-src-err { margin: 8px 0 0; color: var(--out); }
+.rate-src-grid { display: grid; grid-template-columns: 90px minmax(0, 1fr) minmax(0, 1.4fr); gap: 10px; margin-top: 12px; }
+.rate-src-grid .form-group { margin-bottom: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.rate-src-grid .form-group small { color: var(--muted); font-weight: 400; }
+.rate-src-clear { font-size: 11.5px; color: var(--muted); display: inline-flex; gap: 5px; align-items: center; }
+.rate-src-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.rate-src-rial { font-size: 12.5px; color: var(--ink-soft); display: inline-flex; gap: 6px; align-items: center; }
+.rate-paths-box { margin-top: 10px; }
+.rate-paths-box > summary { cursor: pointer; font-size: 13px; font-weight: 700; }
+.rate-paths { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+.rate-paths label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--ink-soft); }
+@media (max-width: 760px) {
+    .rates-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .rates-edit { grid-column: 1 / -1; justify-content: flex-start; }
+    .rates-edit input { flex: 1; width: auto; }
+    .rate-src-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* نوعِ داراییِ وصل به نرخِ خودکار */
+.ref-rate-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10.5px; font-weight: 700; padding: 1px 7px; border-radius: var(--r-pill);
+    background: var(--in-wash); color: var(--in); margin-inline-start: 4px;
+}
+.asset-rate-hint { margin-top: 6px; }
+/* ⚠ قاعده ۱۸: خانه‌ی دستیِ نرخ با `hidden` کنار می‌رود (نرخِ خودکار). */
+.form-group[hidden], .hint[hidden] { display: none; }

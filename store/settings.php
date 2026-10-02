@@ -50,6 +50,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $res = Biz::saveNewMenu($userId, is_array($_POST['menu'] ?? null) ? $_POST['menu'] : []);
         redirectWithMessage(Biz::url('settings.php') . '#newmenu', $res['ok'] ? 'success' : 'error', $res['message']);
     }
+    // ⛔ گردکردنِ قیمتِ کالای ارزی — فقط `Biz::saveRateRound()`
+    if (postParam('action') === 'rate_round') {
+        $res = Biz::saveRateRound($userId, (int)postParam('rate_round', '1000'));
+        redirectWithMessage(Biz::url('settings.php') . '#rates', $res['ok'] ? 'success' : 'error', $res['message']);
+    }
     if (postParam('action') === 'invoice_prefs') {
         $res = Biz::saveInvoicePrefs($userId, $_POST);
         redirectWithMessage(Biz::url('settings.php') . '#invoice', $res['ok'] ? 'success' : 'error', $res['message']);
@@ -139,6 +144,33 @@ require __DIR__ . '/../includes/biz_head.php';
     </div>
     <button type="submit" class="st-btn">ذخیره‌ی منو</button>
 </form>
+<?php require_once __DIR__ . '/../includes/biz_rates.php'; ?>
+<?php if (Rates::available()): $__rates = Rates::all(); $__rr = Biz::rateRound($userId); ?>
+<h2 class="st-h2 st-section-title" id="rates">نرخِ روز و قیمتِ ارزی</h2>
+<form method="post" class="st-card st-form" action="<?= h(Biz::url('settings.php')) ?>">
+    <?= Csrf::field() ?>
+    <input type="hidden" name="action" value="rate_round">
+    <p class="st-muted">
+        برای هر کالا می‌توانید قیمتِ پایه را به دلار، گرمِ طلا یا سکه بدهید (در صفحه‌ی همان کالا)؛ قیمتِ فروش با هر نرخِ تازه
+        خودش به‌روز می‌شود. فاکتورِ صادرشده هرگز عوض نمی‌شود.
+    </p>
+    <div class="st-rates">
+        <?php foreach (Rates::CODES as $__c => [$__l, $__u]): $__r = $__rates[$__c] ?? null; if (!$__r) { continue; } ?>
+            <span class="st-rate<?= Rates::isStale($__r) ? ' is-stale' : '' ?>"><b><?= h($__l) ?></b> <span class="ltr-num"><?= formatMoney((int)$__r['price']) ?></span> <small><?= h(Rates::ago($__r['fetched_at'])) ?></small></span>
+        <?php endforeach; ?>
+        <?php if (!$__rates): ?><span class="st-muted">هنوز نرخی دریافت نشده؛ مدیرِ برنامه منبع‌ها را در پنلِ مدیر روشن می‌کند.</span><?php endif; ?>
+    </div>
+    <label class="st-field">
+        <span>گرد کردنِ قیمتِ فروش</span>
+        <select name="rate_round">
+            <?php foreach (BizRates::ROUNDS as $__v => $__lbl): ?>
+                <option value="<?= (int)$__v ?>"<?= $__v === $__rr ? ' selected' : '' ?>><?= h($__lbl) ?></option>
+            <?php endforeach; ?>
+        </select>
+    </label>
+    <button type="submit" class="st-btn">ذخیره</button>
+</form>
+<?php endif; ?>
 <h2 class="st-h2 st-section-title">سربرگِ فاکتور</h2>
 
 <?php if ($error !== ''): ?>

@@ -173,7 +173,7 @@ $userId = Auth::userId();   // همیشه از اینجا، هرگز از ورو
 | pool مربوط به PHP | `/etc/php/<نسخه>/fpm/pool.d/hesab.conf` |
 | سوکت | `/run/php/php-hesab.sock` |
 | دیتابیس / کاربر | `hesab_db` / `'hesab_user'@'localhost'` با `GRANT ... ON hesab_db.*` |
-| بکاپ | `/opt/hesab/backups` و `/etc/cron.d/hesab-*` (backup، sessions، due، reminders، offsite، store-sync، push) |
+| بکاپ | `/opt/hesab/backups` و `/etc/cron.d/hesab-*` (backup، sessions، due، reminders، offsite، store-sync، push، rates) |
 | **نسخه‌ی آزمایشی** | پوشه‌ی `/opt/hesab/staging`، کاربرِ `hesabstg`، سایت و pool به نامِ `hesab-staging` (سوکت `/run/php/php-hesab-staging.sock`)، دیتابیسِ `hesab_staging` با `'hesab_stg'@'localhost'` (`GRANT ... ON hesab_staging.*`)، و `/etc/nginx/hesab-staging.htpasswd` |
 
 > **دام دسترسی `var/sessions`:** `deploy.sh` عمداً `chown -R root:root .` می‌زند تا PHP نتواند کد را عوض کند. ولی `session.save_path` این pool داخل خودِ پوشه‌ی اپ است (`var/sessions`)، پس همان دستور آن را هم مال root می‌کرد و PHP — که با کاربر `hesab` اجرا می‌شود — دیگر نمی‌توانست فایل نشست بنویسد. **خرابیِ حاصل هیچ ردی در لاگ نداشت:** هر درخواست یک نشستِ خالیِ تازه می‌گرفت، پس توکن CSRF هرگز نمی‌ماند و صفحه‌ی ورود در حلقه‌ی «نشست شما منقضی شده بود» گیر می‌کرد — هیچ‌کس نمی‌توانست وارد شود، و هر بار اجرای `deploy.sh` دوباره خرابش می‌کرد. `deploy.sh` حالا مثل `uploads`، پوشه‌ی `var` را هم برمی‌گرداند و نوشتنی بودنش را با `sudo -u hesab test -w` واقعاً می‌آزماید. قاعده ۸ در `test_api_contract.php` این را می‌سنجد.
@@ -206,6 +206,7 @@ $userId = Auth::userId();   // همیشه از اینجا، هرگز از ورو
 - **پاک‌سازی نشست‌های منقضی: `deploy/session-clean.sh --install-cron`** (`docs/decisions/auth.md`)
 - **یادآوری روزانه‌ی سررسیدها: `deploy/reminders.php --install-cron`** (`docs/decisions/due-reminders.md`)
 - **اعلانِ گوشی (Web Push)، هر دقیقه: `deploy/push-send.php --install-cron`** (`docs/decisions/home-ui.md`)
+- **نرخِ ارز، طلا و سکه، هر ۶ ساعت: `deploy/rates.php --install-cron`** (`--probe` بی‌نوشتن هر منبع را می‌آزماید؛ منبع‌ها و نرخِ دستی در `admin/rates.php`) (`docs/decisions/rates.md`)
 - **بستنِ `var/` از وب روی نصبِ موجود: `deploy/nginx-var.sh`** (نمایشی؛ با `--apply` اعمال)
 - **سنجش و بازیابی بکاپ: `deploy/restore.sh`**
 - افزودن استثنای سرویس‌ورکر به nginx روی نصب موجود: `deploy/nginx-sw.sh` (نمایشی؛ با `--apply` اعمال)
@@ -277,7 +278,13 @@ sudo ./hesabland release     # همان abc1234 — و فقط همان — رو�
 - `is_settled = 1 ⇔ status = 'cleared'`؛ چکِ برگشتی/خرج‌شده «در جریان» نیست (وگرنه دوبار شمرده می‌شود). چکِ دریافتیِ برگشتی خودکار طلب می‌شود.
 - قسط ردیفِ ذخیره‌شده ندارد؛ باقیمانده‌ی تقسیم به قسطِ آخر؛ «پرداخت‌شده» از جمعِ پرداخت نه تاریخ؛ بدهیِ قسطی یک بار شمرده شود. `debts.due_date` `NULL` = «بدون سررسید» (نه امروز).
 - هر جدولِ ارجاع به دسته/حساب **از دیتابیس کشف** می‌شود (`categoryRefTables()`، `walletRefColumns()`) و عملیات‌های جابه‌جایی سدِ شمارشِ پیش از `commit` دارند.
-- «سرمایه‌گذاری» عمداً دسته‌ی هزینه نیست. ارزش = `COALESCE(current_price, unit_price)`؛ نرخ دستی است.
+- «سرمایه‌گذاری» عمداً دسته‌ی هزینه نیست. ارزش = `COALESCE(current_price, unit_price)`؛ نرخ دستی، یا خودکار از نرخِ روز (`asset_types.rate_code`، `docs/decisions/rates.md`).
+
+### `docs/decisions/rates.md` — نرخِ روزِ ارز، طلا و سکه (شخصی و فروشگاهی)
+- `Rates::CODES` تنها فهرستِ نرخ‌ها (تومان برای یک واحد)؛ منبع فقط ردیفی در `Rates::PROVIDERS` (یا «منبعِ دلخواه» با آدرس و مسیر)؛ کلید اختیاری و رمزشده، آدرسِ جایگزین از سدِ SSRF (`includes/safe_fetch.php`).
+- **هرگز هنگامِ باز شدنِ صفحه** — فقط cron (هر ۶ ساعت) و «همین حالا»ِ مدیر؛ منبعِ قطع ⇒ آخرین نرخِ سالم می‌ماند. هر کد از اولین منبعِ روشن؛ منبعِ بعدی فقط برای کدِ خالی؛ سقفِ ماهانه رعایت می‌شود.
+- جهشِ بیش از ۵۰٪ رد (`jumpError()`)؛ نرخِ دستی را خودکار بازنویسی نمی‌کند؛ دلار از تتر ساخته نمی‌شود.
+- دارایی: `applyToAssets()` همان `current_price` (بی‌محاسبه‌ی دوم)، هر کاربر جدا. فروشگاه: `BizRates::apply()` تنها نویسنده‌ی `sell_price`ِ کالای وصل‌شده (با `Rates::listen()`؛ `rates.php` جدولِ فروشگاه را نمی‌شناسد — قاعده ۷۰)؛ فاکتورِ صادرشده عوض نمی‌شود؛ وصل جدا از `save()` (`saveRate()`).
 
 ### `docs/decisions/transactions.md` — فرمِ ثبت، پیامکِ بانک، جست‌وجو، ورود از فایل
 - منطقِ نوشتن فقط `includes/transactions.php` (`txCreate`/`txUpdate`)، خواندن فقط `includes/tx_query.php`؛ خروجیِ CSV همان صافی‌ها (BOM اجباری، مبلغ عددِ خام).

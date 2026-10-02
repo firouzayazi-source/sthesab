@@ -404,6 +404,41 @@ final class BizProducts
         return ['ok' => true, 'message' => 'کالا ذخیره شد.', 'id' => $id];
     }
 
+    /**
+     * قیمتِ فروش از نرخِ روز (`includes/rates.php`): پایه به واحدِ نرخ (دلار،
+     * گرمِ طلا، سکه…) + درصدِ سود. کدِ خالی = قطع؛ قیمتِ فروش همان آخرین
+     * عدد می‌ماند و از این به بعد دستی است.
+     * ⛔ جدا از `save()` است، عمداً: ورود از فایل و هر مسیرِ دیگری که `save()`
+     *    را صدا می‌زند این ستون‌ها را نمی‌فرستد و نباید وصلِ کالا را بی‌صدا قطع کند.
+     * @return array{ok:bool, message:string}
+     */
+    public static function saveRate(int $userId, int $id, array $in): array
+    {
+        require_once __DIR__ . '/biz_rates.php';
+        if (!tableHasColumn('biz_products', 'rate_code')) { return ['ok' => true, 'message' => '']; }
+        $code = trim((string)($in['rate_code'] ?? ''));
+        $pdo = Database::getConnection();
+        if ($code === '') {
+            $pdo->prepare('UPDATE biz_products SET rate_code = NULL, rate_base = NULL, rate_margin = NULL WHERE id = :id AND user_id = :u')
+                ->execute(['id' => $id, 'u' => $userId]);
+            return ['ok' => true, 'message' => ''];
+        }
+        if (!Rates::isCode($code)) { return ['ok' => false, 'message' => 'نرخِ انتخاب‌شده معتبر نیست.']; }
+        $base = Rates::num((string)($in['rate_base'] ?? ''));
+        if ($base === null || $base > 1e9) {
+            return ['ok' => false, 'message' => 'قیمتِ پایه به ' . Rates::unit($code) . ' را بنویسید (بیشتر از صفر).'];
+        }
+        $mRaw = trim(toLatinDigits((string)($in['rate_margin'] ?? '')));
+        $neg = str_starts_with($mRaw, '-') || str_starts_with($mRaw, '−');
+        $margin = $mRaw === '' ? 0.0 : (float)(Rates::num(ltrim($mRaw, '-−')) ?? 0) * ($neg ? -1 : 1);
+        if ($margin < -90 || $margin > 1000) { return ['ok' => false, 'message' => 'درصدِ سود باید بین −۹۰ و ۱۰۰۰ باشد.']; }
+        $pdo->prepare('UPDATE biz_products SET rate_code = :c, rate_base = :b, rate_margin = :m WHERE id = :id AND user_id = :u')
+            ->execute(['c' => $code, 'b' => round($base, 4), 'm' => round($margin, 2), 'id' => $id, 'u' => $userId]);
+        BizRates::apply($userId);
+        return ['ok' => true, 'message' => Rates::price($code) === null
+            ? 'هنوز نرخی برای «' . Rates::label($code) . '» نیامده؛ قیمتِ فروش با اولین نرخ حساب می‌شود.' : ''];
+    }
+
     public static function setActive(int $userId, int $id, bool $active): bool
     {
         $st = Database::getConnection()->prepare('UPDATE biz_products SET is_active = :a WHERE id = :id AND user_id = :u');

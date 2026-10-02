@@ -5850,6 +5850,16 @@ function appMain() {
         var apTitle = document.getElementById('assetPriceTitle');
         var apMsg   = document.getElementById('assetPriceMessage');
         var apBtn   = document.getElementById('assetPriceSubmitBtn');
+        // نرخِ خودکار (`includes/rates.php`) — وصل که شد خانه‌ی دستی کنار می‌رود.
+        var apRate  = document.getElementById('assetPriceRate');
+        var apRateHint = document.getElementById('assetPriceRateHint');
+        var apManual = document.getElementById('assetPriceManual');
+        function apSyncRate() {
+            var on = !!(apRate && apRate.value);
+            if (apManual) { apManual.hidden = on; }
+            if (apRateHint) { apRateHint.hidden = !on; }
+        }
+        if (apRate) { apRate.addEventListener('change', apSyncRate); }
 
         document.querySelectorAll('.js-asset-price').forEach(function (btn) {
             btn.addEventListener('click', function () {
@@ -5858,6 +5868,7 @@ function appMain() {
                 apUnit.textContent = btn.getAttribute('data-unit') || 'واحد';
                 var p = parseInt(btn.getAttribute('data-price'), 10) || 0;
                 apVal.value = p > 0 ? p.toLocaleString('en-US') : '';
+                if (apRate) { apRate.value = btn.getAttribute('data-rate') || ''; apSyncRate(); }
                 if (apMsg) { apMsg.hidden = true; apMsg.classList.remove('show', 'success', 'error'); }
                 if (apBtn) { apBtn.disabled = false; }
                 assetPriceModal.classList.add('show');
@@ -5872,6 +5883,7 @@ function appMain() {
             // ارقام فارسی و جداکننده‌ها پاک می‌شوند؛ سمتِ سرور هم
             // sanitizeAmount دوباره همین کار را می‌کند.
             fd.append('price', toLatinDigitsJs(apVal.value).replace(/[,٬\s]/g, ''));
+            if (apRate) { fd.append('rate_code', apRate.value); }
             if (apBtn) { apBtn.disabled = true; }
 
             fetch(apiUrl('update_asset_price.php'), {

@@ -11,6 +11,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/rates.php';
 
 Auth::initSession();
 Auth::requireLogin();
@@ -37,9 +38,12 @@ try {
 $assetTypes = [];
 try {
     // نرخِ روز فقط اگر migration_asset_prices آمده باشد.
-    $st = $pdo->prepare(tableHasColumn('asset_types', 'current_price')
-        ? 'SELECT id, name, unit, current_price, price_updated_at FROM asset_types WHERE user_id = :u ORDER BY name'
-        : 'SELECT id, name, unit, NULL AS current_price, NULL AS price_updated_at FROM asset_types WHERE user_id = :u ORDER BY name');
+    // ⚠ `rate_code` (نرخِ خودکار، `includes/rates.php`) فقط وقتی ستونش هست.
+    $st = $pdo->prepare(tableHasColumn('asset_types', 'rate_code')
+        ? 'SELECT id, name, unit, current_price, price_updated_at, rate_code FROM asset_types WHERE user_id = :u ORDER BY name'
+        : (tableHasColumn('asset_types', 'current_price')
+        ? 'SELECT id, name, unit, current_price, price_updated_at, NULL AS rate_code FROM asset_types WHERE user_id = :u ORDER BY name'
+        : 'SELECT id, name, unit, NULL AS current_price, NULL AS price_updated_at, NULL AS rate_code FROM asset_types WHERE user_id = :u ORDER BY name'));
     $st->execute(['u' => $userId]);
     $assetTypes = $st->fetchAll();
 } catch (PDOException $e) {
@@ -85,6 +89,10 @@ if ($catsReady) {
         if (!isset($have[$s['type'] . '|' . $s['name']])) { $missingSuggested++; }
     }
 }
+
+// ⚠ انتخابِ نرخِ خودکار فقط وقتی جدولش و ستونِ وصلش هست — کلیدی که
+//   ذخیره نمی‌شود بدتر از نبودنش است.
+$__rateReady = Rates::available() && tableHasColumn('asset_types', 'rate_code');
 
 $pageTitle = 'فهرست‌های من';
 include __DIR__ . '/includes/header.php';
@@ -241,11 +249,15 @@ include __DIR__ . '/includes/header.php';
                             data-name="<?= h($at['name']) ?>"
                             data-unit="<?= h($at['unit']) ?>"
                             data-price="<?= (int)($at['current_price'] ?? 0) ?>"
+                            data-rate="<?= h((string)($at['rate_code'] ?? '')) ?>"
                             title="نرخ روز">
                         <?php if (!empty($at['current_price'])): ?>
                             <?= formatMoney((int)$at['current_price']) ?>
                         <?php else: ?>
                             + نرخ روز
+                        <?php endif; ?>
+                        <?php if (Rates::isCode($at['rate_code'] ?? null)): ?>
+                            <span class="ref-rate-tag" title="<?= h('خودکار از نرخِ ' . Rates::label((string)$at['rate_code'])) ?>">خودکار</span>
                         <?php endif; ?>
                     </button>
                     <button type="button" class="ref-chip-x js-ref-delete" data-kind="asset_type" data-id="<?= (int)$at['id'] ?>" aria-label="حذف">&times;</button>
@@ -389,7 +401,19 @@ include __DIR__ . '/includes/header.php';
         </div>
         <form id="assetPriceForm" autocomplete="off">
             <input type="hidden" id="assetPriceId" value="">
+            <?php /* ⛔ نرخِ خودکار (`includes/rates.php`): وصل که شد، قیمتِ هر
+                     واحد را دریافتِ ۶ساعته می‌نویسد (`Rates::applyToAssets()`)
+                     و خانه‌ی دستی کنار می‌رود. خالی = مثلِ قبل، دستی. */ ?>
+            <?php if ($__rateReady): ?>
             <div class="form-group">
+                <label for="assetPriceRate">نرخِ خودکار</label>
+                <select id="assetPriceRate"><?= Rates::optionsHtml(null, 'ندارد — نرخ را خودم می‌نویسم') ?></select>
+                <p class="hint asset-rate-hint" id="assetPriceRateHint" hidden>
+                    ارزش با نرخِ روزِ همین مورد خودکار به‌روز می‌شود (هر ۶ ساعت). واحدِ این نوعِ دارایی باید با واحدِ نرخ یکی باشد.
+                </p>
+            </div>
+            <?php endif; ?>
+            <div class="form-group" id="assetPriceManual">
                 <label for="assetPriceValue">قیمت هر <span id="assetPriceUnit">واحد</span> (<?= h(APP_CURRENCY) ?>)</label>
                 <input type="text" id="assetPriceValue" inputmode="numeric" placeholder="مثلاً ۷,۰۰۰,۰۰۰">
                 <p class="hint">

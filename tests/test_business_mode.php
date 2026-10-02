@@ -50,7 +50,7 @@ const STORE_BUDGET = [
     //    (خلاصه + بدهکار + بستانکار) — ۲۴ → ۲۳ (یک کوئریِ گروهیِ «قدیمی‌ترین» ماند).
     'store/index.php'    => 23,
     'store/search.php'   => 14,   // پنج فهرستِ دامنه (هر کدام شمارش + ردیف) + شماره‌ی چک + صندوق‌ها
-    'store/settings.php' => 5,
+    'store/settings.php' => 7,   // +۲: نرخ‌های روز (نقشه‌ی جدول‌ها برای «راه افتاده؟» + یک SELECT)
     'store/products.php' => 10,
     'store/product.php'  => 9,
     'store/parties.php'  => 9,

@@ -87,6 +87,7 @@ const BUDGET = [
     'admin/insights.php'    => 33,
     'admin/errors.php'      => 16,
     'admin/store-share.php' => 15,
+    'admin/rates.php'       => 16,
     'admin/support.php'     => 18,
     'admin/support-content.php' => 17,
     // ⚠ از ۱۷ به ۱۶: فهرست دیگر همه‌ی کاربران را نمی‌خواند، ولی یک

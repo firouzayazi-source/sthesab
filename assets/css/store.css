@@ -1374,3 +1374,20 @@ html.st-locked, html.st-locked body { overflow: hidden; }
 .st-new-opt:has(input:checked) { border-color: color-mix(in srgb, var(--tone) 55%, var(--st-line)); background: color-mix(in srgb, var(--tone) 7%, transparent); }
 .st-new-opt .st-new-ico { width: 34px; height: 34px; border-radius: 10px; flex: 0 0 auto; }
 .st-new-opt .st-new-ico svg { color: var(--tone); }
+
+/* ---------- قیمتِ فروش از نرخِ روز (`includes/rates.php`) ---------- */
+.st-rate-box { padding: 14px 16px; margin: 4px 0 14px; }
+.st-rate-box > summary { cursor: pointer; font-weight: 700; font-size: 14px; list-style: none; }
+.st-rate-box > summary::-webkit-details-marker { display: none; }
+.st-rate-box > summary::before { content: '+'; display: inline-block; width: 18px; color: var(--st-accent); font-weight: 800; }
+.st-rate-box[open] > summary::before { content: '−'; }
+.st-rate-box[open] > summary { margin-bottom: 12px; }
+.st-rate-box .st-muted { margin: 8px 0 0; font-size: 12.5px; line-height: 1.8; }
+.st-rates { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
+.st-rate {
+    display: inline-flex; align-items: baseline; gap: 6px; padding: 6px 10px;
+    border-radius: 999px; background: var(--st-sunken); border: 1px solid var(--st-line); font-size: 12.5px;
+}
+.st-rate b { font-weight: 700; }
+.st-rate small { color: var(--st-ink-3); font-size: 11px; }
+.st-rate.is-stale { opacity: .6; }

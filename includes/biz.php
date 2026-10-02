@@ -162,6 +162,38 @@ final class Biz
 
     /** JSONِ خامِ `biz_settings.new_menu` از همان `SELECT *`ِ `settings()`. */
     private static array $newMenuRaw = [];
+    /** `biz_settings.rate_round` (migration_rates) — گردکردنِ قیمتِ کالای ارزی. */
+    private static array $rateRound = [];
+
+    /** گردکردنِ قیمتِ ارزی (تومان)، یکی از `BizRates::ROUNDS`؛ پیش‌فرض هزار. */
+    public static function rateRound(int $userId): int
+    {
+        self::settings($userId);
+        $v = (int)(self::$rateRound[$userId] ?? 1000);
+        return in_array($v, [1, 1000, 10000, 100000], true) ? $v : 1000;
+    }
+
+    /**
+     * ⛔ تنها نویسنده‌ی `rate_round`؛ بعدش قیمتِ همه‌ی کالاهای ارزیِ همین
+     *    فروشگاه با گردکردنِ تازه دوباره حساب می‌شود (`BizRates::apply()`).
+     * @return array{ok:bool, message:string}
+     */
+    public static function saveRateRound(int $userId, int $round): array
+    {
+        require_once __DIR__ . '/biz_rates.php';
+        if (!isset(BizRates::ROUNDS[$round])) { return ['ok' => false, 'message' => 'گردکردنِ نامعتبر.']; }
+        if (!self::hasColumn('biz_settings', 'rate_round')) {
+            return ['ok' => false, 'message' => 'قیمتِ ارزی هنوز راه نیفتاده است (migration_rates).'];
+        }
+        Database::getConnection()->prepare(
+            'INSERT INTO biz_settings (user_id, rate_round) VALUES (:u, :r)
+             ON DUPLICATE KEY UPDATE rate_round = VALUES(rate_round)'
+        )->execute(['u' => $userId, 'r' => $round]);
+        unset(self::$settingsCache[$userId]);
+        $n = BizRates::apply($userId);
+        return ['ok' => true, 'message' => 'گردکردن «' . BizRates::ROUNDS[$round] . '» شد'
+            . ($n > 0 ? ' و قیمتِ ' . toPersianDigits((string)$n) . ' کالا تازه شد.' : '.')];
+    }
 
     /**
      * کلیدهای منوی «+» این فروشگاه، به ترتیبِ کاتالوگ — صفر کوئریِ اضافه.
@@ -751,6 +783,7 @@ final class Biz
         self::$designRaw[$userId]    = $row ? (string)($row['invoice_design'] ?? '') : '';
         self::$lockCache[$userId]    = $row ? (string)($row['lock_date'] ?? '') : '';
         self::$newMenuRaw[$userId]   = $row ? (string)($row['new_menu'] ?? '') : '';
+        self::$rateRound[$userId]    = $row ? (int)($row['rate_round'] ?? 1000) : 1000;
         if ($row) { self::$infoReady = array_key_exists('invoice_prefs', $row); }
         return self::$settingsCache[$userId] = $out;
     }

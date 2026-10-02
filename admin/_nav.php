@@ -48,6 +48,7 @@ $__adminTabs = [
     'support.php'    => ['پشتیبانی', 'support'],
     'errors.php'     => ['خطاها', 'admin'],
     'store-share.php' => ['سهامداران فروشگاه', 'admin'],
+    'rates.php'      => ['نرخ ارز و طلا', 'admin'],
 ];
 $__here = basename($_SERVER['SCRIPT_NAME'] ?? '');
 
