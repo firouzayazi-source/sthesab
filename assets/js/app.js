@@ -2614,8 +2614,13 @@ function appMain() {
     }
 
     // ---------- حذف تراکنش (AJAX) — در صفحه اصلی و صفحه تراکنش‌ها ----------
-    document.querySelectorAll('.js-delete-tx').forEach(function (btn) {
-        btn.addEventListener('click', function () {
+    // ⚠ واگذارشده به `document`، نه بسته به هر دکمه: ردیف‌های «جزئیاتِ روز»ِ
+    //   تقویمِ خانه بعد از بارگذاری می‌رسند و دکمه‌ی بسته‌شده‌ی قبلی آنجا
+    //   بی‌صدا هیچ کاری نمی‌کرد.
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.js-delete-tx');
+        if (!btn) return;
+        (function () {
             var txId = this.getAttribute('data-id');
             var csrfToken = document.querySelector('meta[name="csrf-token"]')
                 ? document.querySelector('meta[name="csrf-token"]').content
@@ -2628,14 +2633,16 @@ function appMain() {
                 ep: 'delete_transaction.php', field: 'transaction_id',
                 value: txId, csrf: csrfToken, text: 'تراکنش حذف شد.'
             });
-        });
+        }).call(btn);
     });
 
     // ---------- ویرایش تراکنش: پیش‌پر کردن مودال ----------
     var monthNamesFa = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
 
-    document.querySelectorAll('.js-edit-tx').forEach(function (btn) {
-        btn.addEventListener('click', function () {
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.js-edit-tx');
+        if (!btn) return;
+        (function () {
             if (!editToggle || !window.JalaliDatePicker) return;
 
             var id = this.getAttribute('data-id');
@@ -2664,7 +2671,7 @@ function appMain() {
             if (msgEl) { msgEl.hidden = true; msgEl.classList.remove('show', 'success', 'error'); }
 
             openModal('editTxModal');
-        });
+        }).call(btn);
     });
 
     var editTxForm = document.getElementById('editTxForm');
@@ -4235,39 +4242,103 @@ function appMain() {
         });
     });
 
-    // ---------- تقویم مالی: نمایش جزئیات روز ----------
-    document.querySelectorAll('.js-cal-day').forEach(function (cell) {
-        cell.addEventListener('click', function () {
-            var date = this.getAttribute('data-date');
-            var card = document.getElementById('calDayCard');
-            var body = document.getElementById('calDayBody');
-            var title = document.getElementById('calDayTitle');
-            if (!card || !body) return;
+    // ---------- تقویمِ خانه (`includes/home_calendar.php`) ----------
+    //
+    // ⛔ خانه فقط پوسته را رندر می‌کند (بی‌کوئری) و داده‌ی ماه از
+    //    `api/home_calendar.php` می‌آید — همان `homeCalendarHtml()`، پس ماهِ
+    //    بعد و ماهِ جاری از یک رندرکننده‌اند. شنونده‌ها روی خودِ کارت‌اند
+    //    (نه روی خانه‌ها)، چون درونِ کارت با هر ماه عوض می‌شود.
+    // ⚠ `seq`: کاربری که تند «ماهِ بعد» را می‌زند، پاسخِ کندِ ماهِ قبلی را
+    //   روی ماهِ تازه نمی‌بیند.
+    (function () {
+        var cal = document.getElementById('cal');
+        if (!cal) return;
+        var seq = 0;
+        var day = cal.querySelector('.hcal-day');
+        var dayTitle = cal.querySelector('.hcal-day-title');
+        var dayBody = cal.querySelector('.hcal-day-body');
 
-            document.querySelectorAll('.cal-cell').forEach(function (c) { c.classList.remove('cal-selected'); });
-            this.classList.add('cal-selected');
-
-            card.hidden = false;
-            body.innerHTML = window.skeletonHtml(3);
-
-            fetch(apiUrl('day_detail.php') + '?date=' + encodeURIComponent(date))
-                .then(function (r) { return r.text(); })
+        function syncToggle() {
+            var t = cal.querySelector('.js-hcal-toggle');
+            if (t) t.setAttribute('aria-expanded', cal.classList.contains('is-week') ? 'false' : 'true');
+        }
+        function closeDay() {
+            if (day) day.hidden = true;
+            cal.querySelectorAll('.hcal-d.is-sel').forEach(function (c) { c.classList.remove('is-sel'); });
+        }
+        function load(jy, jm) {
+            var my = ++seq;
+            var inner = cal.querySelector('.hcal-inner');
+            if (inner) inner.classList.add('is-loading');
+            return fetch(apiUrl('home_calendar.php') + '?jy=' + encodeURIComponent(jy) + '&jm=' + encodeURIComponent(jm),
+                         { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
                 .then(function (html) {
-                    body.innerHTML = html;
-                    if (title) { title.textContent = 'جزئیات روز'; }
-                    body.querySelectorAll('.tx-row-summary').forEach(function (row) {
-                        row.addEventListener('click', function () {
+                    if (my !== seq) return;
+                    var box = document.createElement('div');
+                    box.innerHTML = html;
+                    var fresh = box.querySelector('.hcal-inner');
+                    var cur = cal.querySelector('.hcal-inner');
+                    if (fresh && cur) cur.parentNode.replaceChild(fresh, cur);
+                    syncToggle();
+                })
+                .catch(function () {
+                    var cur = cal.querySelector('.hcal-inner');
+                    if (cur && my === seq) cur.classList.remove('is-loading');
+                });
+        }
+
+        var first = cal.querySelector('.hcal-inner');
+        syncToggle();
+        if (first) load(first.getAttribute('data-jy'), first.getAttribute('data-jm'));
+
+        cal.addEventListener('click', function (e) {
+            var go = e.target.closest('.js-hcal-go');
+            if (go) {
+                e.preventDefault();
+                closeDay();
+                // ماهِ دیگر = ماهِ کامل؛ نوارِ هفته فقط هفته‌ی امروز را دارد.
+                cal.classList.remove('is-week');
+                load(go.getAttribute('data-jy'), go.getAttribute('data-jm'));
+                return;
+            }
+            var tg = e.target.closest('.js-hcal-toggle');
+            if (tg) {
+                var month = cal.classList.toggle('is-week') === false;
+                try { localStorage.setItem('daftar_hcal_month', month ? '1' : '0'); } catch (err) {}
+                syncToggle();
+                return;
+            }
+            if (e.target.closest('.js-hcal-close')) { closeDay(); return; }
+
+            var cell = e.target.closest('.js-hcal-day');
+            if (!cell || !day || !dayBody) return;
+            if (cell.classList.contains('is-sel')) { closeDay(); return; }
+            closeDay();
+            cell.classList.add('is-sel');
+            dayTitle.textContent = cell.getAttribute('data-label') || '';
+            dayBody.innerHTML = window.skeletonHtml(2);
+            day.hidden = false;
+            var date = cell.getAttribute('data-date');
+            fetch(apiUrl('day_detail.php') + '?date=' + encodeURIComponent(date), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+                .then(function (html) {
+                    if (!cell.classList.contains('is-sel')) return;
+                    dayBody.innerHTML = html;
+                    dayBody.querySelectorAll('.tx-row-summary').forEach(function (row) {
+                        row.addEventListener('click', function (ev) {
+                            if (ev.target.closest('button')) return;
                             var parent = this.closest('.tx-row');
                             if (parent) parent.classList.toggle('expanded');
                         });
                     });
-                    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    day.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 })
                 .catch(function () {
-                    body.innerHTML = '<p style="text-align:center; color:var(--out); padding:12px 0;">خطا در بارگذاری.</p>';
+                    dayBody.innerHTML = '<p class="empty-row" style="color:var(--out);">خطا در بارگذاری.</p>';
                 });
         });
-    });
+    })();
 
     // ---------- ورود اطلاعات از CSV ----------
     var previewBtn = document.getElementById('previewBtn');

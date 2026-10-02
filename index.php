@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/home_calendar.php';
 
 Auth::initSession();
 Auth::requireLogin();
@@ -69,6 +70,11 @@ $walletRows = walletBalances($userId);
 //    خودش به اندازه‌ی محتوای باقی‌مانده کوچک می‌شود.
 $homeHidden = homeHiddenWidgets($userId);
 $hw = fn(string $k): bool => homeWidgetOn($homeHidden, $k);
+
+// ⛔ تقویم (`includes/home_calendar.php`) — پوسته بی‌دیتابیس است و داده‌اش
+//    بعد از بارگذاری می‌آید، پس این خط هیچ کوئری‌ای به خانه اضافه نمی‌کند.
+//    ماه از `?jy=&jm=` (لینکِ `calendar.php` و ماهِ قبل/بعدِ بی‌جاوااسکریپت).
+[$calJy, $calJm] = homeCalendarMonth((int)getParam('jy', '0'), (int)getParam('jm', '0'));
 
 // ---------- نمای دسکتاپ: داشبوردِ کلی ----------
 //
@@ -151,11 +157,12 @@ include __DIR__ . '/includes/header.php';
 ?>
 
 <?php /* تاریخِ امروز به شمسی — **گزارشِ مالکِ نصب:** «تاریخ روز به شمسی در
-         صفحه اصلی هنوز اضافه نشده». لینک به تقویمِ مالی است، چون سؤالِ
-         بعد از «امروز چندم است» همان «امروز چه سررسیدی دارم» است.
+         صفحه اصلی هنوز اضافه نشده». لینک به تقویمِ همین صفحه است، چون سؤالِ
+         بعد از «امروز چندم است» همان «امروز چه سررسیدی دارم» است؛ اگر
+         تقویم خاموش است، به فهرستِ سررسیدها.
          ⚠ از `today()` می‌آید (منطقه‌ی زمانیِ اپ)، نه `date()` خام. */ ?>
 <?php if ($hw('date')): ?>
-<a class="home-date" href="<?= APP_BASE_PATH ?>/due.php?t=calendar">
+<a class="home-date" href="<?= h($hw('calendar') ? homeCalendarUrl() : APP_BASE_PATH . '/due.php?t=list') ?>">
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>
     <span><?= h(jalaliLongDate(today())) ?></span>
 </a>
@@ -398,6 +405,13 @@ include __DIR__ . '/includes/header.php';
 </div>
 <?php endif; ?>
 
+<?php /* ⛔ تقویم روی گوشی: زیرِ جمله‌ها و بالای تراکنش‌ها، به‌شکلِ نوارِ
+         هفته‌ی جاری که با «ماهِ کامل» باز می‌شود — ماهِ کامل ۳۵۰ پیکسل
+         است و تراکنش‌ها را از دیدِ اول بیرون می‌کرد. روی دسکتاپ جایش
+         بالای ستونِ کناری است (پایین‌تر)، نه اینجا: دو بار رندر یعنی دو
+         `id="cal"`. */ ?>
+<?php if (!$desk && $hw('calendar')) { renderHomeCalendar($calJy, $calJm); } ?>
+
 <div class="card">
     <div class="card-header-row">
         <h2 class="card-title">آخرین تراکنش‌های من</h2>
@@ -434,6 +448,9 @@ include __DIR__ . '/includes/header.php';
          می‌نشیند، پس ستونِ اصلی (کارتِ ماه و تراکنش‌ها) همان‌جایی می‌ماند
          که چشمِ فارسی‌خوان اول می‌رود. */ ?>
 <aside class="home-side desk-only">
+    <?php /* ⛔ تقویم بالای ستونِ کناری، همیشه ماهِ کامل. */ ?>
+    <?php if ($hw('calendar')) { renderHomeCalendar($calJy, $calJm, true); } ?>
+
     <div class="card desk-card">
         <div class="card-header-row">
             <h2 class="card-title">مانده‌ی حساب‌ها</h2>

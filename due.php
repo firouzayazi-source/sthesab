@@ -16,9 +16,10 @@
  *    درست است» اینجا هم مدرک نبود.)
  *
  * ⛔ زبانه‌ها **لینک**اند و هر بار فقط یکی از سرور می‌آید. با رندر کردنِ
- *    هر سه و پنهان کردنِ دو تا، هر بارگذاری کوئریِ تقویم و یادآور و
- *    سررسید را با هم می‌زد — یعنی سه برابر کار برای چیزی که کاربر
- *    یکی‌اش را می‌بیند.
+ *    همه و پنهان کردنِ بقیه، هر بارگذاری کوئریِ همه را با هم می‌زد.
+ *
+ * ⛔ «تقویم» زبانه‌ی سوم بود و به خانه رفت (`includes/home_calendar.php`)؛
+ *    `?t=calendar` به همان‌جا هدایت می‌شود.
  *
  * ⛔ «تراکنش دوره‌ای» عمداً زبانه نشد و صفحه‌ی خودش ماند: آن یکی **پول
  *    جابه‌جا می‌کند** و در گزارش می‌نشیند، پس با سه‌تای دیگر هم‌جنس
@@ -44,7 +45,6 @@ $today  = today();
  */
 const DUE_TABS = [
     'list'      => 'سررسیدها',
-    'calendar'  => 'تقویم',
     'reminders' => 'یادآورهای من',
 ];
 
@@ -58,6 +58,19 @@ const DUE_FILTERS = [
 ];
 
 $tab = getParam('t', 'list');
+
+/* ⛔ تقویم دیگر زبانه‌ی اینجا نیست و روی خانه است
+   (`includes/home_calendar.php`، خواسته‌ی مالکِ نصب: «از داخلِ یادآوری
+   بیار بیرون… از جای قبلی پاکش کن»). ولی `due.php?t=calendar` در
+   بوک‌مارک‌ها و اعلان‌های قبلی هست: بی این هدایت، بی‌صدا به «سررسیدها»
+   می‌رفت و کاربر فکر می‌کرد تقویم حذف شده. ماهِ انتخاب‌شده هم می‌ماند. */
+if ($tab === 'calendar') {
+    require_once __DIR__ . '/includes/home_calendar.php';
+    $jy = (int)getParam('jy', '0');
+    $jm = (int)getParam('jm', '0');
+    header('Location: ' . homeCalendarUrl($jy ?: null, $jm ?: null), true, 301);
+    exit;
+}
 if (!isset(DUE_TABS[$tab])) { $tab = 'list'; }
 
 $ready = Schedule::available();
@@ -149,10 +162,6 @@ include __DIR__ . '/includes/header.php';
             <span class="page-tab-n"><?= toPersianDigits((string)$lateCount) ?></span>
         <?php endif; ?>
     </a>
-    <a href="?t=calendar" class="page-tab <?= $tab === 'calendar' ? 'is-active' : '' ?>">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
-        <span><?= h(DUE_TABS['calendar']) ?></span>
-    </a>
     <a href="?t=reminders" class="page-tab <?= $tab === 'reminders' ? 'is-active' : '' ?>">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 01-3.4 0"/></svg>
         <span><?= h(DUE_TABS['reminders']) ?></span>
@@ -160,7 +169,7 @@ include __DIR__ . '/includes/header.php';
 </nav>
 
 <?php
-// ⛔ فقط زبانه‌ی باز از سرور می‌آید — نه هر سه و پنهان کردنِ دو تا.
+// ⛔ فقط زبانه‌ی باز از سرور می‌آید — نه همه و پنهان کردنِ بقیه.
 include __DIR__ . '/includes/due_tab_' . $tab . '.php';
 ?>
 

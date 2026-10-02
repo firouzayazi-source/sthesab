@@ -31,6 +31,7 @@ sort($files);
 $csrfExempt = [
     'category_transactions.php',
     'day_detail.php',
+    'home_calendar.php',
     'savings_history.php',
     'transaction_attachments.php',
     'view_attachment.php',
@@ -1937,7 +1938,12 @@ $tabBad = [];
 $tabSeen = 0;
 foreach (['*.php', 'includes/*.php', 'api/*.php', 'admin/*.php', 'store/*.php'] as $g) {
     foreach (glob(__DIR__ . '/../' . $g) as $p) {
-        $src = file_get_contents($p);
+        // ⚠ بی‌توضیح‌ها: توضیحِ «`due.php?t=calendar` هدایت می‌شود» لینک نیست.
+        $src = '';
+        foreach (token_get_all(file_get_contents($p)) as $tk) {
+            if (is_array($tk) && in_array($tk[0], [T_COMMENT, T_DOC_COMMENT], true)) { continue; }
+            $src .= is_array($tk) ? $tk[1] : $tk;
+        }
         if (!preg_match_all("~due\.php\?t=([a-z_]+)~", $src, $mm)) { continue; }
         foreach ($mm[1] as $key) {
             $tabSeen++;
@@ -1953,19 +1959,33 @@ T::bulk($tabSeen, $tabBad, 'هر لینکِ `due.php?t=…` به زبانه‌ی
 // ⚠ و خودِ استاب‌ها: صفحه‌ای که ادغام شده باید **بماند** و هدایت کند.
 //   حذفشان بوک‌مارک و ایمیل‌های فرستاده‌شده را می‌شکند، بی‌هیچ خطایی.
 $stubBad = [];
-foreach (['upcoming.php' => 'list', 'calendar.php' => 'calendar',
-          'reminders.php' => 'reminders'] as $file => $tab) {
+// ⛔ `calendar.php` حالا به تقویمِ خانه می‌رود (`homeCalendarUrl()`)، نه
+//    به زبانه‌ای که دیگر نیست — همان دو پرشِ بی‌صدا.
+foreach (['upcoming.php' => 'due.php?t=list', 'calendar.php' => 'homeCalendarUrl(',
+          'reminders.php' => 'due.php?t=reminders'] as $file => $target) {
     $p = __DIR__ . '/../' . $file;
     if (!is_file($p)) { $stubBad[] = "$file — فایل حذف شده؛ بوک‌مارک و ایمیل‌های قبلی می‌شکنند"; continue; }
     $s = file_get_contents($p);
-    if (!str_contains($s, 'due.php?t=' . $tab)) {
-        $stubBad[] = "$file — به `due.php?t={$tab}` هدایت نمی‌کند";
+    if (!str_contains($s, $target)) {
+        $stubBad[] = "$file — به `{$target}` هدایت نمی‌کند";
     }
     if (!str_contains($s, 'Auth::requireLogin()')) {
         $stubBad[] = "$file — بدونِ ورود هم هدایت می‌کند (باید به صفحه‌ی ورود برود)";
     }
 }
 T::bulk(3, $stubBad, 'آدرس‌های قدیمی هنوز به زبانه‌ی درست هدایت می‌شوند');
+
+// ⛔ تقویم از «سررسیدها» بیرون آمد و روی خانه است (خواسته‌ی مالکِ نصب:
+//    «از جای قبلی پاکش کن»). زبانه‌ای که برگردد، تقویم را دو جا می‌گذارد؛
+//    و `?t=calendar`ِ بوک‌مارک‌شده بی هدایت بی‌صدا به «سررسیدها» می‌رفت.
+$calBad = [];
+if (in_array('calendar', $tabKeys, true)) { $calBad[] = 'due.php — «تقویم» هنوز زبانه‌ی DUE_TABS است'; }
+if (is_file(__DIR__ . '/../includes/due_tab_calendar.php')) { $calBad[] = 'includes/due_tab_calendar.php — رندرکننده‌ی دوم هنوز هست'; }
+if (!preg_match('~if \(\$tab === \'calendar\'\) \{.*?homeCalendarUrl\(.*?exit;~s', $dueSrc)
+    || strpos($dueSrc, "if (\$tab === 'calendar')") > strpos($dueSrc, 'if (!isset(DUE_TABS[$tab]))')) {
+    $calBad[] = 'due.php — `?t=calendar` پیش از افتادن به زبانه‌ی پیش‌فرض به homeCalendarUrl() هدایت نمی‌شود';
+}
+T::bulk(3, $calBad, '⛔ تقویم فقط روی خانه است و آدرسِ قدیمیِ زبانه‌اش به آنجا می‌رود');
 
 // ---------------------------------------------------------------
 T::group('نحو — هر فایل PHP باید بدون خطا پارس شود');
@@ -6038,7 +6058,7 @@ if (!preg_match('/financialHighlights\([^;]*\$homeHidden[,)]/', $idxSrc)) {
 if (!preg_match('/foreach \(HOME_WIDGETS as/', $profSrc) || !preg_match('/foreach \(HOME_WIDGET_GROUPS as/', $profSrc)) {
     $badHome[] = 'profile.php — کارتِ «صفحه‌ی خانه» از HOME_WIDGETS/HOME_WIDGET_GROUPS رندر نمی‌شود (فهرستِ دوم)';
 }
-if (preg_match('/value="(date|meter|split|compare|overdue|budget|growth)"/', $profSrc)) {
+if (preg_match('/value="(date|meter|split|compare|overdue|budget|growth|calendar)"/', $profSrc)) {
     $badHome[] = 'profile.php — کلیدِ قلمِ خانه سخت‌کد شده';
 }
 if (strpos($apiSrc, 'Csrf::verifyOrFail(') === false || strpos($apiSrc, 'saveHomeHidden(') === false

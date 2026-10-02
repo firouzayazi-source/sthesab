@@ -93,7 +93,7 @@ $userId = Auth::userId();   // همیشه از اینجا، هرگز از ورو
 
 1. **جداسازی کاربران:** هر کوئری روی داده‌ی کاربر باید `WHERE user_id = :uid` داشته باشد. `user_id` همیشه از `Auth::userId()` می‌آید، هرگز از `$_POST`. **استثنایی هم ندارد:** تنها استثنای قبلی `admin/all-transactions.php` بود که حذف شد (پایین‌تر در «آمار استفاده» توضیح داده شده).
 2. **کوئری‌ها:** فقط `prepare()` + پارامتر نام‌دار. اگر ناچار به ساختن پویای `WHERE` شدید، مثل `transactions.php` عمل کنید: قطعه‌های ثابت در آرایه، مقادیر همیشه bind. رشته‌ی ورودی کاربر هرگز داخل SQL درج نشود.
-3. **CSRF:** هر اندپوینتی که چیزی می‌نویسد `Csrf::verifyOrFail()` دارد. اندپوینت‌های فقط-خواندنی (`dashboard_stats`, `day_detail`, `category_transactions`, `savings_history`, `transaction_attachments`, `view_attachment`) عمداً ندارند — اگر روزی نویسنده شدند، باید اضافه شود.
+3. **CSRF:** هر اندپوینتی که چیزی می‌نویسد `Csrf::verifyOrFail()` دارد. اندپوینت‌های فقط-خواندنی (`dashboard_stats`, `day_detail`, `home_calendar`, `category_transactions`, `savings_history`, `transaction_attachments`, `view_attachment`) عمداً ندارند — اگر روزی نویسنده شدند، باید اضافه شود.
 4. **خروجی HTML:** هر مقدار متغیر با `h()` یا `htmlspecialchars` فرار داده شود.
 5. **مسیرها:** لینک‌ها و آدرس دارایی‌ها با ثابت `APP_BASE_PATH` ساخته شوند تا نصب در زیرپوشه نشکند.
 6. **تاریخ:** ذخیره در دیتابیس میلادی (`DATE`)، نمایش شمسی. تبدیل فقط با توابع خود پروژه — مبدأ الگوریتم PHP و `assets/js/jalali-datepicker.js` باید یکی بماند.
@@ -298,6 +298,7 @@ sudo ./hesabland release     # همان abc1234 — و فقط همان — رو�
 - عدد چپ‌چین (فهرستِ `.ltr-num`)، متن راست‌چین؛ `text-align` جای عنصر را تعیین نمی‌کند؛ `<select>` جهتِ خودش را دارد (منوی بومیِ iOS را CSS نمی‌بیند — دو بار جایگزینش ساخته و **پس گرفته** شد).
 - `[hidden]` بدونِ قاعده‌ی خودش کار نمی‌کند (قاعده ۱۸). حاشیه‌ی امن را قاعده‌ی **برنده** باید داشته باشد. نیم‌فاصله جای شکستن است (`nowrap` روی دکمه).
 - قالب‌های مشترک هیچ متغیرِ سراسریِ بی‌`__` نمی‌سازند (قاعده ۵۰). HTML هرگز کش نمی‌شود (`no-store`، `sw.js`).
+- **تقویم روی خانه است، نه در «سررسیدها»** (`includes/home_calendar.php`): گوشی نوارِ هفته بالای تراکنش‌ها، دسکتاپ بالای ستونِ کناری؛ یک رندرکننده (`homeCalendarHtml()`)، خانه فقط پوسته‌ی بی‌کوئری و داده از `api/home_calendar.php`؛ آدرس فقط `homeCalendarUrl()` (`calendar.php` و `due.php?t=calendar` هدایت).
 - قلم‌های خانه `HOME_WIDGETS` (خاموش رندر نمی‌شود)؛ دسکتاپ با `deskView()`/کوکی؛ حساب‌های پین‌شده فقط `pinnedWallets()`؛ «حذف — لغو» با `Undo` جز جایی که برگشت کامل نیست.
 - هر تغییرِ پول یا منو صفحه را تازه می‌کند؛ هر قابلیتی که تنها راهش `.bottom-nav` است روی دسکتاپ وجود ندارد.
 
@@ -318,7 +319,7 @@ sudo ./hesabland release     # همان abc1234 — و فقط همان — رو�
 
 ### `docs/decisions/due-reminders.md` — سررسید، یادآور، اعلان
 - `reminders` (کاربر می‌سازد) جدا از `notifications` (برنامه)؛ `dedup_key` قلبِ اعلان است. سررسید ارجاع است نه انتقال؛ `jalaliAddMonths()` با روزِ لنگر؛ `Schedule::RECUR_PRESETS` تنها مرجع.
-- `due.php` هیچ پولی ثبت نمی‌کند؛ `DUE_TABS` تنها مرجعِ زبانه‌ها؛ `upcoming.php`/`calendar.php`/`reminders.php` هدایت می‌کنند و حذف نمی‌شوند.
+- `due.php` هیچ پولی ثبت نمی‌کند؛ `DUE_TABS` تنها مرجعِ زبانه‌ها (`list`، `reminders`)؛ `upcoming.php`/`calendar.php`/`reminders.php` هدایت می‌کنند و حذف نمی‌شوند.
 - ایمیلِ یادآوری پیش‌فرض روشن، یک ایمیل در روز (`last_sent_on`)؛ متنش در `reminderEmailBody()`.
 
 ### `docs/decisions/backup-data.md` — بکاپ، بازگرداندن، خروجی، حذف

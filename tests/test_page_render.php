@@ -101,7 +101,7 @@ const EXPECT = [
     //   باید یک صفحه‌ی کامل باشد، نه یک خطِ خام.
     'reset-password.php'    => 'page',
 
-    // ---- استاب‌های ادغام‌شده در `due.php` ----
+    // ---- استاب‌های ادغام‌شده در `due.php` (و `calendar.php` → تقویمِ خانه) ----
     'upcoming.php'          => 'moved',
     'calendar.php'          => 'moved',
     'reminders.php'         => 'moved',
@@ -159,7 +159,8 @@ const EXPECT = [
 
 /** آدرس‌های پارامتردار — تا شاخه‌های شرطیِ صفحه‌ها هم اجرا شوند. */
 $VARIANTS = [
-    'due.php?t=calendar',
+    // ⚠ ماهِ دیگرِ تقویمِ خانه (پوسته با «امروز»، اسفندِ کبیسه‌ی ۱۴۰۳)
+    'index.php?jy=1403&jm=12',
     'due.php?t=reminders',
     'due.php?f=overdue',
     'category-report.php?type=expense&preset=this_month',

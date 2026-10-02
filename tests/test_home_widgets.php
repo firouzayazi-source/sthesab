@@ -34,8 +34,8 @@ T::group('خانه — فهرستِ قلم‌ها و تجزیه‌ی ذخیره�
 require_once $root . '/includes/functions.php';
 
 $keys = array_keys(HOME_WIDGETS);
-T::same(['date', 'meter', 'split', 'compare', 'overdue', 'budget', 'growth'], $keys,
-    'هفت قلم، به همین ترتیب (ترتیبِ کارتِ تنظیمات)');
+T::same(['date', 'meter', 'split', 'compare', 'overdue', 'budget', 'growth', 'calendar'], $keys,
+    'هشت قلم، به همین ترتیب (ترتیبِ کارتِ تنظیمات)');
 $badGroup = [];
 foreach (HOME_WIDGETS as $k => $w) {
     if (!isset(HOME_WIDGET_GROUPS[$w['group'] ?? ''])) { $badGroup[] = $k; }
@@ -172,13 +172,14 @@ try {
         'overdue' => 'سررسیدِ گذشته دارید',
         'budget'  => 'بودجه‌ی «خانه‌آزمون» رد شده',
         'growth'  => 'بیشتر از ماه قبل خرجِ «خانه‌آزمون»',
+        'calendar' => 'class="card hcal',
     ];
     $seen = function (string $html) use ($MARK): array {
         $out = [];
         foreach ($MARK as $k => $needle) { if (strpos($html, $needle) !== false) { $out[] = $k; } }
         return $out;
     };
-    T::same(array_keys($MARK), $seen($home), 'پیش‌فرض: هر هفت قلم روی خانه هست');
+    T::same(array_keys($MARK), $seen($home), 'پیش‌فرض: هر هشت قلم روی خانه هست');
 
     $csrf = preg_match('/<meta name="csrf-token" content="([^"]+)"/', $home, $mm) ? $mm[1] : '';
     // ⚠ `http_build_query` کلیدِ `on[]` را `on[0]` می‌کند؛ بدنه دستی ساخته می‌شود
@@ -204,7 +205,7 @@ try {
     // سه قلم خاموش
     [$c, $d] = $post(['meter', 'compare', 'budget', 'growth']);
     T::ok($c === 200 && !empty($d['success']), 'ذخیره از اندپوینت', json_encode($d, JSON_UNESCAPED_UNICODE));
-    T::same('date,split,overdue', $stored(), 'دیتابیس فقط خاموش‌ها را نگه می‌دارد');
+    T::same('date,split,overdue,calendar', $stored(), 'دیتابیس فقط خاموش‌ها را نگه می‌دارد');
     [, $home] = $req('index.php');
     T::same(['meter', 'compare', 'budget', 'growth'], $seen($home), 'خاموش‌ها رندر نمی‌شوند و بقیه سرِ جایشان‌اند');
     T::ok(strpos($home, 'class="balance-ribbon"') !== false, 'کارتِ ماه خودش می‌ماند (فقط کوچک‌تر)');
@@ -233,7 +234,7 @@ try {
     [$c, $d] = $post($keys);
     T::same(null, $stored(), 'همه روشن یعنی NULL، نه رشته‌ی خالی (یک معنا، یک شکل)');
     [, $home] = $req('index.php');
-    T::same(array_keys($MARK), $seen($home), 'برگشت به پیش‌فرض: هر هفت قلم برگشت');
+    T::same(array_keys($MARK), $seen($home), 'برگشت به پیش‌فرض: هر هشت قلم برگشت');
     [, $prof] = $req('profile.php');
     T::ok(preg_match('/id="hwAllOn"[^>]*hidden/', $prof) === 1, 'همه روشن: «همه را روشن کن» پنهان است');
 

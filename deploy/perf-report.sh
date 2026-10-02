@@ -406,7 +406,7 @@ else
             ok "ورود انجام شد — صفحه‌های داخلی هم سنجیده می‌شوند"
             printf '\n'
             for p in /index.php /dashboard.php /transactions.php /wallets.php \
-                     /cheques.php /debts.php /my-assets.php /calendar.php; do
+                     /cheques.php /debts.php /my-assets.php /api/home_calendar.php; do
                 MS=$(timeit "$p")
                 printf '  %-34s %6sms  %s\n' "${p#/}" "$MS" "$(verdict "$MS")"
                 if (( MS > 400 )); then
