@@ -11,8 +11,10 @@
  *      اسفندِ کبیسه، جمعه، ردیفِ هفته‌ی امروز).
  *   ۲. داده: نقطه‌ها و جمع‌ها از تراکنش و `financialEvents()`، و جداییِ
  *      کاربران.
- *   ۳. HTTP: پوسته روی خانه (گوشی و دسکتاپ)، اندپوینت، هدایتِ آدرس‌های
- *      قدیمی، و نبودنِ زبانه در `due.php`.
+ *   ۳. HTTP: جا — گوشی بالای «گزارش» و نه خانه، دسکتاپ زیرِ «آخرین
+ *      تراکنش‌ها» و نه ستونِ کناری («تقویم بهتر بیاد زیر تراکنش‌ها و حساب‌ها
+ *      برگردن سر جای خودشون») — اندپوینت، هدایتِ آدرس‌های قدیمی، و نبودنِ
+ *      زبانه در `due.php`.
  */
 
 if (PHP_SAPI !== 'cli') {
@@ -43,9 +45,20 @@ T::same([$ty, $tm], homeCalendarMonth(0, 0), 'بی‌پارامتر = ماهِ �
 T::same([1405, 1], homeCalendarMonth(1404, 13), 'ماهِ ۱۳ = فروردینِ سالِ بعد');
 T::same([1403, 12], homeCalendarMonth(1404, 0), 'ماهِ ۰ = اسفندِ سالِ قبل');
 T::same([$ty, $tm], homeCalendarMonth(1999, 5), 'سالِ بیرون از بازه = ماهِ امروز');
-T::same(APP_BASE_PATH . '/index.php#cal', homeCalendarUrl(), 'آدرسِ ماهِ جاری بی‌پارامتر است');
-T::same(APP_BASE_PATH . '/index.php#cal', homeCalendarUrl($ty, $tm), 'ماهِ جاری حتی با پارامتر هم بی‌پارامتر');
-T::same(APP_BASE_PATH . '/index.php?jy=1403&jm=12#cal', homeCalendarUrl(1403, 12), 'ماهِ دیگر با jy/jm');
+unset($_COOKIE[DESK_COOKIE]);
+T::same(APP_BASE_PATH . '/dashboard.php#cal', homeCalendarUrl(), 'گوشی: آدرسِ ماهِ جاری = «گزارش»، بی‌پارامتر');
+T::same(APP_BASE_PATH . '/dashboard.php#cal', homeCalendarUrl($ty, $tm), 'ماهِ جاری حتی با پارامتر هم بی‌پارامتر');
+T::same(APP_BASE_PATH . '/dashboard.php?jy=1403&jm=12#cal', homeCalendarUrl(1403, 12), 'ماهِ دیگر با jy/jm');
+$_COOKIE[DESK_COOKIE] = '1';
+T::same(APP_BASE_PATH . '/index.php?jy=1403&jm=12#cal', homeCalendarUrl(1403, 12), 'دسکتاپ: همان ماه روی خانه');
+unset($_COOKIE[DESK_COOKIE]);
+
+T::same('۸۵۰ هزار', hcalShort(850000), 'مبلغِ کوتاه: هزار');
+T::same('۱٫۵ میلیون', hcalShort(1500000), 'یک رقمِ اعشار زیرِ ده');
+T::same('۲۵ میلیون', hcalShort(25000000), 'بی‌اعشار از ده به بالا');
+T::same('۱۳ میلیون', hcalShort(12500000), 'از ده به بالا گرد می‌شود (نه «۱۲٫۵»؛ خانه‌ی روز جا ندارد)');
+T::same('۲ میلیارد', hcalShort(2000000000), 'میلیارد، بی «٫۰»');
+T::same('۹۰۰', hcalShort(900), 'زیرِ هزار همان عدد');
 
 // ---------------------------------------------------------------
 T::group('تقویمِ خانه — شبکه‌ی روزها');
@@ -161,6 +174,10 @@ try {
     T::ok($has($byDate[$dIn][0], 'has-any') && !$has($byDate[$g(1404, 12, 2)][0], 'has-any'), 'فقط روزِ دارای چیزی زمینه می‌گیرد');
     T::ok(str_contains($html, formatMoney(1500000)) && str_contains($html, formatMoney(450000)), 'جمع‌ها روی کارت');
     T::ok(str_contains($html, 'سررسیدِ گذشته') && str_contains($html, 'due.php?t=list&amp;f=overdue'), 'چیپِ سررسیدِ گذشته به همان صافی می‌رود');
+    T::ok(str_contains($byDate[$dIn][1], '<b class="is-in" title="' . formatMoney(1500000) . '">۱٫۵ میلیون</b>'),
+        'مبلغِ روز (برای کارتِ پهن): جمعِ دو دریافتِ همان روز، با عددِ دقیق در title');
+    T::ok(str_contains($byDate[$dOut][1], '>۴۵۰ هزار</b>') && !str_contains($byDate[$dDebt][1], 'hcal-amt'),
+        'پرداختِ روز؛ و روزی که فقط سررسید دارد مبلغِ «ثبت‌شده» نمی‌گیرد');
     T::ok(!str_contains($html, 'data-pending'), 'با داده دیگر «منتظر» نیست');
 
     // سررسیدِ آینده (نه گذشته) → نقطه‌ی طلایی، نه نارنجی
@@ -213,17 +230,25 @@ try {
     preg_match('/name="csrf_token"[^>]*value="([^"]+)"/', $html, $m);
     $req('login.php', ['csrf_token' => $m[1] ?? '', 'username' => $USER[0], 'password' => $USER[1]]);
 
-    // خانه‌ی گوشی
+    // خانه‌ی گوشی — بی‌تقویم («صفحه خانه در گوشی خیلی شلوغ میشه»)
     [$code, $home] = $req('index.php');
     T::same(200, $code, 'خانه باز می‌شود');
-    T::same(1, substr_count($home, 'id="cal"'), 'دقیقاً یک تقویم');
-    T::ok(str_contains($home, '<section class="card hcal is-week" id="cal"'), 'گوشی: نوارِ هفته');
-    T::ok(str_contains($home, 'data-pending="1"') && !str_contains($home, 'hcal-dot is-'), '⛔ خانه داده‌ی تقویم را خودش نمی‌خواند (پوسته، بی‌کوئری)');
-    T::ok(preg_match('~id="cal".*?آخرین تراکنش‌های من~s', $home) === 1, 'جایش بالای «آخرین تراکنش‌ها»');
-    T::ok(str_contains($home, 'class="home-date" href="' . APP_BASE_PATH . '/index.php#cal"'), 'تاریخِ بالای خانه به تقویم می‌رود');
+    T::ok(!str_contains($home, 'id="cal"') && !str_contains($home, 'class="card hcal'), '⛔ خانه‌ی گوشی تقویم ندارد');
+    T::ok(str_contains($home, 'class="home-date" href="' . APP_BASE_PATH . '/dashboard.php#cal"'), 'تاریخِ بالای خانه به تقویمِ «گزارش» می‌رود');
+
+    // «گزارش» — همان بالا
+    [$code, $rep] = $req('dashboard.php');
+    T::same(200, $code, '«گزارش» باز می‌شود');
+    T::same(1, substr_count($rep, 'id="cal"'), 'دقیقاً یک تقویم');
+    T::ok(str_contains($rep, '<section class="card hcal" id="cal"'), 'پیش‌فرض ماهِ کامل (نه نوارِ هفته)');
+    $bodyStart = strpos($rep, '<main') !== false ? strpos($rep, '<main') : strpos($rep, 'page-content');
+    $firstCard = preg_match('~class="card[ "]~', substr($rep, (int)$bodyStart), $fm, PREG_OFFSET_CAPTURE) ? $fm[0][1] : -1;
+    T::ok($firstCard >= 0 && strpos(substr($rep, (int)$bodyStart), 'class="card hcal"') === $firstCard, '⛔ «همون بالا»: اولین کارتِ صفحه');
+    T::ok(str_contains($rep, 'data-pending="1"') && !str_contains($rep, 'hcal-dot is-'), '⛔ صفحه داده‌ی تقویم را خودش نمی‌خواند (پوسته، بی‌کوئری)');
+    T::ok(str_contains($rep, "localStorage.getItem('daftar_hcal_month') === '0'"), 'جمع کردن به هفته با انتخابِ کاربر، پیش از نقاشی');
 
     // ماهِ دیگر از آدرس
-    [, $homeM] = $req('index.php?jy=1404&jm=12');
+    [, $homeM] = $req('dashboard.php?jy=1404&jm=12');
     T::ok(str_contains($homeM, 'اسفند ۱۴۰۴') && str_contains($homeM, 'data-now="0"'), 'پوسته‌ی ماهِ دیگر از ?jy=&jm=');
 
     // اندپوینت
@@ -239,28 +264,32 @@ try {
 
     // آدرس‌های قدیمی
     [$code, , $loc] = $req('calendar.php?jy=1404&jm=12');
-    T::ok($code === 301 && str_ends_with($loc, '/index.php?jy=1404&jm=12#cal'), 'calendar.php → تقویمِ خانه با همان ماه', "{$code} {$loc}");
+    T::ok($code === 301 && str_ends_with($loc, '/dashboard.php?jy=1404&jm=12#cal'), 'calendar.php (گوشی) → تقویمِ «گزارش» با همان ماه', "{$code} {$loc}");
+    [$code, , $loc] = $req('calendar.php?jy=1404&jm=12', null, DESK_COOKIE . '=1');
+    T::ok($code === 301 && str_ends_with($loc, '/index.php?jy=1404&jm=12#cal'), 'calendar.php (دسکتاپ) → تقویمِ خانه', "{$code} {$loc}");
     [$code, , $loc] = $req('due.php?t=calendar');
-    T::ok($code === 301 && str_ends_with($loc, '/index.php#cal'), '⛔ due.php?t=calendar → تقویمِ خانه (نه بی‌صدا «سررسیدها»)', "{$code} {$loc}");
+    T::ok($code === 301 && str_ends_with($loc, '/dashboard.php#cal'), '⛔ due.php?t=calendar → تقویم (نه بی‌صدا «سررسیدها»)', "{$code} {$loc}");
     [$code, , $loc] = $req('due.php?t=calendar&jy=1404&jm=12');
-    T::ok($code === 301 && str_ends_with($loc, '/index.php?jy=1404&jm=12#cal'), 'و ماه را نگه می‌دارد', "{$code} {$loc}");
+    T::ok($code === 301 && str_ends_with($loc, '/dashboard.php?jy=1404&jm=12#cal'), 'و ماه را نگه می‌دارد', "{$code} {$loc}");
     [$code, $due] = $req('due.php');
     T::ok($code === 200 && !str_contains($due, 't=calendar') && !str_contains($due, '>تقویم<'), '⛔ «سررسیدها» دیگر زبانه‌ی تقویم ندارد');
     T::same(2, preg_match_all('~<a href="\?t=[a-z]+" class="page-tab ~', $due), 'دو زبانه مانده: سررسیدها و یادآورهای من');
 
-    // دسکتاپ
+    // دسکتاپ — زیرِ «آخرین تراکنش‌ها»، و ستونِ کناری مثلِ قبل
     [, $desk] = $req('index.php', null, DESK_COOKIE . '=1');
     $side = preg_match('/<aside class="home-side desk-only">(.*?)<\/aside>/s', $desk, $sm) ? $sm[1] : '';
+    $main = preg_match('/<div class="home-main">(.*?)<aside class="home-side/s', $desk, $mm2) ? $mm2[1] : '';
     T::same(1, substr_count($desk, 'id="cal"'), 'دسکتاپ: دقیقاً یک تقویم');
-    T::ok(str_contains($side, '<section class="card hcal is-desk" id="cal"'), 'دسکتاپ: بالای ستونِ کناری، ماهِ کامل');
-    T::ok(strpos($side, 'id="cal"') < strpos($side, 'مانده‌ی حساب‌ها'), 'و پیش از «مانده‌ی حساب‌ها»');
-
-    // خاموش از پروفایل
-    saveHomeHidden($uid, ['calendar']);
-    [, $off] = $req('index.php');
-    T::ok(!str_contains($off, 'class="card hcal') && !str_contains($off, 'id="cal"'), 'قلمِ خاموش: تقویم رندر نمی‌شود');
-    T::ok(str_contains($off, 'class="home-date" href="' . APP_BASE_PATH . '/due.php?t=list"'), 'و تاریخِ بالا به «سررسیدها» می‌رود، نه به لنگرِ ناموجود');
-    saveHomeHidden($uid, []);
+    T::ok(str_contains($main, '<section class="card hcal is-desk" id="cal"'), 'دسکتاپ: در ستونِ اصلی، ماهِ کامل');
+    T::ok(strpos($main, 'آخرین تراکنش‌های من') !== false && strpos($main, 'id="cal"') > strpos($main, 'آخرین تراکنش‌های من'),
+        '⛔ و زیرِ «آخرین تراکنش‌ها»');
+    T::ok(preg_match('~id="cal".*?</section>\s*</div>\s*<aside class="home-side~s', $desk) === 1,
+        '⛔ آخرین چیزِ ستونِ اصلی است (نه بیرونِ آن، کنارِ ستونِ کناری)');
+    T::ok($side !== '' && !str_contains($side, 'hcal'), '⛔ ستونِ کناری تقویم ندارد');
+    T::ok(preg_match('~^\s*<div class="card desk-card">\s*<div class="card-header-row">\s*<h2 class="card-title">مانده‌ی حساب‌ها</h2>~', $side) === 1,
+        '⛔ ستونِ کناری دوباره با «مانده‌ی حساب‌ها» شروع می‌شود');
+    T::ok(!str_contains($desk, "daftar_hcal_month') === '0'"), 'روی خانه‌ی دسکتاپ نوارِ هفته‌ای در کار نیست');
+    T::ok(str_contains($desk, 'class="home-date" href="' . APP_BASE_PATH . '/index.php#cal"'), 'دسکتاپ: تاریخِ بالا به تقویمِ همین صفحه');
 } finally {
     $cleanup();
 }

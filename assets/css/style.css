@@ -2714,17 +2714,20 @@ html[data-theme="dark"] .debt-ring { --ring-c: hsl(var(--ring-h, 0) 65% 60%); }
 }
 .event-daybreak:first-child { padding-top: 2px; }
 
-/* ---------- تقویمِ خانه (`includes/home_calendar.php`) ----------
-   ⛔ یک کارت، دو جا: روی گوشی زیرِ جمله‌های خانه (نوارِ هفته، با «ماهِ
-      کامل» باز می‌شود — `.is-week`)، روی دسکتاپ بالای ستونِ کناری
-      (همیشه ماهِ کامل — `.is-desk`).
+/* ---------- تقویم (`includes/home_calendar.php`) ----------
+   ⛔ یک کارت، دو جا: روی گوشی بالای «گزارش» (`dashboard.php`؛ کاربر
+      می‌تواند به نوارِ هفته جمعش کند — `.is-week`)، روی دسکتاپ زیرِ
+      «آخرین تراکنش‌ها» در ستونِ اصلیِ خانه (همیشه ماهِ کامل — `.is-desk`).
+   ⛔ «پهن» با container query سنجیده می‌شود نه عرضِ پنجره: همان کارت در
+      ستونِ اصلیِ دسکتاپ مبلغِ هر روز و نامِ کاملِ روزها را نشان می‌دهد و
+      روی گوشی نه — بی‌آنکه رندرکننده بداند کجاست.
    ⚠ زمینه‌ی تزئینی روی `::before` است نه `background` خودِ کارت: قاعده‌ی
      حالتِ شبِ `.card` وزنِ بیشتری دارد و گرادیان را پاک می‌کرد (درسِ
      `.start-card`).
    ⚠ روزِ ماهِ قبل/بعد `is-adj` است، نه `is-out` — `is-out` رنگِ پرداخت
      است (`.hcal-dot.is-out`) و یک نام برای دو معنا اولین تغییر را
      می‌شکست. */
-.hcal { position: relative; overflow: hidden; padding: 16px 14px 12px; }
+.hcal { position: relative; overflow: hidden; padding: 16px 14px 12px; container-type: inline-size; }
 .hcal::before {
     content: ''; position: absolute; inset: 0; pointer-events: none;
     background: radial-gradient(120% 70% at 100% 0%, color-mix(in srgb, var(--gold) 11%, transparent), transparent 65%);
@@ -2751,6 +2754,8 @@ html[data-theme="dark"] .debt-ring { --ring-c: hsl(var(--ring-h, 0) 65% 60%); }
 .hcal-week { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; margin-bottom: 4px; }
 .hcal-week span { font-size: 11px; font-weight: 700; color: var(--muted-2); }
 .hcal-week .is-fri { color: var(--out); opacity: .8; }
+.hcal-week i { font-style: normal; }
+.hcal-wd-l, .hcal-amt { display: none; }
 .hcal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
 .hcal-d {
     appearance: none; -webkit-appearance: none; border: 0; padding: 0; margin: 0;
@@ -2785,6 +2790,25 @@ html[data-theme="dark"] .hcal-d.is-today .hcal-dot { box-shadow: 0 0 0 1.5px col
 .hcal-dot.is-out  { background: var(--out); }
 .hcal-dot.is-late { background: #d97706; }
 .hcal-dot.is-due  { background: var(--gold); }
+
+/* کارتِ پهن (ستونِ اصلیِ دسکتاپ، یا «گزارش» روی صفحه‌ی بزرگ) */
+@container (min-width: 560px) {
+    .hcal-week { margin-bottom: 6px; }
+    .hcal-week span { font-size: 12px; }
+    .hcal-wd-s { display: none; }
+    .hcal-wd-l { display: inline; }
+    .hcal-grid { gap: 6px; }
+    .hcal-d { height: 78px; gap: 4px; border-radius: 14px; }
+    .hcal-n { font-size: 15px; }
+    .hcal-amt {
+        display: flex; flex-direction: column; align-items: center;
+        font-size: 10.5px; font-weight: 700; line-height: 1.3; white-space: nowrap;
+    }
+    .hcal-amt b { font-weight: 700; }
+    .hcal-amt .is-in  { color: var(--in); }
+    .hcal-amt .is-out { color: var(--out); }
+    .hcal-d.is-today .hcal-amt b { color: var(--brand-on); }
+}
 
 /* نوارِ هفته: فقط ردیفِ امروز */
 .hcal.is-week .hcal-d:not(.is-wk) { display: none; }

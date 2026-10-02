@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/home_calendar.php';
 
 Auth::initSession();
 Auth::requireLogin();
@@ -113,6 +114,13 @@ try {
 $pageTitle = 'داشبورد';
 include __DIR__ . '/includes/header.php';
 ?>
+
+<?php /* ⛔ تقویم — بالای «گزارش» (خواسته‌ی مالکِ نصب: «در گوشی بهتره که در
+         بخش گزارش‌ها کار بشه همون بالا چون صفحه خانه در گوشی خیلی شلوغ
+         میشه»). پوسته بی‌کوئری است و داده از `api/home_calendar.php` می‌آید،
+         پس بودجه‌ی کوئریِ این صفحه عوض نشد. */ ?>
+<?php [$__calJy, $__calJm] = homeCalendarMonth((int)getParam('jy', '0'), (int)getParam('jm', '0')); ?>
+<?php renderHomeCalendar($__calJy, $__calJm); ?>
 
 <?php if (!empty($debtReminders)): ?>
 <div class="card" style="border-color: var(--color-expense);">

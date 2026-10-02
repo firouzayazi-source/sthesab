@@ -6058,7 +6058,7 @@ if (!preg_match('/financialHighlights\([^;]*\$homeHidden[,)]/', $idxSrc)) {
 if (!preg_match('/foreach \(HOME_WIDGETS as/', $profSrc) || !preg_match('/foreach \(HOME_WIDGET_GROUPS as/', $profSrc)) {
     $badHome[] = 'profile.php — کارتِ «صفحه‌ی خانه» از HOME_WIDGETS/HOME_WIDGET_GROUPS رندر نمی‌شود (فهرستِ دوم)';
 }
-if (preg_match('/value="(date|meter|split|compare|overdue|budget|growth|calendar)"/', $profSrc)) {
+if (preg_match('/value="(date|meter|split|compare|overdue|budget|growth)"/', $profSrc)) {
     $badHome[] = 'profile.php — کلیدِ قلمِ خانه سخت‌کد شده';
 }
 if (strpos($apiSrc, 'Csrf::verifyOrFail(') === false || strpos($apiSrc, 'saveHomeHidden(') === false
@@ -6617,7 +6617,8 @@ if (!str_contains($idx69, 'financialHighlights($userId, $walletRows, $monthCmp, 
     $dBad[] = 'index.php — «پول قابل خرج» به financialHighlights پاس داده نمی‌شود (financialEvents دو بار)';
 }
 if (!preg_match('/<\?php if \(\$desk\):.*?<div class="desk-kpis desk-only">/s', $idx69)
-    || !preg_match('/<\?php if \(\$desk\): \?>\s*<\/div>.*?<aside class="home-side desk-only">/s', $idx69)) {
+    // ⚠ تقویمِ دسکتاپ آخرین چیزِ ستونِ اصلی است و همان‌جا، داخلِ همین if، می‌نشیند.
+    || !preg_match('/<\?php if \(\$desk\): \?>\s*(?:<\?php\s*\?>\s*)?(?:<\?php renderHomeCalendar\(\$calJy, \$calJm, true\); \?>\s*)?<\/div>.*?<aside class="home-side desk-only">/s', $idx69)) {
     $dBad[] = 'index.php — ردیفِ شاخص یا ستونِ کناری بیرونِ if ($desk) رندر می‌شود';
 }
 if (!preg_match('/\$pageDesk\s*=\s*\$desk;/', $idx69)) {

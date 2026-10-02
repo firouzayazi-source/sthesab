@@ -1,10 +1,21 @@
 <?php
 /**
- * تقویمِ خانه — ماهِ شمسی با نقطه‌ی دریافت/پرداخت/سررسیدِ هر روز.
+ * تقویم — ماهِ شمسی با نقطه‌ی دریافت/پرداخت/سررسیدِ هر روز.
  *
  * **خواسته‌ی مالکِ نصب:** «تقویم رو از داخل یادآوری من بیار بیرون یه جای
  * خوشگل توی داشبورد چه در گوشی و چه در دسکتاپ براش بساز از جای قبلی
  * پاکش کن.» پیش از این زبانه‌ی دومِ `due.php` بود.
+ *
+ * ⛔ **جا** (دورِ دوم، باز خواسته‌ی مالکِ نصب): «در گوشی بهتره که در بخش
+ *    گزارش‌ها کار بشه همون بالا چون صفحه خانه در گوشی خیلی شلوغ میشه…
+ *    در دسکتاپ هم تقویم بهتر بیاد زیر تراکنش‌ها و حساب‌ها برگردن سر جای
+ *    خودشون». پس:
+ *    - گوشی: بالای `dashboard.php` (زبانه‌ی «گزارش») — خانه‌ی گوشی تقویم ندارد.
+ *    - دسکتاپ: خانه، ستونِ اصلی، زیرِ «آخرین تراکنش‌ها» — همان جای خالیِ
+ *      زیرِ ستونِ اصلی را پر می‌کند و ستونِ کناری دوباره با «مانده‌ی
+ *      حساب‌ها» شروع می‌شود.
+ *    `homeCalendarUrl()` با `deskView()` همان جایی را می‌دهد که کاربر
+ *    تقویم را آنجا می‌بیند.
  *
  * ⛔ **یک رندرکننده:** هم پوسته‌ی خانه و هم پاسخِ `api/home_calendar.php`
  *    از همین `homeCalendarHtml()` می‌آیند. با دو رندرکننده (PHP برای
@@ -23,6 +34,7 @@ if (!defined('APP_BASE_PATH')) { http_response_code(404); exit; }
 const HCAL_MONTHS = ['', 'فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور',
                      'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
 const HCAL_WEEKDAYS = ['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'];
+const HCAL_WEEKDAYS_LONG = ['شنبه', 'یکشنبه', 'دوشنبه', 'سه‌شنبه', 'چهارشنبه', 'پنج‌شنبه', 'جمعه'];
 
 /** ماهِ امروز به شمسی. */
 function homeCalendarToday(): array
@@ -52,6 +64,8 @@ function homeCalendarMonth(int $jy, int $jm): array
  * ⛔ تنها سازنده‌ی آدرسِ تقویم. هم `calendar.php` (استابِ قدیمی) و هم
  *    `due.php?t=calendar` (لینک‌های فرستاده‌شده) به همین می‌روند، و لینکِ
  *    بی‌جاوااسکریپتِ ماهِ قبل/بعد هم. ماهِ جاری پارامتر نمی‌گیرد.
+ * ⛔ صفحه از `deskView()`: دسکتاپ `index.php`، گوشی `dashboard.php`. با
+ *    صفحه‌ی ثابت، لینکِ گوشی به لنگری می‌رفت که آن صفحه ندارد.
  */
 function homeCalendarUrl(?int $jy = null, ?int $jm = null): string
 {
@@ -61,7 +75,7 @@ function homeCalendarUrl(?int $jy = null, ?int $jm = null): string
         [$jy, $jm] = homeCalendarMonth($jy, $jm);
         if ($jy !== $ty || $jm !== $tm) { $q = '?jy=' . $jy . '&jm=' . $jm; }
     }
-    return APP_BASE_PATH . '/index.php' . $q . '#cal';
+    return APP_BASE_PATH . '/' . (deskView() ? 'index.php' : 'dashboard.php') . $q . '#cal';
 }
 
 /** اولین و آخرین روزِ ماهِ شمسی به میلادی. */
@@ -107,8 +121,8 @@ function homeCalendarData(int $userId, int $jy, int $jm): array
         ");
         $st->execute(['u' => $userId, 'f' => $from, 't' => $to]);
         foreach ($st->fetchAll() as $r) {
-            if ((int)$r['i'] > 0) { $out['days'][$r['d']]['in'] = true; }
-            if ((int)$r['o'] > 0) { $out['days'][$r['d']]['out'] = true; }
+            if ((int)$r['i'] > 0) { $out['days'][$r['d']]['in'] = true; $out['days'][$r['d']]['i'] = (int)$r['i']; }
+            if ((int)$r['o'] > 0) { $out['days'][$r['d']]['out'] = true; $out['days'][$r['d']]['o'] = (int)$r['o']; }
             $out['in']  += (int)$r['i'];
             $out['out'] += (int)$r['o'];
         }
@@ -118,11 +132,29 @@ function homeCalendarData(int $userId, int $jy, int $jm): array
 }
 
 /**
+ * مبلغِ کوتاه برای خانه‌ی روز: «۸۵۰ هزار»، «۱٫۵ میلیون»، «۲ میلیارد».
+ * ⚠ فقط نمایشِ فشرده است؛ عددِ دقیق در `title` همان خانه می‌ماند و جمعِ
+ *   ماه با `formatMoney()` کامل نوشته می‌شود.
+ */
+function hcalShort(int $v): string
+{
+    $v = abs($v);
+    foreach ([[1000000000, 'میلیارد'], [1000000, 'میلیون'], [1000, 'هزار']] as [$u, $w]) {
+        if ($v >= $u) {
+            $x = round($v / $u, $v >= 10 * $u ? 0 : 1);
+            $t = rtrim(rtrim(number_format($x, 1, '.', ''), '0'), '.');
+            return toPersianDigits(str_replace('.', '٫', $t)) . ' ' . $w;
+        }
+    }
+    return toPersianDigits((string)$v);
+}
+
+/**
  * درونِ کارتِ تقویم (`.hcal-inner`). `$data === null` یعنی پوسته — همان
  * شبکه، بی‌نقطه و بی‌جمع، با `data-pending` تا `app.js` داده را بیاورد.
  *
- * ⚠ هفته‌ی امروز `is-wk` می‌گیرد: روی گوشی کارت به‌طور پیش‌فرض فقط همان
- *   ردیف را نشان می‌دهد (`.hcal.is-week`) و با «ماهِ کامل» باز می‌شود.
+ * ⚠ هفته‌ی امروز `is-wk` می‌گیرد: وقتی کاربر کارت را جمع کرده باشد
+ *   (`.hcal.is-week`) فقط همان ردیف دیده می‌شود.
  *   روزهای ماهِ قبل/بعد که ردیفِ اول و آخر را پر می‌کنند کم‌رنگ‌اند و
  *   تپ نمی‌خورند — بی‌آن‌ها نوارِ هفته در اولِ ماه نیمه‌خالی بود.
  */
@@ -171,7 +203,7 @@ function homeCalendarHtml(int $jy, int $jm, ?array $data): string
     </div>
 
     <div class="hcal-week" aria-hidden="true">
-        <?php foreach (HCAL_WEEKDAYS as $i => $w): ?><span<?= $i === 6 ? ' class="is-fri"' : '' ?>><?= h($w) ?></span><?php endforeach; ?>
+        <?php foreach (HCAL_WEEKDAYS as $i => $w): ?><span<?= $i === 6 ? ' class="is-fri"' : '' ?>><i class="hcal-wd-s"><?= h($w) ?></i><i class="hcal-wd-l"><?= h(HCAL_WEEKDAYS_LONG[$i]) ?></i></span><?php endforeach; ?>
     </div>
 
     <div class="hcal-grid">
@@ -199,6 +231,16 @@ function homeCalendarHtml(int $jy, int $jm, ?array $data): string
                     if (!empty($f['late'])) { echo '<i class="hcal-dot is-late"></i>'; }
                     elseif (!empty($f['due']) && $gd >= $today) { echo '<i class="hcal-dot is-due"></i>'; }
                 ?></span>
+                <?php /* ⚠ مبلغِ روز فقط وقتی کارت پهن است دیده می‌شود (container
+                         query در `style.css`) — روی گوشی خانه جا ندارد.
+                         ⚠ بی‌علامتِ +/−: کنارِ «میلیون» در متنِ راست‌به‌چپ
+                         جابه‌جا می‌نشست («۱٫۲− میلیون»)؛ رنگ جهت را می‌گوید. */ ?>
+                <?php if (!empty($f['i']) || !empty($f['o'])): ?>
+                <span class="hcal-amt"><?php
+                    if (!empty($f['i'])) { echo '<b class="is-in" title="' . h(formatMoney($f['i'])) . '">' . h(hcalShort($f['i'])) . '</b>'; }
+                    if (!empty($f['o'])) { echo '<b class="is-out" title="' . h(formatMoney($f['o'])) . '">' . h(hcalShort($f['o'])) . '</b>'; }
+                ?></span>
+                <?php endif; ?>
             </button>
         <?php endif; endfor; ?>
     </div>
@@ -226,19 +268,19 @@ function homeCalendarHtml(int $jy, int $jm, ?array $data): string
 }
 
 /**
- * کلِ کارت روی خانه. ⛔ `id="cal"` مقصدِ `homeCalendarUrl()` است.
+ * کلِ کارت. ⛔ `id="cal"` مقصدِ `homeCalendarUrl()` است، پس هر صفحه فقط
+ * یک بار صدایش می‌زند.
  *
- * ⚠ روی دسکتاپ (`$desk`، ستونِ کناری) همیشه ماهِ کامل است و دکمه‌ی
- *   «فقط این هفته» ندارد: جا هست، و نوارِ یک‌ردیفه آنجا فقط خالی می‌ماند.
- * ⚠ اسکریپتِ کوچکِ داخلِ کارت پیش از اولین نقاشی حالتِ «ماهِ کامل» را
- *   از `localStorage` برمی‌گرداند؛ با گذاشتنش در `app.js` (که `defer`
- *   است) کارت برای کسی که ماهِ کامل را می‌خواهد اول هفته و بعد ماه
- *   می‌شد — ۲۰۰ پیکسل پرش زیرِ انگشت.
+ * ⚠ روی خانه‌ی دسکتاپ (`$desk`) همیشه ماهِ کامل است و دکمه‌ی «فقط این
+ *   هفته» ندارد. در «گزارش» پیش‌فرض ماهِ کامل است و کاربر می‌تواند به نوارِ
+ *   هفته جمعش کند؛ اسکریپتِ کوچکِ داخلِ کارت آن انتخاب را **پیش از اولین
+ *   نقاشی** از `localStorage` برمی‌گرداند — در `app.js` (که `defer` است)
+ *   کارت اول ماه و بعد هفته می‌شد، ۲۰۰ پیکسل پرش زیرِ انگشت.
  */
 function renderHomeCalendar(int $jy, int $jm, bool $desk = false): void
 {
     ?>
-<section class="card hcal<?= $desk ? ' is-desk' : ' is-week' ?>" id="cal" aria-label="تقویم">
+<section class="card hcal<?= $desk ? ' is-desk' : '' ?>" id="cal" aria-label="تقویم">
     <?= homeCalendarHtml($jy, $jm, null) ?>
     <div class="hcal-day" hidden>
         <div class="hcal-day-head">
@@ -250,9 +292,11 @@ function renderHomeCalendar(int $jy, int $jm, bool $desk = false): void
         <div class="hcal-day-body"></div>
     </div>
 </section>
+<?php if (!$desk): ?>
 <script>(function () { try {
     var c = document.getElementById('cal'), i = c && c.querySelector('.hcal-inner');
-    if (c && (localStorage.getItem('daftar_hcal_month') === '1' || (i && i.getAttribute('data-now') !== '1'))) { c.classList.remove('is-week'); }
+    if (c && localStorage.getItem('daftar_hcal_month') === '0' && i && i.getAttribute('data-now') === '1') { c.classList.add('is-week'); }
 } catch (e) {} })();</script>
+<?php endif; ?>
     <?php
 }
