@@ -43,18 +43,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'addrows') {
         $blank = 6;
     } else {
+        // ⛔ دو بار زدنِ «ثبت» دو فروش نمی‌سازد (`BizOnce`)
+        if (($dup = BizOnce::claim()) !== null) { BizOnce::redirectDuplicate($dup, $self); }
         $res = BizInvoices::saveDraft($userId, 'sale', [
             'party_id' => $form['party_id'], 'inv_date' => date('Y-m-d'), 'discount' => $form['discount'], 'lines' => $lines,
         ]);
         if (!$res['ok']) {
+            BizOnce::release();
             $error = $res['message'];
         } else {
             $id = (int)$res['id'];
-            $r = BizInvoices::issue($userId, $id, [
-                'account_id' => $form['account_id'], 'method' => $form['method'], 'full' => $form['pay_mode'] === 'full',
-                'amount' => $form['pay_mode'] === 'part' ? $form['pay_amount'] : '0',
-            ]);
+            // ⛔ پیش‌نویسِ فروشِ سریع هرگز جا نمی‌ماند — حتی با استثنا (بازرسیِ
+            //    مهر ۱۴۰۵: بن‌بست از `deleteDraft()` می‌پرید و پیش‌نویسِ یتیم می‌ماند).
+            try {
+                $r = BizInvoices::issue($userId, $id, [
+                    'account_id' => $form['account_id'], 'method' => $form['method'], 'full' => $form['pay_mode'] === 'full',
+                    'amount' => $form['pay_mode'] === 'part' ? $form['pay_amount'] : '0',
+                ]);
+            } catch (Throwable $e) {
+                BizInvoices::deleteDraft($userId, $id);
+                throw $e;
+            }
             if ($r['ok']) {
+                BizOnce::done(Biz::url('invoice.php?id=' . $id));
                 if ($action === 'sale_print') {
                     header('Location: ' . BizPrint::url('invoice', ['id' => $id, 'back' => 'quick']));
                     exit;
@@ -62,6 +73,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 redirectWithMessage($self, 'success', $r['message']);
             }
             BizInvoices::deleteDraft($userId, $id);
+            BizOnce::release();
             $error = $r['message'];
         }
     }
@@ -88,7 +100,7 @@ require __DIR__ . '/../includes/biz_head.php';
 <?php if ($error !== ''): ?><div class="st-flash st-flash-err" role="alert"><?= h($error) ?></div><?php endif; ?>
 
 <form method="post" action="<?= h($self) ?>" class="st-docform st-pos" data-invoice data-price="sell" data-pos>
-    <?= Csrf::field() ?>
+    <?= Csrf::field() ?><?= BizOnce::field() ?>
     <section class="st-card st-scan">
         <label class="st-field">
             <span>بارکد یا نامِ کالا <small class="st-muted">— با Enter به فهرست اضافه می‌شود</small></span>

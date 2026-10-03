@@ -951,3 +951,35 @@
         });
     });
 })();
+/* ⛔ دو بار زدن یک ارسال است — همراهِ سدِ سرور (`BizOnce`).
+   بازرسیِ مهر ۱۴۰۵: دو بار زدنِ «ثبت» دو فاکتورِ صادرشده می‌ساخت. سرور تکرار
+   را می‌گیرد؛ این‌جا فقط درخواستِ دوم اصلاً فرستاده نمی‌شود.
+   ⚠ دکمه‌ها **بعد از** شروعِ ارسال غیرفعال می‌شوند (setTimeout): دکمه‌ای که
+     وسطِ رویدادِ submit غیرفعال شود، `name/value`ش (مثلاً action=issue_print)
+     از فرم می‌افتد و سرور کارِ دیگری می‌کرد.
+   ⚠ فرمی که `confirm` ردش کرده (defaultPrevented) قفل نمی‌شود؛ و قفل بعد از
+     چند ثانیه باز می‌شود — فرمی که دانلود می‌دهد یا در برگه‌ی تازه باز
+     می‌شود از صفحه بیرون نمی‌رود. */
+(function () {
+    'use strict';
+    document.addEventListener('submit', function (e) {
+        var f = e.target;
+        if (!f || f.tagName !== 'FORM' || e.defaultPrevented) { return; }
+        if ((f.getAttribute('method') || 'get').toLowerCase() !== 'post') { return; }
+        if (f.dataset.sending === '1') { e.preventDefault(); return; }
+        f.dataset.sending = '1';
+        var btns = f.querySelectorAll('button[type="submit"], button:not([type]), input[type="submit"]');
+        setTimeout(function () { btns.forEach(function (b) { b.disabled = true; }); }, 0);
+        setTimeout(function () {
+            f.dataset.sending = '';
+            btns.forEach(function (b) { b.disabled = false; });
+        }, 8000);
+    });
+    // برگشت با دکمه‌ی «عقب» (bfcache): فرم دوباره زنده
+    window.addEventListener('pageshow', function () {
+        document.querySelectorAll('form[data-sending="1"]').forEach(function (f) {
+            f.dataset.sending = '';
+            f.querySelectorAll('button, input[type="submit"]').forEach(function (b) { b.disabled = false; });
+        });
+    });
+})();

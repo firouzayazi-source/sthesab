@@ -141,6 +141,7 @@ MIGRATIONS=(
     migration_rates.sql
     migration_rates_link.sql
     migration_store_share_edit.sql
+    migration_biz_hardening.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -350,6 +351,8 @@ declare -A SENTINEL=(
     [migration_rates_link.sql]="app_settings~setting_key=asset_rates_linked"
     # نشانه‌ی آخرِ فایل، بعد از دو ستون و پرکردنِ عددِ فروشگاه.
     [migration_store_share_edit.sql]="app_settings~setting_key=store_share_edit_seeded"
+    # نشانه‌ی آخرِ فایل (بعد از ستون‌ها و پرکردنِ آن‌ها).
+    [migration_biz_hardening.sql]="app_settings~setting_key=biz_hardening_seeded"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

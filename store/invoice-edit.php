@@ -33,7 +33,9 @@ $inv    = $id > 0 ? BizInvoices::get($userId, $id) : null;
 if ($id > 0 && !$inv) {
     redirectWithMessage(Biz::url('sales.php'), 'error', 'سند پیدا نشد.');
 }
-if ($inv && $inv['status'] !== 'draft') {
+// ⛔ پیش‌نویسِ برگشت اینجا باز نمی‌شود: این ویرایشگر پیوندِ ردیف‌ها به فاکتورِ
+//    اصلی را نمی‌شناسد و «فروش»ش می‌کرد (`BizInvoices::undo()`).
+if ($inv && ($inv['status'] !== 'draft' || !isset(BizInvoices::RETURN_OF[(string)$inv['kind']]))) {
     header('Location: ' . Biz::url('invoice.php?id=' . $id));
     exit;
 }
@@ -143,12 +145,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'addrows') {
         $blank = 6;
     } else {
+        // ⛔ دو بار زدنِ «صدور» دو فاکتور نمی‌سازد (`BizOnce`)
+        if (($dup = BizOnce::claim()) !== null) { BizOnce::redirectDuplicate($dup, Biz::url(BizDocView::SIDES[$side]['page'])); }
         $res = BizInvoices::saveDraft($userId, $kind, $in, $id);
         if (!$res['ok']) {
+            BizOnce::release();
             $error = $res['message'];
         } else {
             $id = (int)$res['id'];
             if ($action === 'save') {
+                BizOnce::done(Biz::url('invoice-edit.php?id=' . $id));
                 redirectWithMessage(Biz::url('invoice-edit.php?id=' . $id), 'success', $res['message']);
             }
             $r = BizInvoices::issue($userId, $id, [
@@ -156,6 +162,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'full'       => $form['pay_mode'] === 'full',
                 'amount'     => $form['pay_mode'] === 'part' ? $form['pay_amount'] : '0',
             ]);
+            // پیش‌نویس در هر حال ساخته شده: ارسالِ دوباره همان را باز می‌کند، نه سندِ دوم
+            BizOnce::done(Biz::url(($r['ok'] ? 'invoice.php?id=' : 'invoice-edit.php?id=') . $id));
             if ($r['ok']) {
                 if ($action === 'issue_print') {
                     // برگه‌ی چاپ پیام نشان نمی‌دهد؛ پیامِ «صادر شد» نباید روی صفحه‌ی بعدی بماند
@@ -224,7 +232,7 @@ require __DIR__ . '/../includes/biz_head.php';
 <?php endif; ?>
 
 <form method="post" class="st-docform" action="<?= h($self) ?>" data-invoice data-price="<?= $isSale ? 'sell' : 'buy' ?>">
-    <?= Csrf::field() ?>
+    <?= Csrf::field() ?><?= BizOnce::field() ?>
     <section class="st-card st-doc-head">
         <div class="st-row2">
             <label class="st-field">

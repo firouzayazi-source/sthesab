@@ -115,6 +115,8 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Csrf::verifyOrFail(postParam('csrf_token'));
     foreach ($form as $k => $_) { $form[$k] = postParam($k); }
+    // ⛔ دو بار زدنِ «ثبت» دو دریافت نمی‌سازد (`BizOnce`)
+    if (($dup = BizOnce::claim()) !== null) { BizOnce::redirectDuplicate($dup, Biz::url('payments.php')); }
     $r = BizPay::create($userId, [
         'kind' => $kind, 'party_id' => (int)$form['party_id'], 'invoice_id' => $invId, 'amount' => $form['amount'],
         'account_id' => (int)$form['account_id'], 'to_account_id' => (int)$form['to_account_id'], 'method' => $form['method'],
@@ -123,8 +125,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'cheque_due' => trim((string)$form['cheque_due']) === '' ? '' : BizDocView::gDate((string)$form['cheque_due']),
     ]);
     if ($r['ok']) {
-        redirectWithMessage($invId ? Biz::url('invoice.php?id=' . $invId) : Biz::url('payment.php?id=' . (int)$r['id']), 'success', $r['message']);
+        $to = $invId ? Biz::url('invoice.php?id=' . $invId) : Biz::url('payment.php?id=' . (int)$r['id']);
+        BizOnce::done($to);
+        redirectWithMessage($to, 'success', $r['message']);
     }
+    BizOnce::release();
     $error = $r['message'];
 }
 $parties = in_array($kind, ['receipt', 'payment'], true) && !$inv ? BizDocView::parties($userId) : [];
@@ -148,7 +153,7 @@ require __DIR__ . '/../includes/biz_head.php';
 <?php if ($error !== ''): ?><div class="st-flash st-flash-err" role="alert"><?= h($error) ?></div><?php endif; ?>
 
 <form method="post" action="<?= h($self) ?>" class="st-card st-form st-form-narrow">
-    <?= Csrf::field() ?>
+    <?= Csrf::field() ?><?= BizOnce::field() ?>
     <?php if ($inv): ?>
         <p class="st-muted">برای <?= h(BizInvoices::title($inv)) ?> — <?= $inv['party_name'] !== null ? h((string)$inv['party_name']) : 'گذری' ?>؛ مانده <?= BizDocView::money(BizInvoices::remaining($inv)) ?> تومان.</p>
     <?php elseif ($parties): ?>

@@ -41,12 +41,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $form['account_id'] = (int)postParam('account_id');
     $form['method'] = isset(BizPay::quickMethods()[postParam('method')]) ? postParam('method') : 'cash';
 
+    // ⛔ دو بار زدنِ «ثبت» دو برگشت نمی‌سازد (`BizOnce`)
+    if (($dup = BizOnce::claim()) !== null) { BizOnce::redirectDuplicate($dup, Biz::url('invoice.php?id=' . $origId)); }
     $r = BizInvoices::createReturn($userId, $origId, $form['qty'],
         ['account_id' => $form['account_id'], 'full' => $form['refund'] === 'full', 'method' => $form['method']],
         BizDocView::gDate($form['date']), $form['note']);
     if ($r['ok']) {
+        BizOnce::done(Biz::url('invoice.php?id=' . (int)$r['id']));
         redirectWithMessage(Biz::url('invoice.php?id=' . (int)$r['id']), 'success', $r['message']);
     }
+    BizOnce::release();
     $error = $r['message'];
 }
 
@@ -64,7 +68,7 @@ require __DIR__ . '/../includes/biz_head.php';
 <?php if ($error !== ''): ?><div class="st-flash st-flash-err" role="alert"><?= h($error) ?></div><?php endif; ?>
 
 <form method="post" action="<?= h($self) ?>" class="st-docform">
-    <?= Csrf::field() ?>
+    <?= Csrf::field() ?><?= BizOnce::field() ?>
     <section class="st-card st-lines-card">
         <div class="st-table-wrap st-flat">
             <table class="st-table">

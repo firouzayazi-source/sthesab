@@ -376,6 +376,7 @@ final class BizProducts
         ];
         try {
             $pdo->beginTransaction();
+            Biz::lockShop($pdo, $userId);
             if ($id > 0) {
                 $pdo->prepare(
                     'UPDATE biz_products SET name = :n, sku = :s, category_id = :c, category = NULL, unit = :un, buy_price = :b,
@@ -566,6 +567,7 @@ final class BizProducts
         }
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
+        Biz::lockShop($pdo, $userId);
         try {
             // ⚠ MariaDB در DELETE با زیرکوئری روی جدولِ دیگر مشکلی ندارد؛
             //   JOIN به دسته فقط برای صافیِ نام.
@@ -792,12 +794,20 @@ final class BizStock
     {
         $pdo = Database::getConnection();
         $st  = $pdo->prepare(
-            "SELECT id, kind, qty, unit_cost, ref_type, ref_id FROM biz_stock_moves
+            "SELECT id, kind, qty, unit_cost, ref_type, ref_id, move_date, created_at FROM biz_stock_moves
              WHERE product_id = :p AND user_id = :u
-             ORDER BY (kind = 'opening') DESC, move_date, id"
+             ORDER BY (kind = 'opening') DESC, move_date, id
+             FOR UPDATE"
         );
+        // ⛔ خواندنِ **قفل‌دار** (`FOR UPDATE`)، نه عادی: تنها فراخواننده `write()`
+        //    است که ردیفِ کالا را قفل کرده، ولی عکسِ تراکنش (REPEATABLE READ) از
+        //    **اولین** خواندنِ تراکنش گرفته شده — پیش از انتظار برای همان قفل. پس
+        //    خواندنِ عادی حرکتی را که صدورِ هم‌زمانِ دیگری همین حالا کامیت کرده
+        //    نمی‌دید: فروش و ابطالِ خرید هم‌زمان هر دو می‌گذشتند و موجودی منفی
+        //    می‌ماند (بازرسیِ مهر ۱۴۰۵، بازتولید شد). خواندنِ قفل‌دار همیشه آخرین
+        //    کامیت را می‌بیند.
         $st->execute(['p' => $productId, 'u' => $userId]);
-        $moves = $st->fetchAll();
+        $moves = self::inDocOrder($pdo, $userId, $st->fetchAll());
         $lines = self::docLines($pdo, $userId, $productId, $moves);
 
         $q = 0.0; $v = 0.0; $avg = 0.0; $min = 0.0;
@@ -930,6 +940,51 @@ final class BizStock
      * آن سند به میانگین برمی‌گردد و ردیفش دست نمی‌خورد).
      * @return array<int, list<array>> شناسه‌ی سند ← ردیف‌ها
      */
+    /**
+     * ⛔ ترتیبِ حرکت‌های **یک روز**: جای سند در تاریخچه (اولین صدورش)، نه
+     *    شناسه‌ی ردیفِ حرکت.
+     *
+     * «اصلاح و صدورِ دوباره»ی یک سند حرکت‌هایش را پاک و از نو می‌نویسد، پس
+     * شناسه‌ی تازه می‌گیرند و به **آخرِ** آن روز می‌رفتند: خریدی که برای
+     * اصلاحِ قیمت دوباره صادر شد، پشتِ فروشِ همان روز می‌نشست و ابطالِ خریدِ
+     * دیگری «موجودی منفی می‌شود» می‌گفت (بازرسیِ مهر ۱۴۰۵). کلیدِ ترتیب:
+     * `first_issued_at` سند (`migration_biz_hardening`)، و برای حرکتِ بی‌سند
+     * (انبارگردانی) زمانِ ثبتش.
+     *
+     * ⚠ سند‌ها **بی‌قفل** خوانده می‌شوند: قفلِ ردیفِ فاکتورهای دیگر وسطِ
+     *   صدور، با صدورِ هم‌زمانی که همان فاکتور را قفل کرده و منتظرِ کالاست،
+     *   بن‌بست می‌ساخت. `first_issued_at` یک بار نوشته می‌شود و دیگر عوض
+     *   نمی‌شود؛ سندی که هنوز در عکسِ این تراکنش صادر نشده، زمانِ ثبتِ
+     *   حرکتش را می‌گیرد که همان «اکنون» است.
+     */
+    private static function inDocOrder(PDO $pdo, int $userId, array $moves): array
+    {
+        if (!$moves || !tableHasColumn('biz_invoices', 'first_issued_at')) { return $moves; }
+        $ids = [];
+        foreach ($moves as $m) {
+            if ($m['ref_type'] === self::REF_INVOICE && $m['ref_id'] !== null) { $ids[(int)$m['ref_id']] = true; }
+        }
+        $when = [];
+        if ($ids) {
+            $keys = []; $params = ['u' => $userId];
+            foreach (array_keys($ids) as $n => $id) { $keys[] = ':i' . $n; $params['i' . $n] = $id; }
+            $st = $pdo->prepare('SELECT id, first_issued_at FROM biz_invoices WHERE user_id = :u AND id IN (' . implode(',', $keys) . ')');
+            $st->execute($params);
+            foreach ($st->fetchAll() as $r) {
+                if ($r['first_issued_at'] !== null) { $when[(int)$r['id']] = (string)$r['first_issued_at']; }
+            }
+        }
+        $key = static function (array $m) use ($when): array {
+            $at = ($m['ref_type'] === self::REF_INVOICE && isset($when[(int)$m['ref_id']]))
+                ? $when[(int)$m['ref_id']] : (string)($m['created_at'] ?? '');
+            // هم‌ثانیه: شناسه‌ی **سند** (ترتیبِ ساختش)، بعد ردیفِ حرکت
+            $doc = $m['ref_type'] === self::REF_INVOICE ? (int)$m['ref_id'] : 0;
+            return [$m['kind'] === 'opening' ? 0 : 1, (string)$m['move_date'], $at, $doc, (int)$m['id']];
+        };
+        usort($moves, static fn(array $a, array $b): int => $key($a) <=> $key($b));
+        return $moves;
+    }
+
     private static function docLines(PDO $pdo, int $userId, int $productId, array $moves): array
     {
         $count = [];
@@ -942,7 +997,8 @@ final class BizStock
                 "SELECT id, invoice_id, ref_line_id, qty, unit_cost, imei1, imei2 FROM biz_invoice_lines
                  WHERE user_id = :u AND product_id = :p
                    AND invoice_id IN (SELECT ref_id FROM biz_stock_moves WHERE user_id = :u2 AND product_id = :p2 AND ref_type = :rt)
-                 ORDER BY invoice_id, line_no, id"
+                 ORDER BY invoice_id, line_no, id
+                 LOCK IN SHARE MODE"
             );
             $st->execute(['u' => $userId, 'p' => $productId, 'u2' => $userId, 'p2' => $productId, 'rt' => self::REF_INVOICE]);
         } catch (PDOException $e) {
@@ -969,7 +1025,7 @@ final class BizStock
     private static function write(int $userId, int $productId, callable $change, bool $ownTx = true): array
     {
         $pdo = Database::getConnection();
-        if ($ownTx) { $pdo->beginTransaction(); }
+        if ($ownTx) { $pdo->beginTransaction(); Biz::lockShop($pdo, $userId); }
         try {
             $st = $pdo->prepare('SELECT * FROM biz_products WHERE id = :p AND user_id = :u FOR UPDATE');
             $st->execute(['p' => $productId, 'u' => $userId]);

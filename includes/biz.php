@@ -581,6 +581,12 @@ final class Biz
 
         $pdo->prepare('UPDATE users SET account_type = :t WHERE id = :id')
             ->execute(['t' => $type, 'id' => $targetId]);
+        // ردیفِ تنظیماتِ فروشگاه از همین حالا: `lockShop()` بی‌درج قفلش می‌کند
+        if ($type !== 'personal') {
+            try {
+                $pdo->prepare('INSERT IGNORE INTO biz_settings (user_id) VALUES (:u)')->execute(['u' => $targetId]);
+            } catch (PDOException $e) { /* جدولِ فروشگاه هنوز نیامده؛ `lockShop()` می‌سازدش */ }
+        }
 
         $revoke = ($from === 'business' || $type === 'business');
         if ($revoke) {
@@ -761,6 +767,32 @@ final class Biz
              ON DUPLICATE KEY UPDATE palette = VALUES(palette)'
         )->execute(['u' => $userId, 'p' => $val]);
         return ['ok' => true, 'message' => 'رنگِ فروشگاه «' . self::PALETTES[$key]['label'] . '» شد.'];
+    }
+
+    /**
+     * ⛔ قفلِ فروشگاه — **اولین** کارِ هر تراکنشِ نوشتنِ سند و انبار.
+     *
+     * بازرسیِ مهر ۱۴۰۵: دو دستگاهِ یک فروشگاه که هم‌زمان فاکتور می‌زدند،
+     * بن‌بستِ دیتابیس (۵۰۰) می‌گرفتند و فاکتورِ تایپ‌شده گم می‌شد؛ دو برگشتِ
+     * هم‌زمانِ یک قلم هر دو می‌گذشتند. علت: هر مسیر قفل‌هایش را به ترتیبِ
+     * خودش می‌گرفت (شماره، ردیف‌ها، کالا). با یک قفلِ **مشترک و اول** برای
+     * هر فروشگاه، نوشتن‌های یک فروشگاه پشتِ هم می‌افتند — هیچ‌وقت کنارِ هم —
+     * و فروشگاه‌های دیگر اصلاً منتظر نمی‌مانند.
+     *
+     * ردیفِ `biz_settings` همان فروشگاه است (اگر نبود، خالی ساخته می‌شود —
+     * ردیفِ خالی با «ردیف نیست» در `settings()` یکی است).
+     */
+    public static function lockShop(PDO $pdo, int $userId): void
+    {
+        // ⚠ اول قفلِ انحصاری، و فقط اگر ردیف نبود درج. `INSERT IGNORE` روی ردیفِ
+        //   موجود قفلِ **اشتراکی** می‌گیرد؛ دو تراکنش که هر دو آن را داشتند و
+        //   بعد انحصاری می‌خواستند، خودشان بن‌بست می‌ساختند (تستِ هم‌زمانیِ
+        //   `test_store_hardening` همین را گرفت).
+        $st = $pdo->prepare('SELECT user_id FROM biz_settings WHERE user_id = :u FOR UPDATE');
+        $st->execute(['u' => $userId]);
+        if ($st->fetchColumn() !== false) { return; }
+        $pdo->prepare('INSERT IGNORE INTO biz_settings (user_id) VALUES (:u)')->execute(['u' => $userId]);
+        $st->execute(['u' => $userId]);
     }
 
     public static function settings(int $userId): array
@@ -1080,3 +1112,77 @@ final class Biz
         return ['ok' => true, 'message' => 'تنظیماتِ چاپ ذخیره شد.'];
     }
 }
+
+/**
+ * ⛔ فرمِ یک‌بارمصرف — سدِ «دو بار زدن» روی فرم‌هایی که سند می‌سازند.
+ *
+ * بازرسیِ مهر ۱۴۰۵: دو بار زدنِ «ثبت» (یا تکرارِ درخواست روی شبکه‌ی ضعیف)
+ * دو فاکتورِ صادرشده با دو دریافت می‌ساخت — موجودی دو بار کم و صندوق دو بار
+ * پر. CSRF جلویش را نمی‌گیرد چون توکنش برای کلِ نشست است.
+ *
+ * هر فرم یک نشانِ تصادفی دارد (`field()`). اولین ارسال آن را «گرفته» می‌کند
+ * (`claim()`) و پس از موفقیت آدرسِ نتیجه را رویش می‌نویسد (`done()`). ارسالِ
+ * دوباره‌ی **همان** فرم به همان نتیجه هدایت می‌شود، نه سندِ دوم. شکست نشان
+ * را آزاد می‌کند (`release()`) تا کاربر اصلاح کند و دوباره بفرستد.
+ *
+ * ⚠ اتمی بودن از قفلِ فایلِ نشستِ PHP است: دو درخواستِ یک نشست پشتِ هم اجرا
+ *   می‌شوند (هیچ‌جای فروشگاه `session_write_close` ندارد). نشانِ ناشناخته
+ *   (منقضی یا فرمِ قدیمیِ بی‌نشان) مثلِ قبل پذیرفته می‌شود — سد فقط تکرار را
+ *   می‌گیرد، نه کارِ عادی را.
+ */
+final class BizOnce
+{
+    private const KEY = 'biz_once';
+    private const MAX = 60;
+
+    /** خانه‌ی پنهانِ نشان — داخلِ همان `<form>`ِ سندساز. */
+    public static function field(): string
+    {
+        $t = bin2hex(random_bytes(12));
+        $box = $_SESSION[self::KEY] ?? [];
+        $box[$t] = ['s' => 'new', 'at' => time()];
+        if (count($box) > self::MAX) { $box = array_slice($box, -self::MAX, null, true); }
+        $_SESSION[self::KEY] = $box;
+        return '<input type="hidden" name="_once" value="' . $t . '">';
+    }
+
+    /**
+     * پیش از ساختنِ سند. `null` = ادامه بده؛ رشته = این فرم قبلاً ثبت شده و
+     * باید به همین آدرس رفت.
+     */
+    public static function claim(): ?string
+    {
+        $t = (string)($_POST['_once'] ?? '');
+        if ($t === '' || !isset($_SESSION[self::KEY][$t])) { return null; }
+        $e = $_SESSION[self::KEY][$t];
+        if ($e['s'] === 'done') { return (string)$e['url']; }
+        if ($e['s'] === 'busy') { return ''; }
+        $_SESSION[self::KEY][$t] = ['s' => 'busy', 'at' => time()];
+        return null;
+    }
+
+    /** پس از موفقیت: ارسالِ دوباره به همین آدرس می‌رود. */
+    public static function done(string $url): void
+    {
+        $t = (string)($_POST['_once'] ?? '');
+        if ($t !== '' && isset($_SESSION[self::KEY][$t])) {
+            $_SESSION[self::KEY][$t] = ['s' => 'done', 'url' => $url, 'at' => time()];
+        }
+    }
+
+    /** پس از شکست: کاربر اصلاح می‌کند و همان فرم دوباره پذیرفته است. */
+    public static function release(): void
+    {
+        $t = (string)($_POST['_once'] ?? '');
+        if ($t !== '' && isset($_SESSION[self::KEY][$t])) {
+            $_SESSION[self::KEY][$t] = ['s' => 'new', 'at' => time()];
+        }
+    }
+
+    /** ارسالِ تکراری: به نتیجه‌ی اولی برو (یا فهرست، اگر هنوز در کار است). */
+    public static function redirectDuplicate(string $url, string $fallback): void
+    {
+        redirectWithMessage($url !== '' ? $url : $fallback, 'success', 'این فرم یک بار ثبت شده بود؛ دوباره ثبت نشد.');
+    }
+}
+

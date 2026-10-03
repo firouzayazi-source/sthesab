@@ -433,6 +433,7 @@ final class BizInvoices
 
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
+        Biz::lockShop($pdo, $userId);
         try {
             if ($id > 0) {
                 $st = $pdo->prepare('SELECT status, kind FROM biz_invoices WHERE id = :id AND user_id = :u FOR UPDATE');
@@ -440,6 +441,11 @@ final class BizInvoices
                 $cur = $st->fetch();
                 if (!$cur) { $pdo->rollBack(); return ['ok' => false, 'message' => 'سند پیدا نشد.']; }
                 if ($cur['status'] !== 'draft') { $pdo->rollBack(); return ['ok' => false, 'message' => 'فقط پیش‌نویس ویرایش می‌شود؛ اول آن را به پیش‌نویس برگردانید.']; }
+                // ⛔ پیش‌نویسِ برگشت از این مسیر بازنویسی نمی‌شود (پیوندِ ردیف‌ها می‌رفت)
+                if (!isset(self::RETURN_OF[(string)$cur['kind']])) {
+                    $pdo->rollBack();
+                    return ['ok' => false, 'message' => 'برگشت از این صفحه ویرایش نمی‌شود.'];
+                }
                 $kind = (string)$cur['kind'];
                 $pdo->prepare('UPDATE biz_invoices SET party_id = :p, inv_date = :d, due_date = :dd, subtotal = :s, discount = :di,
                                       extra = :e, total = :t, note = :n WHERE id = :id AND user_id = :u')
@@ -518,6 +524,7 @@ final class BizInvoices
     {
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
+        Biz::lockShop($pdo, $userId);
         try {
             $r = self::issueTx($pdo, $userId, $id, $pay);
             if (!$r['ok']) { $pdo->rollBack(); return $r; }
@@ -609,7 +616,10 @@ final class BizInvoices
         $imeiErr = BizSerial::check($pdo, $userId, $kind, $id, $lines);
         if ($imeiErr !== null) { return ['ok' => false, 'message' => $imeiErr]; }
 
-        $pdo->prepare("UPDATE biz_invoices SET status = 'issued', number = :n, issued_at = NOW(), voided_at = NULL
+        // ⛔ `first_issued_at` فقط در اولین صدور: جای سند در سرگذشتِ گوشی
+        //    (`BizSerial::orderSql()`) با «اصلاح و صدورِ دوباره» جابه‌جا نمی‌شود.
+        $first = BizSerial::hasFirstIssued() ? ', first_issued_at = COALESCE(first_issued_at, NOW())' : '';
+        $pdo->prepare("UPDATE biz_invoices SET status = 'issued', number = :n, issued_at = NOW(), voided_at = NULL{$first}
                        WHERE id = :id AND user_id = :u")->execute(['n' => $number, 'id' => $id, 'u' => $userId]);
 
         // ⛔ گزینه‌های فاکتور (`Biz::INVOICE_FLAGS`): «قیمتِ خرید/فروش»ِ کالا به فیِ
@@ -677,11 +687,21 @@ final class BizInvoices
     {
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
+        Biz::lockShop($pdo, $userId);
         try {
             $st = $pdo->prepare('SELECT * FROM biz_invoices WHERE id = :id AND user_id = :u FOR UPDATE');
             $st->execute(['id' => $id, 'u' => $userId]);
             $inv = $st->fetch();
             if (!$inv || $inv['status'] !== 'issued') { $pdo->rollBack(); return ['ok' => false, 'message' => 'فقط سندِ صادرشده.']; }
+            // ⛔ برگشت به پیش‌نویس نمی‌رود: ویرایشگرِ فاکتور پیوندِ ردیف‌ها به
+            //    فاکتورِ اصلی (`ref_line_id`) را نگه نمی‌دارد، پس صدورِ دوباره
+            //    سقفِ «برگشت‌پذیر» را دور می‌زد — همان قلم دو بار برمی‌گشت یا با
+            //    هر مقدار و مبلغی (بازرسیِ مهر ۱۴۰۵، بازتولید شد). برگشتِ غلط
+            //    باطل و از نو زده می‌شود.
+            if ($to === 'draft' && !isset(self::RETURN_OF[(string)$inv['kind']])) {
+                $pdo->rollBack();
+                return ['ok' => false, 'message' => 'برگشت ویرایش نمی‌شود؛ باطلش کنید و برگشتِ تازه بزنید.'];
+            }
             if (($e = Biz::lockError($userId, (string)$inv['inv_date'], 'این سند')) !== null) { $pdo->rollBack(); return ['ok' => false, 'message' => $e]; }
             if (self::returnsOf($pdo, $userId, $id) > 0) {
                 $pdo->rollBack();
@@ -704,6 +724,16 @@ final class BizInvoices
                         return ['ok' => false, 'message' => 'به این فاکتورِ گذری دریافت/پرداختِ جدا خورده؛ برای اصلاح آن را باطل کنید و سندِ تازه بزنید.'];
                     }
                 }
+            }
+            // ⛔ ابطالِ سندی که گوشی‌اش **بعد از آن** جابه‌جا شده رد می‌شود: خریدِ
+            //    گوشیِ فروخته‌شده یا فروشِ گوشیِ دوباره‌خریده. با ابطال، سرگذشتِ آن
+            //    IMEI بی‌ورود یا دو بار ورود می‌ماند و یک گوشیِ ناموجود فروختنی
+            //    می‌شد. «برگشت به پیش‌نویس» آزاد است: جای سند در سرگذشت با
+            //    `first_issued_at` می‌ماند.
+            if ($to === 'void' && ($moved = BizSerial::movedAfter($pdo, $userId, $id)) !== null) {
+                $pdo->rollBack();
+                return ['ok' => false, 'message' => 'گوشی با IMEI ' . $moved
+                    . ' بعد از این سند جابه‌جا شده است؛ اول سندِ بعدی‌اش را باطل کنید.'];
             }
             $voidedOrigin = count(array_filter($linked, fn($p) => (int)$p['origin_invoice'] === 1));
 
@@ -742,10 +772,25 @@ final class BizInvoices
             . ($voidedOrigin > 0 ? ' ' . $side . 'همراهش باطل شد — هنگامِ صدورِ دوباره ثبتش کنید.' : '')];
     }
 
-    /** حذفِ پیش‌نویس — سندِ صادرشده حذف نمی‌شود. */
+    /**
+     * حذفِ پیش‌نویس — سندِ صادرشده حذف نمی‌شود.
+     *
+     * ⛔ پیش‌نویسی که **شماره خورده** (صادر شده بود و برای اصلاح برگشته) حذف
+     *    نمی‌شود، باطل می‌شود: شماره با `MAX + 1` داده می‌شود، پس با حذف همان
+     *    شماره به فاکتورِ بعدی می‌رسید — دو فاکتورِ «شماره‌ی ۲» که یکی دستِ
+     *    مشتری است (بازرسیِ مهر ۱۴۰۵). پیش‌نویس اثری ندارد، پس ابطالش هم
+     *    اثری ندارد؛ فقط شماره نگه داشته می‌شود.
+     */
     public static function deleteDraft(int $userId, int $id): array
     {
-        $st = Database::getConnection()->prepare("DELETE FROM biz_invoices WHERE id = :id AND user_id = :u AND status = 'draft'");
+        $pdo = Database::getConnection();
+        $up = $pdo->prepare("UPDATE biz_invoices SET status = 'void', voided_at = NOW()
+                             WHERE id = :id AND user_id = :u AND status = 'draft' AND number IS NOT NULL");
+        $up->execute(['id' => $id, 'u' => $userId]);
+        if ($up->rowCount() > 0) {
+            return ['ok' => true, 'message' => 'این سند شماره داشت؛ حذف نشد، باطل شد تا شماره‌اش به سندِ دیگری نرسد.'];
+        }
+        $st = $pdo->prepare("DELETE FROM biz_invoices WHERE id = :id AND user_id = :u AND status = 'draft' AND number IS NULL");
         $st->execute(['id' => $id, 'u' => $userId]);
         return $st->rowCount() > 0 ? ['ok' => true, 'message' => 'پیش‌نویس حذف شد.']
                                    : ['ok' => false, 'message' => 'فقط پیش‌نویس حذف می‌شود؛ سندِ صادرشده را باطل کنید.'];
@@ -790,6 +835,29 @@ final class BizInvoices
      */
     public static function createReturn(int $userId, int $origId, array $qtys, array $pay = [], string $date = '', string $note = ''): array
     {
+        // ⛔ همه داخلِ **یک** تراکنش و پشتِ قفلِ فاکتورِ اصلی: «برگشت‌پذیر» پیش
+        //    از تراکنش خوانده می‌شد، پس دو برگشتِ هم‌زمانِ یک قلم هر دو
+        //    می‌گذشتند — دو بار پول پس داده می‌شد (بازرسیِ مهر ۱۴۰۵، ۳ از ۳).
+        //    خواندنِ قفل‌دار پیش از هر خواندنِ عادی، عکسِ تراکنش را بعد از
+        //    کامیتِ برگشتِ دیگر می‌گیرد. ابطالِ هم‌زمان هم همین ردیف را قفل می‌کند.
+        $pdo = Database::getConnection();
+        $pdo->beginTransaction();
+        Biz::lockShop($pdo, $userId);
+        try {
+            $lk = $pdo->prepare('SELECT id FROM biz_invoices WHERE id = :o AND user_id = :u FOR UPDATE');
+            $lk->execute(['o' => $origId, 'u' => $userId]);
+            $r = self::createReturnTx($pdo, $userId, $origId, $qtys, $pay, $date, $note);
+            if (!$r['ok']) { $pdo->rollBack(); return $r; }
+            $pdo->commit();
+            return $r;
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            throw $e;
+        }
+    }
+
+    private static function createReturnTx(PDO $pdo, int $userId, int $origId, array $qtys, array $pay, string $date, string $note): array
+    {
         $orig = self::get($userId, $origId);
         if (!$orig || !isset(self::RETURN_OF[$orig['kind']])) { return ['ok' => false, 'message' => 'فاکتورِ اصلی پیدا نشد.']; }
         if ($orig['status'] !== 'issued') { return ['ok' => false, 'message' => 'فقط از فاکتورِ صادرشده برگشت زده می‌شود.']; }
@@ -831,23 +899,15 @@ final class BizInvoices
         if ($date < (string)$orig['inv_date']) { return ['ok' => false, 'message' => 'تاریخِ برگشت نمی‌تواند پیش از فاکتورِ اصلی باشد.']; }
         $note = mb_substr(trim($note), 0, self::NOTE_MAX);
 
-        $pdo = Database::getConnection();
-        $pdo->beginTransaction();
-        try {
-            $pdo->prepare("INSERT INTO biz_invoices (user_id, kind, status, party_id, ref_invoice_id, inv_date, subtotal, total, note)
-                           VALUES (:u, :k, 'draft', :p, :r, :d, :s, :t, :n)")
-                ->execute(['u' => $userId, 'k' => $kind, 'p' => $orig['party_id'], 'r' => $origId, 'd' => $date,
-                           's' => $total, 't' => $total, 'n' => $note === '' ? null : $note]);
-            $id = (int)$pdo->lastInsertId();
-            self::writeLines($pdo, $userId, $id, $lines);
-            $r = self::issueTx($pdo, $userId, $id, $pay);
-            if (!$r['ok']) { $pdo->rollBack(); return $r; }
-            $pdo->commit();
-            return ['ok' => true, 'message' => $r['message'], 'id' => $id];
-        } catch (Throwable $e) {
-            if ($pdo->inTransaction()) { $pdo->rollBack(); }
-            throw $e;
-        }
+        $pdo->prepare("INSERT INTO biz_invoices (user_id, kind, status, party_id, ref_invoice_id, inv_date, subtotal, total, note)
+                       VALUES (:u, :k, 'draft', :p, :r, :d, :s, :t, :n)")
+            ->execute(['u' => $userId, 'k' => $kind, 'p' => $orig['party_id'], 'r' => $origId, 'd' => $date,
+                       's' => $total, 't' => $total, 'n' => $note === '' ? null : $note]);
+        $id = (int)$pdo->lastInsertId();
+        self::writeLines($pdo, $userId, $id, $lines);
+        $r = self::issueTx($pdo, $userId, $id, $pay);
+        if (!$r['ok']) { return $r; }
+        return ['ok' => true, 'message' => $r['message'], 'id' => $id];
     }
 
     /* ------------------------------------------------------------
@@ -933,6 +993,7 @@ final class BizPay
     {
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
+        Biz::lockShop($pdo, $userId);
         try {
             $r = self::createTx($pdo, $userId, $in);
             if (!$r['ok']) { $pdo->rollBack(); return $r; }
@@ -1061,6 +1122,7 @@ final class BizPay
     {
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
+        Biz::lockShop($pdo, $userId);
         try {
             $st = $pdo->prepare('SELECT y.*, i.party_id AS inv_party, i.status AS inv_status FROM biz_payments y
                                  LEFT JOIN biz_invoices i ON i.id = y.invoice_id AND i.user_id = y.user_id
@@ -1443,6 +1505,7 @@ final class BizCheques
         if (!self::ready()) { return ['ok' => false, 'message' => 'دفترِ چک هنوز راه نیفتاده است.']; }
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
+        Biz::lockShop($pdo, $userId);
         try {
             $p = self::lock($pdo, $userId, $id);
             if (!$p || $p['status'] !== 'ok' || $p['cheque_status'] !== 'pending') {
@@ -1481,6 +1544,7 @@ final class BizCheques
         if (!self::ready()) { return ['ok' => false, 'message' => 'دفترِ چک هنوز راه نیفتاده است.']; }
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
+        Biz::lockShop($pdo, $userId);
         try {
             $p = self::lock($pdo, $userId, $id);
             if (!$p || $p['cheque_status'] !== 'cleared') { $pdo->rollBack(); return ['ok' => false, 'message' => 'این چک وصول‌شده نیست.']; }
@@ -1517,6 +1581,7 @@ final class BizCheques
         if (!self::ready()) { return ['ok' => false, 'message' => 'دفترِ چک هنوز راه نیفتاده است.']; }
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
+        Biz::lockShop($pdo, $userId);
         try {
             $p = self::lock($pdo, $userId, $id);
             if (!$p || $p['status'] !== 'ok' || $p['cheque_status'] !== 'pending' || $p['kind'] !== 'receipt') {
@@ -1562,6 +1627,7 @@ final class BizCheques
         if (!self::ready()) { return ['ok' => false, 'message' => 'دفترِ چک هنوز راه نیفتاده است.']; }
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
+        Biz::lockShop($pdo, $userId);
         try {
             $p = self::lock($pdo, $userId, $id);
             if (!$p || $p['cheque_status'] !== 'endorsed') { $pdo->rollBack(); return ['ok' => false, 'message' => 'این چک واگذارشده نیست.']; }
@@ -1595,6 +1661,7 @@ final class BizCheques
         if (!self::ready()) { return ['ok' => false, 'message' => 'دفترِ چک هنوز راه نیفتاده است.']; }
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
+        Biz::lockShop($pdo, $userId);
         try {
             $p = self::lock($pdo, $userId, $id);
             if (!$p || $p['status'] !== 'ok' || $p['cheque_status'] !== 'pending') {
@@ -1626,6 +1693,42 @@ final class BizSerial
     /** سندهایی که گوشی را وارد انبار می‌کنند؛ دو نوعِ دیگر بیرون می‌برند. */
     public const IN_KINDS = ['purchase', 'sale_return'];
 
+    /** ستونِ `first_issued_at` با `migration_biz_hardening` می‌آید؛ بی‌آن همان ترتیبِ قبلی. */
+    public static function hasFirstIssued(): bool
+    {
+        return tableHasColumn('biz_invoices', 'first_issued_at');
+    }
+
+    /**
+     * ⛔ تنها ترتیبِ سرگذشتِ گوشی: **اولین** صدور، نه آخرین. «اصلاح و صدورِ
+     *    دوباره»ی خریدی که گوشی‌اش بعداً فروخته شده، آن را جلوی فروش نمی‌برد.
+     */
+    public static function orderSql(string $alias = 'i'): string
+    {
+        return self::hasFirstIssued()
+            ? "COALESCE({$alias}.first_issued_at, {$alias}.issued_at)"
+            : "{$alias}.issued_at";
+    }
+
+    /**
+     * اولین IMEIِ این سند که آخرین رخدادش سندِ **دیگری** است، یا `null`.
+     * پیش از ابطال: سندی که گوشی‌اش بعد از آن جابه‌جا شده باطل نمی‌شود.
+     */
+    public static function movedAfter(PDO $pdo, int $userId, int $invoiceId): ?string
+    {
+        $st = $pdo->prepare('SELECT imei1, imei2 FROM biz_invoice_lines WHERE invoice_id = :i AND user_id = :u');
+        $st->execute(['i' => $invoiceId, 'u' => $userId]);
+        $nums = [];
+        foreach ($st->fetchAll() as $l) {
+            foreach (['imei1', 'imei2'] as $c) { if (!empty($l[$c])) { $nums[] = (string)$l[$c]; } }
+        }
+        if (!$nums) { return null; }
+        foreach (self::states($pdo, $userId, $nums, 0, true) as $imei => $s) {
+            if ($s['invoice_id'] !== $invoiceId) { return (string)$imei; }
+        }
+        return null;
+    }
+
     /** ارقامِ فارسی → لاتین، فاصله و خط‌تیره حذف (IMEIِ روی جعبه با فاصله چاپ می‌شود). */
     public static function norm(string $s): string
     {
@@ -1646,20 +1749,28 @@ final class BizSerial
      * @param string[] $imeis
      * @return array<string,array{dir:string, product_id:?int, imei1:string, imei2:?string, kind:string, invoice_id:int}>
      */
-    public static function states(PDO $pdo, int $userId, array $imeis, int $exceptInvoice = 0, bool $lock = false): array
+    public static function states(PDO $pdo, int $userId, array $imeis, int $exceptInvoice = 0, bool $lock = false, ?array $before = null): array
     {
         $imeis = array_values(array_unique(array_filter(array_map('strval', $imeis), fn($x) => $x !== '')));
         if (!$imeis) { return []; }
         $a = []; $b = []; $params = ['u' => $userId, 'x' => $exceptInvoice];
         foreach ($imeis as $n => $v) { $a[] = ':a' . $n; $b[] = ':b' . $n; $params['a' . $n] = $v; $params['b' . $n] = $v; }
+        $ord = self::orderSql('i');
+        // ⛔ `$before` = [زمانِ اولین صدور، شناسه]: وضعیتِ گوشی **درست پیش از** این
+        //    سند در سرگذشت — برای صدورِ دوباره‌ی سندی که جایش از قبل معلوم است.
+        $cut = '';
+        if ($before !== null) {
+            $cut = " AND ({$ord} < :bt OR ({$ord} = :bt2 AND i.id < :bi))";
+            $params['bt'] = $before[0]; $params['bt2'] = $before[0]; $params['bi'] = (int)$before[1];
+        }
         // ⚠ قفلِ اشتراکی: درونِ صدور، خواندنِ عادی عکسِ ابتدای تراکنش را می‌دید
         //    و صدورِ هم‌زمانِ دیگری که همین حالا کامیت شده پنهان می‌ماند.
         $st = $pdo->prepare(
             "SELECT l.imei1, l.imei2, l.product_id, i.kind, i.id AS invoice_id
              FROM biz_invoice_lines l JOIN biz_invoices i ON i.id = l.invoice_id AND i.user_id = l.user_id
-             WHERE l.user_id = :u AND i.status = 'issued' AND i.id <> :x
-               AND (l.imei1 IN (" . implode(',', $a) . ') OR l.imei2 IN (' . implode(',', $b) . '))
-             ORDER BY i.issued_at, i.id, l.id' . ($lock ? ' LOCK IN SHARE MODE' : '')
+             WHERE l.user_id = :u AND i.status = 'issued' AND i.id <> :x{$cut}
+               AND (l.imei1 IN (" . implode(',', $a) . ') OR l.imei2 IN (' . implode(',', $b) . "))
+             ORDER BY {$ord}, i.id, l.id" . ($lock ? ' LOCK IN SHARE MODE' : '')
         );
         $st->execute($params);
         $out = [];
@@ -1699,7 +1810,17 @@ final class BizSerial
             foreach (['imei1', 'imei2'] as $c) { if (!empty($l[$c])) { $nums[] = (string)$l[$c]; } }
         }
         if (!$nums) { return null; }
-        $states = self::states($pdo, $userId, $nums, $invoiceId, true);
+        // صدورِ دوباره (سندی که پیش‌تر صادر شده): وضعیت در **جای خودش** در
+        // سرگذشت، نه در آخرِ آن — وگرنه اصلاحِ فروشی که گوشی‌اش بعداً دوباره
+        // خریده و فروخته شده، بی‌دلیل رد می‌شد.
+        $before = null;
+        if (self::hasFirstIssued()) {
+            $f = $pdo->prepare('SELECT first_issued_at FROM biz_invoices WHERE id = :i AND user_id = :u');
+            $f->execute(['i' => $invoiceId, 'u' => $userId]);
+            $fi = $f->fetchColumn();
+            if ($fi !== false && $fi !== null) { $before = [(string)$fi, $invoiceId]; }
+        }
+        $states = self::states($pdo, $userId, $nums, $invoiceId, true, $before);
         $in = in_array($kind, self::IN_KINDS, true);
         foreach ($lines as $l) {
             foreach (['imei1', 'imei2'] as $c) {
@@ -1740,7 +1861,7 @@ final class BizSerial
                 LEFT JOIN biz_products p FORCE INDEX (PRIMARY) ON p.id = l.product_id AND p.user_id = l.user_id
                 LEFT JOIN biz_parties pa ON pa.id = i.party_id AND pa.user_id = i.user_id
                 WHERE l.user_id = :u AND i.status = 'issued' AND l.imei1 IS NOT NULL"
-             . ($productId > 0 ? ' AND l.product_id = :p' : '') . ' ORDER BY i.issued_at, i.id, l.id';
+             . ($productId > 0 ? ' AND l.product_id = :p' : '') . ' ORDER BY ' . self::orderSql('i') . ', i.id, l.id';
         $st = Database::getConnection()->prepare($sql);
         $st->execute($productId > 0 ? ['u' => $userId, 'p' => $productId] : ['u' => $userId]);
         $alias = []; $units = [];
@@ -1780,7 +1901,7 @@ final class BizSerial
         $sql = "SELECT l.imei1, l.imei2, l.product_id, i.kind
                 FROM biz_invoice_lines l JOIN biz_invoices i ON i.id = l.invoice_id AND i.user_id = l.user_id
                 WHERE l.user_id = :u AND i.status = 'issued' AND l.imei1 IS NOT NULL AND l.product_id IS NOT NULL"
-             . ($productId > 0 ? ' AND l.product_id = :p' : '') . ' ORDER BY i.issued_at, i.id, l.id';
+             . ($productId > 0 ? ' AND l.product_id = :p' : '') . ' ORDER BY ' . self::orderSql('i') . ', i.id, l.id';
         $st = Database::getConnection()->prepare($sql);
         $st->execute($productId > 0 ? ['u' => $userId, 'p' => $productId] : ['u' => $userId]);
         $alias = []; $units = [];
