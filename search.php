@@ -28,7 +28,7 @@ if ($q !== '') {
     try {
         $stmt = $pdo->prepare('
             SELECT t.id, t.type, t.amount, t.title, t.note, t.transaction_date, t.category_id,
-                   c.name AS category_name, c.icon AS cat_icon, c.color AS cat_color
+                   c.name AS category_name, c.icon AS cat_icon, c.color AS cat_color' . txStoreShareCols() . '
             FROM transactions t
             LEFT JOIN categories c ON c.id = t.category_id
             WHERE t.user_id = :u

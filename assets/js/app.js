@@ -2636,6 +2636,28 @@ function appMain() {
         }).call(btn);
     });
 
+    // ---------- سودِ فروشگاهِ اصلاح‌شده: برگرداندن به عددِ فروشگاه ----------
+    // ⚠ واگذارشده به `document`، به همان دلیلِ حذف (ردیف‌های جزئیاتِ روز).
+    document.addEventListener('click', function (e) {
+        var btn = e.target.closest('.js-store-revert');
+        if (!btn) return;
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        var fd = new FormData();
+        fd.set('csrf_token', meta ? meta.content : '');
+        fd.set('transaction_id', btn.getAttribute('data-id'));
+        btn.disabled = true;
+        fetch(apiUrl('store_share_revert.php'), {
+            method: 'POST', body: fd,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+            if (!j.success) { alert(j.message || 'برگرداندن انجام نشد.'); btn.disabled = false; return; }
+            window.location.reload();
+        })
+        .catch(function () { alert(netErr()); btn.disabled = false; });
+    });
+
     // ---------- ویرایش تراکنش: پیش‌پر کردن مودال ----------
     var monthNamesFa = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
 
@@ -2669,6 +2691,8 @@ function appMain() {
 
             var msgEl = document.getElementById('editTxMessage');
             if (msgEl) { msgEl.hidden = true; msgEl.classList.remove('show', 'success', 'error'); }
+            var storeHint = document.getElementById('editTxStoreHint');
+            if (storeHint) { storeHint.hidden = this.getAttribute('data-store') !== '1'; }
 
             openModal('editTxModal');
         }).call(btn);

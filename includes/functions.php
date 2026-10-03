@@ -4231,6 +4231,20 @@ function saveHomeHidden(int $userId, array $hidden): bool
     return true;
 }
 
+/**
+ * ستون‌های «سودِ فروشگاه» برای کوئری‌هایی که `renderTransactionRow()` را پر
+ * می‌کنند — یا رشته‌ی خالی روی نصبی که `migration_store_share_edit` ندارد.
+ *
+ * ⛔ یک جا، نه چهار نسخه: هر صفحه‌ای که ردیفِ تراکنش می‌کشد (خانه، فهرست،
+ *    جست‌وجو، جزئیاتِ روز) باید همین را بخواند، وگرنه نشانِ «از فروشگاه» و
+ *    دکمه‌ی «برگرداندن» در یکی هست و در دیگری نه.
+ */
+function txStoreShareCols(string $alias = 't'): string
+{
+    if (!tableHasColumn('transactions', 'store_share_edited')) { return ''; }
+    return ", {$alias}.store_share_ref, {$alias}.store_share_origin, {$alias}.store_share_edited";
+}
+
 function renderTransactionRow(array $tx): void
 {
     $icon  = categoryIconSvg($tx['cat_icon'] ?? null);
@@ -4257,6 +4271,27 @@ function renderTransactionRow(array $tx): void
             <?php if (!empty($tx['note'])): ?>
                 <div class="tx-row-details-line"><span>توضیح</span><span><?= h($tx['note']) ?></span></div>
             <?php endif; ?>
+            <?php
+            // ⛔ سودِ سهامِ فروشگاه: اصلاح‌پذیر، و عددِ فروشگاه کنارِ عددِ
+            //    اصلاح‌شده (`migration_store_share_edit`).
+            $__ss      = !empty($tx['store_share_ref']) && array_key_exists('store_share_edited', $tx);
+            $__ssEdit  = $__ss && (int)$tx['store_share_edited'] === 1;
+            $__ssGone  = $__ss && $tx['store_share_origin'] === null;
+            ?>
+            <?php if ($__ss): ?>
+                <?php /* ⚠ «سهامِ فروشگاه» نه «حسابداری فروشگاه»: صفحه‌های شخصی
+                         نباید هیچ نشانی از محیطِ فروشگاه داشته باشند
+                         (`test_business_mode`) و این سطر سودِ سهام است. */ ?>
+                <div class="tx-row-details-line"><span>منبع</span><span>
+                    سهامِ فروشگاه
+                    <?php if ($__ssEdit && $__ssGone): ?>
+                        — اصلاح‌شده، و در فروشگاه دیگر نیست
+                    <?php elseif ($__ssEdit): ?>
+                        — اصلاح‌شده؛ عددِ فروشگاه
+                        <span class="ltr-num"><?= ((int)$tx['store_share_origin'] < 0 ? '−' : '') . formatMoney(abs((int)$tx['store_share_origin'])) ?></span>
+                    <?php endif; ?>
+                </span></div>
+            <?php endif; ?>
             <div class="tx-row-actions">
                 <button type="button" class="btn btn-secondary btn-sm js-load-attachments" data-tx-id="<?= (int)$tx['id'] ?>">پیوست</button>
                 <button type="button" class="btn btn-secondary btn-sm js-edit-tx"
@@ -4266,8 +4301,15 @@ function renderTransactionRow(array $tx): void
                     data-title="<?= h($tx['title']) ?>"
                     data-note="<?= h($tx['note'] ?? '') ?>"
                     data-date="<?= h($tx['transaction_date']) ?>"
-                    data-category-id="<?= (int)($tx['category_id'] ?? 0) ?>">ویرایش</button>
-                <button class="delete-btn js-delete-tx" data-id="<?= (int)$tx['id'] ?>">حذف</button>
+                    data-category-id="<?= (int)($tx['category_id'] ?? 0) ?>"
+                    data-store="<?= $__ss ? '1' : '0' ?>">ویرایش</button>
+                <?php if ($__ssEdit && !$__ssGone): ?>
+                    <button type="button" class="btn btn-secondary btn-sm js-store-revert" data-id="<?= (int)$tx['id'] ?>">عددِ فروشگاه</button>
+                <?php endif; ?>
+                <?php // ⛔ سودی که فروشگاه هنوز دارد حذف نمی‌شود (برمی‌گشت) — `StoreShare::deleteBlock()` ?>
+                <?php if (!$__ss || $__ssGone): ?>
+                    <button class="delete-btn js-delete-tx" data-id="<?= (int)$tx['id'] ?>">حذف</button>
+                <?php endif; ?>
             </div>
 
             <?php /* باکس پیوست هنگام کلیک با جاوااسکریپت ساخته می‌شود —

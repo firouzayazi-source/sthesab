@@ -67,6 +67,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // ⛔ بلافاصله همگام می‌شود، وگرنه پولِ تسویه تا TTL بعدی در حسابِ
         //    قبلی می‌ماند و مدیر فکر می‌کند انتخابش کار نکرده.
         if ($res['ok']) { StoreShare::sync(); }
+    } elseif ($act === 'house') {
+        // ⛔ «فقط مدیر» و «تاریخ اجباری» را خودِ `setHouse()` می‌سنجد.
+        $uid  = (int)postParam('house_user_id', '0');
+        $res  = StoreShare::setHouse($uid, (string)postParam('house_from'));
+        $done = $res['ok'] ? ($uid > 0 ? 'house' : 'houseoff') : 'err:' . $res['message'];
+        if ($res['ok']) {
+            Audit::log('store_share.house', 'user', $uid ?: null,
+                ['from' => (string)postParam('house_from')], null, $uid ?: null);
+            // ⛔ بلافاصله همگام می‌شود، وگرنه مدیر تا TTL بعدی دفترِ خالی می‌دید.
+            if ($uid > 0) { StoreShare::sync(); }
+        }
     } elseif ($act === 'unlink') {
         $id = (int)postParam('id', '0');
         if (StoreShare::unlink($id)) {
@@ -119,6 +130,18 @@ $walletsOf = $settleOn
     ? StoreShare::walletChoices(array_map(static fn($l) => (int)$l['user_id'], $links))
     : [];
 
+// صاحبِ فروشگاه: فقط مدیرهای فعال قابلِ انتخاب‌اند (`setHouse()` هم می‌سنجد)
+$house  = $ready ? StoreShare::house() : null;
+$admins = [];
+if ($ready) {
+    try {
+        $admins = $pdo->query(
+            "SELECT id, username, full_name FROM users WHERE is_active = 1 AND role = 'admin' ORDER BY id"
+        )->fetchAll();
+    } catch (PDOException $e) { $admins = []; }
+}
+$houseFrom = $house['from'] ?? startOfJalaliMonth();
+
 $pageWide  = true;
 $pageTitle = 'سهامداران فروشگاه';
 include __DIR__ . '/../includes/header.php';
@@ -133,6 +156,10 @@ include __DIR__ . '/../includes/header.php';
                 سهامدار وصل شد و داده‌اش همگام شد.
             <?php elseif ($done === 'wallet'): ?>
                 حسابِ تسویه ذخیره شد و داده‌اش همگام شد.
+            <?php elseif ($done === 'house'): ?>
+                سهمِ فروشگاه به دفترِ این مدیر وصل شد و همگام شد.
+            <?php elseif ($done === 'houseoff'): ?>
+                ثبتِ سهمِ فروشگاه خاموش شد. سطرهای ثبت‌شده دست‌نخورده ماندند.
             <?php elseif ($done === 'unlinked'): ?>
                 پیوند غیرفعال شد. تراکنش‌های سودِ ثبت‌شده دست‌نخورده ماندند.
             <?php elseif (str_starts_with($done, 'synced:')): ?>
@@ -287,6 +314,46 @@ include __DIR__ . '/../includes/header.php';
             </tbody>
         </table>
     <?php endif; ?>
+</div>
+
+<div class="card">
+    <h2 class="card-title">سهمِ خودِ فروشگاه</h2>
+    <p class="hint">
+        سهمِ فروشگاه از سودِ هر فروشِ قطعی (گوشی و لوازم جانبی) — سود منهای سهمِ
+        سهامدارها — با سودِ کل و درصدش در دفترِ شخصیِ مدیرِ انتخاب‌شده ثبت می‌شود.
+        سهمِ ماهانه‌ی سهامدارها از لوازم جانبی، وقتی در فروشگاه ثبت شد، یک سطرِ کسرِ
+        جدا می‌آید. هر سطر را می‌شود ویرایش کرد و اصلاح ماندگار است.
+    </p>
+    <form method="POST">
+        <?= Csrf::field() ?>
+        <input type="hidden" name="action" value="house">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="ss_house_user">دفترِ کدام مدیر</label>
+                <select name="house_user_id" id="ss_house_user" class="input">
+                    <option value="0">خاموش</option>
+                    <?php foreach ($admins as $u): ?>
+                        <option value="<?= (int)$u['id'] ?>" <?= (int)($house['user_id'] ?? 0) === (int)$u['id'] ? 'selected' : '' ?>>
+                            <?= h($u['full_name'] ?: $u['username']) ?> (<?= h($u['username']) ?>)
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>از تاریخ</label>
+                <div class="jdp-field">
+                    <input type="text" class="jdp-display" readonly value="<?= toJalali($houseFrom) ?>">
+                    <input type="hidden" class="jdp-hidden" name="house_from" value="<?= h($houseFrom) ?>">
+                </div>
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">ذخیره</button>
+    </form>
+    <p class="hint asset-total-note">
+        فروش‌های پیش از این تاریخ ثبت نمی‌شوند، تا سابقه‌ی چندساله یک‌باره درآمدِ
+        امروز نشود. سطرها بی‌حساب‌اند (مثل سودِ سهامدارها) و موجودیِ حساب‌ها را
+        عوض نمی‌کنند. فروشگاه باید نسخه‌ای باشد که سهمِ خودش را می‌فرستد.
+    </p>
 </div>
 
 <div class="card">

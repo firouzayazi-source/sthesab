@@ -105,6 +105,10 @@ CREATE TABLE IF NOT EXISTS `transactions` (
     -- شناسه‌ی یکتای سطرِ سهمِ سود در حسابداری فروشگاه
     -- (migration_store_share.sql). خالی برای هر ردیفِ عادی.
     `store_share_ref` VARCHAR(64) NULL DEFAULT NULL,
+    -- آخرین عددِ فروشگاه (علامت‌دار) و «کاربر اصلاحش کرده»
+    -- (migration_store_share_edit.sql).
+    `store_share_origin` BIGINT NULL DEFAULT NULL,
+    `store_share_edited` TINYINT(1) NOT NULL DEFAULT 0,
     `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),

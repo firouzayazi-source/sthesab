@@ -62,6 +62,14 @@ if (!isset($incomeCategories)) {
                 <textarea id="edit_note" name="note" rows="2" maxlength="1000"></textarea>
             </div>
 
+            <?php /* سودِ سهامِ فروشگاه: اصلاح ماندگار است و همگام‌سازی
+                     دیگر عوضش نمی‌کند (`StoreShare::applyLines()`). */ ?>
+            <p class="hint" id="editTxStoreHint" hidden>
+                این سود از سهامِ فروشگاه آمده. اگر عددش را عوض کنید، اصلاحِ شما می‌ماند
+                و همگام‌سازی دیگر رویش نمی‌نویسد؛ عددِ فروشگاه کنارش دیده می‌شود و با
+                «عددِ فروشگاه» برمی‌گردد.
+            </p>
+
             <div id="editTxMessage" class="form-message" hidden></div>
 
             <div class="modal-actions">

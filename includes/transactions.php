@@ -20,6 +20,7 @@
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/functions.php';
+require_once __DIR__ . '/store_share.php';
 
 /** سقف مبلغ — ستون BIGINT است ولی عددِ بی‌معنی هم نباید وارد شود. */
 const TX_MAX_AMOUNT = 999999999999;
@@ -188,7 +189,28 @@ function txUpdate(int $userId, int $id, array $in): array
     }
 
     try {
-        Database::getConnection()->prepare('
+        $pdo = Database::getConnection();
+        /*
+         * ⛔ سودِ فروشگاه که کاربر اصلاحش کرده، ماندگار می‌شود.
+         *
+         * **خواسته‌ی مالکِ نصب:** «امکانِ ویرایشِ سود بیاد، ممکنه سود
+         * تغییر کرده باشه.» تا امروز ویرایش ذخیره می‌شد و همگام‌سازیِ بعدی
+         * بی‌صدا عددِ فروشگاه را برمی‌گرداند. فقط وقتی چیزی **واقعاً**
+         * عوض شده علامت می‌خورد — «ذخیره»ی بی‌تغییر، سطر را از عددِ
+         * فروشگاه جدا نمی‌کند. پیش از `UPDATE` اصلی، چون مقایسه با مقدارِ
+         * قبلی است.
+         */
+        if (StoreShare::editAvailable()) {
+            $pdo->prepare('
+                UPDATE transactions SET store_share_edited = 1
+                WHERE id = :id AND user_id = :user_id
+                  AND store_share_ref IS NOT NULL AND store_share_edited = 0
+                  AND (amount <> :amount OR type <> :type OR transaction_date <> :transaction_date
+                       OR title <> :title OR NOT (category_id <=> :category_id) OR NOT (note <=> :note))
+            ')->execute($val + ['id' => $id, 'user_id' => $userId]);
+        }
+
+        $pdo->prepare('
             UPDATE transactions
             SET category_id = :category_id, type = :type, amount = :amount,
                 title = :title, note = :note, transaction_date = :transaction_date
@@ -213,6 +235,12 @@ function txDelete(int $userId, int $id): array
 
     $owned = txAssertOwned($userId, $id, 'حذف');
     if ($owned !== null) { return $owned; }
+
+    // ⛔ سودی که فروشگاه هنوز دارد با همگام‌سازیِ بعدی برمی‌گشت — `deleteBlock()`.
+    $blocked = StoreShare::deleteBlock($userId, $id);
+    if ($blocked !== null) {
+        return ['ok' => false, 'status' => 409, 'code' => 'store_share', 'message' => $blocked];
+    }
 
     try {
         Database::getConnection()

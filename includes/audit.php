@@ -73,6 +73,8 @@ final class Audit
          * جنسِ `plan.granted` است و باید رد داشته باشد.
          */
         'store_share.linked', 'store_share.unlinked',
+        // سودِ کلِ فروشگاه به دفترِ کدام مدیر می‌رود — همان جنس
+        'store_share.house',
     ];
 
     /** کلیدهای تنظیماتی که مقدارشان هرگز در `detail` نمی‌آید. */

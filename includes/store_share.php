@@ -78,6 +78,16 @@ final class StoreShare
     public const CATEGORY_INCOME  = 'سود سهام فروشگاه';
     public const CATEGORY_EXPENSE = 'زیان سهام فروشگاه';
 
+    /**
+     * ⛔ سهمِ **خودِ فروشگاه** (صاحبِ فروشگاه) — کدام کاربر و از چه تاریخی.
+     *
+     * **خواسته‌ی مالکِ نصب:** «از سمتِ فروشگاه که سوپر ادمین باشه برای خودِ
+     * من هم باید سودها و درصدها بیاد … بعد از اینکه تو حسابداری قطعی شد.»
+     * دو تنظیم در `app_settings`، فقط از صفحه‌ی مدیر (`setHouse()`).
+     */
+    public const HOUSE_USER_KEY = 'store_house_user_id';
+    public const HOUSE_FROM_KEY = 'store_house_from';
+
     /** @var array<string,mixed>|null|false کشِ درخواستی؛ false = نخوانده‌ایم */
     private static $payloadCache = false;
 
@@ -123,6 +133,18 @@ final class StoreShare
         } catch (Throwable $e) {
             return false;
         }
+    }
+
+    /**
+     * ستون‌های «اصلاحِ دستی» با `migration_store_share_edit` می‌آیند.
+     *
+     * ⛔ نصبی که آن را اجرا نکرده **دقیقاً مثل قبل** کار می‌کند — همگام‌سازی
+     *    همه‌چیز را بازنویسی می‌کند و حذف آزاد است. سکوت، نه شکستن.
+     */
+    public static function editAvailable(): bool
+    {
+        return tableHasColumn('transactions', 'store_share_edited')
+            && tableHasColumn('transactions', 'store_share_origin');
     }
 
     private static function endpoint(): string
@@ -276,6 +298,77 @@ final class StoreShare
             Log::error('store_share.unlink_failed', $e);
             return false;
         }
+    }
+
+    /**
+     * سهمِ خودِ فروشگاه به دفترِ کدام کاربر می‌رود، از چه تاریخی — یا `null`.
+     *
+     * @return array{user_id:int,from:string}|null
+     */
+    public static function house(): ?array
+    {
+        if (!self::available()) { return null; }
+        $uid  = (int)getSetting(self::HOUSE_USER_KEY, '0');
+        $from = trim(getSetting(self::HOUSE_FROM_KEY, ''));
+        if ($uid <= 0 || !isValidDate($from)) { return null; }
+        return ['user_id' => $uid, 'from' => $from];
+    }
+
+    /**
+     * تعیینِ صاحبِ فروشگاه — `0` خاموش می‌کند.
+     *
+     * ⛔ **فقط مدیر** می‌تواند صاحبِ فروشگاه باشد: سودِ کلِ فروشگاه داده‌ی
+     *    مالیِ همان سطحی است که «خالص داراییِ کل فروشگاه» (فقط مدیر). یک
+     *    انتخابِ اشتباه در منو نباید سودِ فروشگاه را در دفترِ یک کاربرِ
+     *    عادی بنشاند.
+     * ⛔ **از تاریخ** اجباری است: بدونش سال‌ها سابقه‌ی فروش یک‌باره درآمدِ
+     *    دفترِ شخصی می‌شد. اندپوینت هم بی‌آن چیزی نمی‌فرستد.
+     * ⚠ خاموش کردن، سطرهای ثبت‌شده را پاک **نمی‌کند** — همان قاعده‌ی
+     *   `unlink()`: آن پول واقعاً سهمِ او بوده.
+     *
+     * @return array{ok:bool,message:string}
+     */
+    public static function setHouse(int $userId, string $from): array
+    {
+        if (!self::available()) {
+            return ['ok' => false, 'message' => 'اتصال به حسابداری فروشگاه تنظیم نشده است.'];
+        }
+        if ($userId <= 0) {
+            setSetting(self::HOUSE_USER_KEY, '0');
+            return ['ok' => true, 'message' => 'ثبتِ سهمِ فروشگاه خاموش شد.'];
+        }
+        if (!isValidDate($from)) {
+            return ['ok' => false, 'message' => 'تاریخِ شروع معتبر نیست.'];
+        }
+        try {
+            $st = Database::getConnection()->prepare(
+                'SELECT role FROM users WHERE id = :u AND is_active = 1 LIMIT 1'
+            );
+            $st->execute(['u' => $userId]);
+            $role = $st->fetchColumn();
+        } catch (PDOException $e) {
+            Log::error('store_share.house_user_failed', $e);
+            return ['ok' => false, 'message' => 'خواندنِ کاربر انجام نشد.'];
+        }
+        if ($role !== 'admin') {
+            return ['ok' => false, 'message' => 'سهمِ فروشگاه فقط به دفترِ یک مدیر می‌رود.'];
+        }
+        setSetting(self::HOUSE_USER_KEY, (string)$userId);
+        setSetting(self::HOUSE_FROM_KEY, $from);
+        return ['ok' => true, 'message' => 'سهمِ فروشگاه به دفترِ این مدیر وصل شد.'];
+    }
+
+    /**
+     * پیشوندِ سطرهای سهمِ فروشگاه برای یک کاربر.
+     *
+     * ⛔ شناسه‌ی کاربر داخلش است: `store_share_ref` روی **کلِ ستون** یکتاست،
+     *    پس اگر مدیر صاحبِ فروشگاه را از «الف» به «ب» عوض کند و پیشوند
+     *    مشترک بود، `ON DUPLICATE KEY` ردیفِ «الف» را به‌روز می‌کرد و
+     *    دفترِ «ب» خالی می‌ماند — بی‌هیچ خطایی.
+     */
+    public static function housePrefix(int $userId): string
+    {
+        return 'store:h' . $userId . ':';
     }
 
     /**
@@ -434,7 +527,8 @@ final class StoreShare
     public static function refreshIfStale(): void
     {
         if (!self::available()) { return; }
-        if (self::activeCount() === 0) { return; }
+        // ⚠ صاحبِ فروشگاه بی‌پیوندِ سهامدار هم همگام‌سازی می‌خواهد
+        if (self::activeCount() === 0 && self::house() === null) { return; }
 
         try {
             $row = Database::getConnection()
@@ -494,6 +588,13 @@ final class StoreShare
                 (int)$link['store_contact_id'],
                 isset($link['wallet_id']) ? (int)$link['wallet_id'] : 0
             );
+            $written += $res['written'];
+            $removed += $res['removed'];
+        }
+
+        $house = self::house();
+        if ($house !== null) {
+            $res = self::applyHouse($house['user_id'], $house['from']);
             $written += $res['written'];
             $removed += $res['removed'];
         }
@@ -840,9 +941,15 @@ final class StoreShare
      *
      * ⛔ «هم‌گام» است نه «افزودن» — همان قاعده‌ی
      *    `syncTradeProfitTransactions()`. سطری که در سمتِ فروشگاه دیگر
-     *    وجود ندارد (فاکتور ویرایش شده، پس سندش پاک و از نو ساخته شده)
-     *    باید از اینجا هم برود، وگرنه یک درآمدِ **یتیم** برای همیشه در
-     *    دفترِ کاربر می‌ماند و هیچ‌کس نمی‌فهمد از کجا آمده.
+     *    وجود ندارد (فاکتور حذف شده) باید از اینجا هم برود، وگرنه یک
+     *    درآمدِ **یتیم** برای همیشه در دفترِ کاربر می‌ماند.
+     *
+     * ⛔ **کلید از `doc` ساخته می‌شود، اگر فروشگاه بدهد** (شناسه‌ی پایدارِ
+     *    مدرک، مثل `SALE_INVOICE:12`)، نه از `ref` که با هر ثبتِ دوباره‌ی
+     *    فاکتور عوض می‌شود. اصلاحِ دستیِ کاربر روی همین کلید سوار است؛ با
+     *    `ref`، اولین ثبتِ دوباره‌ی فاکتور (حتی برای عوض کردنِ نامِ مشتری)
+     *    اصلاحِ او را بی‌صدا پاک می‌کرد. `doc`ِ تکراری (نباید پیش بیاید)
+     *    به `ref` برمی‌گردد تا دو سطر روی هم نیفتند.
      *
      * @return array{written:int,removed:int}
      */
@@ -853,54 +960,162 @@ final class StoreShare
         if ($sh === null || (int)($sh['id'] ?? 0) !== $contactId) { return $out; }
 
         $shares = isset($sh['shares']) && is_array($sh['shares']) ? $sh['shares'] : [];
-        $pdo    = Database::getConnection();
-        $seen   = [];
-
+        $lines  = [];
+        $docs   = [];
         foreach ($shares as $share) {
             if (!is_array($share)) { continue; }
             $ref = trim((string)($share['ref'] ?? ''));
             if ($ref === '' || mb_strlen($ref) > 64) { continue; }
+            $doc = trim((string)($share['doc'] ?? ''));
+            $key = $ref;
+            if ($doc !== '' && !isset($docs[$doc])) {
+                $docs[$doc] = true;
+                $key = 'd:' . $doc;
+            }
+            $lines[] = [
+                'key'    => $key,
+                'amount' => (int)round((float)($share['amount'] ?? 0)),
+                'date'   => (string)($share['date'] ?? ''),
+                'title'  => (string)($share['description'] ?? ''),
+                'note'   => 'ثبت خودکار از حسابداری فروشگاه',
+            ];
+        }
 
-            $amount = (int)round((float)($share['amount'] ?? 0));
-            $date   = (string)($share['date'] ?? '');
+        // ⛔ پیشوند، تا با هر منبعِ دیگری که همین ستون را می‌نویسد قاطی نشود.
+        return self::applyLines($userId, 'store:' . $contactId . ':', $lines);
+    }
+
+    /**
+     * سهمِ خودِ فروشگاه از هر فروشِ قطعی، در دفترِ صاحبِ فروشگاه.
+     *
+     * ⛔ **هیچ محاسبه‌ای اینجا نیست** — همان قاعده‌ی بالای فایل. سهم، سود و
+     *    درصد را فروشگاه از سند می‌سازد (`house-share.ts` آن سیستم)؛ اینجا
+     *    فقط ثبت می‌شود و درصد در توضیح می‌نشیند.
+     *
+     * ⛔ **کلیدِ نبوده = دست نزن**: نصبِ عقب‌مانده‌ی فروشگاه `house.shares`
+     *    را نمی‌دهد، و پاسخی که با تاریخِ دیگری ساخته شده (`shares_from`)
+     *    مالِ این تنظیم نیست. در هر دو حالت هیچ سطری نوشته یا **پاک**
+     *    نمی‌شود — وگرنه یک انتشارِ نیمه‌کاره‌ی آن سیستم کلِ سودِ ثبت‌شده‌ی
+     *    صاحبِ فروشگاه را بی‌صدا پاک می‌کرد.
+     *
+     * @return array{written:int,removed:int}
+     */
+    private static function applyHouse(int $userId, string $from): array
+    {
+        $out  = ['written' => 0, 'removed' => 0];
+        $data = self::payload();
+        $house = is_array($data) && isset($data['house']) && is_array($data['house']) ? $data['house'] : null;
+        if ($house === null || !array_key_exists('shares', $house) || !is_array($house['shares'])) { return $out; }
+        if ((string)($house['shares_from'] ?? '') !== $from) { return $out; }
+
+        $lines = [];
+        foreach ($house['shares'] as $row) {
+            if (!is_array($row)) { continue; }
+            $ref = trim((string)($row['ref'] ?? ''));
+            if ($ref === '' || mb_strlen($ref) > 48) { continue; }
+            $lines[] = [
+                'key'    => $ref,
+                'amount' => (int)round((float)($row['amount'] ?? 0)),
+                'date'   => (string)($row['date'] ?? ''),
+                'title'  => (string)($row['description'] ?? ''),
+                'note'   => self::houseNote($row),
+            ];
+        }
+        return self::applyLines($userId, self::housePrefix($userId), $lines);
+    }
+
+    /**
+     * توضیحِ سطرِ سهمِ فروشگاه: «سود و درصد» — همان دو عددی که فروشگاه فرستاده.
+     *
+     * ⚠ جداکننده «،» است نه «·»: نقطه‌ی میانی کنارِ رقمِ فارسی «۰» خوانده
+     *   می‌شود (همان درسِ «۲۰ ساعت» در نرخ‌ها).
+     */
+    public static function houseNote(array $row): string
+    {
+        $parts = ['ثبت خودکار از حسابداری فروشگاه'];
+        $label = trim((string)($row['category_label'] ?? ''));
+        if ($label !== '') { $parts[] = $label; }
+        if (isset($row['profit']) && $row['profit'] !== null) {
+            $parts[] = 'سود کل ' . formatMoney((int)round((float)$row['profit']));
+        }
+        if (isset($row['percent']) && $row['percent'] !== null) {
+            $pct = rtrim(rtrim(number_format((float)$row['percent'], 1, '.', ''), '0'), '.');
+            $parts[] = 'سهم فروشگاه ' . toPersianDigits($pct) . '٪';
+        }
+        return implode('، ', $parts);
+    }
+
+    /**
+     * ⛔ تنها نویسنده‌ی سطرهای سودِ فروشگاه در `transactions` — برای
+     *    سهامدار و برای صاحبِ فروشگاه.
+     *
+     * **اصلاحِ دستی ماندگار است** (`migration_store_share_edit`):
+     * سطری که کاربر ویرایشش کرده (`store_share_edited = 1`) دیگر مبلغ،
+     * نوع، عنوان، تاریخ و توضیحش از فروشگاه نوشته نمی‌شود؛ فقط
+     * `store_share_origin` — آخرین عددِ فروشگاه — تازه می‌شود تا کنارِ عددِ
+     * او دیده شود. پیش از این، همگام‌سازیِ بعدی اصلاح را بی‌صدا پس می‌گرفت.
+     *
+     * **و پاک نمی‌شود:** سطرِ اصلاح‌شده‌ای که فروشگاه دیگر ندارد، داده‌ی
+     * کاربر است؛ فقط `store_share_origin` آن `NULL` می‌شود («در فروشگاه
+     * دیگر نیست») تا خودش تصمیم بگیرد.
+     *
+     * ⛔ بدونِ `wallet_id` — دلیلش بالای همین فایل نوشته شده.
+     *
+     * @param list<array{key:string,amount:int,date:string,title:string,note:string}> $lines
+     * @return array{written:int,removed:int}
+     */
+    private static function applyLines(int $userId, string $prefix, array $lines): array
+    {
+        $out  = ['written' => 0, 'removed' => 0];
+        $pdo  = Database::getConnection();
+        $edit = self::editAvailable();
+        $seen = [];
+
+        $sql = $edit
+            ? 'INSERT INTO transactions
+                   (user_id, category_id, type, amount, title, note, transaction_date,
+                    store_share_ref, store_share_origin)
+               VALUES (:u, :c, :t, :a, :ti, :no, :d, :ref, :o)
+               ON DUPLICATE KEY UPDATE
+                   category_id      = IF(store_share_edited = 1, category_id, VALUES(category_id)),
+                   type             = IF(store_share_edited = 1, type, VALUES(type)),
+                   amount           = IF(store_share_edited = 1, amount, VALUES(amount)),
+                   title            = IF(store_share_edited = 1, title, VALUES(title)),
+                   note             = IF(store_share_edited = 1, note, VALUES(note)),
+                   transaction_date = IF(store_share_edited = 1, transaction_date, VALUES(transaction_date)),
+                   store_share_origin = VALUES(store_share_origin)'
+            : 'INSERT INTO transactions
+                   (user_id, category_id, type, amount, title, note, transaction_date, store_share_ref)
+               VALUES (:u, :c, :t, :a, :ti, :no, :d, :ref)
+               ON DUPLICATE KEY UPDATE
+                   category_id = VALUES(category_id), type = VALUES(type),
+                   amount = VALUES(amount), title = VALUES(title),
+                   transaction_date = VALUES(transaction_date)';
+        $st = $pdo->prepare($sql);
+
+        foreach ($lines as $line) {
+            $amount = (int)$line['amount'];
+            $date   = (string)$line['date'];
             if ($amount === 0 || !isValidDate($date)) { continue; }
 
-            // ⛔ پیشوند، تا با هر منبعِ دیگری که فردا ممکن است همین ستون
-            //    را بنویسد قاطی نشود. شناسه‌ی آن‌طرف سراسری است ولی
-            //    «سراسری در آن سیستم» با «یکتا در این ستون» یکی نیست.
-            $key = 'store:' . $contactId . ':' . $ref;
+            $key = $prefix . $line['key'];
             if (mb_strlen($key) > 64) { continue; }
             $seen[] = $key;
 
             $type  = $amount > 0 ? 'income' : 'expense';
-            $title = trim((string)($share['description'] ?? ''));
+            $title = trim((string)$line['title']);
             if ($title === '') {
                 $title = $amount > 0 ? 'سهم سود فروشگاه' : 'سهم زیان فروشگاه';
             }
-            $catId = self::categoryId($type);
-
+            $params = [
+                'u' => $userId, 'c' => self::categoryId($type), 't' => $type, 'a' => abs($amount),
+                'ti' => mb_substr($title, 0, 255),
+                'no' => mb_substr((string)$line['note'], 0, 1000),
+                'd' => $date, 'ref' => $key,
+            ];
+            if ($edit) { $params['o'] = $amount; }
             try {
-                /*
-                 * ⛔ بدونِ `wallet_id` — دلیلش بالای همین فایل نوشته شده.
-                 *   و `ON DUPLICATE KEY` چون همان سطر ممکن است در سمتِ
-                 *   فروشگاه مبلغش عوض شده باشد (تخفیفِ فاکتور اصلاح شده)
-                 *   و ردیفِ کهنه در دفترِ کاربر یعنی گزارشِ غلط.
-                 */
-                $st = $pdo->prepare(
-                    'INSERT INTO transactions
-                        (user_id, category_id, type, amount, title, note, transaction_date, store_share_ref)
-                     VALUES (:u, :c, :t, :a, :ti, :no, :d, :ref)
-                     ON DUPLICATE KEY UPDATE
-                        category_id = VALUES(category_id), type = VALUES(type),
-                        amount = VALUES(amount), title = VALUES(title),
-                        transaction_date = VALUES(transaction_date)'
-                );
-                $st->execute([
-                    'u' => $userId, 'c' => $catId, 't' => $type, 'a' => abs($amount),
-                    'ti' => mb_substr($title, 0, 255),
-                    'no' => 'ثبت خودکار از حسابداری فروشگاه',
-                    'd' => $date, 'ref' => $key,
-                ]);
+                $st->execute($params);
                 if ($st->rowCount() > 0) { $out['written']++; }
             } catch (PDOException $e) {
                 Log::error('store_share.tx_write_failed', $e, ['uid' => $userId]);
@@ -908,32 +1123,111 @@ final class StoreShare
         }
 
         /*
-         * ⛔ حذفِ سطرهای بی‌مرجع فقط وقتی انجام می‌شود که آینه واقعاً
-         *   ردیفِ همین سهامدار را داشته باشد — و `forUser()` بالاتر همان
-         *   را تضمین کرده. با پاسخِ ناقص یا خالی، این حلقه کلِ درآمدِ
-         *   سهامِ کاربر را پاک می‌کرد: بدترین شکلِ خرابی، چون بی‌صداست و
-         *   بازگشت هم ندارد.
+         * ⛔ حذفِ سطرهای بی‌مرجع فقط وقتی صدا زده می‌شود که آینه واقعاً
+         *   ردیفِ همین شخص را داشته باشد — `forUser()` و `applyHouse()`
+         *   همان را تضمین می‌کنند. با پاسخِ ناقص یا خالی، این حلقه کلِ
+         *   درآمدِ سهامِ کاربر را پاک می‌کرد: بی‌صدا و بی‌بازگشت.
          */
         try {
-            $sql = 'DELETE FROM transactions
-                    WHERE user_id = :u AND store_share_ref LIKE :pre';
-            $params = ['u' => $userId, 'pre' => 'store:' . $contactId . ':%'];
+            $params = ['u' => $userId, 'pre' => $prefix . '%'];
+            $notIn  = '';
             if ($seen !== []) {
                 $keep = [];
                 foreach ($seen as $i => $k) {
                     $keep[] = ':k' . $i;
                     $params['k' . $i] = $k;
                 }
-                $sql .= ' AND store_share_ref NOT IN (' . implode(',', $keep) . ')';
+                $notIn = ' AND store_share_ref NOT IN (' . implode(',', $keep) . ')';
             }
-            $del = $pdo->prepare($sql);
+            $del = $pdo->prepare(
+                'DELETE FROM transactions WHERE user_id = :u AND store_share_ref LIKE :pre' . $notIn
+                . ($edit ? ' AND store_share_edited = 0' : '')
+            );
             $del->execute($params);
             $out['removed'] = $del->rowCount();
+
+            if ($edit) {
+                $pdo->prepare(
+                    'UPDATE transactions SET store_share_origin = NULL
+                     WHERE user_id = :u AND store_share_ref LIKE :pre AND store_share_edited = 1' . $notIn
+                )->execute($params);
+            }
         } catch (PDOException $e) {
             Log::error('store_share.tx_prune_failed', $e, ['uid' => $userId]);
         }
 
         return $out;
+    }
+
+    /* ═══════════════════ اصلاحِ دستیِ کاربر ═══════════════════ */
+
+    /**
+     * برگرداندنِ یک سطرِ اصلاح‌شده به عددِ فروشگاه.
+     *
+     * ⛔ مالکیت با `user_id`ِ نشست سنجیده می‌شود (قاعده‌ی ۱). عنوان و تاریخ
+     *    با همگام‌سازیِ بعدی از فروشگاه می‌آیند؛ مبلغ و نوع همین حالا، تا
+     *    کاربر نتیجه را فوراً ببیند.
+     *
+     * @return array{ok:bool,message:string}
+     */
+    public static function revertEdit(int $userId, int $txId): array
+    {
+        if (!self::editAvailable()) {
+            return ['ok' => false, 'message' => 'برای این کار باید migration اصلاحِ سود اجرا شود.'];
+        }
+        try {
+            $pdo = Database::getConnection();
+            $st  = $pdo->prepare(
+                'SELECT store_share_origin FROM transactions
+                 WHERE id = :id AND user_id = :u AND store_share_ref IS NOT NULL LIMIT 1'
+            );
+            $st->execute(['id' => $txId, 'u' => $userId]);
+            $origin = $st->fetchColumn();
+            if ($origin === false) {
+                return ['ok' => false, 'message' => 'این سطر از حسابداری فروشگاه نیست.'];
+            }
+            if ($origin === null || (int)$origin === 0) {
+                return ['ok' => false, 'message' => 'این سطر دیگر در حسابداری فروشگاه نیست؛ اگر نمی‌خواهیدش، حذفش کنید.'];
+            }
+            $origin = (int)$origin;
+            $type   = $origin > 0 ? 'income' : 'expense';
+            $pdo->prepare(
+                'UPDATE transactions
+                 SET store_share_edited = 0, amount = :a, type = :t, category_id = :c
+                 WHERE id = :id AND user_id = :u'
+            )->execute(['a' => abs($origin), 't' => $type, 'c' => self::categoryId($type),
+                        'id' => $txId, 'u' => $userId]);
+        } catch (PDOException $e) {
+            Log::error('store_share.revert_failed', $e, ['uid' => $userId]);
+            return ['ok' => false, 'message' => 'برگرداندن انجام نشد.'];
+        }
+        return ['ok' => true, 'message' => 'به عددِ حسابداری فروشگاه برگشت.'];
+    }
+
+    /**
+     * آیا حذفِ این تراکنش باید رد شود؟ پیامِ رد، یا `null`.
+     *
+     * ⛔ سطری که فروشگاه هنوز دارد، با همگام‌سازیِ بعدی **برمی‌گردد** — حذفش
+     *    فقط چند دقیقه دروغ می‌گفت. پس رد می‌شود و راهِ درست گفته می‌شود:
+     *    ویرایش (که حالا ماندگار است). سطری که فروشگاه دیگر ندارد آزادانه
+     *    حذف می‌شود. نصبِ بی‌migration مثل قبل.
+     */
+    public static function deleteBlock(int $userId, int $txId): ?string
+    {
+        if (!self::editAvailable()) { return null; }
+        try {
+            $st = Database::getConnection()->prepare(
+                'SELECT store_share_origin FROM transactions
+                 WHERE id = :id AND user_id = :u AND store_share_ref IS NOT NULL LIMIT 1'
+            );
+            $st->execute(['id' => $txId, 'u' => $userId]);
+            $origin = $st->fetchColumn();
+        } catch (PDOException $e) {
+            return null;
+        }
+        if ($origin === false || $origin === null) { return null; }
+        return 'این سود از حسابداری فروشگاه می‌آید و با همگام‌سازیِ بعدی برمی‌گردد. '
+            . 'اگر عددش درست نیست «ویرایش» را بزنید — اصلاحِ شما ماندگار است.';
     }
 
     /**
@@ -1121,6 +1415,12 @@ final class StoreShare
     {
         $url = self::endpoint();
         $tok = self::token();
+        // ⛔ سهمِ خودِ فروشگاه فقط با تاریخِ شروع فرستاده می‌شود (آن سمت
+        //    بی‌آن هیچ نمی‌دهد) — `house()`.
+        $house = self::house();
+        if ($house !== null) {
+            $url .= (str_contains($url, '?') ? '&' : '?') . 'house_from=' . rawurlencode($house['from']);
+        }
         $bad = ['ok' => false, 'data' => [], 'code' => 0];
 
         $headers = ['Authorization: Bearer ' . $tok, 'Accept: application/json'];
