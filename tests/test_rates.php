@@ -177,7 +177,9 @@ try {
     T::ok(!Rates::saveSource('custom', ['enabled' => 1, 'url' => ''])['ok'], 'منبعِ دلخواهِ روشن بی‌آدرس رد');
     T::ok(!Rates::saveSource('custom', ['enabled' => 0, 'url' => '', 'paths' => ['usd' => 'a;DROP']])['ok'], 'مسیرِ نامعتبر رد');
     T::ok(!Rates::saveSource('nope', [])['ok'], 'منبعِ ناشناخته رد');
-    Rates::saveSource('navasan', ['enabled' => 1, 'priority' => 20, 'api_key' => 'NAVKEY']);
+    // ⛔ کلیدِ کپی‌شده از تلگرامِ گوشی: نشانه‌ی جهت، نیم‌فاصله، فاصله و شکستِ خط
+    Rates::saveSource('navasan', ['enabled' => 1, 'priority' => 20, 'api_key' => "\u{200F}NAV KEY\u{200C}\n\u{200E}"]);
+    T::same('NAVKEY', Rates::cleanKey("\u{200F}NAV KEY\u{200C}\n\u{200E}"), 'cleanKey: هیچ فاصله و نویسه‌ی نامرئی‌ای نمی‌ماند');
     Rates::saveSource('bitpin', ['enabled' => 1, 'priority' => 30]);
 
     $fake = [
@@ -199,6 +201,14 @@ try {
 
     // ⛔ https نوسان جواب نداد ⇒ http (نشانیِ راهنمای خودِ نوسان)؛ و آدرسِ «فقط پایه»
     $fakeBak = $fake;
+    // خطای هر دو آدرس، با تکه‌ای از پاسخ و کلیدِ پوشانده
+    $fake = ['https://api.navasan.tech/' => ['ok' => false, 'message' => 'به سایت وصل نشد (timeout).'],
+             'http://api.navasan.tech/'  => ['ok' => false, 'message' => 'سایت پاسخِ 401 داد.', 'body' => '{"error":"invalid api_key NAVKEY"}']];
+    $rn = Rates::fetchOne('navasan');
+    T::ok(!$rn['ok'] && str_contains($rn['error'], 'https: به سایت وصل نشد') && str_contains($rn['error'], 'http: سایت پاسخِ 401 داد')
+        && str_contains($rn['error'], 'invalid api_key ••••') && !str_contains($rn['error'], 'NAVKEY'),
+        '⛔ خطا: هر دو آدرس، با پاسخِ خودِ سرویس، و کلید پوشانده', $rn['error']);
+    $fake = $fakeBak;
     unset($fake['https://api.navasan.tech/latest/?api_key=NAVKEY']);
     $fake['http://api.navasan.tech/latest/?api_key=NAVKEY'] = $nav;
     $calls = [];
@@ -231,7 +241,7 @@ try {
     $res = Rates::refresh();
     T::ok(!in_array('https://api.navasan.tech/latest/?api_key=NAVKEY', $calls, true), '⛔ سقفِ ماهانه‌ی پرشده: نوسان صدا زده نمی‌شود');
     T::ok(str_contains($res['report']['navasan'] ?? '', 'سقف'), 'و گزارش علتش را می‌گوید');
-    T::same('blocked', (string)$pdo->query("SELECT last_error FROM rate_sources WHERE provider = 'brsapi'")->fetchColumn(), 'خطای منبع ثبت شد');
+    T::same('https: blocked', (string)$pdo->query("SELECT last_error FROM rate_sources WHERE provider = 'brsapi'")->fetchColumn(), 'خطای منبع ثبت شد (دو آدرس با یک خطا، یک بار)');
     T::ok(in_array('https://Api.BrsApi.ir/Market/Gold_Currency.php?key=SECRET-KEY-1', $calls, true), 'آدرسِ اول جواب نداد ⇒ آدرسِ دومِ همان منبع امتحان شد');
     Rates::forget();
     T::same(100000, Rates::price('usd'), '⛔ منبعِ قطع: آخرین نرخِ سالم می‌ماند');

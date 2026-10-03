@@ -73,7 +73,7 @@ if ($pi !== false) {
         if (!$r['ok']) {
             echo "  ✗ {$r['error']}\n";
         } else {
-            echo "  ✓ از {$r['url']}\n";
+            echo '  ✓ از ' . preg_replace('~(key=)[^&]+~i', '$1••••', (string)$r['url']) . "\n";
             foreach ($r['rates'] as $code => $v) {
                 $code = ltrim($code, '@');
                 printf("    %-14s %16s تومان  (%s)\n", $code, $fmt($v), Rates::label($code));

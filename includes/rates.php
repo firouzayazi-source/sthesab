@@ -248,7 +248,7 @@ final class Rates
         $par = ['e' => empty($in['enabled']) ? 0 : 1, 'o' => (int)($in['priority'] ?? 0),
                 'url' => $url === '' ? null : $url, 'r' => empty($in['in_rial']) ? 0 : 1, 'p' => $p];
         if ($p === 'custom') { $set[] = 'paths = :paths'; $par['paths'] = $paths; }
-        $key = trim((string)($in['api_key'] ?? ''));
+        $key = self::cleanKey((string)($in['api_key'] ?? ''));
         if (!empty($in['clear_key'])) { $set[] = 'api_key = NULL'; }
         elseif ($key !== '') {
             if (mb_strlen($key) > 300) { return ['ok' => false, 'message' => 'کلید بیش از حد بلند است.'];}
@@ -263,7 +263,27 @@ final class Rates
         $st = Database::getConnection()->prepare('SELECT api_key FROM rate_sources WHERE provider = :p');
         $st->execute(['p' => $p]);
         $v = $st->fetchColumn();
-        return $v ? (string)(Crypto::decrypt((string)$v) ?? '') : '';
+        // ⚠ هنگامِ خواندن هم پاک می‌شود — کلیدی که پیش از این قاعده ذخیره شده بود هم درست برود.
+        return $v ? self::cleanKey((string)(Crypto::decrypt((string)$v) ?? '')) : '';
+    }
+
+    /**
+     * ⛔ کلید هیچ فاصله و نویسه‌ی نامرئی‌ای ندارد. کلیدِ نوسان از پیامِ تلگرام روی
+     *    گوشی کپی می‌شود و کپی از کنارِ متنِ فارسی، نشانه‌ی جهت (U+200F/U+200E)،
+     *    نیم‌فاصله یا شکستِ خط را هم با خودش می‌آورد — کلید در خانه درست دیده
+     *    می‌شد و سرویس ردش می‌کرد («در پروژه‌ی دیگر با همین کلید کار می‌کند»).
+     */
+    public static function cleanKey(string $k): string
+    {
+        return (string)preg_replace('/[\s\p{Cf}]+/u', '', $k);
+    }
+
+    /** تکه‌ی کوتاهی از پاسخ برای پیامِ خطا — بی‌برچسب، یک‌خطی، کلید پوشانده. */
+    private static function snippet(string $body, string $key): string
+    {
+        $t = trim((string)preg_replace('~\s+~u', ' ', strip_tags($body)));
+        if ($key !== '') { $t = str_replace($key, '••••', $t); }
+        return $t === '' ? '' : ' — پاسخ: «' . mb_substr($t, 0, 140) . (mb_strlen($t) > 140 ? '…' : '') . '»';
     }
 
     /* ---------------------------------------------------------------
@@ -439,17 +459,28 @@ final class Rates
         $paths = $src['paths'] !== '' ? (json_decode($src['paths'], true) ?: []) : [];
         $urls  = $src['url'] !== '' ? [self::expandUrl($p, $src['url'])] : self::PROVIDERS[$p]['urls'];
         if (!$urls) { return ['ok' => false, 'rates' => [], 'error' => 'آدرس تعیین نشده']; }
-        $err = 'پاسخی نیامد';
+        // ⚠ خطای **هر** آدرس گزارش می‌شود، نه فقط آخری: با https و http، آخری
+        //   («وصل نشد») خطای مفیدِ اولی («کلید نامعتبر») را می‌پوشاند.
+        $errs = [];
+        $last = '';
         foreach ($urls as $u) {
             $u = str_replace('{key}', rawurlencode($key), $u);
             $res = self::http($u);
-            if (!$res['ok']) { $err = (string)($res['message'] ?? 'خطا'); continue; }
+            $scheme = (string)(parse_url($u, PHP_URL_SCHEME) ?? '');
+            if (!$res['ok']) {
+                $body = (string)($res['body'] ?? '');
+                $errs[] = $scheme . ': ' . (string)($res['message'] ?? 'خطا') . self::snippet($body, $key);
+                if ($body !== '') { $last = $body; }
+                continue;
+            }
             $rates = self::parse($p, (string)$res['body'], $src['in_rial'], $paths);
             if ($rates) { return ['ok' => true, 'rates' => $rates, 'error' => null, 'url' => $u, 'body' => (string)$res['body']]; }
-            $err = 'پاسخ آمد ولی هیچ نرخِ شناخته‌شده‌ای در آن نبود';
+            $errs[] = $scheme . ': پاسخ آمد ولی هیچ نرخِ شناخته‌شده‌ای در آن نبود' . self::snippet((string)$res['body'], $key);
             $last = (string)$res['body'];
         }
-        return ['ok' => false, 'rates' => [], 'error' => $err, 'body' => $last ?? ''];
+        $err = $errs ? implode(' · ', array_unique($errs)) : 'پاسخی نیامد';
+        if ($key === '' && self::PROVIDERS[$p]['key'] === 'required') { $err = 'کلید وارد نشده — ' . $err; }
+        return ['ok' => false, 'rates' => [], 'error' => $err, 'body' => $last];
     }
 
     /**
