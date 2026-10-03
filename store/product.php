@@ -42,6 +42,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!$rr['ok']) { redirectWithMessage(Biz::url('product.php?id=' . (int)$res['id']), 'error', 'کالا ذخیره شد، ولی قیمتِ ارزی نه: ' . $rr['message']); }
                 if ($rr['message'] !== '') { $res['message'] .= ' ' . $rr['message']; }
             }
+            // ⛔ مالیات و شناسه‌ی مودیان هم جدا (`saveTax()`) — ورود از فایل آن‌ها را نمی‌فرستد
+            if (isset($_POST['tax_form'])) {
+                $tr = BizProducts::saveTax($userId, (int)$res['id'], $_POST);
+                if (!$tr['ok']) { redirectWithMessage(Biz::url('product.php?id=' . (int)$res['id']), 'error', 'کالا ذخیره شد، ولی ' . $tr['message']); }
+            }
             redirectWithMessage(Biz::url('product.php?id=' . (int)$res['id']), 'success', $res['message']);
         }
         $error = $res['message'];
@@ -237,6 +242,15 @@ require __DIR__ . '/../includes/biz_head.php';
         </div>
         <p class="st-muted">گوشی: هر دستگاه با IMEIِ خودش خرید و فروش می‌شود (فاکتورِ خرید، یک ردیف برای هر گوشی). خدمت موجودی ندارد.</p>
     </fieldset>
+    <?php if (Biz::accReady()): ?>
+    <fieldset class="st-fieldset">
+        <legend>مالیات و سامانه‌ی مودیان</legend>
+        <input type="hidden" name="tax_form" value="1">
+        <label class="st-check"><input type="checkbox" name="vat_exempt" value="1"<?= (int)($product['vat_exempt'] ?? ($_POST['vat_exempt'] ?? 0)) === 1 ? ' checked' : '' ?>> معاف از مالیات بر ارزش افزوده</label>
+        <label class="st-field"><span>شناسه‌ی کالا/خدمت <small class="st-muted">(۱۳ رقم، سامانه‌ی مودیان — خالی = پیش‌فرضِ فروشگاه)</small></span>
+            <input type="text" name="tax_code" value="<?= h((string)($product['tax_code'] ?? ($_POST['tax_code'] ?? ''))) ?>" inputmode="numeric" dir="ltr" maxlength="13"></label>
+    </fieldset>
+    <?php endif; ?>
     <label class="st-field">
         <span>یادداشت <small class="st-muted">(اختیاری)</small></span>
         <textarea name="note" rows="2" maxlength="<?= BizProducts::LIMITS['note'] ?>"><?= h((string)$form['note']) ?></textarea>

@@ -336,7 +336,7 @@ require __DIR__ . '/../includes/biz_head.php';
                     <thead><tr><th>شرح</th><th class="st-hide-sm">تاریخ</th><th class="st-hide-sm">حساب</th><th>نوع</th><th class="st-th-num">مبلغ</th></tr></thead>
                     <tbody>
                     <?php foreach ($recent as $r):
-                        $sign = in_array($r['kind'], ['receipt', 'income'], true) ? 1 : (in_array($r['kind'], ['payment', 'expense'], true) ? -1 : 0);
+                        $sign = in_array($r['kind'], BizPay::IN_KINDS, true) ? 1 : (in_array($r['kind'], ['payment', 'expense', 'drawing'], true) ? -1 : 0);
                         $void = $r['status'] !== 'ok'; ?>
                     <tr class="<?= $void ? 'is-inactive' : '' ?>">
                         <td><a class="st-row-link" href="<?= h(Biz::url('payment.php?id=' . (int)$r['id'])) ?>"><?= h(BizPay::label($r) !== '' ? BizPay::label($r) : BizPay::KINDS[$r['kind']]) ?></a>

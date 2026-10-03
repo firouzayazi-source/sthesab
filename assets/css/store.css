@@ -1407,3 +1407,16 @@ html.st-locked, html.st-locked body { overflow: hidden; }
 .st-rate b { font-weight: 700; }
 .st-rate small { color: var(--st-ink-3); font-size: 11px; }
 .st-rate.is-stale { opacity: .6; }
+
+/* ---------- دفاتر و مالیات (`accounting.php`)، شمارشِ صندوق، حقوق ---------- */
+.st-grid-2, .st-grid-3 { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-bottom: 16px; }
+@media (min-width: 720px) { .st-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 960px) { .st-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.st-grid-2 > .st-card, .st-grid-3 > .st-card { margin: 0; }
+.st-inline { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+.st-detail summary { cursor: pointer; font-size: 12px; }
+.st-detail .st-list { margin-top: 6px; }
+.st-journal .st-card-head { margin-bottom: 6px; }
+.st-journal .st-table td:first-child { width: 4.5em; }
+.st-history .st-list-row { font-size: 13px; }
+.st-list-row.st-sum-total { border-top: 1px solid var(--st-line, rgba(0,0,0,.12)); padding-top: 8px; }

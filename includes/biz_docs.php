@@ -127,7 +127,8 @@ final class BizInvoices
         $inv = $st->fetch();
         if (!$inv) { return null; }
         $st = $pdo->prepare(
-            'SELECT l.*, pr.name AS product_name, pr.sku, pr.track_stock, pr.has_serial, pr.stock_qty, pr.avg_cost, pr.buy_price
+            'SELECT l.*, pr.name AS product_name, pr.sku, pr.track_stock, pr.has_serial, pr.stock_qty, pr.avg_cost, pr.buy_price'
+            . (Biz::accReady() ? ', pr.vat_exempt, pr.tax_code' : '') . '
              FROM biz_invoice_lines l
              LEFT JOIN biz_products pr ON pr.id = l.product_id AND pr.user_id = l.user_id
              WHERE l.invoice_id = :id AND l.user_id = :u ORDER BY l.line_no, l.id'
@@ -278,7 +279,7 @@ final class BizInvoices
     public static function parseLines(int $userId, array $raw, string $priceCol = ''): array
     {
         $pdo = Database::getConnection();
-        $cols = 'id, name, unit, track_stock, has_serial, is_active, sell_price, buy_price';
+        $cols = 'id, name, unit, track_stock, has_serial, is_active, sell_price, buy_price' . (Biz::accReady() ? ', vat_exempt' : '');
         $byId = $pdo->prepare("SELECT {$cols} FROM biz_products WHERE id = :id AND user_id = :u");
         $bySku = $pdo->prepare("SELECT {$cols} FROM biz_products WHERE sku = :s AND user_id = :u LIMIT 1");
         $byName = $pdo->prepare("SELECT {$cols} FROM biz_products WHERE name = :n AND user_id = :u ORDER BY is_active DESC, id LIMIT 1");
@@ -339,7 +340,8 @@ final class BizInvoices
             }
             $serial = $prod && (int)$prod['has_serial'] === 1 && (int)$prod['track_stock'] === 1;
             $meta[$i] = ['product_id' => $prod ? (int)$prod['id'] : null, 'name' => $prod ? (string)$prod['name'] : null,
-                         'serial' => $serial, 'imei1' => $imei1, 'imei2' => $imei2];
+                         'serial' => $serial, 'imei1' => $imei1, 'imei2' => $imei2,
+                         'vat_exempt' => $prod && (int)($prod['vat_exempt'] ?? 0) === 1];
             $qty   = $qtyIn === '' ? 1.0 : sanitizeQty($qtyIn);
             // ⛔ قیمتِ خالی = قیمتِ خودِ کالا (فروش یا خرید)، نه صفر: خانه‌ای که
             //    کاربر پاک کرده یا اسکریپتش نرسیده، فروشِ مجانی صادر می‌کرد
@@ -392,6 +394,8 @@ final class BizInvoices
                 'inactive' => $prod && (int)$prod['is_active'] !== 1,
                 'imei1' => $imei1 === '' ? null : $imei1, 'imei2' => $imei2 === '' ? null : $imei2,
                 'note' => $lnote === '' ? null : $lnote,
+                // ⛔ معافیت از خودِ کالا؛ شرحِ آزاد مشمول است (پیش‌فرضِ قانون)
+                'vat_exempt' => $prod && (int)($prod['vat_exempt'] ?? 0) === 1,
             ];
         }
         return ['lines' => $lines, 'errors' => $errors, 'meta' => $meta];
@@ -400,10 +404,16 @@ final class BizInvoices
     /**
      * جمع‌ها و سهمِ هر ردیف از تخفیف/حملِ کلِ فاکتور (`net_total`) —
      * متناسب با مبلغِ ردیف؛ باقیمانده‌ی گرد به آخرین ردیفِ ناصفر می‌رود،
-     * پس جمعِ `net_total` همیشه دقیقاً `total` است.
-     * @return array{lines:array, subtotal:int, total:int}
+     * پس جمعِ `net_total` همیشه دقیقاً `net` است.
+     *
+     * ⛔ مالیات بر ارزش افزوده (`$vat` ٪، migration_biz_accounting) روی **خالصِ**
+     *    هر ردیف (پس از سهمِ تخفیف و حمل) و جدا برای هر ردیف گرد می‌شود؛ ردیفِ
+     *    کالای معاف صفر. `net_total` بی‌مالیات می‌ماند — درآمدِ فروش و بهای
+     *    تمام‌شده‌ی خرید از آن ساخته می‌شوند و مالیات نه درآمد است نه بها —
+     *    و `total` = `net` + `tax` همان است که طرف‌حساب بدهکار می‌شود.
+     * @return array{lines:array, subtotal:int, net:int, tax:int, total:int}
      */
-    public static function totals(array $lines, int $discount, int $extra): array
+    public static function totals(array $lines, int $discount, int $extra, float $vat = 0.0): array
     {
         $sub = 0;
         foreach ($lines as $l) { $sub += (int)$l['line_total']; }
@@ -424,7 +434,40 @@ final class BizInvoices
             $k = array_key_last($lines);
             $lines[$k]['net_total'] = (int)$lines[$k]['line_total'] + $adj;
         }
-        return ['lines' => $lines, 'subtotal' => $sub, 'total' => $total];
+        $tax = 0;
+        foreach ($lines as $k => $l) {
+            $t = $vat > 0 && empty($l['vat_exempt']) ? self::lineTax((int)$l['net_total'], $vat) : 0;
+            $lines[$k]['tax_amount'] = $t;
+            $tax += $t;
+        }
+        return ['lines' => $lines, 'subtotal' => $sub, 'net' => $total, 'tax' => $tax, 'total' => $total + $tax];
+    }
+
+    /** نرخ برای خانه‌ی فرم: ۰ ← خالی، ۱۰٫۰۰ ← «10». */
+    public static function rateText(float $r): string
+    {
+        return $r > 0 ? rtrim(rtrim(number_format($r, 2, '.', ''), '0'), '.') : '0';
+    }
+
+    /** ⛔ تنها فرمولِ مالیاتِ یک ردیف — گردِ ریاضی روی خالصِ ردیف. */
+    public static function lineTax(int $net, float $vat): int
+    {
+        return $vat > 0 ? (int)round($net * $vat / 100) : 0;
+    }
+
+    /**
+     * نرخِ مالیاتِ یک سند از فرم: خالی/نبود = نرخِ پیش‌فرض (فروشگاه یا خودِ
+     * پیش‌نویس). @return array{ok:bool, rate?:float, message?:string}
+     */
+    public static function vatFromForm(int $userId, $raw, float $default): array
+    {
+        if (!Biz::accReady()) { return ['ok' => true, 'rate' => 0.0]; }
+        $raw = trim(str_replace(['٫', '/', ','], '.', toLatinDigits((string)($raw ?? ''))));
+        if ($raw === '') { return ['ok' => true, 'rate' => $default]; }
+        if (!preg_match('/^\d{1,2}(\.\d{1,2})?$/', $raw) || (float)$raw > Biz::VAT_MAX) {
+            return ['ok' => false, 'message' => 'نرخِ مالیات بر ارزش افزوده بینِ ۰ و ' . toPersianDigits((string)(int)Biz::VAT_MAX) . ' درصد است.'];
+        }
+        return ['ok' => true, 'rate' => (float)$raw];
     }
 
     /* ------------------------------------------------------------
@@ -450,8 +493,20 @@ final class BizInvoices
         foreach (['discount' => 'تخفیفِ فاکتور', 'extra' => 'هزینه‌ی جانبی'] as $k => $lbl) {
             if (($e = BizCommon::moneyError($head[$k], $lbl)) !== null) { return ['ok' => false, 'message' => $e]; }
         }
-        $t = self::totals($parsed['lines'], $head['discount'], $head['extra']);
-        if ($t['total'] < 0) { return ['ok' => false, 'message' => 'تخفیف از جمعِ فاکتور بیشتر است.']; }
+        // ⛔ نرخِ مالیات: فرم، وگرنه نرخِ خودِ پیش‌نویس، وگرنه نرخِ امروزِ فروشگاه —
+        //    سندِ موجود هرگز با عوض شدنِ نرخِ فروشگاه بی‌صدا عوض نمی‌شود.
+        $acc = Biz::accReady();
+        $defRate = Biz::vatRate($userId);
+        if ($acc && $id > 0) {
+            $vr = Database::getConnection()->prepare('SELECT vat_rate FROM biz_invoices WHERE id = :id AND user_id = :u');
+            $vr->execute(['id' => $id, 'u' => $userId]);
+            $cur = $vr->fetchColumn();
+            if ($cur !== false) { $defRate = (float)$cur; }
+        }
+        $vat = self::vatFromForm($userId, $in['vat_rate'] ?? null, $defRate);
+        if (!$vat['ok']) { return ['ok' => false, 'message' => $vat['message']]; }
+        $t = self::totals($parsed['lines'], $head['discount'], $head['extra'], (float)$vat['rate']);
+        if ($t['net'] < 0) { return ['ok' => false, 'message' => 'تخفیف از جمعِ فاکتور بیشتر است.']; }
         if (($e = BizCommon::moneyError($t['total'], 'جمعِ فاکتور')) !== null) { return ['ok' => false, 'message' => $e]; }
 
         $pdo = Database::getConnection();
@@ -470,6 +525,7 @@ final class BizInvoices
                     return ['ok' => false, 'message' => 'برگشت از این صفحه ویرایش نمی‌شود.'];
                 }
                 $kind = (string)$cur['kind'];
+                $before = BizLog::snapshot($pdo, $userId, $id);
                 $pdo->prepare('UPDATE biz_invoices SET party_id = :p, inv_date = :d, due_date = :dd, subtotal = :s, discount = :di,
                                       extra = :e, total = :t, note = :n WHERE id = :id AND user_id = :u')
                     ->execute(['p' => $head['party_id'], 'd' => $head['date'], 'dd' => $head['due'], 's' => $t['subtotal'],
@@ -482,7 +538,16 @@ final class BizInvoices
                                's' => $t['subtotal'], 'di' => $head['discount'], 'e' => $head['extra'], 't' => $t['total'], 'n' => $head['note']]);
                 $id = (int)$pdo->lastInsertId();
             }
+            if ($acc) {
+                $pdo->prepare('UPDATE biz_invoices SET vat_rate = :r, tax_total = :tx WHERE id = :id AND user_id = :u')
+                    ->execute(['r' => (float)$vat['rate'], 'tx' => $t['tax'], 'id' => $id, 'u' => $userId]);
+            }
             self::writeLines($pdo, $userId, $id, $t['lines']);
+            // ⛔ سرگذشت: ویرایشِ پیش‌نویسی که **شماره دارد** (صادر شده بود و برای
+            //    اصلاح برگشت) با عکسِ پیش از ویرایش — همان سندی که دستِ مشتری است.
+            if (isset($before) && $before !== null && $before['number'] !== null) {
+                BizLog::add($pdo, $userId, 'invoice', $id, 'edit', $t['total'], $before);
+            }
             $pdo->commit();
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) { $pdo->rollBack(); }
@@ -517,10 +582,11 @@ final class BizInvoices
         // «شرحِ کالا» (`migration_biz_search`) — روی نصبِ عقب‌مانده بی‌صدا کنار
         // گذاشته می‌شود، نه اینکه صدورِ فاکتور بخوابد.
         $withNote = function_exists('tableHasColumn') && tableHasColumn('biz_invoice_lines', 'note');
+        $withTax  = Biz::accReady();
         $ins = $pdo->prepare(
             'INSERT INTO biz_invoice_lines (user_id, invoice_id, line_no, product_id, ref_line_id, description, unit, imei1, imei2, '
-            . ($withNote ? 'note, ' : '') . 'qty, unit_price, line_discount, line_total, net_total, unit_cost)
-             VALUES (:u, :i, :no, :p, :r, :d, :un, :m1, :m2, ' . ($withNote ? ':nt2, ' : '') . ':q, :pr, :di, :lt, :nt, :c)'
+            . ($withNote ? 'note, ' : '') . ($withTax ? 'tax_amount, ' : '') . 'qty, unit_price, line_discount, line_total, net_total, unit_cost)
+             VALUES (:u, :i, :no, :p, :r, :d, :un, :m1, :m2, ' . ($withNote ? ':nt2, ' : '') . ($withTax ? ':tx, ' : '') . ':q, :pr, :di, :lt, :nt, :c)'
         );
         foreach (array_values($lines) as $n => $l) {
             $row = ['u' => $userId, 'i' => $id, 'no' => $n + 1, 'p' => $l['product_id'], 'r' => $l['ref_line_id'],
@@ -529,6 +595,7 @@ final class BizInvoices
                     'di' => $l['line_discount'], 'lt' => $l['line_total'], 'nt' => $l['net_total'] ?? $l['line_total'],
                     'c' => $l['unit_cost']];
             if ($withNote) { $row['nt2'] = $l['note'] ?? null; }
+            if ($withTax)  { $row['tx'] = (int)($l['tax_amount'] ?? 0); }
             $ins->execute($row);
         }
     }
@@ -673,6 +740,7 @@ final class BizInvoices
             }
         }
 
+        BizLog::add($pdo, $userId, 'invoice', $id, 'issue', (int)$inv['total']);
         if ($payAmount > 0) {
             $p = BizPay::createTx($pdo, $userId, [
                 'kind' => self::SETTLED_BY[$kind], 'party_id' => $inv['party_id'] !== null ? (int)$inv['party_id'] : 0,
@@ -772,6 +840,8 @@ final class BizInvoices
                     . ' بعد از این سند جابه‌جا شده است؛ اول سندِ بعدی‌اش را باطل کنید.'];
             }
             $voidedOrigin = count(array_filter($linked, fn($p) => (int)$p['origin_invoice'] === 1));
+            BizLog::add($pdo, $userId, 'invoice', $id, $to === 'void' ? 'void' : 'unissue', (int)$inv['total'],
+                        BizLog::snapshot($pdo, $userId, $id));
 
             $cl = $pdo->prepare('SELECT DISTINCT product_id FROM biz_stock_moves WHERE user_id = :u AND ref_type = :rt AND ref_id = :r');
             $cl->execute(['u' => $userId, 'rt' => BizStock::REF_INVOICE, 'r' => $id]);
@@ -785,6 +855,7 @@ final class BizInvoices
                 if ((int)$p['origin_invoice'] === 1) {
                     $pdo->prepare("UPDATE biz_payments SET status = 'void', voided_at = NOW() WHERE id = :id AND user_id = :u")
                         ->execute(['id' => (int)$p['id'], 'u' => $userId]);
+                    BizLog::add($pdo, $userId, 'payment', (int)$p['id'], 'void', null);
                 }
             }
             if ($to === 'void') {
@@ -824,6 +895,7 @@ final class BizInvoices
                              WHERE id = :id AND user_id = :u AND status = 'draft' AND number IS NOT NULL");
         $up->execute(['id' => $id, 'u' => $userId]);
         if ($up->rowCount() > 0) {
+            BizLog::add($pdo, $userId, 'invoice', $id, 'void', null);
             return ['ok' => true, 'message' => 'این سند شماره داشت؛ حذف نشد، باطل شد تا شماره‌اش به سندِ دیگری نرسد.'];
         }
         $st = $pdo->prepare("DELETE FROM biz_invoices WHERE id = :id AND user_id = :u AND status = 'draft' AND number IS NULL");
@@ -844,18 +916,20 @@ final class BizInvoices
     public static function returnable(int $userId, array $orig): array
     {
         $st = Database::getConnection()->prepare(
-            "SELECT l.ref_line_id, SUM(l.qty) AS q, SUM(l.net_total) AS a FROM biz_invoice_lines l
+            "SELECT l.ref_line_id, SUM(l.qty) AS q, SUM(l.net_total) AS a" . (Biz::accReady() ? ', SUM(l.tax_amount) AS tx' : ', 0 AS tx') . " FROM biz_invoice_lines l
              JOIN biz_invoices i ON i.id = l.invoice_id AND i.user_id = l.user_id
              WHERE i.ref_invoice_id = :r AND i.user_id = :u AND i.status <> 'void' AND l.ref_line_id IS NOT NULL
              GROUP BY l.ref_line_id"
         );
         $st->execute(['r' => (int)$orig['id'], 'u' => $userId]);
-        $done = []; $amt = [];
-        foreach ($st->fetchAll() as $r) { $done[(int)$r['ref_line_id']] = (float)$r['q']; $amt[(int)$r['ref_line_id']] = (int)$r['a']; }
+        $done = []; $amt = []; $tax = [];
+        foreach ($st->fetchAll() as $r) {
+            $done[(int)$r['ref_line_id']] = (float)$r['q']; $amt[(int)$r['ref_line_id']] = (int)$r['a']; $tax[(int)$r['ref_line_id']] = (int)$r['tx'];
+        }
         $out = [];
         foreach ($orig['lines'] as $l) {
             $out[(int)$l['id']] = ['line' => $l, 'left' => max(0.0, round((float)$l['qty'] - ($done[(int)$l['id']] ?? 0.0), 3)),
-                                   'amount' => $amt[(int)$l['id']] ?? 0];
+                                   'amount' => $amt[(int)$l['id']] ?? 0, 'tax' => $tax[(int)$l['id']] ?? 0];
         }
         return $out;
     }
@@ -917,17 +991,24 @@ final class BizInvoices
             // ⛔ آخرین برگشتِ یک ردیف «باقیمانده‌ی دقیق» است، نه مقدار × فی: سه
             //    برگشتِ تک‌تایی از ردیفِ ۳تاییِ ۱۰۰ تومانی ۳۳+۳۳+۳۳ می‌شد و یک
             //    تومان برای همیشه روی فاکتور «تسویه‌نشده» می‌ماند.
-            $lt = abs($q - $left[$lineId]['left']) < 0.0005
+            $last = abs($q - $left[$lineId]['left']) < 0.0005;
+            $lt = $last
                 ? (int)$o['net_total'] - $left[$lineId]['amount']
                 : (int)round($q * $unitNet);
+            // ⛔ مالیاتِ برگشت = سهمِ همان مقدار از مالیاتِ ردیفِ اصلی (نه نرخِ امروز)؛
+            //    آخرین برگشت باقیمانده‌ی دقیق — همان قاعده‌ی مبلغ.
+            $oTax = (int)($o['tax_amount'] ?? 0);
+            $tx = $oTax === 0 ? 0 : ($last ? $oTax - $left[$lineId]['tax']
+                                           : (int)round($q * $oTax / max((float)$o['qty'], 0.0005)));
             $lines[] = ['product_id' => $o['product_id'] !== null ? (int)$o['product_id'] : null, 'ref_line_id' => $lineId,
                         'description' => (string)$o['description'], 'unit' => (string)$o['unit'], 'qty' => round($q, 3),
                         'unit_price' => (int)round($unitNet), 'line_discount' => 0, 'line_total' => $lt, 'net_total' => $lt,
                         'unit_cost' => null, 'imei1' => $o['imei1'] ?? null, 'imei2' => $o['imei2'] ?? null,
-                        'note' => $o['note'] ?? null];
+                        'note' => $o['note'] ?? null, 'tax_amount' => $tx];
         }
         if (!$lines) { return ['ok' => false, 'message' => 'تعدادِ برگشت را دست‌کم برای یک ردیف بنویسید.']; }
-        $total = array_sum(array_column($lines, 'line_total'));
+        $taxTotal = array_sum(array_column($lines, 'tax_amount'));
+        $total = array_sum(array_column($lines, 'line_total')) + $taxTotal;
         // ⛔ «پس دادنِ کامل» یعنی همان مبلغی که همین‌جا ساخته شد — صفحه آن را
         //    دوباره حساب نمی‌کند (دو جای حسابِ پول دیر یا زود دو عدد می‌گویند).
         if (!empty($pay['full'])) { $pay['amount'] = (string)$total; }
@@ -938,8 +1019,12 @@ final class BizInvoices
         $pdo->prepare("INSERT INTO biz_invoices (user_id, kind, status, party_id, ref_invoice_id, inv_date, subtotal, total, note)
                        VALUES (:u, :k, 'draft', :p, :r, :d, :s, :t, :n)")
             ->execute(['u' => $userId, 'k' => $kind, 'p' => $orig['party_id'], 'r' => $origId, 'd' => $date,
-                       's' => $total, 't' => $total, 'n' => $note === '' ? null : $note]);
+                       's' => $total - $taxTotal, 't' => $total, 'n' => $note === '' ? null : $note]);
         $id = (int)$pdo->lastInsertId();
+        if (Biz::accReady()) {
+            $pdo->prepare('UPDATE biz_invoices SET vat_rate = :r, tax_total = :tx WHERE id = :id AND user_id = :u')
+                ->execute(['r' => (float)($orig['vat_rate'] ?? 0), 'tx' => $taxTotal, 'id' => $id, 'u' => $userId]);
+        }
         self::writeLines($pdo, $userId, $id, $lines);
         $r = self::issueTx($pdo, $userId, $id, $pay);
         if (!$r['ok']) { return $r; }
@@ -986,7 +1071,18 @@ final class BizPay
         'expense'  => 'هزینه‌ی فروشگاه',
         'income'   => 'درآمدِ متفرقه',
         'transfer' => 'انتقال بینِ صندوق‌ها',
+        // ⛔ پولِ مالک — نه درآمد است نه هزینه (سود و زیان را تکان نمی‌دهد)؛
+        //    در ترازنامه به «سرمایه» و «برداشت» می‌رود (`BizLedger`). پیش از این
+        //    آورده «درآمد» و برداشت «هزینه» ثبت می‌شد و سودِ فروشگاه دروغ می‌گفت.
+        'capital'  => 'آورده‌ی مالک',
+        'drawing'  => 'برداشتِ مالک',
     ];
+
+    /** ⛔ نوع‌هایی که پول را **به** صندوق می‌آورند — تنها فهرست؛ بقیه (جز انتقال) می‌برند. */
+    public const IN_KINDS = ['receipt', 'income', 'capital'];
+
+    /** نوع‌هایی که طرف‌حساب و فاکتور ندارند (شرح و سرفصل دارند). */
+    public const FREE_KINDS = ['expense', 'income', 'capital', 'drawing'];
 
     public const METHODS = [
         'cash'     => 'نقد',
@@ -1013,7 +1109,8 @@ final class BizPay
     public const SETTLES = ['receipt' => ['sale', 'purchase_return'], 'payment' => ['purchase', 'sale_return']];
 
     public const FILTERS = ['' => 'همه', 'receipt' => 'دریافت‌ها', 'payment' => 'پرداخت‌ها', 'expense' => 'هزینه‌ها',
-                            'income' => 'درآمدها', 'transfer' => 'انتقال‌ها', 'void' => 'باطل'];
+                            'income' => 'درآمدها', 'transfer' => 'انتقال‌ها', 'capital' => 'آورده‌ی مالک',
+                            'drawing' => 'برداشتِ مالک', 'void' => 'باطل'];
 
     public const PAGE_SIZE = 25;
     public const TITLE_MAX = 150;
@@ -1021,7 +1118,7 @@ final class BizPay
     /** نشانه‌ی جهتِ پول برای صندوقِ مبدأ: + ورود، − خروج. */
     public static function cashSign(string $kind): int
     {
-        return in_array($kind, ['receipt', 'income'], true) ? 1 : -1;
+        return in_array($kind, self::IN_KINDS, true) ? 1 : -1;
     }
 
     /** @return array{ok:bool, message:string, id?:int} */
@@ -1104,11 +1201,27 @@ final class BizPay
         } else {
             $to = 0;
         }
-        if (in_array($kind, ['expense', 'income'], true)) {
-            if ($title === '') { return ['ok' => false, 'message' => 'شرحِ ' . self::KINDS[$kind] . ' را بنویسید (مثلاً اجاره، قبضِ برق).']; }
-            $party = 0; $invId = 0;
+        // ⛔ سرفصلِ هزینه/درآمد (migration_biz_accounting): شناسه از فرم می‌آید و
+        //    باید سرفصلِ فعالِ **همین** فروشگاه و هم‌جنس باشد. شرحِ خالی = نامِ سرفصل.
+        $catId = null;
+        if (in_array($kind, ['expense', 'income'], true) && Biz::accReady() && (int)($in['category_id'] ?? 0) > 0) {
+            $cat = BizExpCats::get($userId, (int)$in['category_id']);
+            if (!$cat || $cat['kind'] !== $kind || (int)$cat['is_active'] !== 1) { return ['ok' => false, 'message' => 'سرفصلِ ' . self::KINDS[$kind] . ' پیدا نشد.']; }
+            $catId = (int)$cat['id'];
+            if ($title === '') { $title = (string)$cat['name']; }
+        }
+        if (in_array($kind, self::FREE_KINDS, true)) {
+            if ($title === '' && in_array($kind, ['expense', 'income'], true)) {
+                return ['ok' => false, 'message' => 'سرفصل یا شرحِ ' . self::KINDS[$kind] . ' را بنویسید (مثلاً اجاره، قبضِ برق).'];
+            }
+            // ⛔ هزینه‌ی حقوق به کارمند پیوند می‌خورد (گزارشِ حقوقِ هر نفر) ولی
+            //    مانده‌اش را تکان نمی‌دهد — `BALANCE_SQL` فقط دریافت/پرداخت را می‌شمارد.
+            $emp = $kind === 'expense' && $party > 0 ? BizParties::get($userId, $party) : null;
+            $party = $emp !== null && ($emp['kind'] ?? '') === 'employee' ? $party : 0;
+            $invId = 0;
         }
         if ($party > 0 && !BizParties::get($userId, $party)) { return ['ok' => false, 'message' => 'طرف‌حساب پیدا نشد.']; }
+        if ($title === '' && in_array($kind, ['capital', 'drawing'], true)) { $title = self::KINDS[$kind]; }
         if ($invId > 0) {
             $iv = $pdo->prepare('SELECT kind, party_id, status FROM biz_invoices WHERE id = :id AND user_id = :u');
             $iv->execute(['id' => $invId, 'u' => $userId]);
@@ -1138,6 +1251,10 @@ final class BizPay
                        'i' => $invId ?: null, 'o' => !empty($in['origin_invoice']) ? 1 : 0, 'am' => $amount, 'd' => $date,
                        'm' => $method, 'ti' => $title === '' ? null : $title, 'n' => $note === '' ? null : $note]);
         $id = (int)$pdo->lastInsertId();
+        if ($catId !== null) {
+            $pdo->prepare('UPDATE biz_payments SET category_id = :c WHERE id = :id AND user_id = :u')
+                ->execute(['c' => $catId, 'id' => $id, 'u' => $userId]);
+        }
         if ($chq !== null) {
             $pdo->prepare("UPDATE biz_payments SET cheque_no = :no, cheque_bank = :b, cheque_due = :d, cheque_status = 'pending'
                            WHERE id = :id AND user_id = :u")
@@ -1146,6 +1263,7 @@ final class BizPay
         if (in_array($kind, ['receipt', 'payment'], true)) {
             self::reallocateTx($pdo, $userId, $party ?: null, $invId ?: null);
         }
+        BizLog::add($pdo, $userId, 'payment', $id, 'create', $amount);
         return ['ok' => true, 'message' => self::KINDS[$kind] . ' شماره‌ی ' . toPersianDigits((string)$number) . ' ثبت شد.', 'id' => $id];
     }
 
@@ -1202,6 +1320,7 @@ final class BizPay
             }
             $pdo->prepare("UPDATE biz_payments SET status = 'void', voided_at = NOW() WHERE id = :id AND user_id = :u")
                 ->execute(['id' => $id, 'u' => $userId]);
+            BizLog::add($pdo, $userId, 'payment', $id, 'void', (int)$p['amount']);
             if (in_array($p['kind'], ['receipt', 'payment'], true)) {
                 self::reallocateTx($pdo, $userId, $p['party_id'] !== null ? (int)$p['party_id'] : null,
                                    $p['invoice_id'] !== null ? (int)$p['invoice_id'] : null);
@@ -1373,8 +1492,8 @@ final class BizPay
                  LEFT JOIN biz_accounts t ON t.id = y.to_account_id AND t.user_id = y.user_id';
         $pdo = Database::getConnection();
         $st = $pdo->prepare("SELECT COUNT(*) AS n,
-                     COALESCE(SUM(CASE WHEN y.status = 'ok' AND y.kind IN ('receipt','income') THEN y.amount ELSE 0 END), 0) AS i,
-                     COALESCE(SUM(CASE WHEN y.status = 'ok' AND y.kind IN ('payment','expense') THEN y.amount ELSE 0 END), 0) AS o
+                     COALESCE(SUM(CASE WHEN y.status = 'ok' AND y.kind IN ('receipt','income','capital') THEN y.amount ELSE 0 END), 0) AS i,
+                     COALESCE(SUM(CASE WHEN y.status = 'ok' AND y.kind IN ('payment','expense','drawing') THEN y.amount ELSE 0 END), 0) AS o
                      {$join} WHERE {$w}");
         $st->execute($params);
         $agg = $st->fetch() ?: ['n' => 0, 'i' => 0, 'o' => 0];
@@ -1393,7 +1512,7 @@ final class BizPay
     public static function label(array $p): string
     {
         if ($p['kind'] === 'transfer') { return 'از ' . ($p['account_name'] ?? '') . ' به ' . ($p['to_account_name'] ?? ''); }
-        if (in_array($p['kind'], ['expense', 'income'], true)) { return (string)($p['title'] ?? ''); }
+        if (in_array($p['kind'], self::FREE_KINDS, true)) { return (string)($p['title'] ?? ''); }
         return (string)($p['party_name'] ?? 'گذری');
     }
 }
@@ -1567,6 +1686,7 @@ final class BizCheques
                 ->execute(['c' => $id, 't' => (int)$r['id'], 'u' => $userId]);
             $pdo->prepare("UPDATE biz_payments SET cheque_status = 'cleared' WHERE id = :id AND user_id = :u")
                 ->execute(['id' => $id, 'u' => $userId]);
+            BizLog::add($pdo, $userId, 'payment', $id, 'cheque_clear', (int)$p['amount']);
             $pdo->commit();
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) { $pdo->rollBack(); }
@@ -1593,6 +1713,7 @@ final class BizCheques
                 ->execute(['id' => $id, 'u' => $userId]);
             $pdo->prepare("UPDATE biz_payments SET cheque_status = 'pending' WHERE id = :id AND user_id = :u")
                 ->execute(['id' => $id, 'u' => $userId]);
+            BizLog::add($pdo, $userId, 'payment', $id, 'cheque_unclear', (int)$p['amount']);
             $pdo->commit();
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) { $pdo->rollBack(); }
@@ -1645,6 +1766,7 @@ final class BizCheques
                 ->execute(['c' => $id, 'e' => (int)$r['id'], 'u' => $userId]);
             $pdo->prepare("UPDATE biz_payments SET cheque_status = 'endorsed' WHERE id = :id AND user_id = :u")
                 ->execute(['id' => $id, 'u' => $userId]);
+            BizLog::add($pdo, $userId, 'payment', $id, 'cheque_endorse', (int)$p['amount']);
             $pdo->commit();
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) { $pdo->rollBack(); }
@@ -1681,6 +1803,7 @@ final class BizCheques
             }
             $pdo->prepare("UPDATE biz_payments SET cheque_status = 'pending' WHERE id = :id AND user_id = :u")
                 ->execute(['id' => $id, 'u' => $userId]);
+            BizLog::add($pdo, $userId, 'payment', $id, 'cheque_unendorse', (int)$p['amount']);
             $pdo->commit();
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) { $pdo->rollBack(); }
@@ -1711,6 +1834,7 @@ final class BizCheques
             if (($e = Biz::lockError($userId, (string)$p['pay_date'], 'دریافتِ این چک')) !== null) { $pdo->rollBack(); return ['ok' => false, 'message' => $e]; }
             $pdo->prepare("UPDATE biz_payments SET status = 'void', voided_at = NOW(), cheque_status = 'bounced' WHERE id = :id AND user_id = :u")
                 ->execute(['id' => $id, 'u' => $userId]);
+            BizLog::add($pdo, $userId, 'payment', $id, 'cheque_bounce', (int)$p['amount']);
             BizPay::reallocateTx($pdo, $userId, $p['party_id'] !== null ? (int)$p['party_id'] : null,
                                  $p['invoice_id'] !== null ? (int)$p['invoice_id'] : null);
             $pdo->commit();
@@ -2016,3 +2140,93 @@ final class BizSerial
         return ['rows' => array_slice($rows, 0, $cap), 'capped' => count($rows) > $cap];
     }
 }
+
+/* =================================================================
+   سرگذشتِ سند (migration_biz_accounting → biz_doc_log)
+   ================================================================= */
+/**
+ * ⛔ «چه کسی، کِی، با این سند چه کرد» — ردِ حسابرسی که حسابدار می‌خواهد.
+ *    سندِ صادرشده حذف نمی‌شود، ولی «برگشت به پیش‌نویس ← اصلاح ← صدورِ
+ *    دوباره» مبلغِ فاکتوری را که دستِ مشتری است بی‌ردی عوض می‌کرد. حالا هر
+ *    کارِ اثرگذار یک ردیف دارد، و کارهایی که چیزی را عوض یا پاک می‌کنند
+ *    (`unissue`، `void`، `edit`) **عکسِ پیش از خود** را هم نگه می‌دارند.
+ *
+ * - فقط از داخلِ تراکنشِ همان کار نوشته می‌شود: کارِ ناموفق ردی نمی‌گذارد
+ *   و کارِ موفق بی‌رد نمی‌ماند.
+ * - نوشتنی است، نه ویرایش‌شدنی: هیچ مسیری ردیفش را عوض یا پاک نمی‌کند
+ *   (جز حذفِ کلِ حساب و بازگرداندنِ کلِ دفتر).
+ * - نصبِ migration‌نخورده: بی‌صدا هیچ (`Biz::accReady()`).
+ */
+final class BizLog
+{
+    /** ⛔ تنها فهرستِ کارها و برچسبشان. */
+    public const ACTIONS = [
+        'issue'            => 'صدور',
+        'edit'             => 'اصلاحِ پیش‌نویسِ شماره‌دار',
+        'unissue'          => 'برگشت به پیش‌نویس',
+        'void'             => 'ابطال',
+        'create'           => 'ثبت',
+        'cheque_clear'     => 'وصولِ چک',
+        'cheque_unclear'   => 'برگشت از وصول',
+        'cheque_endorse'   => 'واگذاریِ چک',
+        'cheque_unendorse' => 'برگشت از واگذاری',
+        'cheque_bounce'    => 'برگشتِ چک',
+    ];
+
+    /** سقفِ ردیف‌های عکس — سندِ ۲۰۰ ردیفی هم کامل می‌ماند. */
+    private const SNAP_LINES = 200;
+
+    public static function add(PDO $pdo, int $userId, string $type, int $docId, string $action, ?int $amount, ?array $snapshot = null): void
+    {
+        if (!Biz::accReady() || !isset(self::ACTIONS[$action]) || !in_array($type, ['invoice', 'payment'], true)) { return; }
+        // ⚠ فقط نشستِ همین درخواست (`Auth::userId()`)، نه `isLoggedIn()` — آن یکی ورود با کوکی را هم امتحان می‌کند
+        $actor = class_exists('Auth') && Auth::userId() !== null ? (int)Auth::userId() : null;
+        $pdo->prepare('INSERT INTO biz_doc_log (user_id, invoice_id, payment_id, action, actor_id, amount, snapshot)
+                       VALUES (:u, :i, :p, :a, :ac, :am, :s)')
+            ->execute(['u' => $userId, 'i' => $type === 'invoice' ? $docId : null, 'p' => $type === 'payment' ? $docId : null,
+                       'a' => $action, 'ac' => $actor, 'am' => $amount,
+                       's' => $snapshot === null ? null : json_encode($snapshot, JSON_UNESCAPED_UNICODE)]);
+    }
+
+    /** عکسِ فشرده‌ی یک فاکتور (سر و ردیف‌ها) — پیش از کاری که آن را عوض می‌کند. */
+    public static function snapshot(PDO $pdo, int $userId, int $invoiceId): ?array
+    {
+        if (!Biz::accReady()) { return null; }
+        $st = $pdo->prepare('SELECT number, status, party_id, inv_date, subtotal, discount, extra, tax_total, total, paid
+                             FROM biz_invoices WHERE id = :id AND user_id = :u');
+        $st->execute(['id' => $invoiceId, 'u' => $userId]);
+        $h = $st->fetch();
+        if (!$h) { return null; }
+        $st = $pdo->prepare('SELECT description, qty, unit_price, line_discount, net_total, tax_amount, imei1
+                             FROM biz_invoice_lines WHERE invoice_id = :id AND user_id = :u ORDER BY line_no, id LIMIT ' . self::SNAP_LINES);
+        $st->execute(['id' => $invoiceId, 'u' => $userId]);
+        $lines = array_map(fn($l) => ['d' => (string)$l['description'], 'q' => (float)$l['qty'], 'p' => (int)$l['unit_price'],
+                                      'ds' => (int)$l['line_discount'], 'n' => (int)$l['net_total'], 't' => (int)$l['tax_amount'],
+                                      'm' => $l['imei1']], $st->fetchAll());
+        return ['number' => $h['number'] !== null ? (int)$h['number'] : null, 'status' => (string)$h['status'],
+                'party_id' => $h['party_id'] !== null ? (int)$h['party_id'] : null, 'date' => (string)$h['inv_date'],
+                'discount' => (int)$h['discount'], 'extra' => (int)$h['extra'], 'tax' => (int)$h['tax_total'],
+                'total' => (int)$h['total'], 'paid' => (int)$h['paid'], 'lines' => $lines];
+    }
+
+    /** سرگذشتِ یک سند، قدیمی به جدید. @return list<array> */
+    public static function forDoc(int $userId, string $type, int $docId): array
+    {
+        if (!Biz::accReady()) { return []; }
+        $col = $type === 'payment' ? 'payment_id' : 'invoice_id';
+        $st = Database::getConnection()->prepare(
+            "SELECT g.id, g.action, g.amount, g.snapshot, g.created_at, u.username AS actor
+             FROM biz_doc_log g LEFT JOIN users u ON u.id = g.actor_id
+             WHERE g.{$col} = :d AND g.user_id = :u ORDER BY g.id LIMIT 200"
+        );
+        $st->execute(['d' => $docId, 'u' => $userId]);
+        return array_map(function (array $r): array {
+            $r['snapshot'] = $r['snapshot'] !== null ? json_decode((string)$r['snapshot'], true) : null;
+            $r['label'] = self::ACTIONS[$r['action']] ?? (string)$r['action'];
+            return $r;
+        }, $st->fetchAll());
+    }
+}
+
+// لایه‌ی حسابداری (سرفصل‌ها، دفتر، مودیان…) — `BizPay::createTx()` سرفصل را از آن می‌پرسد
+require_once __DIR__ . '/biz_acc.php';

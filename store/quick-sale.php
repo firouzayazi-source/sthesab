@@ -81,7 +81,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $parsed = BizInvoices::parseLines($userId, $form['lines']);
 $form['lines'] = BizDocView::mergeMeta($form['lines'], $parsed['meta']);
-$tot = BizInvoices::totals($parsed['lines'], sanitizeAmount($form['discount']), 0);
+$vatQs = Biz::vatRate($userId);                          // فروشِ سریع همیشه نرخِ امروزِ فروشگاه
+$tot = BizInvoices::totals($parsed['lines'], sanitizeAmount($form['discount']), 0, $vatQs);
 if (count($parsed['lines']) === count($form['lines'])) {
     foreach ($form['lines'] as $k => $l) { $form['lines'][$k]['line_total'] = $parsed['lines'][$k]['line_total']; }
 }
@@ -124,6 +125,10 @@ require __DIR__ . '/../includes/biz_head.php';
         <section class="st-card st-sumbox">
             <div class="st-sum-line"><span>جمعِ ردیف‌ها</span><b class="st-num" data-subtotal><?= formatMoney($tot['subtotal']) ?></b></div>
             <label class="st-sum-line"><span>تخفیف</span><input type="text" name="discount" value="<?= h((string)$form['discount']) ?>" inputmode="numeric" dir="ltr" data-discount></label>
+            <?php if ($vatQs > 0): ?>
+            <input type="hidden" value="<?= h(BizInvoices::rateText($vatQs)) ?>" data-vat-rate>
+            <div class="st-sum-line"><span>مالیات بر ارزش افزوده (<?= h(BizView::pct($vatQs)) ?>)</span><b class="st-num" data-tax><?= formatMoney($tot['tax']) ?></b></div>
+            <?php endif; ?>
             <div class="st-sum-line st-sum-total"><span>مبلغِ قابلِ پرداخت</span><b class="st-num" data-total><?= formatMoney($tot['total']) ?></b></div>
         </section>
         <section class="st-card st-paybox">

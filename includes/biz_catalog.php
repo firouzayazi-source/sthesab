@@ -481,6 +481,22 @@ final class BizProducts
      *    را صدا می‌زند این ستون‌ها را نمی‌فرستد و نباید وصلِ کالا را بی‌صدا قطع کند.
      * @return array{ok:bool, message:string}
      */
+    /**
+     * معافیت از مالیات بر ارزش افزوده و شناسه‌ی کالا/خدمتِ مودیان. ⛔ جدا از
+     * `save()` (همان دلیلِ `saveRate()`): ورود از فایل این‌ها را نمی‌فرستد و
+     * نباید پاکشان کند. معافیت فقط روی فاکتورِ **تازه** اثر دارد — هر سند
+     * مالیاتِ خودش را نگه داشته است.
+     */
+    public static function saveTax(int $userId, int $id, array $in): array
+    {
+        if (!Biz::accReady()) { return ['ok' => true, 'message' => '']; }
+        $code = trim(toLatinDigits((string)($in['tax_code'] ?? '')));
+        if ($code !== '' && !preg_match('/^\d{13}$/', $code)) { return ['ok' => false, 'message' => 'شناسه‌ی کالا/خدمت سیزده رقم است.']; }
+        Database::getConnection()->prepare('UPDATE biz_products SET vat_exempt = :x, tax_code = :c WHERE id = :id AND user_id = :u')
+            ->execute(['x' => !empty($in['vat_exempt']) ? 1 : 0, 'c' => $code === '' ? null : $code, 'id' => $id, 'u' => $userId]);
+        return ['ok' => true, 'message' => ''];
+    }
+
     public static function saveRate(int $userId, int $id, array $in): array
     {
         require_once __DIR__ . '/biz_rates.php';
@@ -1341,6 +1357,9 @@ final class BizParties
         'customer' => 'مشتری',
         'supplier' => 'تأمین‌کننده',
         'both'     => 'مشتری و تأمین‌کننده',
+        // ⛔ کارمند (حقوق و مساعده — `BizPayroll`): مساعده «پرداخت» به اوست و
+        //    مانده‌ی بدهکارش همان مساعده‌ی تسویه‌نشده است.
+        'employee' => 'کارمند',
     ];
 
     public const FILTERS = [
@@ -1349,6 +1368,7 @@ final class BizParties
         'supplier' => 'تأمین‌کننده‌ها',
         'debtor'   => 'بدهکاران',
         'creditor' => 'طلبکاران',
+        'employee' => 'کارکنان',
         'inactive' => 'غیرفعال',
     ];
 
@@ -1394,6 +1414,7 @@ final class BizParties
             case 'supplier': $where[] = "p.is_active = 1 AND p.kind IN ('supplier','both')"; break;
             case 'debtor':   $where[] = "p.is_active = 1 AND {$bal} > 0"; break;
             case 'creditor': $where[] = "p.is_active = 1 AND {$bal} < 0"; break;
+            case 'employee': $where[] = "p.is_active = 1 AND p.kind = 'employee'"; break;
             case 'inactive': $where[] = 'p.is_active = 0'; break;
             default:         $where[] = 'p.is_active = 1';
         }
@@ -1750,7 +1771,7 @@ final class BizCash
      *    ⛔ هیچ‌چیز از `walletBalances()` (دفترِ شخصی) اینجا نیست.
      */
     public const BALANCE_SQL = "(a.opening_balance
-        + COALESCE((SELECT SUM(CASE bp.kind WHEN 'receipt' THEN bp.amount WHEN 'income' THEN bp.amount ELSE -bp.amount END)
+        + COALESCE((SELECT SUM(CASE bp.kind WHEN 'receipt' THEN bp.amount WHEN 'income' THEN bp.amount WHEN 'capital' THEN bp.amount ELSE -bp.amount END)
                     FROM biz_payments bp WHERE bp.account_id = a.id AND bp.user_id = a.user_id AND bp.status = 'ok'), 0)
         + COALESCE((SELECT SUM(bp.amount) FROM biz_payments bp
                     WHERE bp.to_account_id = a.id AND bp.user_id = a.user_id AND bp.kind = 'transfer' AND bp.status = 'ok'), 0))";
@@ -1874,6 +1895,13 @@ final class BizCash
    ================================================================= */
 final class BizView
 {
+    /** درصد برای نمایش: «۱۰٪»، «۹٫۵٪». */
+    public static function pct(float $v): string
+    {
+        $t = rtrim(rtrim(number_format($v, 2, '.', ''), '0'), '.');
+        return toPersianDigits(str_replace('.', '٫', $t)) . '٪';
+    }
+
     /** مقدار با واحد. */
     public static function qty($q, string $unit): string
     {

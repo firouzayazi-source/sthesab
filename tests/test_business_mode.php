@@ -64,15 +64,20 @@ const STORE_BUDGET = [
     'store/sales.php'          => 6,
     'store/purchases.php'      => 6,
     'store/quick-sale.php'     => 9,   // +۱: گوشی‌های در انبار (IMEI) در فهرستِ جست‌وجو؛ +۱: نقشه‌ی جدول‌ها برای `first_issued_at` (سرگذشتِ IMEI، بازرسیِ مهر ۱۴۰۵)
-    'store/invoice.php'        => 12,   // +۳: «مانده‌ی قبلی / کل» از `statement()` (طرف‌حساب، اسناد، پرداخت‌ها)
+    'store/invoice.php'        => 13,   // +۳: «مانده‌ی قبلی / کل» از `statement()` (طرف‌حساب، اسناد، پرداخت‌ها); +۱: «سرگذشتِ سند» (`BizLog`)
     'store/invoice-edit.php'   => 12,  // +۱: همان، برای فاکتورِ فروش؛ +۱: همان نقشه‌ی جدول‌ها
     'store/return.php'         => 8,
     'store/payments.php'       => 7,
-    'store/payment.php'        => 6,
+    'store/payment.php'        => 7,   // +۱: «سرگذشتِ سند» (`BizLog`)
     'store/accounts.php'       => 5,
     'store/cheques.php'        => 10,  // +۱: منوی طرف‌حساب‌ها برای «واگذاری» (فقط وقتی چکِ دریافتیِ در جریانی هست)
     'store/categories.php'     => 5,
     'store/account.php'        => 5,   // رمز و بکاپ (بازرسیِ مهر ۱۴۰۵): پوسته‌ی فروشگاه + «رمز دارد؟»
+    // ⛔ دفاتر و مالیات (لایه‌ی حسابداری): زبانه‌ی پیش‌فرض = ترازنامه — دفترِ مشتق
+    //    (افتتاحیه ۲، انبار ۱، فاکتورها ۱، دریافت/پرداخت ۱) + مغایرت‌گیری (صندوق‌ها، طرف‌حساب‌ها، انبار)
+    'store/accounting.php'     => 12,
+    'store/cash-count.php'     => 6,   // صندوق‌ها + شمارش‌های اخیر
+    'store/payroll.php'        => 7,   // کارکنان با مانده + صندوق‌ها + گردش
 ];
 const STORE_NO_BUDGET = ['store/login.php', 'store/logout.php'];
 

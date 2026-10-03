@@ -57,6 +57,7 @@ require __DIR__ . '/../includes/biz_head.php';
     </div>
     <div class="st-head-actions">
         <a class="st-btn st-btn-ghost" href="<?= h(Biz::url('payment.php?k=transfer')) ?>">انتقال بینِ صندوق‌ها</a>
+        <a class="st-btn st-btn-ghost" href="<?= h(Biz::url('cash-count.php')) ?>">شمارشِ صندوق</a>
     </div>
 </div>
 

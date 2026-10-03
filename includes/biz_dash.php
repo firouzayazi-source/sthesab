@@ -67,9 +67,9 @@ final class BizDash
         $nc = self::NOT_CHEQUE;
         $st = Database::getConnection()->prepare(
             "SELECT y.pay_date AS d,
-                SUM(CASE WHEN y.kind IN ('receipt','income') AND a.kind {$nc} THEN y.amount
+                SUM(CASE WHEN y.kind IN ('receipt','income','capital') AND a.kind {$nc} THEN y.amount
                          WHEN y.kind = 'transfer' AND a.kind = 'cheque_in' AND t.kind {$nc} THEN y.amount ELSE 0 END) AS cin,
-                SUM(CASE WHEN y.kind IN ('payment','expense') AND a.kind {$nc} THEN y.amount
+                SUM(CASE WHEN y.kind IN ('payment','expense','drawing') AND a.kind {$nc} THEN y.amount
                          WHEN y.kind = 'transfer' AND t.kind = 'cheque_out' AND a.kind {$nc} THEN y.amount ELSE 0 END) AS cout,
                 SUM(CASE WHEN y.kind = 'expense' THEN y.amount ELSE 0 END) AS exp,
                 SUM(CASE WHEN y.kind = 'income' THEN y.amount ELSE 0 END) AS inc
@@ -141,8 +141,8 @@ final class BizDash
         $out = [];
         foreach ($st->fetchAll() as $r) {
             $a = (int)$r['account_id']; $s = (int)$r['s'];
-            if (in_array($r['kind'], ['receipt', 'income'], true)) { $out[$a] = ($out[$a] ?? 0) + $s; }
-            elseif (in_array($r['kind'], ['payment', 'expense'], true)) { $out[$a] = ($out[$a] ?? 0) - $s; }
+            if (in_array($r['kind'], BizPay::IN_KINDS, true)) { $out[$a] = ($out[$a] ?? 0) + $s; }
+            elseif (in_array($r['kind'], ['payment', 'expense', 'drawing'], true)) { $out[$a] = ($out[$a] ?? 0) - $s; }
             elseif ($r['kind'] === 'transfer') {
                 $out[$a] = ($out[$a] ?? 0) - $s;
                 $t = (int)$r['to_account_id']; if ($t > 0) { $out[$t] = ($out[$t] ?? 0) + $s; }
@@ -282,7 +282,8 @@ final class BizDash
     public static function topCustomers(int $userId, string $from, string $to, int $limit = 5): array
     {
         $st = Database::getConnection()->prepare(
-            "SELECT p.id, p.name, SUM(CASE WHEN i.kind = 'sale' THEN i.total ELSE -i.total END) AS rev, SUM(i.kind = 'sale') AS docs
+            // ⛔ بی‌مالیات — همان «فروشِ خالص»ِ `BizReports::sales()`
+            "SELECT p.id, p.name, SUM(CASE WHEN i.kind = 'sale' THEN 1 ELSE -1 END * (i.total" . (Biz::accReady() ? ' - i.tax_total' : '') . ")) AS rev, SUM(i.kind = 'sale') AS docs
              FROM biz_invoices i JOIN biz_parties p ON p.id = i.party_id AND p.user_id = i.user_id
              WHERE i.user_id = :u AND i.status = 'issued' AND i.kind IN ('sale','sale_return') AND i.inv_date BETWEEN :f AND :t
              GROUP BY p.id, p.name HAVING rev > 0 ORDER BY rev DESC LIMIT :lim"

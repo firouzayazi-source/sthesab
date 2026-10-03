@@ -23,6 +23,7 @@ final class BizReports
         'month'      => 'این ماه',
         'last_month' => 'ماهِ قبل',
         'year'       => 'امسال',
+        'last_year'  => 'سالِ مالیِ قبل',
         'all'        => 'از ابتدا',
         'custom'     => 'بازه‌ی دلخواه',
     ];
@@ -53,6 +54,10 @@ final class BizReports
             case 'week':  return [startOfWeek(), $today];
             case 'year':  return [startOfJalaliYear(), $today];
             case 'all':   return [self::ALL_FROM, self::ALL_TO];
+            case 'last_year':
+                // ⛔ سالِ مالی = سالِ شمسی (فروردین تا اسفند) — `BizVat::year()`
+                [$jy] = BizVat::jym($today);
+                return BizVat::year($jy - 1);
             case 'last_month':
                 $start = startOfJalaliMonth();
                 $end   = date('Y-m-d', strtotime($start . ' -1 day'));
@@ -135,7 +140,8 @@ final class BizReports
     public static function daily(int $userId, string $from, string $to): array
     {
         $st = Database::getConnection()->prepare(
-            "SELECT inv_date, SUM(CASE WHEN kind = 'sale' THEN total ELSE -total END) AS v
+            // ⛔ فروش بی‌مالیات: مالیات بر ارزش افزوده درآمدِ فروشگاه نیست
+            "SELECT inv_date, SUM(CASE WHEN kind = 'sale' THEN 1 ELSE -1 END * (total" . (Biz::accReady() ? ' - tax_total' : '') . ")) AS v
              FROM biz_invoices WHERE user_id = :u AND status = 'issued' AND kind IN ('sale','sale_return')
                AND inv_date BETWEEN :f AND :t GROUP BY inv_date"
         );
@@ -203,18 +209,23 @@ final class BizReports
                AND pay_date BETWEEN :f AND :t GROUP BY kind"
         );
         $st->execute(['u' => $userId, 'f' => $from, 't' => $to]);
-        $out = ['receipt' => 0, 'payment' => 0, 'expense' => 0, 'income' => 0, 'transfer' => 0];
+        $out = ['receipt' => 0, 'payment' => 0, 'expense' => 0, 'income' => 0, 'transfer' => 0, 'capital' => 0, 'drawing' => 0];
         foreach ($st->fetchAll() as $r) { $out[(string)$r['kind']] = (int)$r['s']; }
         return $out;
     }
 
-    /** بزرگ‌ترین هزینه‌ها بر اساسِ شرح. */
+    /**
+     * بزرگ‌ترین هزینه‌ها — ⛔ به تفکیکِ **سرفصل** (migration_biz_accounting)؛
+     * هزینه‌ی بی‌سرفصل (سندهای پیش از سرفصل) با شرحِ خودش.
+     */
     public static function expenses(int $userId, string $from, string $to, int $limit = 8): array
     {
+        $head = Biz::accReady() ? "COALESCE(c.name, y.title, 'بی‌شرح')" : "COALESCE(y.title, 'بی‌شرح')";
         $st = Database::getConnection()->prepare(
-            "SELECT COALESCE(title, 'بی‌شرح') AS title, SUM(amount) AS s, COUNT(*) AS n FROM biz_payments
-             WHERE user_id = :u AND status = 'ok' AND kind = 'expense' AND pay_date BETWEEN :f AND :t
-             GROUP BY COALESCE(title, 'بی‌شرح') ORDER BY s DESC LIMIT :lim"
+            "SELECT {$head} AS title, SUM(y.amount) AS s, COUNT(*) AS n FROM biz_payments y"
+            . (Biz::accReady() ? ' LEFT JOIN biz_expense_cats c ON c.id = y.category_id AND c.user_id = y.user_id' : '') . "
+             WHERE y.user_id = :u AND y.status = 'ok' AND y.kind = 'expense' AND y.pay_date BETWEEN :f AND :t
+             GROUP BY {$head} ORDER BY s DESC LIMIT :lim"
         );
         $st->bindValue('u', $userId, PDO::PARAM_INT);
         $st->bindValue('f', $from);
@@ -411,7 +422,7 @@ final class BizReports
         foreach ($st->fetchAll() as $r) {
             $toHere = $r['kind'] === 'transfer' && (int)$r['to_account_id'] === $accountId && (int)$r['account_id'] !== $accountId;
             $amt    = (int)$r['amount'];
-            $delta  = $toHere ? $amt : (in_array($r['kind'], ['receipt', 'income'], true) ? $amt : -$amt);
+            $delta  = $toHere ? $amt : (in_array($r['kind'], BizPay::IN_KINDS, true) ? $amt : -$amt);
             if ((string)$r['pay_date'] < $from) { $opening += $delta; continue; }
             $who = $r['kind'] === 'transfer'
                 ? ($toHere ? 'از ' . (string)$r['from_name'] : 'به ' . (string)$r['to_name'])

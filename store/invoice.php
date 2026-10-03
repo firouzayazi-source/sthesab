@@ -121,10 +121,12 @@ require __DIR__ . '/../includes/biz_head.php';
     </div>
 
     <div class="st-doc-totals">
-        <?php if ((int)$inv['discount'] > 0 || (int)$inv['extra'] > 0): ?>
+        <?php $invTax = (int)($inv['tax_total'] ?? 0); ?>
+        <?php if ((int)$inv['discount'] > 0 || (int)$inv['extra'] > 0 || $invTax > 0): ?>
             <div class="st-sum-line"><span>جمعِ ردیف‌ها</span><?= BizDocView::money((int)$inv['subtotal']) ?></div>
             <?php if ((int)$inv['discount'] > 0): ?><div class="st-sum-line"><span>تخفیف</span><?= BizDocView::money(-(int)$inv['discount']) ?></div><?php endif; ?>
             <?php if ((int)$inv['extra'] > 0): ?><div class="st-sum-line"><span>حمل و هزینه‌ی دیگر</span><?= BizDocView::money((int)$inv['extra']) ?></div><?php endif; ?>
+            <?php if ($invTax > 0): ?><div class="st-sum-line"><span>مالیات بر ارزش افزوده (<?= h(BizView::pct((float)($inv['vat_rate'] ?? 0))) ?>)</span><?= BizDocView::money($invTax) ?></div><?php endif; ?>
         <?php endif; ?>
         <div class="st-sum-line st-sum-total"><span>مبلغِ سند</span><?= BizDocView::money((int)$inv['total']) ?></div>
         <?php if ($inv['status'] === 'issued'): ?>
@@ -203,4 +205,5 @@ require __DIR__ . '/../includes/biz_head.php';
     <p class="st-muted">سندِ صادرشده حذف نمی‌شود؛ باطل می‌شود و شماره و ردش می‌ماند.</p>
 </section>
 <?php endif; ?>
+<?= BizDocView::history(BizLog::forDoc($userId, 'invoice', $id)) ?>
 <?php require __DIR__ . '/../includes/biz_foot.php'; ?>

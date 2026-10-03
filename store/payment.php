@@ -50,6 +50,7 @@ if ($id > 0) {
         <?php endif; ?>
         <?php if ($pay['party_id'] !== null): ?><div><dt>طرف‌حساب</dt><dd><a href="<?= h(Biz::url('party.php?id=' . (int)$pay['party_id'])) ?>"><?= h((string)$pay['party_name']) ?></a></dd></div><?php endif; ?>
         <?php if ((string)$pay['title'] !== ''): ?><div><dt>شرح</dt><dd><?= h((string)$pay['title']) ?></dd></div><?php endif; ?>
+        <?php if (($pay['category_id'] ?? null) !== null && ($payCat = BizExpCats::get($userId, (int)$pay['category_id']))): ?><div><dt>سرفصل</dt><dd><?= h((string)$payCat['name']) ?></dd></div><?php endif; ?>
         <?php if (($pay['cheque_status'] ?? null) !== null): ?>
             <div><dt>چک</dt><dd><?= h(BizCheques::label($pay)) ?> · سررسید <span class="st-num"><?= h(toJalali((string)$pay['cheque_due'])) ?></span></dd></div>
             <div><dt>وضعیتِ چک</dt><dd><a href="<?= h(Biz::url('cheques.php?f=all')) ?>"><?= h(BizCheques::STATUSES[$pay['cheque_status']] ?? '') ?></a></dd></div>
@@ -74,6 +75,7 @@ if ($id > 0) {
     <?php endif; ?>
     <?php if ((string)$pay['note'] !== ''): ?><p class="st-muted st-docnote"><?= nl2br(h((string)$pay['note'])) ?></p><?php endif; ?>
 </article>
+<?= BizDocView::history(BizLog::forDoc($userId, 'payment', $id)) ?>
 <?php if ($pay['status'] === 'ok'): ?>
 <section class="st-card st-danger">
     <form method="post" action="<?= h($self) ?>" onsubmit="return confirm('این سند باطل شود؟ پولش از موجودیِ صندوق و ماندهٔ طرف‌حساب برمی‌گردد.');">
@@ -107,7 +109,7 @@ $form = [
     'amount' => $inv ? (string)BizInvoices::remaining($inv) : ($preAmt > 0 ? (string)$preAmt : ''), 'account_id' => $preAcc,
     'to_account_id' => (int)($accounts[1]['id'] ?? 0),
     'method' => getParam('method') === 'cheque' && in_array($kind, ['receipt', 'payment'], true) ? 'cheque' : 'cash',
-    'pay_date' => BizDocView::jDate(date('Y-m-d')), 'title' => '', 'note' => '',
+    'pay_date' => BizDocView::jDate(date('Y-m-d')), 'title' => '', 'note' => '', 'category_id' => (int)getParam('cat', '0'),
     'cheque_no' => '', 'cheque_bank' => '', 'cheque_due' => '',
 ];
 $chequeReady = in_array($kind, ['receipt', 'payment'], true) && BizCheques::ready();
@@ -124,7 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $r = !$pd['ok'] ? ['ok' => false, 'message' => $pd['message']] : (!$cd['ok'] ? ['ok' => false, 'message' => $cd['message']] : BizPay::create($userId, [
         'kind' => $kind, 'party_id' => (int)$form['party_id'], 'invoice_id' => $invId, 'amount' => $form['amount'],
         'account_id' => (int)$form['account_id'], 'to_account_id' => (int)$form['to_account_id'], 'method' => $form['method'],
-        'pay_date' => $pd['date'], 'title' => $form['title'], 'note' => $form['note'],
+        'pay_date' => $pd['date'], 'title' => $form['title'], 'note' => $form['note'], 'category_id' => (int)$form['category_id'],
         'cheque_no' => $form['cheque_no'], 'cheque_bank' => $form['cheque_bank'],
         'cheque_due' => $cd['date'],
     ]));
@@ -174,8 +176,21 @@ require __DIR__ . '/../includes/biz_head.php';
         </div>
         <?php endif; ?>
     <?php endif; ?>
-    <?php if (in_array($kind, ['expense', 'income'], true)): ?>
-        <label class="st-field"><span>شرح</span><input type="text" name="title" required maxlength="<?= BizPay::TITLE_MAX ?>" value="<?= h((string)$form['title']) ?>" placeholder="<?= $kind === 'expense' ? 'مثلاً اجاره‌ی مغازه، قبضِ برق، حقوق' : 'مثلاً سودِ بانکی' ?>" list="bizExpenseTitles"></label>
+    <?php if (in_array($kind, ['expense', 'income'], true)): $cats = BizExpCats::list($userId, $kind, true); ?>
+        <?php if ($cats): /* ⛔ سرفصل — گزارشِ هزینه به تفکیکِ همین؛ شرحِ خالی = نامِ سرفصل */ ?>
+        <label class="st-field"><span>سرفصل</span>
+            <select name="category_id">
+                <option value="0">— بی‌سرفصل (فقط با شرح) —</option>
+                <?php foreach ($cats as $c): ?><option value="<?= (int)$c['id'] ?>"<?= (int)$c['id'] === (int)$form['category_id'] ? ' selected' : '' ?>><?= h((string)$c['name']) ?></option><?php endforeach; ?>
+            </select>
+            <a class="st-field-link" href="<?= h(Biz::url('accounting.php?t=cats')) ?>">سرفصل‌ها ›</a>
+        </label>
+        <?php endif; ?>
+        <label class="st-field"><span>شرح<?= $cats ? ' <small class="st-muted">(اختیاری با سرفصل)</small>' : '' ?></span><input type="text" name="title"<?= $cats ? '' : ' required' ?> maxlength="<?= BizPay::TITLE_MAX ?>" value="<?= h((string)$form['title']) ?>" placeholder="<?= $kind === 'expense' ? 'مثلاً اجاره‌ی مغازه، قبضِ برق' : 'مثلاً سودِ بانکی' ?>" list="bizExpenseTitles"></label>
+    <?php elseif (in_array($kind, ['capital', 'drawing'], true)): ?>
+        <p class="st-muted"><?= $kind === 'capital' ? 'پولی که مالک به فروشگاه آورده — نه درآمد است نه بدهی؛ در ترازنامه به «سرمایه» می‌رود و سود را تغییر نمی‌دهد.'
+                                                   : 'پولی که مالک برای خودش برداشته — هزینه‌ی فروشگاه نیست و سود را کم نمی‌کند؛ از سرمایه کم می‌شود.' ?></p>
+        <label class="st-field"><span>شرح <small class="st-muted">(اختیاری)</small></span><input type="text" name="title" maxlength="<?= BizPay::TITLE_MAX ?>" value="<?= h((string)$form['title']) ?>"></label>
     <?php endif; ?>
     <div class="st-row2">
         <label class="st-field"><span>مبلغ (تومان)</span><input type="text" name="amount" required inputmode="numeric" dir="ltr" value="<?= h((string)$form['amount']) ?>" autofocus></label>

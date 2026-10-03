@@ -80,8 +80,9 @@ final class Biz
         'اصلی'     => ['index.php' => 'داشبورد', 'search.php' => 'جستجوی سریع'],
         'فروشگاه'  => ['quick-sale.php' => 'فروش سریع', 'sales.php' => 'فاکتورهای فروش', 'purchases.php' => 'فاکتورهای خرید',
                        'products.php' => 'محصولات و موجودی', 'categories.php' => 'دسته‌بندی‌ها', 'parties.php' => 'مشتریان و تأمین‌کنندگان'],
-        'مالی'     => ['payments.php' => 'دریافت و پرداخت', 'accounts.php' => 'صندوق و بانک', 'cheques.php' => 'چک‌ها'],
-        'گزارش‌ها' => ['reports.php' => 'گزارش‌ها و چاپ'],
+        'مالی'     => ['payments.php' => 'دریافت و پرداخت', 'accounts.php' => 'صندوق و بانک', 'cheques.php' => 'چک‌ها',
+                       'payroll.php' => 'حقوق و مساعده'],
+        'گزارش‌ها' => ['reports.php' => 'گزارش‌ها و چاپ', 'accounting.php' => 'دفاتر و مالیات'],
         'سیستم'    => ['settings.php' => 'تنظیمات فروشگاه', 'invoice-design.php' => 'طراحی فاکتور', 'print-settings.php' => 'تنظیمات چاپ',
                        'products-io.php' => 'ورود و خروجِ اکسل'],
     ];
@@ -108,6 +109,7 @@ final class Biz
         'payment.php'      => 'payments.php',
         // رمز و بکاپ — از منوی پروفایل (بالای صفحه)، زیرِ «تنظیمات»
         'account.php'      => 'settings.php',
+        'cash-count.php'   => 'accounts.php',
     ];
 
     /**
@@ -126,6 +128,8 @@ final class Biz
         'payment.php?k=expense'       => 'هزینه‌ی فروشگاه',
         'payment.php?k=income'        => 'درآمدِ متفرقه',
         'payment.php?k=transfer'      => 'انتقال بین صندوق‌ها',
+        'payment.php?k=capital'       => 'آورده‌ی مالک',
+        'payment.php?k=drawing'       => 'برداشتِ مالک',
         'payment.php?k=receipt&method=cheque' => 'ثبتِ چکِ دریافتی',
         'payment.php?k=payment&method=cheque' => 'ثبتِ چکِ پرداختی',
         'party.php'                   => 'مشتری یا تأمین‌کننده',
@@ -145,6 +149,8 @@ final class Biz
         'payment.php?k=expense'       => ['هزینه',       'red',    '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 11h6"/>'],
         'payment.php?k=income'        => ['درآمد',       'green',  '<circle cx="12" cy="12" r="8.5"/><path d="M12 8v8M8 12h8"/>'],
         'payment.php?k=transfer'      => ['انتقال',      'slate',  '<path d="M7 7h13M16 3l4 4-4 4M17 17H4M8 13l-4 4 4 4"/>'],
+        'payment.php?k=capital'       => ['آورده',       'teal',   '<rect x="3" y="7" width="18" height="12" rx="2"/><path d="M12 10v6M9 13h6M7 7V5h10v2"/>'],
+        'payment.php?k=drawing'       => ['برداشت',      'amber',  '<rect x="3" y="7" width="18" height="12" rx="2"/><path d="M9 13h6M7 7V5h10v2"/>'],
         'payment.php?k=receipt&method=cheque' => ['چکِ دریافتی', 'indigo', '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 14h5M15 10.5v3M13.5 12l1.5 1.5 1.5-1.5"/>'],
         'payment.php?k=payment&method=cheque' => ['چکِ پرداختی', 'indigo', '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 14h5M15 13.5v-3M13.5 12l1.5-1.5 1.5 1.5"/>'],
         'party.php'                   => ['شخص جدید',    'blue',   '<circle cx="9.5" cy="8" r="3.5"/><path d="M3 20c.6-3.4 3.2-5.5 6.5-5.5s5.9 2.1 6.5 5.5M18.5 8v6M15.5 11h6"/>'],
@@ -284,6 +290,8 @@ final class Biz
             'payments.php'       => '<path d="M7 7h13l-3-3"/><path d="M17 17H4l3 3"/>',
             'accounts.php'       => '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><path d="M16 15h2"/>',
             'cheques.php'        => '<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 14h5"/><path d="M15 11h3"/><path d="M15 14h3"/>',
+            'payroll.php'        => '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.4 3.2-5.5 6.5-5.5 1.6 0 3 .5 4.1 1.3"/><path d="M18 13v8M15.5 15h3.7a1.3 1.3 0 0 1 0 2.6h-2.4a1.3 1.3 0 0 0 0 2.6h3.7"/>',
+            'accounting.php'     => '<path d="M5 3h11l3 3v15H5z"/><path d="M12 3v18"/><path d="M8 8h1M8 12h1M8 16h1M15 8h1M15 12h1M15 16h1"/>',
             'categories.php'     => '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
         ];
     }
@@ -821,7 +829,15 @@ final class Biz
         self::$lockCache[$userId]    = $row ? (string)($row['lock_date'] ?? '') : '';
         self::$newMenuRaw[$userId]   = $row ? (string)($row['new_menu'] ?? '') : '';
         self::$rateRound[$userId]    = $row ? (int)($row['rate_round'] ?? 1000) : 1000;
-        if ($row) { self::$infoReady = array_key_exists('invoice_prefs', $row); }
+        self::$accRow[$userId]       = $row ? [
+            'vat_rate' => (float)($row['vat_rate'] ?? 0),
+            'moadian_memory_id' => (string)($row['moadian_memory_id'] ?? ''),
+            'moadian_sstid' => (string)($row['moadian_sstid'] ?? ''),
+        ] : ['vat_rate' => 0.0, 'moadian_memory_id' => '', 'moadian_sstid' => ''];
+        if ($row) {
+            self::$infoReady = array_key_exists('invoice_prefs', $row);
+            self::$accReady  = array_key_exists('vat_rate', $row);
+        }
         return self::$settingsCache[$userId] = $out;
     }
 
@@ -886,6 +902,70 @@ final class Biz
 
     /** از ردیفِ `SELECT *`ِ `settings()` — بی‌کوئریِ نقشه‌ی ساختار؛ null = هنوز نمی‌دانیم. */
     private static ?bool $infoReady = null;
+
+    /* ============================================================
+       لایه‌ی حسابداری (migration_biz_accounting) — مالیات، مودیان، …
+       ============================================================ */
+
+    private static ?bool $accReady = null;
+    private static array $accRow = [];
+
+    /** ⛔ آیا لایه‌ی حسابداری آمده؟ — یک پرچم برای همه‌ی ستون‌ها و جدول‌های آن migration. */
+    public static function accReady(): bool
+    {
+        // ⛔ اول از ردیفِ `SELECT *`ِ تنظیماتِ همین کاربر (سرآیندِ هر صفحه همان را
+        //    می‌خواند، پس کوئریِ تازه‌ای نیست)؛ نقشه‌ی ساختار فقط اگر ردیفی نیست
+        if (self::$accReady === null && class_exists('Auth') && Auth::userId() !== null) { self::settings((int)Auth::userId()); }
+        return self::$accReady ??= self::hasColumn('biz_settings', 'vat_rate');
+    }
+
+    /**
+     * ⛔ تنها مرجعِ «نرخِ مالیات بر ارزش افزوده‌ی فروشگاه» (٪) — صفر یعنی خاموش.
+     *    از همان `SELECT *`ِ `settings()`؛ صفر کوئریِ اضافه.
+     */
+    public static function vatRate(int $userId): float
+    {
+        self::settings($userId);
+        return self::accReady() ? (float)(self::$accRow[$userId]['vat_rate'] ?? 0) : 0.0;
+    }
+
+    /** شناسه‌ی حافظه و شناسه‌ی کالا/خدمتِ پیش‌فرضِ سامانه‌ی مودیان. @return array{memory_id:string, sstid:string} */
+    public static function moadian(int $userId): array
+    {
+        self::settings($userId);
+        $r = self::$accRow[$userId] ?? [];
+        return ['memory_id' => (string)($r['moadian_memory_id'] ?? ''), 'sstid' => (string)($r['moadian_sstid'] ?? '')];
+    }
+
+    /** سقفِ نرخِ مالیات — نرخِ قانونیِ امروز ۱۰٪ است؛ بیش از ۳۰ تایپِ اشتباه است. */
+    public const VAT_MAX = 30.0;
+
+    /**
+     * ذخیره‌ی نرخِ مالیات و شناسه‌های مودیان. ⛔ نرخِ تازه فقط روی سندِ **تازه**
+     *    می‌نشیند: هر سند نرخِ خودش را دارد (`biz_invoices.vat_rate`)، پس
+     *    عوض کردنِ نرخ فاکتورِ صادرشده یا حتی پیش‌نویسِ موجود را عوض نمی‌کند.
+     * @return array{ok:bool, message:string}
+     */
+    public static function saveAccounting(int $userId, array $in): array
+    {
+        if (!self::accReady()) { return ['ok' => false, 'message' => 'لایه‌ی حسابداری هنوز راه نیفتاده است (migration_biz_accounting).']; }
+        $raw  = trim(toLatinDigits((string)($in['vat_rate'] ?? '')));
+        $raw  = str_replace(['٫', '/', ','], '.', $raw);
+        if ($raw !== '' && !preg_match('/^\d{1,2}(\.\d{1,2})?$/', $raw)) { return ['ok' => false, 'message' => 'نرخِ مالیات را به درصد بنویسید (مثلاً ۱۰).']; }
+        $rate = $raw === '' ? 0.0 : (float)$raw;
+        if ($rate < 0 || $rate > self::VAT_MAX) { return ['ok' => false, 'message' => 'نرخِ مالیات باید بینِ ۰ و ' . toPersianDigits((string)(int)self::VAT_MAX) . ' درصد باشد.']; }
+        $mem  = strtoupper(trim(toLatinDigits((string)($in['moadian_memory_id'] ?? ''))));
+        if ($mem !== '' && !preg_match('/^[A-Z0-9]{6}$/', $mem)) { return ['ok' => false, 'message' => 'شناسه‌ی یکتای حافظه‌ی مالیاتی شش نویسه‌ی لاتین یا رقم است.']; }
+        $sst  = trim(toLatinDigits((string)($in['moadian_sstid'] ?? '')));
+        if ($sst !== '' && !preg_match('/^\d{13}$/', $sst)) { return ['ok' => false, 'message' => 'شناسه‌ی کالا/خدمت سیزده رقم است.']; }
+        unset(self::$settingsCache[$userId], self::$accRow[$userId]);
+        Database::getConnection()->prepare(
+            'INSERT INTO biz_settings (user_id, vat_rate, moadian_memory_id, moadian_sstid) VALUES (:u, :r, :m, :s)
+             ON DUPLICATE KEY UPDATE vat_rate = VALUES(vat_rate), moadian_memory_id = VALUES(moadian_memory_id), moadian_sstid = VALUES(moadian_sstid)'
+        )->execute(['u' => $userId, 'r' => $rate, 'm' => $mem === '' ? null : $mem, 's' => $sst === '' ? null : $sst]);
+        return ['ok' => true, 'message' => $rate > 0 ? 'مالیات بر ارزش افزوده با نرخِ ' . toPersianDigits(rtrim(rtrim(number_format($rate, 2, '.', ''), '0'), '.')) . '٪ روی فاکتورهای تازه می‌نشیند.'
+                                                     : 'تنظیماتِ حسابداری ذخیره شد؛ مالیات بر ارزش افزوده خاموش است.'];
+    }
 
     /** کدهای رسمی و گزینه‌های فاکتور آمده‌اند؟ (migration_biz_business_info) */
     public static function businessInfoReady(): bool

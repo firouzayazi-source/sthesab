@@ -55,6 +55,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $res = Biz::saveRateRound($userId, (int)postParam('rate_round', '1000'));
         redirectWithMessage(Biz::url('settings.php') . '#rates', $res['ok'] ? 'success' : 'error', $res['message']);
     }
+    if (postParam('action') === 'accounting') {
+        $res = Biz::saveAccounting($userId, $_POST);
+        redirectWithMessage(Biz::url('settings.php') . '#accounting', $res['ok'] ? 'success' : 'error', $res['message']);
+    }
     if (postParam('action') === 'invoice_prefs') {
         $res = Biz::saveInvoicePrefs($userId, $_POST);
         redirectWithMessage(Biz::url('settings.php') . '#invoice', $res['ok'] ? 'success' : 'error', $res['message']);
@@ -250,6 +254,24 @@ require __DIR__ . '/../includes/biz_head.php';
         </select>
     </label>
     <button type="submit" class="st-btn">ذخیره‌ی گزینه‌ها</button>
+</form>
+<?php endif; ?>
+
+<?php if (Biz::accReady()): $accSet = Biz::moadian($userId); ?>
+<h2 class="st-h2 st-section-title" id="accounting">مالیات و سامانه‌ی مودیان</h2>
+<form method="post" class="st-card st-form" action="<?= h(Biz::url('settings.php')) ?>">
+    <?= Csrf::field() ?>
+    <input type="hidden" name="action" value="accounting">
+    <label class="st-field"><span>نرخِ مالیات بر ارزش افزوده (٪) <small class="st-muted">(۰ = خاموش؛ نرخِ امروز ۱۰)</small></span>
+        <input type="text" name="vat_rate" value="<?= h(BizInvoices::rateText(Biz::vatRate($userId))) ?>" inputmode="decimal" dir="ltr" maxlength="5"></label>
+    <p class="st-muted">نرخ روی هر فاکتورِ <b>تازه</b> می‌نشیند و در خودِ فاکتور عوض‌شدنی است؛ فاکتورِ صادرشده با نرخِ خودش می‌ماند. کالای معاف را در صفحه‌ی همان کالا علامت بزنید. گزارشِ فصلی در <a href="<?= h(Biz::url('accounting.php?t=vat')) ?>">دفاتر و مالیات</a>.</p>
+    <div class="st-row2">
+        <label class="st-field"><span>شناسه‌ی یکتای حافظه‌ی مالیاتی <small class="st-muted">(۶ نویسه، از کارپوشه)</small></span>
+            <input type="text" name="moadian_memory_id" value="<?= h($accSet['memory_id']) ?>" dir="ltr" maxlength="6" autocomplete="off"></label>
+        <label class="st-field"><span>شناسه‌ی کالا/خدمتِ پیش‌فرض <small class="st-muted">(۱۳ رقم)</small></span>
+            <input type="text" name="moadian_sstid" value="<?= h($accSet['sstid']) ?>" inputmode="numeric" dir="ltr" maxlength="13"></label>
+    </div>
+    <button type="submit" class="st-btn">ذخیره</button>
 </form>
 <?php endif; ?>
 

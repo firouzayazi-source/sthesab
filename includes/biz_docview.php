@@ -125,7 +125,8 @@ final class BizDocView
             return ' data-id="' . (int)$p['id'] . '" data-sku="' . h((string)$p['sku']) . '" data-sell="' . (int)$p['sell_price']
                  . '" data-buy="' . (int)$p['buy_price'] . '" data-unit="' . h((string)$p['unit']) . '" data-stock="'
                  . h((string)(float)$p['stock_qty']) . '" data-track="' . (int)$p['track_stock'] . '" data-serial="'
-                 . (BizProducts::typeOf($p) === 'phone' ? 1 : 0) . '"';
+                 . (BizProducts::typeOf($p) === 'phone' ? 1 : 0) . '"'
+                 . ((int)($p['vat_exempt'] ?? 0) === 1 ? ' data-vex="1"' : '');
         };
         foreach ($rows as $p) {
             $byId[(int)$p['id']] = $p;
@@ -177,7 +178,7 @@ final class BizDocView
             // ⛔ گوشی → IMEI؛ بقیه → توضیح. توضیحِ از پیش نوشته‌شده روی گوشی هم
             //    پنهان نمی‌شود — پنهان کردنِ داده‌ی کاربر یعنی بی‌صدا گم کردنش.
             $showNote = !$showImei || $note !== '';
-            $out .= '<tr class="st-line" data-row>'
+            $out .= '<tr class="st-line" data-row' . (!empty($l['vat_exempt']) ? ' data-vex="1"' : '') . '>'
                   . '<td class="st-line-no st-num">' . toPersianDigits((string)($i + 1)) . '</td>'
                   . '<td class="st-line-item"><div class="st-item-wrap">'
                   . '<input type="text" name="lines[' . $i . '][item]" value="' . h($item) . '" list="bizProducts" autocomplete="off" placeholder="نام، کد یا IMEI" aria-label="کالا" data-item>'
@@ -252,12 +253,34 @@ final class BizDocView
      * @param array<int,array> $formLines
      * @param array<int,array> $meta `parseLines()['meta']`
      */
+    /**
+     * «سرگذشتِ سند» — چه کسی، کِی، چه کرد (`BizLog`). کارهایی که عکسِ پیش از
+     * خود دارند، مبلغِ پیش و پس را کنارِ هم نشان می‌دهند.
+     */
+    public static function history(array $log): string
+    {
+        if (!$log) { return ''; }
+        $out = '<section class="st-card st-history"><h2 class="st-h3">سرگذشتِ سند</h2><ul class="st-list">';
+        foreach ($log as $g) {
+            [$d, $t] = array_pad(explode(' ', (string)$g['created_at']), 2, '');
+            $was = is_array($g['snapshot']) && isset($g['snapshot']['total']) ? (int)$g['snapshot']['total'] : null;
+            $out .= '<li class="st-list-row"><span><b>' . h((string)$g['label']) . '</b> <span class="st-muted-i st-num">'
+                  . h(toJalali($d) . ' ' . substr($t, 0, 5)) . '</span>'
+                  . ((string)($g['actor'] ?? '') !== '' ? ' <span class="st-muted-i">· ' . h((string)$g['actor']) . '</span>' : '') . '</span>'
+                  . '<span class="st-num">' . ($was !== null && $g['amount'] !== null && $was !== (int)$g['amount']
+                        ? h(formatMoney($was)) . ' ← ' : ($was !== null && $g['amount'] === null ? h(formatMoney($was)) : ''))
+                  . ($g['amount'] !== null ? h(formatMoney((int)$g['amount'])) : '') . '</span></li>';
+        }
+        return $out . '</ul></section>';
+    }
+
     public static function mergeMeta(array $formLines, array $meta): array
     {
         foreach ($formLines as $k => $l) {
             $m = $meta[$k] ?? null;
             if ($m === null) { continue; }
             $formLines[$k]['serial'] = $m['serial'];
+            $formLines[$k]['vat_exempt'] = !empty($m['vat_exempt']);
             if ($m['product_id'] !== null) {
                 $formLines[$k]['product_id'] = $m['product_id'];
                 if (BizSerial::valid(BizSerial::norm((string)($l['item'] ?? '')))) { $formLines[$k]['item'] = $m['name']; }

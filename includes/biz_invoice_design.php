@@ -536,10 +536,14 @@ final class BizInvoiceDesign
             <?php if ($d['terms'] !== ''): ?><div class="pr-terms"><?= nl2br(h($d['terms'])) ?></div><?php endif; ?>
         </div>
         <div class="pr-totals">
-            <?php if ((int)$inv['discount'] > 0 || (int)$inv['extra'] > 0): ?>
+            <?php $prTax = (int)($inv['tax_total'] ?? 0); ?>
+            <?php if ((int)$inv['discount'] > 0 || (int)$inv['extra'] > 0 || $prTax > 0): ?>
             <div><span>جمعِ ردیف‌ها</span><span><?= $money($inv['subtotal']) ?></span></div>
             <?php if ((int)$inv['discount'] > 0): ?><div><span>تخفیف</span><span>−<?= $money($inv['discount']) ?></span></div><?php endif; ?>
             <?php if ((int)$inv['extra'] > 0): ?><div><span>حمل و هزینه‌ی دیگر</span><span><?= $money($inv['extra']) ?></span></div><?php endif; ?>
+            <?php if ($prTax > 0): /* ⛔ مالیات بر ارزش افزوده — سطرِ جدا، با نرخِ خودِ سند */ ?>
+            <div><span>مالیات بر ارزش افزوده (<?= h(BizView::pct((float)($inv['vat_rate'] ?? 0))) ?>)</span><span><?= $money($prTax) ?></span></div>
+            <?php endif; ?>
             <?php endif; ?>
             <div class="pr-grand"><span>مبلغِ کل</span><span><?= $money($inv['total']) ?> تومان</span></div>
             <?php if ($d['show_paid'] && $inv['status'] === 'issued'): ?>

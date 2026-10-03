@@ -142,6 +142,7 @@ MIGRATIONS=(
     migration_rates_link.sql
     migration_store_share_edit.sql
     migration_biz_hardening.sql
+    migration_biz_accounting.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -353,6 +354,8 @@ declare -A SENTINEL=(
     [migration_store_share_edit.sql]="app_settings~setting_key=store_share_edit_seeded"
     # نشانه‌ی آخرِ فایل (بعد از ستون‌ها و پرکردنِ آن‌ها).
     [migration_biz_hardening.sql]="app_settings~setting_key=biz_hardening_seeded"
+    # ⚠ شاهدش داده است: آن `INSERT` آخرین کارِ فایل است (پس از هفت تغییرِ ساختار)
+    [migration_biz_accounting.sql]="app_settings~setting_key=biz_accounting_seeded"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

@@ -163,7 +163,8 @@
             var unit = !!o.dataset.imei1;
             var p = { id: o.dataset.id, name: unit ? o.dataset.name : o.value, sku: o.dataset.sku || '', sell: o.dataset.sell, buy: o.dataset.buy,
                       unit: o.dataset.unit, stock: parseFloat(o.dataset.stock || '0'), track: o.dataset.track === '1',
-                      serial: o.dataset.serial === '1', imei1: unit ? o.dataset.imei1 : '', imei2: unit ? (o.dataset.imei2 || '') : '' };
+                      serial: o.dataset.serial === '1', imei1: unit ? o.dataset.imei1 : '', imei2: unit ? (o.dataset.imei2 || '') : '',
+                      vex: o.dataset.vex === '1' };
             p.fname = fold(p.name);
             p.hay = p.fname + ' ' + fold(p.sku) + (unit ? ' ' + p.imei1 + ' ' + p.imei2 : '');
             index.push(p);
@@ -338,7 +339,7 @@
         function field(row, name) { return row.querySelector('[data-' + name + ']'); }
 
         function recalc() {
-            var sub = 0;
+            var sub = 0, taxable = 0;
             rows().forEach(function (r) {
                 var q = qty(field(r, 'qty').value), p = money(field(r, 'price').value), d = money(field(r, 'disc') ? field(r, 'disc').value : '');
                 var hasItem = field(r, 'item').value.trim() !== '' || field(r, 'price').value.trim() !== '';
@@ -346,9 +347,18 @@
                 var out = field(r, 'lt');
                 if (out) { out.textContent = hasItem ? fmt(lt) : ''; }
                 sub += lt;
+                if (r.dataset.vex !== '1') { taxable += lt; }
             });
             var disc = form.querySelector('[data-discount]'), extra = form.querySelector('[data-extra]');
-            var total = sub - (disc ? money(disc.value) : 0) + (extra ? money(extra.value) : 0);
+            var net = sub - (disc ? money(disc.value) : 0) + (extra ? money(extra.value) : 0);
+            // ⛔ مالیات بر ارزش افزوده — فقط پیش‌نمایش؛ عددِ واقعی را سرور ردیف‌به‌ردیف
+            //    می‌سازد (`BizInvoices::totals()`) و ممکن است یکی‌دو تومان گردتر باشد
+            var rateIn = form.querySelector('[data-vat-rate]'), taxOut = form.querySelector('[data-tax]');
+            var rate = rateIn ? parseFloat(String(rateIn.value).replace(/[۰-۹]/g, function (c) { return '۰۱۲۳۴۵۶۷۸۹'.indexOf(c); }).replace(/[٫\/,]/g, '.')) || 0 : 0;
+            var base = sub > 0 ? taxable + (net - sub) * taxable / sub : (rows().length ? net : 0);
+            var tax = rate > 0 ? Math.round(base * rate / 100) : 0;
+            if (taxOut) { taxOut.textContent = fmt(tax); }
+            var total = net + tax;
             var s = form.querySelector('[data-subtotal]'), t = form.querySelector('[data-total]');
             if (s) { s.textContent = fmt(sub); }
             if (t) { t.textContent = fmt(total); }
@@ -392,6 +402,7 @@
             if (p) {
                 item.value = p.name;
                 pid.value = p.id;
+                if (p.vex) { row.dataset.vex = '1'; } else { delete row.dataset.vex; }
                 if (p.imei1) {                                  // یک گوشیِ مشخص: IMEIها و مقدارِ ۱
                     field(row, 'imei1').value = p.imei1;
                     field(row, 'imei2').value = p.imei2 || '';
@@ -404,6 +415,7 @@
                 item.title = p.track ? ('موجودی: ' + fmt(p.stock) + ' ' + (p.unit || '')) : '';
             } else {
                 pid.value = '';                                 // ⛔ شناسه‌ی کهنه هرگز روی ردیفِ عوض‌شده نمی‌ماند
+                delete row.dataset.vex;
                 row.classList.remove('is-over');
                 imeiBox(row, false);
             }
@@ -458,7 +470,7 @@
             }
             recalc();
         });
-        form.addEventListener('input', function (e) { if (e.target.matches('[data-discount],[data-extra],[data-payamount]')) { recalc(); } });
+        form.addEventListener('input', function (e) { if (e.target.matches('[data-discount],[data-extra],[data-payamount],[data-vat-rate]')) { recalc(); } });
 
         // Enter داخلِ ردیف فرم را نمی‌فرستد؛ به خانه‌ی بعدی می‌رود
         body.addEventListener('keydown', function (e) {

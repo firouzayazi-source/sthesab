@@ -54,6 +54,8 @@ $form = [
     'discount' => $inv && (int)$inv['discount'] > 0 ? (string)(int)$inv['discount'] : '',
     'extra'    => $inv && (int)$inv['extra'] > 0 ? (string)(int)$inv['extra'] : '',
     'note'     => (string)($inv['note'] ?? ''),
+    // ⛔ نرخِ مالیات: خودِ پیش‌نویس، وگرنه نرخِ امروزِ فروشگاه (`saveDraft()` همین را می‌گیرد)
+    'vat_rate' => BizInvoices::rateText($inv ? (float)($inv['vat_rate'] ?? 0) : Biz::vatRate($userId)),
     'lines'    => $inv ? $inv['lines'] : [],
     'pay_mode' => 'none', 'pay_amount' => '', 'account_id' => (int)($accounts[0]['id'] ?? 0), 'method' => 'cash',
 ];
@@ -75,6 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'inv_date' => BizDocView::gDate(postParam('inv_date')),
         'discount' => postParam('discount'), 'extra' => postParam('extra'), 'note' => postParam('note'),
         'lines'    => is_array($_POST['lines'] ?? null) ? $_POST['lines'] : [],
+        'vat_rate' => isset($_POST['vat_rate']) ? postParam('vat_rate') : null,
     ];
     $rawLines = array_values(array_filter($in['lines'], 'is_array'));
     $filled   = fn($l) => trim((string)($l['item'] ?? '')) !== '' || trim((string)($l['price'] ?? '')) !== ''
@@ -89,6 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $form = array_merge($form, [
         'party_id' => $in['party_id'], 'inv_date' => postParam('inv_date'),
         'discount' => $in['discount'], 'extra' => $in['extra'], 'note' => $in['note'], 'lines' => array_values($in['lines']),
+        'vat_rate' => $in['vat_rate'] ?? $form['vat_rate'],
         'pay_mode' => in_array(postParam('pay_mode'), ['none', 'full', 'part'], true) ? postParam('pay_mode') : 'none',
         'pay_amount' => postParam('pay_amount'), 'account_id' => (int)postParam('account_id'),
         'method' => isset(BizPay::quickMethods()[postParam('method')]) ? postParam('method') : 'cash',
@@ -191,7 +195,10 @@ $parsed = BizInvoices::parseLines($userId, array_map(fn($l) => [
     'imei1' => (string)($l['imei1'] ?? ''), 'imei2' => (string)($l['imei2'] ?? ''), 'note' => (string)($l['note'] ?? ''),
 ], $form['lines']));
 $form['lines'] = BizDocView::mergeMeta($form['lines'], $parsed['meta']);
-$tot = BizInvoices::totals($parsed['lines'], sanitizeAmount($form['discount']), sanitizeAmount($form['extra']));
+$vatShow = Biz::accReady() && (Biz::vatRate($userId) > 0 || (float)($inv['vat_rate'] ?? 0) > 0);
+$vatNow  = BizInvoices::vatFromForm($userId, $form['vat_rate'], 0.0);
+$tot = BizInvoices::totals($parsed['lines'], sanitizeAmount($form['discount']), sanitizeAmount($form['extra']),
+                           $vatNow['ok'] ? (float)$vatNow['rate'] : 0.0);
 // جمعِ هر ردیف کنارِ خودش (فرمِ ردشده جمع ندارد)
 foreach ($form['lines'] as $k => $l) {
     if (!isset($l['line_total']) && isset($parsed['lines'][$k]) && count($parsed['lines']) === count($form['lines'])) {
@@ -303,6 +310,10 @@ require __DIR__ . '/../includes/biz_head.php';
             <div class="st-sum-line"><span>جمعِ ردیف‌ها</span><b class="st-num" data-subtotal><?= formatMoney($tot['subtotal']) ?></b></div>
             <label class="st-sum-line"><span>تخفیفِ فاکتور</span><input type="text" name="discount" value="<?= h((string)$form['discount']) ?>" inputmode="numeric" dir="ltr" data-discount></label>
             <label class="st-sum-line"><span>حمل و هزینه‌ی دیگر</span><input type="text" name="extra" value="<?= h((string)$form['extra']) ?>" inputmode="numeric" dir="ltr" data-extra></label>
+            <?php if ($vatShow): /* ⛔ مالیات بر ارزش افزوده — نرخِ همین سند؛ کالای معاف صفر */ ?>
+            <label class="st-sum-line"><span>مالیات بر ارزش افزوده (٪)</span><input type="text" name="vat_rate" value="<?= h((string)$form['vat_rate']) ?>" inputmode="decimal" dir="ltr" data-vat-rate></label>
+            <div class="st-sum-line"><span>مبلغِ مالیات</span><b class="st-num" data-tax><?= formatMoney($tot['tax']) ?></b></div>
+            <?php endif; ?>
             <div class="st-sum-line st-sum-total"><span>مبلغِ فاکتور</span><b class="st-num" data-total><?= formatMoney($tot['total']) ?></b></div>
             <?php
             // ⛔ مانده‌ی قبلی = مانده‌ی امروزِ طرف‌حساب (پیش‌نویس هنوز اثری ندارد) —
