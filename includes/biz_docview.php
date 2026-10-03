@@ -69,6 +69,30 @@ final class BizDocView
         return is_string($g) && isValidDate($g) ? $g : '';
     }
 
+    /**
+     * ⛔ تاریخِ **سند** از فرم: خالی = امروز؛ نامعتبر یا بیرون از بازه = خطا.
+     *
+     * پیش از این هر تاریخِ نامعتبر («۱۴۰۵/۰۷/۴۵»، «۱۴۰۵/۱۲/۳۰» در سالِ
+     * غیرکبیسه، «۰۵/۰۷/۰۱») بی‌صدا «امروز» می‌شد و سال‌های ۱۳۰۵ و ۱۴۵۰ پذیرفته
+     * بودند (بازرسیِ مهر ۱۴۰۵) — سندی با تاریخی که کاربر هرگز ننوشته.
+     *
+     * بازه: از ۱۳۸۰ تا یک سال بعد از امروز؛ سررسیدِ چک (`$farFuture`) تا پنج سال.
+     * @return array{ok:bool, date?:string, message?:string}
+     */
+    public static function docDate(string $raw, string $label = 'تاریخ', bool $farFuture = false): array
+    {
+        if (trim($raw) === '') { return ['ok' => true, 'date' => date('Y-m-d')]; }
+        $g = self::gDate($raw);
+        if ($g === '') {
+            return ['ok' => false, 'message' => $label . ' «' . trim($raw) . '» معتبر نیست؛ مثلِ ۱۴۰۵/۰۷/۰۱ بنویسید.'];
+        }
+        $max = date('Y-m-d', strtotime($farFuture ? '+5 years' : '+1 year'));
+        if ($g < '2001-03-21' || $g > $max) {
+            return ['ok' => false, 'message' => $label . ' «' . trim($raw) . '» بیرون از بازه‌ی پذیرفتنی است.'];
+        }
+        return ['ok' => true, 'date' => $g];
+    }
+
     /** طرف‌حساب‌های فعال برای `<select>` — سقف دارد و می‌گوید. `$balance`: بالای `BizParties::all()`. */
     public static function parties(int $userId, int $cap = 2000, bool $balance = true): array
     {

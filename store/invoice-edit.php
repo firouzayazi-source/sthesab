@@ -144,7 +144,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // فقط بستنِ پنل — فرم همان‌طور که بود دوباره نشان داده می‌شود
     } elseif ($action === 'addrows') {
         $blank = 6;
+    } elseif (!($dd = BizDocView::docDate((string)postParam('inv_date'), 'تاریخِ فاکتور'))['ok']) {
+        // ⛔ تاریخِ نامعتبر «امروز» نمی‌شود — همان‌جا گفته می‌شود
+        $error = $dd['message'];
     } else {
+        $in['inv_date'] = $dd['date'];
         // ⛔ دو بار زدنِ «صدور» دو فاکتور نمی‌سازد (`BizOnce`)
         if (($dup = BizOnce::claim()) !== null) { BizOnce::redirectDuplicate($dup, Biz::url(BizDocView::SIDES[$side]['page'])); }
         $res = BizInvoices::saveDraft($userId, $kind, $in, $id);
@@ -161,6 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'account_id' => $form['account_id'], 'method' => $form['method'],
                 'full'       => $form['pay_mode'] === 'full',
                 'amount'     => $form['pay_mode'] === 'part' ? $form['pay_amount'] : '0',
+                'part'       => $form['pay_mode'] === 'part',
             ]);
             // پیش‌نویس در هر حال ساخته شده: ارسالِ دوباره همان را باز می‌کند، نه سندِ دوم
             BizOnce::done(Biz::url(($r['ok'] ? 'invoice.php?id=' : 'invoice-edit.php?id=') . $id));
@@ -329,7 +334,7 @@ require __DIR__ . '/../includes/biz_head.php';
                 </label>
             </div>
             <label class="st-field"><span>صندوق</span>
-                <select name="account_id"><?php foreach ($accounts as $a): ?><option value="<?= (int)$a['id'] ?>"<?= (int)$a['id'] === (int)$form['account_id'] ? ' selected' : '' ?>><?= h($a['name']) ?></option><?php endforeach; ?></select>
+                <select name="account_id" data-acc-auto><?php foreach ($accounts as $a): ?><option value="<?= (int)$a['id'] ?>" data-kind="<?= h((string)($a['kind'] ?? '')) ?>"<?= (int)$a['id'] === (int)$form['account_id'] ? ' selected' : '' ?>><?= h($a['name']) ?></option><?php endforeach; ?></select>
             </label>
             <p class="st-muted">بی‌<?= h($partyLbl) ?> (گذری) فقط با تسویه‌ی کامل صادر می‌شود.</p>
         </section>

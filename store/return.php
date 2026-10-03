@@ -41,11 +41,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $form['account_id'] = (int)postParam('account_id');
     $form['method'] = isset(BizPay::quickMethods()[postParam('method')]) ? postParam('method') : 'cash';
 
+    $rd = BizDocView::docDate((string)$form['date'], 'تاریخِ برگشت');
     // ⛔ دو بار زدنِ «ثبت» دو برگشت نمی‌سازد (`BizOnce`)
-    if (($dup = BizOnce::claim()) !== null) { BizOnce::redirectDuplicate($dup, Biz::url('invoice.php?id=' . $origId)); }
-    $r = BizInvoices::createReturn($userId, $origId, $form['qty'],
+    if ($rd['ok'] && ($dup = BizOnce::claim()) !== null) { BizOnce::redirectDuplicate($dup, Biz::url('invoice.php?id=' . $origId)); }
+    $r = !$rd['ok'] ? ['ok' => false, 'message' => $rd['message']] : BizInvoices::createReturn($userId, $origId, $form['qty'],
         ['account_id' => $form['account_id'], 'full' => $form['refund'] === 'full', 'method' => $form['method']],
-        BizDocView::gDate($form['date']), $form['note']);
+        $rd['date'], $form['note']);
     if ($r['ok']) {
         BizOnce::done(Biz::url('invoice.php?id=' . (int)$r['id']));
         redirectWithMessage(Biz::url('invoice.php?id=' . (int)$r['id']), 'success', $r['message']);
@@ -103,7 +104,7 @@ require __DIR__ . '/../includes/biz_head.php';
             </div>
             <div class="st-row2">
                 <label class="st-field"><span>صندوق</span>
-                    <select name="account_id"><?php foreach ($accounts as $a): ?><option value="<?= (int)$a['id'] ?>"<?= (int)$a['id'] === (int)$form['account_id'] ? ' selected' : '' ?>><?= h($a['name']) ?></option><?php endforeach; ?></select>
+                    <select name="account_id" data-acc-auto><?php foreach ($accounts as $a): ?><option value="<?= (int)$a['id'] ?>" data-kind="<?= h((string)($a['kind'] ?? '')) ?>"<?= (int)$a['id'] === (int)$form['account_id'] ? ' selected' : '' ?>><?= h($a['name']) ?></option><?php endforeach; ?></select>
                 </label>
                 <label class="st-field"><span>روش</span>
                     <select name="method"><?php foreach (BizPay::quickMethods() as $mk => $ml): ?><option value="<?= h($mk) ?>"<?= $mk === $form['method'] ? ' selected' : '' ?>><?= h($ml) ?></option><?php endforeach; ?></select>

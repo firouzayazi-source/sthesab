@@ -986,3 +986,22 @@
         });
     });
 })();
+/* ⛔ روشِ پرداخت ← حساب: «کارت‌خوان» به حسابِ کارت‌خوان، «کارت‌به‌کارت/حواله»
+   به بانک، «نقد» به صندوق — اولین حسابِ فعالِ همان نوع، اگر هست.
+   بازرسیِ مهر ۱۴۰۵: حساب همیشه اولین (صندوق) می‌ماند، پس دریافتِ کارتی در
+   صندوقِ نقدی می‌نشست و جمعِ صندوق با پولِ واقعیِ کشو نمی‌خواند. کاربر
+   همچنان می‌تواند بعد از انتخابِ روش، حسابِ دیگری بزند. */
+(function () {
+    'use strict';
+    var KIND = { cash: 'cash', card: 'pos', transfer: 'bank' };
+    document.addEventListener('change', function (e) {
+        var el = e.target;
+        if (!el || el.name !== 'method' || !el.form) { return; }
+        var want = KIND[el.value];
+        var sel = el.form.querySelector('select[data-acc-auto]');
+        if (!want || !sel) { return; }
+        for (var i = 0; i < sel.options.length; i++) {
+            if (sel.options[i].getAttribute('data-kind') === want) { sel.selectedIndex = i; return; }
+        }
+    });
+})();

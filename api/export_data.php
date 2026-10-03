@@ -53,51 +53,6 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 Csrf::verifyOrFail(postParam('csrf_token'));
 
 $userId = Auth::userId();
-
-try {
-    $data = exportUserData($userId);
-    Audit::log('data.exported', 'backup', null, ['kind' => 'full']);
-} catch (Throwable $e) {
-    Log::error('api.export_data', $e);
-    exportFail('خروجی گرفته نشد. اگر تکرار شد به پشتیبانی خبر بدهید.', 500);
-}
-
-if (!$data) {
-    exportFail('کاربر یافت نشد.', 404);
-}
-
-$json = json_encode(
-    $data,
-    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT
-);
-
-// نامِ فایل: فقط تاریخِ شمسیِ همان روز و پسوندِ اختصاصیِ برنامه —
-// `1405-06-12.sthesab`. کوتاه است تا در فهرستِ دانلود خوانده شود.
-//
-// ⚠ ارقام **لاتین**اند: نامِ حاوی ارقامِ فارسی در سرآیندِ `filename=`
-//   غیرمجاز است و مرورگر بی‌سروصدا کنارش می‌گذارد و فایل را «download»
-//   ذخیره می‌کند. با کروم آزموده و دیده شد. `/` هم به `-` می‌رود تا
-//   روی ویندوز باز شود.
-$name = backupFileName();
-
-// ⛔ نشانه‌ی «آخرین پشتیبان» **پیش از** فرستادنِ بدنه نوشته می‌شود، چون
-//    بعد از `echo` هر کوئریِ ناموفقی بی‌صدا گم می‌شود (خروجی از قبل رفته
-//    و هدرها بسته شده‌اند). یادآوریِ ماهانه از همین ستون می‌آید؛ اگر
-//    نوشته نشود، کسی که همین حالا بکاپ گرفته باز هم یادآوری می‌گیرد و
-//    یادآوری‌ای که دروغ بگوید همان اولین باری است که خاموشش می‌کنند.
-markBackupTaken($userId);
-
-// ⛔ گزیپِ خروجی که در db.php روشن شده باید اینجا خاموش شود، وگرنه
-//    مرورگر فایل را دوبار فشرده می‌گیرد و چیزی که ذخیره می‌شود قابل
-//    باز کردن نیست.
-if (function_exists('ob_get_level')) {
-    while (ob_get_level() > 0) { ob_end_clean(); }
-}
-header_remove('Content-Encoding');
-
-header('Content-Type: application/octet-stream');
-header('Content-Disposition: attachment; filename="' . $name . '"');
-header('Content-Length: ' . strlen($json));
-header('Cache-Control: no-store, private');
-
-echo $json;
+// ⛔ منطق در `sendUserExport()` — صفحه‌ی حسابِ فروشگاه هم از همان می‌گذرد
+$err = sendUserExport($userId);
+exportFail($err, $err === 'کاربر یافت نشد.' ? 404 : 500);

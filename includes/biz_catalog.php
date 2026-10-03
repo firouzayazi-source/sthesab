@@ -25,6 +25,32 @@ require_once __DIR__ . '/biz.php';      // `Biz::lockError()` — بستنِ د�
 final class BizCommon
 {
     /**
+     * ⛔ سقفِ هر عددِ پولی (تومان) و هر مقدار — یک جا برای همه‌ی فرم‌ها.
+     *
+     * بازرسیِ مهر ۱۴۰۵: مقدارِ ۹۹۹۹۹۹۹۹۹۹۹۹۹۹۹ خطای ۵۰۰ می‌داد (ستونِ
+     * DECIMAL(14,3) سر می‌رفت) و فرمِ تایپ‌شده گم می‌شد؛ یک مبلغِ بیست‌رقمی
+     * داشبورد را برای همیشه می‌خواباند (سرریزِ عددِ صحیح)؛ و بارکدِ اسکن‌شده در
+     * خانه‌ی قیمت بی‌صدا قیمت می‌شد. صد میلیارد تومان برای یک قلم و یک سند
+     * بیش از هر معامله‌ی واقعیِ فروشگاه است.
+     */
+    public const MONEY_MAX = 100_000_000_000;
+    public const QTY_MAX   = 1_000_000;
+
+    /** پیامِ خطا اگر مبلغ از سقف بیشتر است، وگرنه `null`. */
+    public static function moneyError(int|float $v, string $label): ?string
+    {
+        return $v > self::MONEY_MAX
+            ? $label . ' بیش از حد بزرگ است (سقف ' . formatMoney(self::MONEY_MAX) . ' تومان) — شاید بارکد یا رقمِ اضافه در خانه‌ی مبلغ نشسته.'
+            : null;
+    }
+
+    /** پیامِ خطا اگر مقدار از سقف بیشتر است، وگرنه `null`. */
+    public static function qtyError(float $v, string $label): ?string
+    {
+        return $v > self::QTY_MAX ? $label . ' بیش از حد بزرگ است (سقف ' . formatMoney(self::QTY_MAX) . ').' : null;
+    }
+
+    /**
      * کوچک‌ترین تاریخِ معتبر (`Y-m-d`) — برای سنجشِ قفلِ دوره روی چیزی که
      * پیش از همه‌ی اسناد حساب می‌شود (موجودی و مانده‌ی اول دوره).
      */
@@ -355,6 +381,10 @@ final class BizProducts
             }
         }
         if (!isset(self::UNITS[$unit])) { return ['ok' => false, 'message' => 'واحدِ کالا معتبر نیست.']; }
+        foreach (['قیمتِ خرید' => $buy, 'قیمتِ فروش' => $sell] as $lbl => $v) {
+            if (($e = BizCommon::moneyError($v, $lbl)) !== null) { return ['ok' => false, 'message' => $e]; }
+        }
+        if (($e = BizCommon::qtyError($minStock, 'حداقلِ موجودی')) !== null) { return ['ok' => false, 'message' => $e]; }
         if (!self::qtyFits($unit, $minStock)) {
             return ['ok' => false, 'message' => 'حداقلِ موجودی برای واحدِ «' . $unit . '» باید عددِ صحیح باشد.'];
         }
@@ -365,6 +395,10 @@ final class BizProducts
 
         $openQty  = sanitizeQty($in['opening_qty'] ?? '');
         $openCost = trim((string)($in['opening_cost'] ?? '')) === '' ? $buy : sanitizeAmount($in['opening_cost']);
+        if (($e = BizCommon::qtyError($openQty, 'موجودیِ اول دوره')) !== null
+            || ($e = BizCommon::moneyError($openCost, 'بهای اول دوره')) !== null) {
+            return ['ok' => false, 'message' => $e];
+        }
         if ($id === 0 && $openQty > 0) {
             if (!$track) { return ['ok' => false, 'message' => 'خدمت موجودی ندارد؛ موجودیِ اول دوره را خالی بگذارید.']; }
             if (!self::qtyFits($unit, $openQty)) {
@@ -1114,6 +1148,8 @@ final class BizStock
     {
         if ($qty < 0)      { return ['ok' => false, 'message' => 'موجودیِ اول دوره نمی‌تواند منفی باشد.']; }
         if ($unitCost < 0) { return ['ok' => false, 'message' => 'بهای واحد نمی‌تواند منفی باشد.']; }
+        if (($e = BizCommon::qtyError($qty, 'موجودیِ اول دوره')) !== null
+            || ($e = BizCommon::moneyError($unitCost, 'بهای واحد')) !== null) { return ['ok' => false, 'message' => $e]; }
         return self::write($userId, $productId, function (PDO $pdo, array $p) use ($userId, $productId, $qty, $unitCost): ?string {
             if (!BizProducts::qtyFits((string)$p['unit'], $qty)) {
                 return 'موجودی برای واحدِ «' . $p['unit'] . '» باید عددِ صحیح باشد.';
@@ -1147,6 +1183,7 @@ final class BizStock
     public static function adjustTo(int $userId, int $productId, float $actual, string $note = ''): array
     {
         if ($actual < 0) { return ['ok' => false, 'message' => 'موجودیِ واقعی نمی‌تواند منفی باشد.']; }
+        if (($e = BizCommon::qtyError($actual, 'موجودیِ واقعی')) !== null) { return ['ok' => false, 'message' => $e]; }
         if (($e = Biz::lockError($userId, date('Y-m-d'), 'انبارگردانی')) !== null) { return ['ok' => false, 'message' => $e]; }
         $note = mb_substr(BizCommon::line($note), 0, 200);
         $changed = false;
@@ -1361,9 +1398,15 @@ final class BizParties
             default:         $where[] = 'p.is_active = 1';
         }
         if ($q !== '') {
-            $where[] = "(p.name LIKE :q1 ESCAPE '!' OR p.phone LIKE :q2 ESCAPE '!')";
-            $params['q1'] = BizCommon::like($q);
-            $params['q2'] = BizCommon::like(toLatinDigits($q));
+            // ⛔ نام با ی/ک فارسی (نامِ قدیمیِ عربی‌نوشته هم با `q3`)، و تلفن بی‌فاصله
+            //    و خط‌تیره در هر دو سو: «0912 123 4567» همان «09121234567» است
+            //    (بازرسیِ مهر ۱۴۰۵: هیچ‌کدام پیدا نمی‌شد).
+            $where[] = "(p.name LIKE :q1 ESCAPE '!' OR p.name LIKE :q3 ESCAPE '!'
+                        OR REPLACE(REPLACE(p.phone, ' ', ''), '-', '') LIKE :q2 ESCAPE '!')";
+            $params['q1'] = BizCommon::like(BizCommon::persian($q));
+            $params['q3'] = BizCommon::like(strtr($q, ['ی' => 'ي', 'ک' => 'ك']));
+            $digits = (string)preg_replace('/[\s\-]+/u', '', toLatinDigits($q));
+            $params['q2'] = BizCommon::like($digits !== '' ? $digits : toLatinDigits($q));
         }
         return [implode(' AND ', $where), $params];
     }
@@ -1515,7 +1558,8 @@ final class BizParties
      */
     public static function save(int $userId, array $in, int $id = 0): array
     {
-        $name    = BizCommon::line((string)($in['name'] ?? ''));
+        // ⛔ ی/ک عربی ← فارسی هنگامِ ذخیره، تا «علي» و «علی» یک نام باشند و جست‌وجو پیدایش کند
+        $name    = BizCommon::persian(BizCommon::line((string)($in['name'] ?? '')));
         $kind    = (string)($in['kind'] ?? 'customer');
         $phone   = BizCommon::line(toLatinDigits((string)($in['phone'] ?? '')));
         $address = BizCommon::line((string)($in['address'] ?? ''));
@@ -1534,6 +1578,7 @@ final class BizParties
                 return ['ok' => false, 'message' => 'متنِ یکی از فیلدها بیش از ' . self::LIMITS[$k] . ' نویسه است.'];
             }
         }
+        if (($e = BizCommon::moneyError($amount, 'مانده‌ی اول دوره')) !== null) { return ['ok' => false, 'message' => $e]; }
         $opening = $side === 'we' ? -$amount : $amount;
         // کدهای رسمیِ خریدار (migration_biz_business_info) — فقط رقم
         $codes = [];
@@ -1746,6 +1791,7 @@ final class BizCash
         $name = BizCommon::line((string)($in['name'] ?? ''));
         $kind = (string)($in['kind'] ?? 'cash');
         $ob   = sanitizeAmount($in['opening_balance'] ?? '');
+        if (($e = BizCommon::moneyError($ob, 'موجودیِ اولیه')) !== null) { return ['ok' => false, 'message' => $e]; }
         if ($name === '') { return ['ok' => false, 'message' => 'نامِ صندوق یا حساب الزامی است.']; }
         if (mb_strlen($name) > self::NAME_MAX) { return ['ok' => false, 'message' => 'نام بیش از ' . self::NAME_MAX . ' نویسه است.']; }
         if (!in_array($kind, self::USER_KINDS, true)) { return ['ok' => false, 'message' => 'نوعِ حساب معتبر نیست.']; }

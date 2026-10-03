@@ -106,7 +106,7 @@ require __DIR__ . '/../includes/biz_head.php';
     </div>
     <?php if (count($stmt['lines']) > count($rows)): ?><p class="st-muted-i"><?= toPersianDigits((string)count($rows)) ?> ردیفِ آخر از <?= toPersianDigits((string)count($stmt['lines'])) ?>؛ همه در صورت‌حسابِ چاپی.</p><?php endif; ?>
     <div class="st-table-wrap st-flat">
-        <table class="st-table">
+        <table class="st-table st-doc-lines">
             <thead><tr><th>تاریخ</th><th>شرح</th><th class="st-th-num">بدهکار</th><th class="st-th-num">بستانکار</th><th class="st-th-num st-hide-sm">مانده</th></tr></thead>
             <tbody>
             <?php foreach ($rows as $l):

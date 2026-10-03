@@ -339,6 +339,14 @@ a { color: var(--st-accent); }
 .st-crumbs a:hover { color: var(--st-ink); }
 .st-crumbs li:last-child { color: var(--st-ink); font-weight: 650; overflow: hidden; }
 .st-crumbs li:last-child span { overflow: hidden; text-overflow: ellipsis; }
+/* ⛔ گوشی: فقط دو حلقه‌ی آخر، و هر حلقه کوتاه‌شدنی — پیش از این حلقه‌های
+   میانی روی هم می‌افتادند و «فروشگاهفاکتورهای فرفاکتور…» خوانده می‌شد
+   (بازرسیِ مهر ۱۴۰۵). */
+@media (max-width: 640px) {
+    .st-crumbs li:not(:last-child):not(:nth-last-child(2)) { display: none; }
+    .st-crumbs li { overflow: hidden; }
+    .st-crumbs a { overflow: hidden; text-overflow: ellipsis; }
+}
 
 .st-search {
     position: relative; flex: 0 1 420px; min-width: 0; margin: 0;
@@ -647,6 +655,13 @@ a { color: var(--st-accent); }
     box-shadow: var(--st-shadow); overflow-x: auto; margin-bottom: 14px;
 }
 @media (min-width: 900px) { .st-table-wrap:not(.st-lines-wrap) { overflow: visible; } }
+/* ⛔ جدولِ ردیف‌های سند و صورت‌حساب روی گوشی: ستونِ شرح پهنای کمینه دارد و
+   عددها نمی‌شکنند؛ جدول درونِ ظرفِ خودش اسکرول می‌شود، نه صفحه. پیش از این
+   نامِ کالا حرف‌به‌حرف زیرِ هم می‌شکست (بازرسیِ مهر ۱۴۰۵). */
+@media (max-width: 640px) {
+    .st-doc-lines td:nth-child(2) { min-width: 9.5em; }
+    .st-doc-lines .st-td-num, .st-doc-lines th { white-space: nowrap; }
+}
 .st-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
 .st-table th {
     text-align: right; font-size: 12px; font-weight: 600; color: var(--st-ink-3);

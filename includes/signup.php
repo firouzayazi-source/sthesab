@@ -596,3 +596,54 @@ function signupThrottleRecord(string $ip): void
             ->execute(['k' => '__signup__', 'ip' => $ip]);
     } catch (PDOException $e) { /* مهم نیست */ }
 }
+
+/**
+ * ⛔ تغییرِ رمزِ **خودِ** کاربر — تنها مسیر، برای حساب لند (`api/change_password.php`)
+ *    و صفحه‌ی حسابِ فروشگاه (`store/account.php`). با دو نسخه، دیر یا زود یکی
+ *    ابطالِ دستگاه‌ها یا قاعده‌ی رمز را جا می‌انداخت.
+ *
+ * @return array{ok:bool, message:string, status:int}
+ */
+function changeOwnPassword(int $userId, string $current, string $new, string $confirm): array
+{
+    // ⛔ حسابی که با شماره موبایل ساخته شده هنوز **هیچ رمزی ندارد**
+    //    (`password_hash IS NULL`). خواستنِ «رمز فعلی» از او یعنی هرگز
+    //    نتواند رمز بگذارد. این هیچ دری باز نمی‌کند: کاربر همین حالا واردِ
+    //    حسابِ خودش است.
+    $hasPassword = userHasPassword($userId);
+
+    $errors = [];
+    if ($hasPassword && $current === '') { $errors[] = 'رمز فعلی را وارد کنید.'; }
+    if ($new === '') { $errors[] = 'رمز جدید را وارد کنید.'; }
+    elseif (($pe = passwordRuleError($new)) !== '') { $errors[] = $pe; }
+    if ($new !== $confirm) { $errors[] = 'رمز جدید و تکرار آن یکسان نیستند.'; }
+    if ($hasPassword && $new === $current && $new !== '') { $errors[] = 'رمز جدید نباید با رمز فعلی یکی باشد.'; }
+    if ($errors) { return ['ok' => false, 'message' => implode(' ', $errors), 'status' => 422]; }
+
+    $pdo = Database::getConnection();
+    $stmt = $pdo->prepare('SELECT password_hash FROM users WHERE id = :id');
+    $stmt->execute(['id' => $userId]);
+    $row = $stmt->fetch();
+    // ⚠ شاخه‌ی بی‌رمز اصلاً به `password_verify()` نمی‌رسد.
+    if (!$row || ($hasPassword && !password_verify($current, (string)$row['password_hash']))) {
+        return ['ok' => false, 'message' => 'رمز فعلی اشتباه است.', 'status' => 403];
+    }
+
+    try {
+        $pdo->prepare('UPDATE users SET password_hash = :h WHERE id = :id')
+            ->execute(['h' => password_hash($new, PASSWORD_DEFAULT), 'id' => $userId]);
+        // با تغییر رمز، دستگاه‌های مورد اعتماد و توکن‌های اپ هم باطل می‌شوند —
+        // ولی فقط وقتی رمزِ **قبلی** وجود داشت (اولین رمز چیزی را عوض نکرده
+        // که لو رفته باشد).
+        if ($hasPassword) { revokeAllAccessFor($userId); }
+        Audit::log('auth.password_changed', 'user', $userId, ['self' => true]);
+        // ⛔ مهرِ ابطال همین حالا نوشته شد و نشستِ خودِ کاربر قدیمی‌تر از آن است
+        Auth::renewCurrentSession();
+    } catch (PDOException $e) {
+        Log::error('api.change_password', $e);
+        return ['ok' => false, 'message' => 'خطایی رخ داد.', 'status' => 500];
+    }
+    return ['ok' => true, 'status' => 200, 'message' => $hasPassword
+        ? 'رمز عبور تغییر کرد. دستگاه‌های مورد اعتماد، اپ‌های متصل و نشست‌های دیگر هم باطل شدند.'
+        : 'رمز عبور برای حساب شما تنظیم شد. از این پس می‌توانید با رمز هم وارد شوید.'];
+}

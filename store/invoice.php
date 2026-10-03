@@ -99,7 +99,7 @@ require __DIR__ . '/../includes/biz_head.php';
     </dl>
 
     <div class="st-table-wrap st-flat">
-        <table class="st-table">
+        <table class="st-table st-doc-lines">
             <thead><tr><th>#</th><th>کالا</th><th class="st-th-num">تعداد</th><th class="st-th-num">فی</th><th class="st-th-num st-hide-sm">تخفیف</th><th class="st-th-num">جمع</th></tr></thead>
             <tbody>
             <?php foreach ($inv['lines'] as $n => $l): ?>

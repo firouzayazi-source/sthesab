@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $r = BizInvoices::issue($userId, $id, [
                     'account_id' => $form['account_id'], 'method' => $form['method'], 'full' => $form['pay_mode'] === 'full',
-                    'amount' => $form['pay_mode'] === 'part' ? $form['pay_amount'] : '0',
+                    'amount' => $form['pay_mode'] === 'part' ? $form['pay_amount'] : '0', 'part' => $form['pay_mode'] === 'part',
                 ]);
             } catch (Throwable $e) {
                 BizInvoices::deleteDraft($userId, $id);
@@ -135,7 +135,7 @@ require __DIR__ . '/../includes/biz_head.php';
                     </select>
                 </label>
                 <label class="st-field"><span>صندوق</span>
-                    <select name="account_id"><?php foreach ($accounts as $a): ?><option value="<?= (int)$a['id'] ?>"<?= (int)$a['id'] === (int)$form['account_id'] ? ' selected' : '' ?>><?= h($a['name']) ?></option><?php endforeach; ?></select>
+                    <select name="account_id" data-acc-auto><?php foreach ($accounts as $a): ?><option value="<?= (int)$a['id'] ?>" data-kind="<?= h((string)($a['kind'] ?? '')) ?>"<?= (int)$a['id'] === (int)$form['account_id'] ? ' selected' : '' ?>><?= h($a['name']) ?></option><?php endforeach; ?></select>
                 </label>
             </div>
             <div class="st-seg st-seg-sm">

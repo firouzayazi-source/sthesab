@@ -115,15 +115,19 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Csrf::verifyOrFail(postParam('csrf_token'));
     foreach ($form as $k => $_) { $form[$k] = postParam($k); }
+    // ⛔ تاریخِ نامعتبر «امروز» نمی‌شود — همان‌جا گفته می‌شود
+    $pd = BizDocView::docDate((string)$form['pay_date'], 'تاریخ');
+    $cd = trim((string)$form['cheque_due']) === '' ? ['ok' => true, 'date' => '']
+        : BizDocView::docDate((string)$form['cheque_due'], 'سررسیدِ چک', true);
     // ⛔ دو بار زدنِ «ثبت» دو دریافت نمی‌سازد (`BizOnce`)
-    if (($dup = BizOnce::claim()) !== null) { BizOnce::redirectDuplicate($dup, Biz::url('payments.php')); }
-    $r = BizPay::create($userId, [
+    if ($pd['ok'] && $cd['ok'] && ($dup = BizOnce::claim()) !== null) { BizOnce::redirectDuplicate($dup, Biz::url('payments.php')); }
+    $r = !$pd['ok'] ? ['ok' => false, 'message' => $pd['message']] : (!$cd['ok'] ? ['ok' => false, 'message' => $cd['message']] : BizPay::create($userId, [
         'kind' => $kind, 'party_id' => (int)$form['party_id'], 'invoice_id' => $invId, 'amount' => $form['amount'],
         'account_id' => (int)$form['account_id'], 'to_account_id' => (int)$form['to_account_id'], 'method' => $form['method'],
-        'pay_date' => BizDocView::gDate((string)$form['pay_date']), 'title' => $form['title'], 'note' => $form['note'],
+        'pay_date' => $pd['date'], 'title' => $form['title'], 'note' => $form['note'],
         'cheque_no' => $form['cheque_no'], 'cheque_bank' => $form['cheque_bank'],
-        'cheque_due' => trim((string)$form['cheque_due']) === '' ? '' : BizDocView::gDate((string)$form['cheque_due']),
-    ]);
+        'cheque_due' => $cd['date'],
+    ]));
     if ($r['ok']) {
         $to = $invId ? Biz::url('invoice.php?id=' . $invId) : Biz::url('payment.php?id=' . (int)$r['id']);
         BizOnce::done($to);
@@ -179,7 +183,7 @@ require __DIR__ . '/../includes/biz_head.php';
     </div>
     <div class="st-row2">
         <label class="st-field"><span><?= $kind === 'transfer' ? 'از صندوق' : 'صندوق' ?></span>
-            <select name="account_id"><?php foreach ($accounts as $a): ?><option value="<?= (int)$a['id'] ?>"<?= (int)$a['id'] === (int)$form['account_id'] ? ' selected' : '' ?>><?= h($a['name']) ?> — <?= h(formatMoney((int)$a['balance'])) ?></option><?php endforeach; ?></select>
+            <select name="account_id" data-acc-auto><?php foreach ($accounts as $a): ?><option value="<?= (int)$a['id'] ?>" data-kind="<?= h((string)($a['kind'] ?? '')) ?>"<?= (int)$a['id'] === (int)$form['account_id'] ? ' selected' : '' ?>><?= h($a['name']) ?> — <?= h(formatMoney((int)$a['balance'])) ?></option><?php endforeach; ?></select>
         </label>
         <?php if ($kind === 'transfer'): ?>
         <label class="st-field"><span>به صندوق</span>

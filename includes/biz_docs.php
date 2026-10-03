@@ -275,10 +275,10 @@ final class BizInvoices
      *
      * @return array{lines:array, errors:array<int,string>, meta:array<int,array>}
      */
-    public static function parseLines(int $userId, array $raw): array
+    public static function parseLines(int $userId, array $raw, string $priceCol = ''): array
     {
         $pdo = Database::getConnection();
-        $cols = 'id, name, unit, track_stock, has_serial, is_active';
+        $cols = 'id, name, unit, track_stock, has_serial, is_active, sell_price, buy_price';
         $byId = $pdo->prepare("SELECT {$cols} FROM biz_products WHERE id = :id AND user_id = :u");
         $bySku = $pdo->prepare("SELECT {$cols} FROM biz_products WHERE sku = :s AND user_id = :u LIMIT 1");
         $byName = $pdo->prepare("SELECT {$cols} FROM biz_products WHERE name = :n AND user_id = :u ORDER BY is_active DESC, id LIMIT 1");
@@ -341,7 +341,11 @@ final class BizInvoices
             $meta[$i] = ['product_id' => $prod ? (int)$prod['id'] : null, 'name' => $prod ? (string)$prod['name'] : null,
                          'serial' => $serial, 'imei1' => $imei1, 'imei2' => $imei2];
             $qty   = $qtyIn === '' ? 1.0 : sanitizeQty($qtyIn);
-            $price = sanitizeAmount($prIn);
+            // ⛔ قیمتِ خالی = قیمتِ خودِ کالا (فروش یا خرید)، نه صفر: خانه‌ای که
+            //    کاربر پاک کرده یا اسکریپتش نرسیده، فروشِ مجانی صادر می‌کرد
+            //    (بازرسیِ مهر ۱۴۰۵). «۰»ِ نوشته‌شده همچنان صفر است (هدیه، نمونه).
+            $price = (trim((string)$prIn) === '' && $prod && $priceCol !== '' && isset($prod[$priceCol]))
+                ? (int)$prod[$priceCol] : sanitizeAmount($prIn);
             $disc  = sanitizeAmount($r['disc'] ?? '');
             $desc  = $prod ? (string)$prod['name'] : $item;
             $unit  = $prod ? (string)$prod['unit'] : 'عدد';
@@ -349,6 +353,13 @@ final class BizInvoices
             if ($desc === '') { $errors[$i] = 'ردیف ' . toPersianDigits((string)$no) . ': شرح یا کالا خالی است.'; continue; }
             if (mb_strlen($desc) > self::DESC_MAX) { $desc = mb_substr($desc, 0, self::DESC_MAX); }
             if ($qty <= 0) { $errors[$i] = 'ردیف ' . toPersianDigits((string)$no) . ': تعداد باید بیشتر از صفر باشد.'; continue; }
+            $rowTag = 'ردیف ' . toPersianDigits((string)$no) . ': ';
+            if (($e = BizCommon::qtyError($qty, $rowTag . 'تعداد')) !== null
+                || ($e = BizCommon::moneyError($price, $rowTag . 'فی')) !== null
+                || ($e = BizCommon::moneyError($disc, $rowTag . 'تخفیف')) !== null
+                || ($e = BizCommon::moneyError($qty * $price, $rowTag . 'مبلغِ ردیف')) !== null) {
+                $errors[$i] = $e; continue;
+            }
             if ($prod && !BizProducts::qtyFits($unit, $qty)) {
                 $errors[$i] = 'ردیف ' . toPersianDigits((string)$no) . ': تعدادِ «' . $desc . '» برای واحدِ «' . $unit . '» باید عددِ صحیح باشد.';
                 continue;
@@ -431,13 +442,17 @@ final class BizInvoices
         if (!$head['ok']) { return $head; }
         // پیش‌نویس اثری ندارد، ولی صدورش در دوره‌ی بسته رد می‌شد — همین‌جا بگو، نه بعد از تایپِ کلِ فاکتور
         if (($e = Biz::lockError($userId, $head['date'], 'فاکتور')) !== null) { return ['ok' => false, 'message' => $e]; }
-        $parsed = self::parseLines($userId, (array)($in['lines'] ?? []));
+        $parsed = self::parseLines($userId, (array)($in['lines'] ?? []), $kind === 'purchase' ? 'buy_price' : 'sell_price');
         if ($parsed['errors']) {
             return ['ok' => false, 'message' => implode(' ', array_values($parsed['errors'])), 'errors' => $parsed['errors']];
         }
         if (!$parsed['lines']) { return ['ok' => false, 'message' => 'دست‌کم یک ردیف لازم است.']; }
+        foreach (['discount' => 'تخفیفِ فاکتور', 'extra' => 'هزینه‌ی جانبی'] as $k => $lbl) {
+            if (($e = BizCommon::moneyError($head[$k], $lbl)) !== null) { return ['ok' => false, 'message' => $e]; }
+        }
         $t = self::totals($parsed['lines'], $head['discount'], $head['extra']);
         if ($t['total'] < 0) { return ['ok' => false, 'message' => 'تخفیف از جمعِ فاکتور بیشتر است.']; }
+        if (($e = BizCommon::moneyError($t['total'], 'جمعِ فاکتور')) !== null) { return ['ok' => false, 'message' => $e]; }
 
         $pdo = Database::getConnection();
         $pdo->beginTransaction();
@@ -564,6 +579,17 @@ final class BizInvoices
 
         // `full` = «کلِ مبلغ» — از جمعِ ذخیره‌شده‌ی خودِ سند، نه عددی از فرم
         $payAmount = !empty($pay['full']) ? (int)$inv['total'] : sanitizeAmount($pay['amount'] ?? '');
+        // ⛔ «بخشی» یعنی بخشی: مبلغِ خالی بی‌صدا «نسیه» می‌شد، و مبلغِ بیش از
+        //    جمعِ فاکتور (یک صفرِ اضافه) بی‌صدا دریافتِ ده‌برابر ثبت می‌کرد در حالی
+        //    که پیش‌نمایشِ صفحه سقف را نشان می‌داد (بازرسیِ مهر ۱۴۰۵). مازادِ واقعی
+        //    را جدا، به‌صورتِ دریافت/پرداخت روی حسابِ طرف‌حساب ثبت کنید.
+        if (!empty($pay['part']) && $payAmount <= 0) {
+            return ['ok' => false, 'message' => 'برای «بخشی» مبلغِ ' . (self::SETTLED_BY[$kind] === 'receipt' ? 'دریافت' : 'پرداخت') . ' را بنویسید، یا «نسیه» را انتخاب کنید.'];
+        }
+        if (empty($pay['full']) && $payAmount > (int)$inv['total']) {
+            return ['ok' => false, 'message' => 'مبلغِ ' . (self::SETTLED_BY[$kind] === 'receipt' ? 'دریافت' : 'پرداخت') . ' ('
+                . formatMoney($payAmount) . ') از جمعِ سند (' . formatMoney((int)$inv['total']) . ') بیشتر است؛ مازاد را جدا ثبت کنید.'];
+        }
         if ($inv['party_id'] === null && $payAmount !== (int)$inv['total']) {
             return ['ok' => false, 'message' => 'بی‌طرف‌حساب (مشتری یا فروشنده‌ی گذری) سند فقط با تسویه‌ی کامل صادر می‌شود؛ طرف‌حساب انتخاب کنید یا کلِ مبلغ را '
                 . (self::SETTLED_BY[$kind] === 'receipt' ? 'دریافت' : 'پرداخت') . ' کنید.'];
@@ -1031,6 +1057,7 @@ final class BizPay
 
         if (!isset(self::KINDS[$kind])) { return ['ok' => false, 'message' => 'نوعِ سند معتبر نیست.']; }
         if ($amount <= 0) { return ['ok' => false, 'message' => 'مبلغ باید بیشتر از صفر باشد.']; }
+        if (($e = BizCommon::moneyError($amount, 'مبلغ')) !== null) { return ['ok' => false, 'message' => $e]; }
         if (!isset(self::METHODS[$method])) { $method = 'cash'; }
         if (!isValidDate($date)) { $date = date('Y-m-d'); }
         if (($e = Biz::lockError($userId, $date, self::KINDS[$kind] ?? 'این سند')) !== null) { return ['ok' => false, 'message' => $e]; }

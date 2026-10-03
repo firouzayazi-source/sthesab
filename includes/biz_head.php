@@ -184,6 +184,7 @@ foreach (Biz::NEW_MENU as $__h => $__l) { $__bizCmd['new'][] = ['t' => $__l, 'u'
                 <div class="st-dd-menu">
                     <div class="st-dd-head"><b><?= h($__bizName) ?></b><span><?= h($__bizShop) ?> · <?= h($__bizType) ?></span></div>
                     <a href="<?= h(Biz::url('settings.php')) ?>#avatar">تصویر شخصی</a>
+                    <a href="<?= h(Biz::url('account.php')) ?>">رمز و بکاپ</a>
                     <a href="<?= h(Biz::url('settings.php')) ?>">تنظیمات فروشگاه</a>
                     <a href="<?= h(Biz::url('invoice-design.php')) ?>">طراحی فاکتور</a>
                     <?php if (!Biz::isStoreOnly()): ?>

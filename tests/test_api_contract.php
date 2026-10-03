@@ -5905,8 +5905,11 @@ $authSrc = (string)@file_get_contents(__DIR__ . '/../includes/auth.php');
 if (!preg_match('/function renewCurrentSession\(\)([\s\S]*?)\n    \}/', $authSrc, $rcs) || strpos($rcs[1], 'self::trustThisDevice(') === false) {
     $badStay[] = 'auth.php — renewCurrentSession() اعتمادِ همین دستگاه را دوباره نمی‌سازد';
 }
-if (!preg_match('/if \(\$hasPassword\) \{\s*revokeAllAccessFor\(\$userId\);/', (string)@file_get_contents(__DIR__ . '/../api/change_password.php'))) {
-    $badStay[] = 'change_password.php — تنظیمِ **اولین** رمز همه‌ی دستگاه‌ها را بیرون می‌اندازد';
+// ⛔ منطقِ تغییرِ رمز در `changeOwnPassword()` (signup.php) است — هم حساب لند و
+//    هم صفحه‌ی حسابِ فروشگاه از آن می‌گذرند؛ سنجش روی همان تابع.
+if (!preg_match('/function changeOwnPassword\([\s\S]*?if \(\$hasPassword\) \{\s*revokeAllAccessFor\(\$userId\);/', (string)@file_get_contents(__DIR__ . '/../includes/signup.php'))
+    || strpos((string)@file_get_contents(__DIR__ . '/../api/change_password.php'), 'changeOwnPassword(') === false) {
+    $badStay[] = 'changeOwnPassword() — تنظیمِ **اولین** رمز همه‌ی دستگاه‌ها را بیرون می‌اندازد (یا اندپوینت از آن نمی‌گذرد)';
 }
 T::bulk(8, $badStay, '⛔ هر ورود دستگاه را نگه می‌دارد و تغییرِ رمز همین دستگاه را بیرون نمی‌اندازد');
 

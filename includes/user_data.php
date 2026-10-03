@@ -290,3 +290,39 @@ function appVersion(): string
     }
     return $v = 'نسخه‌ی توسعه';
 }
+
+/**
+ * ⛔ دانلودِ بکاپِ کاملِ کاربر (`.sthesab`) — تنها مسیر، برای حساب لند
+ *    (`api/export_data.php`) و صفحه‌ی حسابِ فروشگاه (`store/account.php`).
+ *
+ * موفق: فایل را می‌فرستد و **خارج می‌شود**. ناموفق: پیامِ خطا برمی‌گرداند تا
+ * هر صفحه به روشِ خودش نشانش دهد.
+ */
+function sendUserExport(int $userId): string
+{
+    try {
+        $data = exportUserData($userId);
+        Audit::log('data.exported', 'backup', null, ['kind' => 'full']);
+    } catch (Throwable $e) {
+        Log::error('api.export_data', $e);
+        return 'خروجی گرفته نشد. اگر تکرار شد به پشتیبانی خبر بدهید.';
+    }
+    if (!$data) { return 'کاربر یافت نشد.'; }
+
+    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+    // نامِ فایل با ارقامِ **لاتین** (`1405-06-12.sthesab`): نامِ فارسی‌رقم در
+    // `filename=` غیرمجاز است و مرورگر فایل را «download» ذخیره می‌کرد.
+    $name = backupFileName();
+    // ⛔ نشانه‌ی «آخرین پشتیبان» **پیش از** فرستادنِ بدنه — بعد از `echo` هر
+    //    کوئریِ ناموفقی بی‌صدا گم می‌شود.
+    markBackupTaken($userId);
+    // ⛔ گزیپِ `db.php` خاموش، وگرنه فایل دوبار فشرده و باز‌نشدنی ذخیره می‌شد
+    while (ob_get_level() > 0) { ob_end_clean(); }
+    header_remove('Content-Encoding');
+    header('Content-Type: application/octet-stream');
+    header('Content-Disposition: attachment; filename="' . $name . '"');
+    header('Content-Length: ' . strlen((string)$json));
+    header('Cache-Control: no-store, private');
+    echo $json;
+    exit;
+}

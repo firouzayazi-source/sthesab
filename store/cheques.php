@@ -28,11 +28,14 @@ $ready  = BizCheques::ready();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Csrf::verifyOrFail(postParam('csrf_token'));
     $cid = (int)postParam('cheque_id');
+    // ⛔ تاریخِ نامعتبر «امروز» نمی‌شود (`BizDocView::docDate()`)
+    $cd = BizDocView::docDate((string)postParam(postParam('action') === 'endorse' ? 'endorse_date' : 'clear_date'));
+    if (!$cd['ok']) { redirectWithMessage($self, 'error', $cd['message']); }
     switch (postParam('action')) {
-        case 'clear':   $r = BizCheques::clear($userId, $cid, (int)postParam('bank_id'), BizDocView::gDate((string)postParam('clear_date'))); break;
+        case 'clear':   $r = BizCheques::clear($userId, $cid, (int)postParam('bank_id'), $cd['date']); break;
         case 'unclear': $r = BizCheques::unclear($userId, $cid); break;
         case 'bounce':  $r = BizCheques::bounce($userId, $cid); break;
-        case 'endorse': $r = BizCheques::endorse($userId, $cid, (int)postParam('party_id'), BizDocView::gDate((string)postParam('endorse_date'))); break;
+        case 'endorse': $r = BizCheques::endorse($userId, $cid, (int)postParam('party_id'), $cd['date']); break;
         case 'unendorse': $r = BizCheques::unendorse($userId, $cid); break;
         default:        $r = ['ok' => false, 'message' => 'درخواست نامعتبر است.'];
     }
