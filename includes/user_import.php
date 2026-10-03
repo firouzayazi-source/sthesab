@@ -129,25 +129,31 @@ const IMPORT_CONFIRM_PHRASE = 'بازگرداندن';
  *
  * @return string[]
  */
-function importableTables(): array
+function importableTables(?array $fileTables = null): array
 {
-    return array_values(array_filter(userDataTables(), fn(string $t) => !userImportSkipped($t)));
+    // ⛔ دفترِ فروشگاه (`biz_`) فقط وقتی جایگزین می‌شود که **خودِ فایل** دفترِ
+    //    فروشگاه دارد. همه‌ی جدول‌های واردشدنی پیش از درج پاک می‌شوند، پس
+    //    بازگرداندنِ یک بکاپِ **شخصیِ** ساده دفترِ فروشگاهِ حسابِ «شخصی +
+    //    فروشگاه» را بی‌صدا پاک می‌کرد (بازرسیِ مهر ۱۴۰۵). بکاپِ کاملِ فروشگاه
+    //    همچنان کلِ دفترش را برمی‌گرداند (`test_store_cheques`).
+    $withBiz = $fileTables === null || storeTablesIn($fileTables);
+    return array_values(array_filter(userDataTables(),
+        fn(string $t) => !userImportSkipped($t) && ($withBiz || !str_starts_with($t, 'biz_'))));
 }
 
-/**
- * ⛔ آیا این جدول از «بازگرداندن» بیرون است؟ فهرستِ بالا **و هر جدولِ
- *    فروشگاه** (`biz_`).
- *
- * دفترِ فروشگاه قاعده‌هایی دارد که فقط از راهِ خودِ فروشگاه برقرار می‌مانند
- * (موجودی هرگز منفی، قفلِ دوره، شماره‌ی یکتا، IMEI). بازگرداندنِ ردیف‌ها از
- * فایل همه را دور می‌زد — موجودیِ ۵۰۰−، فاکتورِ صادرشده در دوره‌ی بسته —
- * و بدتر: چون پیش از درج همه‌ی جدول‌های واردشدنی پاک می‌شوند، بازگرداندنِ یک
- * بکاپِ **شخصیِ** ساده دفترِ فروشگاهِ حسابِ «شخصی + فروشگاه» را بی‌صدا پاک
- * می‌کرد (بازرسیِ مهر ۱۴۰۵). حالا هیچ جدولِ فروشگاه پاک یا نوشته نمی‌شود.
- */
+/** آیا فایل دست‌کم یک ردیف در یک جدولِ فروشگاه دارد؟ */
+function storeTablesIn(array $fileTables): bool
+{
+    foreach ($fileTables as $t => $rows) {
+        if (str_starts_with((string)$t, 'biz_') && is_array($rows) && $rows) { return true; }
+    }
+    return false;
+}
+
+/** آیا این جدول هرگز از فایل نوشته نمی‌شود؟ (`USER_IMPORT_SKIP`) */
 function userImportSkipped(string $table): bool
 {
-    return in_array($table, USER_IMPORT_SKIP, true) || str_starts_with($table, 'biz_');
+    return in_array($table, USER_IMPORT_SKIP, true);
 }
 
 /**
@@ -455,7 +461,7 @@ function importUserData(int $userId, array $data): array
     }
 
     $known  = userDataTables();
-    $target = importableTables();
+    $target = importableTables($data['tables']);
     $fk     = importForeignKeys();
     $schema = schemaMap();
 

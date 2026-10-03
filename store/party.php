@@ -107,13 +107,14 @@ require __DIR__ . '/../includes/biz_head.php';
     <?php if (count($stmt['lines']) > count($rows)): ?><p class="st-muted-i"><?= toPersianDigits((string)count($rows)) ?> ردیفِ آخر از <?= toPersianDigits((string)count($stmt['lines'])) ?>؛ همه در صورت‌حسابِ چاپی.</p><?php endif; ?>
     <div class="st-table-wrap st-flat">
         <table class="st-table st-doc-lines">
-            <thead><tr><th>تاریخ</th><th>شرح</th><th class="st-th-num">بدهکار</th><th class="st-th-num">بستانکار</th><th class="st-th-num st-hide-sm">مانده</th></tr></thead>
+            <thead><tr><th class="st-hide-sm">تاریخ</th><th>شرح</th><th class="st-th-num">بدهکار</th><th class="st-th-num">بستانکار</th><th class="st-th-num st-hide-sm">مانده</th></tr></thead>
             <tbody>
             <?php foreach ($rows as $l):
                 $href = isset($l['invoice_id']) ? Biz::url('invoice.php?id=' . $l['invoice_id']) : (isset($l['payment_id']) ? Biz::url('payment.php?id=' . $l['payment_id']) : null); ?>
                 <tr>
-                    <td><span class="st-num"><?= h(toJalali((string)$l['date'])) ?></span></td>
-                    <td><?= $href ? '<a class="st-row-link" href="' . h($href) . '">' . h($l['desc']) . '</a>' : h($l['desc']) ?></td>
+                    <td class="st-hide-sm"><span class="st-num"><?= h(toJalali((string)$l['date'])) ?></span></td>
+                    <td><?= $href ? '<a class="st-row-link" href="' . h($href) . '">' . h($l['desc']) . '</a>' : h($l['desc']) ?>
+                        <small class="st-show-sm st-muted-i st-num"><?= h(toJalali((string)$l['date'])) ?></small></td>
                     <td class="st-td-num"><?= $l['debit'] ? BizDocView::money((int)$l['debit']) : '' ?></td>
                     <td class="st-td-num"><?= $l['credit'] ? BizDocView::money((int)$l['credit']) : '' ?></td>
                     <td class="st-td-num st-hide-sm"><?= BizDocView::money(abs((int)$l['balance'])) ?> <small class="st-muted-i"><?= $l['balance'] > 0 ? 'بد' : ($l['balance'] < 0 ? 'بس' : '') ?></small></td>

@@ -100,18 +100,18 @@ require __DIR__ . '/../includes/biz_head.php';
 
     <div class="st-table-wrap st-flat">
         <table class="st-table st-doc-lines">
-            <thead><tr><th>#</th><th>کالا</th><th class="st-th-num">تعداد</th><th class="st-th-num">فی</th><th class="st-th-num st-hide-sm">تخفیف</th><th class="st-th-num">جمع</th></tr></thead>
+            <thead><tr><th class="st-hide-sm">#</th><th>کالا</th><th class="st-th-num">تعداد</th><th class="st-th-num st-hide-sm">فی</th><th class="st-th-num st-hide-sm">تخفیف</th><th class="st-th-num">جمع</th></tr></thead>
             <tbody>
             <?php foreach ($inv['lines'] as $n => $l): ?>
                 <tr>
-                    <td class="st-num"><?= toPersianDigits((string)($n + 1)) ?></td>
+                    <td class="st-num st-hide-sm"><?= toPersianDigits((string)($n + 1)) ?></td>
                     <td>
                         <?php if ($l['product_id'] !== null): ?><a class="st-row-link" href="<?= h(Biz::url('product.php?id=' . (int)$l['product_id'])) ?>"><?= h((string)$l['description']) ?></a>
                         <?php else: ?><?= h((string)$l['description']) ?> <span class="st-line-note">شرحِ آزاد</span><?php endif; ?>
                         <?= BizDocView::lineSub($l) ?>
                     </td>
                     <td class="st-td-num"><span class="st-num"><?= h(formatQty($l['qty'])) ?></span> <?= h((string)$l['unit']) ?></td>
-                    <td class="st-td-num"><?= BizDocView::money((int)$l['unit_price']) ?></td>
+                    <td class="st-td-num st-hide-sm"><?= BizDocView::money((int)$l['unit_price']) ?></td>
                     <td class="st-td-num st-hide-sm"><?= (int)$l['line_discount'] > 0 ? BizDocView::money((int)$l['line_discount']) : '' ?></td>
                     <td class="st-td-num"><?= BizDocView::money((int)$l['line_total']) ?></td>
                 </tr>

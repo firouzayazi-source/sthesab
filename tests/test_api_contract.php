@@ -7166,8 +7166,12 @@ $prt70  = (string)file_get_contents(__DIR__ . '/../store/print.php');
 $js70   = (string)file_get_contents(__DIR__ . '/../assets/js/store.js');
 
 // ۱. «استفاده‌نشده» یک تعریف دارد و روی خودِ DELETE می‌نشیند
-if (!preg_match('/UNUSED_SQL\s*=\s*\'NOT EXISTS \(SELECT 1 FROM biz_invoice_lines ul WHERE ul\.product_id = p\.id AND ul\.user_id = :uu1\)\s*AND NOT EXISTS \(SELECT 1 FROM biz_stock_moves um WHERE um\.product_id = p\.id AND um\.user_id = :uu2 AND um\.ref_type IS NOT NULL\)\'/', $cat70g)) {
-    $gBad[] = 'biz_catalog.php — UNUSED_SQL باید هر دو شرط (ردیفِ سند، حرکتِ سندداری) را با user_id داشته باشد';
+// ⛔ و انبارگردانی هم «استفاده» است (کسریِ شمارش زیانِ واقعی است — بازرسیِ مهر ۱۴۰۵)
+if (!preg_match('/UNUSED_SQL\s*=\s*\'(.*?)\';/s', $cat70g, $us70)
+    || !str_contains($us70[1], 'NOT EXISTS (SELECT 1 FROM biz_invoice_lines ul WHERE ul.product_id = p.id AND ul.user_id = :uu1)')
+    || !str_contains($us70[1], 'NOT EXISTS (SELECT 1 FROM biz_stock_moves um WHERE um.product_id = p.id AND um.user_id = :uu2')
+    || !preg_match('/um\.ref_type IS NOT NULL OR um\.kind = .{1,2}adjust/', $us70[1])) {
+    $gBad[] = 'biz_catalog.php — UNUSED_SQL باید هر سه شرط (ردیفِ سند، حرکتِ سندداری، انبارگردانی) را با user_id داشته باشد';
 }
 if (!preg_match('/\$where\s*=\s*\[\'p\.user_id = :u\', self::UNUSED_SQL\]/', $cat70g)) {
     $gBad[] = 'biz_catalog.php — unusedWhere() باید با p.user_id و UNUSED_SQL شروع شود';

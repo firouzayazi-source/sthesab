@@ -294,9 +294,51 @@ T::ok(!$r['ok'] && BizFetch::$deadline === null, '⛔ مهلتِ کل پس از 
 // =================================================================
 T::group('۱۴ — بازگرداندنِ بکاپِ شخصی دفترِ فروشگاه را دست نمی‌زند');
 require_once __DIR__ . '/../includes/user_import.php';
-$imp = importableTables();
-T::ok(!array_filter($imp, fn($t) => str_starts_with($t, 'biz_')), '⛔ هیچ جدولِ فروشگاه پاک یا از فایل نوشته نمی‌شود', implode(',', array_filter($imp, fn($t) => str_starts_with($t, 'biz_'))));
+$imp = importableTables(['transactions' => [['id' => 1]], 'biz_products' => []]);
+T::ok(!array_filter($imp, fn($t) => str_starts_with($t, 'biz_')),
+    '⛔ بکاپِ شخصی (بی‌دفترِ فروشگاه) هیچ جدولِ فروشگاه را پاک نمی‌کند', implode(',', array_filter($imp, fn($t) => str_starts_with($t, 'biz_'))));
 T::ok(in_array('transactions', $imp, true), 'جدول‌های شخصی مثلِ قبل بازگردانده می‌شوند');
+$full = importableTables(['transactions' => [], 'biz_products' => [['id' => 1]]]);
+T::ok(in_array('biz_products', $full, true) && in_array('biz_invoices', $full, true), 'بکاپِ کاملِ فروشگاه همچنان کلِ دفترش را برمی‌گرداند');
+
+// =================================================================
+T::group('۱۵ — تاریخ، سقفِ عدد، پرداختِ بخشی، قیمتِ خالی، جست‌وجوی طرف‌حساب');
+require_once __DIR__ . '/../includes/biz_docview.php';
+T::same(date('Y-m-d'), BizDocView::docDate('')['date'] ?? null, 'تاریخِ خالی = امروز');
+foreach (['۱۴۰۵/۰۷/۴۵', '1405/12/30', '05/07/01', 'دیروز'] as $bad) {
+    $dr = BizDocView::docDate($bad);
+    T::ok(!$dr['ok'] && str_contains((string)$dr['message'], 'معتبر نیست'), "⛔ «{$bad}» امروز نمی‌شود، «معتبر نیست» گفته می‌شود", (string)($dr['message'] ?? ''));
+}
+T::ok(!BizDocView::docDate('1450/01/01')['ok'] && !BizDocView::docDate('1305/01/01')['ok'], '⛔ سالِ ۱۴۵۰ و ۱۳۰۵ بیرون از بازه');
+T::ok(BizDocView::docDate('1450/01/01', 'سررسید', true)['ok'] === false && BizDocView::docDate(toJalali(date('Y-m-d', strtotime('+3 years'))), 'سررسید', true)['ok'],
+    'سررسیدِ چک تا پنج سال جلوتر پذیرفته است');
+
+$u3 = $make('f');
+$AC3 = (int)BizProducts::save($u3, ['type' => 'goods', 'name' => 'هندزفری', 'unit' => 'عدد', 'buy_price' => '100', 'sell_price' => '250', 'opening_qty' => '20'])['id'];
+$r = BizInvoices::saveDraft($u3, 'sale', ['lines' => [$L('هندزفری', '1', '999999999999999')]]);
+T::ok(!$r['ok'] && str_contains($r['message'], 'فی بیش از حد بزرگ'), '⛔ قیمتِ پانزده‌رقمی (بارکدِ اسکن‌شده) رد می‌شود و خودِ «فی» گفته می‌شود، نه ۵۰۰', $r['message']);
+$r = BizInvoices::saveDraft($u3, 'sale', ['lines' => [$L('هندزفری', '99999999999', '10')]]);
+T::ok(!$r['ok'], '⛔ مقدارِ بیش از سقف رد می‌شود', $r['message']);
+$r = BizParties::save($u3, ['name' => 'بزرگ', 'kind' => 'customer', 'opening_amount' => '99999999999999999999']);
+T::ok(!$r['ok'], '⛔ مانده‌ی اول دوره‌ی بیست‌رقمی رد می‌شود (داشبورد سرریز نمی‌کند)', $r['message']);
+
+$d = BizInvoices::saveDraft($u3, 'sale', ['lines' => [$L('هندزفری', '2', '')]]);
+T::ok($d['ok'] && (int)BizInvoices::get($u3, (int)$d['id'])['total'] === 500, '⛔ قیمتِ خالی = قیمتِ فروشِ کالا، نه فروشِ مجانی',
+    (string)(BizInvoices::get($u3, (int)($d['id'] ?? 0))['total'] ?? ''));
+$cust3 = (int)BizParties::save($u3, ['name' => 'علي رضايي', 'kind' => 'customer', 'phone' => '0912 123 4567'])['id'];
+$d2 = BizInvoices::saveDraft($u3, 'sale', ['party_id' => $cust3, 'lines' => [$L('هندزفری', '1', '250')]]);
+$r = BizInvoices::issue($u3, (int)$d2['id'], ['amount' => '2500', 'account_id' => $acc($u3), 'part' => true]);
+T::ok(!$r['ok'], '⛔ «بخشی» بیش از جمعِ فاکتور (یک صفرِ اضافه) رد می‌شود', $r['message']);
+$r = BizInvoices::issue($u3, (int)$d2['id'], ['amount' => '', 'account_id' => $acc($u3), 'part' => true]);
+T::ok(!$r['ok'], '⛔ «بخشی» بی‌مبلغ بی‌صدا نسیه نمی‌شود', $r['message']);
+$r = BizInvoices::issue($u3, (int)$d2['id'], ['amount' => '100', 'account_id' => $acc($u3), 'part' => true]);
+T::ok($r['ok'], 'بخشیِ درست صادر می‌شود', $r['message']);
+
+T::same('علی رضایی', BizParties::get($u3, $cust3)['name'], 'نامِ عربی‌تایپ‌شده با ی/ک فارسی ذخیره می‌شود');
+T::same(1, BizParties::list($u3, 'علي')['total'], '⛔ جست‌وجوی «علي» (ی عربی) پیدایش می‌کند');
+T::same(1, BizParties::list($u3, '۰۹۱۲۱۲۳۴۵۶۷')['total'], '⛔ تلفنِ بی‌فاصله تلفنِ فاصله‌دار را پیدا می‌کند');
+BizParties::save($u3, ['name' => 'مهدی', 'kind' => 'customer', 'phone' => '09351112233']);
+T::same(1, BizParties::list($u3, '0935 111-2233')['total'], '⛔ و تلفنِ فاصله‌دارِ جست‌وجو تلفنِ بی‌فاصله را');
 
 // =================================================================
 T::group('۶ — دو بار زدنِ «ثبت»: یک سند (HTTP)');
@@ -370,6 +412,25 @@ if (!$up) {
     $bad['lines'] = [['item' => 'شارژر', 'qty' => '1', 'price' => '200']];
     $req('store/quick-sale.php', $bad);
     T::same($before + 3, $sales($w), '⛔ پس از شکست، همان فرمِ اصلاح‌شده ثبت می‌شود (نشان آزاد شد)');
+
+    // صفحه‌ی «رمز و بکاپ» برای حسابِ فروشگاه
+    [$c, $ac] = $req('store/account.php');
+    T::ok($c === 200 && str_contains($ac, '</html>') && str_contains($ac, 'name="new_password"'), 'صفحه‌ی رمز و بکاپ باز می‌شود');
+    [$c, , $loc] = $req('store/account.php', ['csrf_token' => $field($ac, 'csrf_token'), 'action' => 'password',
+        'current_password' => HPASS, 'new_password' => 'Hard12345New', 'new_password_confirm' => 'Hard12345New']);
+    $hash = (string)$pdo->query("SELECT password_hash FROM users WHERE username = '" . HPREFIX . "web'")->fetchColumn();
+    T::ok($c === 302 && password_verify('Hard12345New', $hash), '⛔ حسابِ فروشگاه رمزش را خودش عوض می‌کند', "{$c} {$loc}");
+    [$c, $ac2] = $req('store/account.php');
+    T::ok($c === 200, 'و همین دستگاه وارد می‌ماند', (string)$c);
+    $ch = curl_init("http://127.0.0.1:{$port}/store/account.php");
+    curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_COOKIEFILE => $jar, CURLOPT_POST => true, CURLOPT_TIMEOUT => 40,
+        CURLOPT_POSTFIELDS => http_build_query(['csrf_token' => $field($ac2, 'csrf_token'), 'action' => 'export'])]);
+    $body = (string)curl_exec($ch);
+    $type = (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+    curl_close($ch);
+    $js = json_decode($body, true);
+    T::ok(str_contains($type, 'octet-stream') && is_array($js) && isset($js['tables']['biz_products']),
+        '⛔ بکاپِ کامل (با دفترِ فروشگاه) دانلود می‌شود', substr($type . ' ' . $body, 0, 120));
 
     exec("kill $srv 2>/dev/null");
     @unlink($jar);

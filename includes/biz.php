@@ -106,6 +106,8 @@ final class Biz
         'invoice-edit.php' => 'sales.php',
         'return.php'       => 'sales.php',
         'payment.php'      => 'payments.php',
+        // رمز و بکاپ — از منوی پروفایل (بالای صفحه)، زیرِ «تنظیمات»
+        'account.php'      => 'settings.php',
     ];
 
     /**

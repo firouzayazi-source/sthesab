@@ -655,12 +655,13 @@ a { color: var(--st-accent); }
     box-shadow: var(--st-shadow); overflow-x: auto; margin-bottom: 14px;
 }
 @media (min-width: 900px) { .st-table-wrap:not(.st-lines-wrap) { overflow: visible; } }
-/* ⛔ جدولِ ردیف‌های سند و صورت‌حساب روی گوشی: ستونِ شرح پهنای کمینه دارد و
-   عددها نمی‌شکنند؛ جدول درونِ ظرفِ خودش اسکرول می‌شود، نه صفحه. پیش از این
-   نامِ کالا حرف‌به‌حرف زیرِ هم می‌شکست (بازرسیِ مهر ۱۴۰۵). */
+/* ⛔ جدولِ ردیف‌های سند و صورت‌حساب روی گوشی: ستون‌های فرعی (ردیف، فی،
+   تاریخِ جدا) پنهان می‌شوند تا شرح جا داشته باشد — پیش از این نامِ کالا
+   حرف‌به‌حرف زیرِ هم می‌شکست (بازرسیِ مهر ۱۴۰۵). جدول بی‌اسکرول جا می‌شود. */
+.st-show-sm { display: none; }
 @media (max-width: 640px) {
-    .st-doc-lines td:nth-child(2) { min-width: 9.5em; }
-    .st-doc-lines .st-td-num, .st-doc-lines th { white-space: nowrap; }
+    .st-show-sm { display: block; }
+    .st-doc-lines .st-td-num { white-space: nowrap; }
 }
 .st-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
 .st-table th {

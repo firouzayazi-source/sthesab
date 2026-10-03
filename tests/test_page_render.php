@@ -154,6 +154,7 @@ const EXPECT = [
     'store/quick-sale.php'      => 'blocked',
     'store/return.php'          => 'blocked',
     'store/sales.php'           => 'blocked',
+    'store/account.php'         => 'blocked',
     'store/login.php'       => 'away',
     'store/logout.php'      => 'skip',
 ];

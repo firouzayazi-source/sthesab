@@ -63,15 +63,16 @@ const STORE_BUDGET = [
     'store/print.php'          => 7,
     'store/sales.php'          => 6,
     'store/purchases.php'      => 6,
-    'store/quick-sale.php'     => 8,   // +۱: گوشی‌های در انبار (IMEI) در فهرستِ جست‌وجو
+    'store/quick-sale.php'     => 9,   // +۱: گوشی‌های در انبار (IMEI) در فهرستِ جست‌وجو؛ +۱: نقشه‌ی جدول‌ها برای `first_issued_at` (سرگذشتِ IMEI، بازرسیِ مهر ۱۴۰۵)
     'store/invoice.php'        => 12,   // +۳: «مانده‌ی قبلی / کل» از `statement()` (طرف‌حساب، اسناد، پرداخت‌ها)
-    'store/invoice-edit.php'   => 11,  // +۱: همان، برای فاکتورِ فروش
+    'store/invoice-edit.php'   => 12,  // +۱: همان، برای فاکتورِ فروش؛ +۱: همان نقشه‌ی جدول‌ها
     'store/return.php'         => 8,
     'store/payments.php'       => 7,
     'store/payment.php'        => 6,
     'store/accounts.php'       => 5,
     'store/cheques.php'        => 10,  // +۱: منوی طرف‌حساب‌ها برای «واگذاری» (فقط وقتی چکِ دریافتیِ در جریانی هست)
     'store/categories.php'     => 5,
+    'store/account.php'        => 5,   // رمز و بکاپ (بازرسیِ مهر ۱۴۰۵): پوسته‌ی فروشگاه + «رمز دارد؟»
 ];
 const STORE_NO_BUDGET = ['store/login.php', 'store/logout.php'];
 
