@@ -48,6 +48,11 @@ $nav = json_encode(['usd_sell' => ['value' => '105,300', 'change' => 1], '18ayar
                     'sekkeh' => ['value' => '78600000'], 'harat_naghdi_sell' => ['value' => '1'], 'eur' => '120000']);
 T::same(['usd' => 105300, 'eur' => 120000, 'gold18' => 7260000, 'coin_emami' => 78600000],
     Rates::parse('navasan', $nav), 'نوسان: کلید ⇒ کد (value یا عددِ خالی)، کلیدِ ناشناخته دور');
+T::same(['usd' => 263200, 'aed' => 72350, 'usdt' => 261750],
+    Rates::parse('navasan', json_encode(['usd' => ['value' => '263200'], 'aed' => ['value' => '72350'], 'usdt' => ['value' => '261750']])),
+    'نوسان: نامِ دوم (usd، aed) وقتی نامِ اول در پاسخ نیست');
+T::same(105300, Rates::parse('navasan', json_encode(['usd' => ['value' => '999999'], 'usd_sell' => ['value' => '105300']]))['usd'],
+    'و نامِ اول (usd_sell) بر دومی مقدم است، هر جای پاسخ که باشد');
 
 $bitTickers = json_encode([['symbol' => 'USDT_IRT', 'price' => '106000'], ['symbol' => 'PAXG_IRT', 'price' => '300000000'],
                            ['symbol' => 'BTC_IRT', 'price' => '9']]);

@@ -79,10 +79,14 @@ final class Rates
             'key' => 'required', 'monthly' => 120, 'parser' => 'keyed',
             // ⚠ راهنمای خودِ نوسان نشانیِ http می‌دهد؛ https اول، و اگر جواب نداد http.
             'urls' => ['https://api.navasan.tech/latest/?api_key={key}', 'http://api.navasan.tech/latest/?api_key={key}'],
-            'map' => ['usd_sell' => 'usd', 'eur' => 'eur', 'aed_sell' => 'aed', 'usdt' => 'usdt',
-                      '18ayar' => 'gold18', 'abshodeh' => 'mesghal',
-                      'sekkeh' => 'coin_emami', 'bahar' => 'coin_bahar', 'nim' => 'coin_half',
-                      'rob' => 'coin_quarter', 'gerami' => 'coin_gram'],
+            // ⚠ نامِ دوم هر کد (بعدِ اولی) فقط وقتی خوانده می‌شود که اولی در پاسخ
+            //   نبود (`??=`): نام‌ها در طرح‌های مختلفِ نوسان یکی نیستند و یک نامِ
+            //   ناآشنا یعنی آن نرخ بی‌صدا خالی بماند.
+            'map' => ['usd_sell' => 'usd', 'usd' => 'usd', 'eur' => 'eur', 'eur_sell' => 'eur',
+                      'aed_sell' => 'aed', 'aed' => 'aed', 'usdt' => 'usdt', 'usdt_sell' => 'usdt',
+                      '18ayar' => 'gold18', 'abshodeh' => 'mesghal', 'mesghal' => 'mesghal',
+                      'sekkeh' => 'coin_emami', 'emami' => 'coin_emami', 'bahar' => 'coin_bahar',
+                      'nim' => 'coin_half', 'rob' => 'coin_quarter', 'gerami' => 'coin_gram'],
         ],
         'bitpin' => [
             'label' => 'بیت‌پین', 'site' => 'https://bitpin.ir/academy/live/',
