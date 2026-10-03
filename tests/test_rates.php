@@ -65,6 +65,13 @@ T::same([], Rates::parse('brsapi', '<html>blocked</html>'), 'پاسخِ غیرِ
 T::same([], Rates::parse('navasan', json_encode(['usd_sell' => ['value' => '0'], 'eur' => '-5', '18ayar' => 'abc'])), 'صفر، منفی و متن = هیچ نرخی');
 T::same([null, 60500.0, 60500.5, 7.0, null], [Rates::num(''), Rates::num('۶۰٬۵۰۰'), Rates::num('60500.5'), Rates::num(7), Rates::num('1e5')], 'num()');
 
+T::same('http://api.navasan.tech/latest/?api_key={key}', Rates::expandUrl('navasan', 'http://api.navasan.tech'),
+    '⛔ آدرسِ جایگزینِ «فقط پایه» (همان که مالکِ نصب نوشت) ادامه‌ی آدرسِ پیش‌فرض را می‌گیرد');
+T::same('http://api.navasan.tech/latest/?api_key={key}', Rates::expandUrl('navasan', 'http://api.navasan.tech/'), 'با اسلشِ آخر هم');
+T::same('https://relay.example.com/n.php?k={key}', Rates::expandUrl('navasan', 'https://relay.example.com/n.php?k={key}'), 'آدرسِ کامل دست نمی‌خورد');
+T::same('https://x.example/latest/', Rates::expandUrl('navasan', 'https://x.example/latest/'), 'آدرسِ مسیردار هم');
+T::same('https://a.example', Rates::expandUrl('custom', 'https://a.example'), 'منبعِ بی‌آدرسِ پیش‌فرض (دلخواه) دست نمی‌خورد');
+
 // ---------------------------------------------------------------
 T::group('نرخ — نرخِ ساختنی و سدِ جهش');
 $got = ['@gold24' => [$g24, 'bitpin'], 'usdt' => [106000, 'bitpin']];
@@ -189,6 +196,20 @@ try {
     T::same((int)round(7250000 * 4.3318), (int)$rates['mesghal']['price'], 'مثقال ساخته شد (هیچ منبعی نداشت)');
     T::ok(!isset($rates['usd']) || $rates['usd']['source'] !== 'bitpin', 'دلار هرگز از تتر');
     T::same(1, (int)$pdo->query("SELECT month_calls FROM rate_sources WHERE provider = 'navasan'")->fetchColumn(), 'یک درخواستِ نوسان شمرده شد');
+
+    // ⛔ https نوسان جواب نداد ⇒ http (نشانیِ راهنمای خودِ نوسان)؛ و آدرسِ «فقط پایه»
+    $fakeBak = $fake;
+    unset($fake['https://api.navasan.tech/latest/?api_key=NAVKEY']);
+    $fake['http://api.navasan.tech/latest/?api_key=NAVKEY'] = $nav;
+    $calls = [];
+    $rn = Rates::fetchOne('navasan');
+    T::ok($rn['ok'] && in_array('http://api.navasan.tech/latest/?api_key=NAVKEY', $calls, true), 'نوسان: https شکست ⇒ http امتحان شد و جواب داد');
+    Rates::saveSource('navasan', ['enabled' => 1, 'priority' => 20, 'url' => 'http://api.navasan.tech']);
+    $calls = [];
+    $rn = Rates::fetchOne('navasan');
+    T::ok($rn['ok'] && $calls === ['http://api.navasan.tech/latest/?api_key=NAVKEY'], '⛔ آدرسِ جایگزینِ «فقط پایه»: درخواست به /latest/ با کلید رفت', implode(' ', $calls));
+    Rates::saveSource('navasan', ['enabled' => 1, 'priority' => 20, 'url' => '']);
+    $fake = $fakeBak;
 
     // همه پر ⇒ منبعِ بعدی صدا زده نمی‌شود
     $all = json_encode(['currency' => array_map(fn($s) => ['symbol' => $s, 'price' => 100000], ['USD', 'EUR', 'AED', 'USDT']),

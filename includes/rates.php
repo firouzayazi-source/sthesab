@@ -77,7 +77,8 @@ final class Rates
         'navasan' => [
             'label' => 'نوسان', 'site' => 'https://www.navasan.tech/api/',
             'key' => 'required', 'monthly' => 120, 'parser' => 'keyed',
-            'urls' => ['https://api.navasan.tech/latest/?api_key={key}'],
+            // ⚠ راهنمای خودِ نوسان نشانیِ http می‌دهد؛ https اول، و اگر جواب نداد http.
+            'urls' => ['https://api.navasan.tech/latest/?api_key={key}', 'http://api.navasan.tech/latest/?api_key={key}'],
             'map' => ['usd_sell' => 'usd', 'eur' => 'eur', 'aed_sell' => 'aed', 'usdt' => 'usdt',
                       '18ayar' => 'gold18', 'abshodeh' => 'mesghal',
                       'sekkeh' => 'coin_emami', 'bahar' => 'coin_bahar', 'nim' => 'coin_half',
@@ -406,6 +407,27 @@ final class Rates
     }
 
     /**
+     * آدرسِ جایگزینِ «فقط نشانیِ پایه» ⇒ با ادامه‌ی آدرسِ پیش‌فرضِ همان منبع.
+     *
+     * ⛔ مالکِ نصب در «آدرسِ جایگزین»ِ نوسان `http://api.navasan.tech` نوشت —
+     *    همان نشانیِ پایه‌ای که راهنمای نوسان می‌دهد — و درخواست بی‌`/latest/` و
+     *    بی‌کلید به خودِ دامنه می‌رفت و هیچ نرخی برنمی‌گشت. پس آدرسی که نه مسیر
+     *    دارد، نه پرس‌وجو، نه `{key}`، پایه فرض می‌شود و ادامه‌اش از آدرسِ پیش‌فرض
+     *    می‌آید (`/latest/?api_key={key}`). آدرسِ کامل دست نمی‌خورد.
+     */
+    public static function expandUrl(string $p, string $url): string
+    {
+        $url = trim($url);
+        $u = parse_url($url);
+        $def = self::PROVIDERS[$p]['urls'][0] ?? null;
+        if (!$u || !$def || str_contains($url, '{key}') || isset($u['query']) || trim((string)($u['path'] ?? ''), '/') !== '') {
+            return $url;
+        }
+        $d = parse_url($def);
+        return rtrim($url, '/') . ($d['path'] ?? '/') . (isset($d['query']) ? '?' . $d['query'] : '');
+    }
+
+    /**
      * یک منبع ⇒ [ok, rates, error, url, body]. آدرس‌ها به ترتیب، تا اولی که
      * عددی داد. `body` فقط برای `--probe` است.
      */
@@ -415,7 +437,7 @@ final class Rates
         if (!$src) { return ['ok' => false, 'rates' => [], 'error' => 'منبعِ ناشناخته']; }
         $key   = self::apiKey($p);
         $paths = $src['paths'] !== '' ? (json_decode($src['paths'], true) ?: []) : [];
-        $urls  = $src['url'] !== '' ? [$src['url']] : self::PROVIDERS[$p]['urls'];
+        $urls  = $src['url'] !== '' ? [self::expandUrl($p, $src['url'])] : self::PROVIDERS[$p]['urls'];
         if (!$urls) { return ['ok' => false, 'rates' => [], 'error' => 'آدرس تعیین نشده']; }
         $err = 'پاسخی نیامد';
         foreach ($urls as $u) {
