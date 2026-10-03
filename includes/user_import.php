@@ -131,10 +131,23 @@ const IMPORT_CONFIRM_PHRASE = 'بازگرداندن';
  */
 function importableTables(): array
 {
-    return array_values(array_filter(
-        userDataTables(),
-        fn(string $t) => !in_array($t, USER_IMPORT_SKIP, true)
-    ));
+    return array_values(array_filter(userDataTables(), fn(string $t) => !userImportSkipped($t)));
+}
+
+/**
+ * ⛔ آیا این جدول از «بازگرداندن» بیرون است؟ فهرستِ بالا **و هر جدولِ
+ *    فروشگاه** (`biz_`).
+ *
+ * دفترِ فروشگاه قاعده‌هایی دارد که فقط از راهِ خودِ فروشگاه برقرار می‌مانند
+ * (موجودی هرگز منفی، قفلِ دوره، شماره‌ی یکتا، IMEI). بازگرداندنِ ردیف‌ها از
+ * فایل همه را دور می‌زد — موجودیِ ۵۰۰−، فاکتورِ صادرشده در دوره‌ی بسته —
+ * و بدتر: چون پیش از درج همه‌ی جدول‌های واردشدنی پاک می‌شوند، بازگرداندنِ یک
+ * بکاپِ **شخصیِ** ساده دفترِ فروشگاهِ حسابِ «شخصی + فروشگاه» را بی‌صدا پاک
+ * می‌کرد (بازرسیِ مهر ۱۴۰۵). حالا هیچ جدولِ فروشگاه پاک یا نوشته نمی‌شود.
+ */
+function userImportSkipped(string $table): bool
+{
+    return in_array($table, USER_IMPORT_SKIP, true) || str_starts_with($table, 'biz_');
 }
 
 /**
@@ -461,7 +474,7 @@ function importUserData(int $userId, array $data): array
 
     $skipped = [];
     foreach (array_keys($data['tables']) as $t) {
-        if (in_array($t, USER_IMPORT_SKIP, true) && $data['tables'][$t]) {
+        if (userImportSkipped((string)$t) && $data['tables'][$t]) {
             $skipped[] = $t;
         }
     }

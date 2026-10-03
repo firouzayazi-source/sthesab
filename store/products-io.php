@@ -81,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'url') {
         $url = mb_substr(trim(postParam('url')), 0, 500);
         if ($url === '') { redirectWithMessage($self, 'error', 'آدرس را بنویسید.'); }
-        $rows = BizImport::fromUrl($url);
+        $rows = BizImport::fromUrl($url, $userId);
         if (!$rows['ok']) { redirectWithMessage($self, 'error', $rows['message']); }
         $host = (string)(parse_url($url, PHP_URL_HOST) ?: $url);
         if (!BizImport::stash($userId, $rows['rows'], ['source' => $rows['source'], 'label' => $host, 'toman' => !empty($rows['toman'])])) {

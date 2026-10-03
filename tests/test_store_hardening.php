@@ -274,6 +274,31 @@ $t = BizInvoices::totals([['line_total' => 0], ['line_total' => 0]], 0, 70);
 T::same(70, array_sum(array_column($t['lines'], 'net_total')), '⛔ جمعِ ردیف‌ها = جمعِ فاکتور، حتی وقتی همه‌ی ردیف‌ها صفرند');
 
 // =================================================================
+T::group('۱۳ — دریافت از سایت: مهلتِ کل و یک دریافت در هر لحظه');
+BizFetch::$deadline = time() - 1;
+$r = BizFetch::get('https://example.com/x.csv');
+BizFetch::$deadline = null;
+T::ok(!$r['ok'] && str_contains((string)$r['message'], 'کند'), '⛔ مهلتِ کل که گذشت، درخواستِ تازه‌ای زده نمی‌شود', (string)$r['message']);
+$lockDir = dirname(__DIR__) . '/var/biz-import';
+@mkdir($lockDir, 0700, true);
+$fh = fopen($lockDir . '/fetch-' . $u . '.lock', 'c');
+flock($fh, LOCK_EX);
+// قفل در همین پردازش است؛ flock روی توصیف‌گرِ دیگر در لینوکس هم رد می‌شود
+$r = BizImport::fromUrl('https://example.com/x.csv', $u);
+flock($fh, LOCK_UN); fclose($fh);
+T::ok(!$r['ok'] && str_contains((string)$r['message'], 'در جریان'), '⛔ دریافتِ دوم هم‌زمان برای همان فروشگاه رد می‌شود', (string)$r['message']);
+// آدرسِ داخلی همان‌جا رد می‌شود (سدِ SSRF) — بی‌شبکه، ولی از مسیرِ کاملِ `fromUrl()`
+$r = BizImport::fromUrl('http://127.0.0.1/x.csv', $u);
+T::ok(!$r['ok'] && BizFetch::$deadline === null, '⛔ مهلتِ کل پس از کار پاک می‌شود (درخواست‌های بعدیِ همین پردازش کوتاه نمی‌شوند)');
+
+// =================================================================
+T::group('۱۴ — بازگرداندنِ بکاپِ شخصی دفترِ فروشگاه را دست نمی‌زند');
+require_once __DIR__ . '/../includes/user_import.php';
+$imp = importableTables();
+T::ok(!array_filter($imp, fn($t) => str_starts_with($t, 'biz_')), '⛔ هیچ جدولِ فروشگاه پاک یا از فایل نوشته نمی‌شود', implode(',', array_filter($imp, fn($t) => str_starts_with($t, 'biz_'))));
+T::ok(in_array('transactions', $imp, true), 'جدول‌های شخصی مثلِ قبل بازگردانده می‌شوند');
+
+// =================================================================
 T::group('۶ — دو بار زدنِ «ثبت»: یک سند (HTTP)');
 $root = dirname(__DIR__);
 $port = 0;

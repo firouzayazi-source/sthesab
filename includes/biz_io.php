@@ -659,7 +659,32 @@ final class BizImport
      * ووکامرسِ همان دامنه امتحان می‌شود.
      * @return array{ok:bool, rows?:array, message?:string, source?:string, toman?:bool}
      */
-    public static function fromUrl(string $url): array
+    public static function fromUrl(string $url, int $userId = 0): array
+    {
+        // ⛔ یک دریافت در هر لحظه برای هر فروشگاه، و کلِ کار حداکثر ۴۵ ثانیه
+        //    (`SafeFetch::$deadline`) — وگرنه چند نشستِ یک کاربر با یک سایتِ کند
+        //    همه‌ی کارگرهای PHP را برای همه‌ی فروشگاه‌ها می‌گرفت.
+        $lock = null;
+        if ($userId > 0) {
+            $dir = self::dir();
+            if (is_dir($dir) || @mkdir($dir, 0700, true)) {
+                $lock = @fopen($dir . '/fetch-' . $userId . '.lock', 'c');
+                if ($lock && !flock($lock, LOCK_EX | LOCK_NB)) {
+                    fclose($lock);
+                    return ['ok' => false, 'message' => 'یک دریافت از سایت همین حالا در جریان است؛ چند لحظه بعد دوباره امتحان کنید.'];
+                }
+            }
+        }
+        BizFetch::$deadline = time() + 45;
+        try {
+            return self::fromUrlRun($url);
+        } finally {
+            BizFetch::$deadline = null;
+            if ($lock) { flock($lock, LOCK_UN); fclose($lock); }
+        }
+    }
+
+    private static function fromUrlRun(string $url): array
     {
         $url = self::sheetExportUrl($url);
         $r = BizFetch::get($url);

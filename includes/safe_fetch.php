@@ -21,6 +21,16 @@ class SafeFetch
     private const MAX_REDIRECTS = 3;
 
     /**
+     * ⛔ مهلتِ **کل** (زمانِ یونیکس) برای همه‌ی درخواست‌های یک کار — نه فقط هر
+     *    درخواست. ورود از سایت تا ۲۱ صفحه می‌خواند، هر کدام با ۳ ریدایرکت و
+     *    مهلتِ ۱۵ ثانیه؛ زمانِ انتظارِ شبکه هم جزوِ مهلتِ اجرای PHP نیست. پس
+     *    یک سایتِ عمداً کند می‌توانست یک کارگرِ PHP را تا بیست دقیقه نگه دارد
+     *    و با چند نشست همه‌ی کارگرها را — سایت برای همه‌ی فروشگاه‌ها می‌خوابید
+     *    (بازرسیِ مهر ۱۴۰۵). `null` = بی‌مهلتِ کل (فقط مهلتِ هر درخواست).
+     */
+    public static ?int $deadline = null;
+
+    /**
      * ⛔ آدرس را می‌سنجد و IP ای را که باید به آن وصل شد برمی‌گرداند. هر
      *    نشانیِ داخلی (loopback، شبکه‌ی خصوصی، link-local، CGNAT، رزرو)
      *    رد می‌شود — وگرنه این فرم ابزاری بود برای خواندنِ سرویس‌های داخلیِ
@@ -88,6 +98,8 @@ class SafeFetch
             return ['ok' => false, 'message' => 'افزونه‌ی curl روی سرور نیست؛ فایل را دانلود و بارگذاری کنید.'];
         }
         for ($hop = 0; $hop <= self::MAX_REDIRECTS; $hop++) {
+            $left = self::$deadline !== null ? self::$deadline - time() : self::TIMEOUT;
+            if ($left <= 0) { return ['ok' => false, 'message' => 'سایت بیش از حد کند جواب داد؛ دریافت متوقف شد.']; }
             $c = self::check($url);
             if (!$c['ok']) { return $c; }
             $body = '';
@@ -97,8 +109,11 @@ class SafeFetch
                 CURLOPT_RESOLVE        => [$c['host'] . ':' . $c['port'] . ':' . $c['ip']],
                 CURLOPT_FOLLOWLOCATION => false,
                 CURLOPT_PROTOCOLS      => CURLPROTO_HTTP | CURLPROTO_HTTPS,
-                CURLOPT_CONNECTTIMEOUT => 8,
-                CURLOPT_TIMEOUT        => self::TIMEOUT,
+                CURLOPT_CONNECTTIMEOUT => min(8, $left),
+                CURLOPT_TIMEOUT        => min(self::TIMEOUT, $left),
+                // سایتی که قطره‌قطره می‌فرستد (کمتر از ۱ کیلوبایت در ثانیه، ۱۰ ثانیه) رها می‌شود
+                CURLOPT_LOW_SPEED_LIMIT => 1024,
+                CURLOPT_LOW_SPEED_TIME  => 10,
                 CURLOPT_NOPROXY        => '*',
                 CURLOPT_USERAGENT      => 'Mozilla/5.0 (compatible; HesabLand/1.0)',
                 CURLOPT_HTTPHEADER     => ['Accept: application/json, text/csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, */*;q=0.5'],
