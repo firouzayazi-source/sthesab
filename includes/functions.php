@@ -4932,7 +4932,13 @@ function tradesEnabled(PDO $pdo, int $userId): bool
  */
 function sanitizeQty($input): float
 {
-    $clean = toLatinDigits((string)$input);
+    $clean = trim(toLatinDigits((string)$input));
+    // ⛔ «1,000» یعنی هزار، نه یک: الگوی جداکننده‌ی هزارگان (۱ تا ۳ رقم، بعد
+    //    گروه‌های سه‌رقمی) پیش از «ویرگول = ممیز» کنار گذاشته می‌شود. پیش از
+    //    این «1,000» یک خوانده می‌شد و فقط در جمعِ زنده دیده می‌شد (بازرسیِ مهر ۱۴۰۵).
+    if (preg_match('/^\d{1,3}(?:[,،]\d{3})+(?:[.٫]\d+)?$/u', $clean)) {
+        $clean = str_replace([',', '،'], '', $clean);
+    }
     $clean = str_replace(['٫', '،', ','], '.', $clean);
     $clean = preg_replace('/[^0-9.]/', '', $clean);
     return round((float)$clean, 3);

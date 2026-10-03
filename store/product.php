@@ -64,8 +64,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirectWithMessage($self, $res['ok'] ? 'success' : 'error', $res['ok'] ? 'انبارگردانی حذف شد.' : $res['message']);
     } elseif ($product && $action === 'toggle') {
         $on = (int)$product['is_active'] !== 1;
-        BizProducts::setActive($userId, $id, $on);
-        redirectWithMessage($self, 'success', $on ? 'کالا فعال شد.' : 'کالا غیرفعال شد؛ در فهرستِ «غیرفعال» می‌ماند.');
+        $res = BizProducts::setActive($userId, $id, $on);
+        redirectWithMessage($self, $res['ok'] ? 'success' : 'error', $res['message']);
     } elseif ($product && $action === 'delete') {
         $res = BizProducts::delete($userId, $id);
         redirectWithMessage($res['ok'] ? Biz::url('products.php') : $self, $res['ok'] ? 'success' : 'error', $res['message']);

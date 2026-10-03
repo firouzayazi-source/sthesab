@@ -135,7 +135,10 @@
     }
     function money(s) { var n = parseInt(latin(s).replace(/[^0-9]/g, ''), 10); return isNaN(n) ? 0 : n; }
     function qty(s) {
-        var t = latin(s).trim().replace(/[٫\/,،]/g, '.').replace(/[^0-9.]/g, '');
+        var t = latin(s).trim();
+        // «1,000» هزار است، نه یک — همان قاعده‌ی `sanitizeQty()` در سرور
+        if (/^\d{1,3}(?:[,،]\d{3})+(?:[.٫]\d+)?$/.test(t)) { t = t.replace(/[,،]/g, ''); }
+        t = t.replace(/[٫\/,،]/g, '.').replace(/[^0-9.]/g, '');
         if (t === '') { return null; }
         var n = parseFloat(t); return isNaN(n) ? 0 : n;
     }

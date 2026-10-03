@@ -24,6 +24,16 @@ require_once __DIR__ . '/biz.php';      // `Biz::lockError()` — بستنِ د�
 /** ابزارهای مشترکِ این فایل. */
 final class BizCommon
 {
+    /**
+     * کوچک‌ترین تاریخِ معتبر (`Y-m-d`) — برای سنجشِ قفلِ دوره روی چیزی که
+     * پیش از همه‌ی اسناد حساب می‌شود (موجودی و مانده‌ی اول دوره).
+     */
+    public static function earliest(array $dates): string
+    {
+        $ok = array_filter(array_map('strval', $dates), fn($d) => isValidDate(substr($d, 0, 10)));
+        return $ok ? min(array_map(fn($d) => substr($d, 0, 10), $ok)) : date('Y-m-d');
+    }
+
     /** فرارِ `%` و `_` برای `LIKE … ESCAPE '!'` — همان قاعده‌ی tx_query. */
     public static function like(string $term): string
     {
@@ -283,6 +293,18 @@ final class BizProducts
         return ['rows' => $st->fetchAll(), 'total' => $total, 'page' => $page, 'pages' => $pages];
     }
 
+    /** آیا این کالا در سندِ صادرشده یا حرکتِ انبار آمده است؟ */
+    public static function hasHistory(int $userId, int $id): bool
+    {
+        $st = Database::getConnection()->prepare(
+            "SELECT EXISTS(SELECT 1 FROM biz_stock_moves WHERE user_id = :u AND product_id = :p)
+                 OR EXISTS(SELECT 1 FROM biz_invoice_lines l JOIN biz_invoices i ON i.id = l.invoice_id AND i.user_id = l.user_id
+                           WHERE l.user_id = :u2 AND l.product_id = :p2 AND i.status = 'issued')"
+        );
+        $st->execute(['u' => $userId, 'p' => $id, 'u2' => $userId, 'p2' => $id]);
+        return (bool)$st->fetchColumn();
+    }
+
     public static function get(int $userId, int $id): ?array
     {
         $st = Database::getConnection()->prepare(self::SELECT_SQL . ' WHERE p.id = :id AND p.user_id = :u LIMIT 1');
@@ -362,9 +384,21 @@ final class BizProducts
             if (!self::qtyFits($unit, (float)$cur['stock_qty'])) {
                 return ['ok' => false, 'message' => 'موجودیِ فعلی اعشاری است و با واحدِ «' . $unit . '» جور نیست.'];
             }
+            // ⛔ کالا ↔ خدمت فقط برای کالای بی‌سابقه. گزارشِ سود «خریدِ بی‌انبار»
+            //    را از همین پرچم می‌خواند، پس عوض کردنش سودِ ماه‌های گذشته — حتی
+            //    دوره‌ی بسته — را بازنویسی می‌کرد (خرید هم بهای فروش می‌شد هم
+            //    هزینه)، و ابطالِ فاکتورهایش دیگر ممکن نبود (بازرسیِ مهر ۱۴۰۵).
+            if ((int)$cur['track_stock'] !== $track && self::hasHistory($userId, $id)) {
+                return ['ok' => false, 'message' => 'این قلم در سندِ صادرشده یا حرکتِ انبار آمده؛ «کالا/خدمت» بودنش دیگر عوض نمی‌شود. برای نوعِ دیگر قلمِ تازه بسازید.'];
+            }
             if ($serial === null) { $serial = (int)($cur['has_serial'] ?? 0) === 1 && $track === 1 ? 1 : 0; }
         }
         $serial = $track === 1 ? (int)$serial : 0;
+        // ⛔ دوباره، بعد از معلوم شدنِ گوشی بودن: مسیرِ ورود از فایل `type`
+        //    نمی‌فرستد و سنجشِ بالا را دور می‌زد — گوشیِ «کیلوگرمی» و «۲٫۵ گوشی».
+        if ($serial === 1 && self::UNITS[$unit]) {
+            return ['ok' => false, 'message' => 'گوشی با واحدِ «' . $unit . '» ثبت نمی‌شود؛ «دستگاه» یا «عدد» را انتخاب کنید.'];
+        }
 
         // ⛔ دسته با نام می‌آید (فرم، ورود از فایل) و به شناسه تبدیل می‌شود؛
         //    نامِ تازه دسته‌ی تازه می‌سازد. ستونِ متنیِ قدیمی همیشه NULL.
@@ -440,11 +474,23 @@ final class BizProducts
             ? 'هنوز نرخی برای «' . Rates::label($code) . '» نیامده؛ قیمتِ فروش با اولین نرخ حساب می‌شود.' : ''];
     }
 
-    public static function setActive(int $userId, int $id, bool $active): bool
+    /**
+     * ⛔ کالای **موجوددار** غیرفعال نمی‌شود: ارزشِ انبار و داشبورد فقط کالای
+     *    فعال را می‌شمارند، پس موجودی‌اش بی‌صدا از دارایی بیرون می‌افتاد
+     *    (بازرسیِ مهر ۱۴۰۵). اول با انبارگردانی صفرش کنید.
+     * @return array{ok:bool, message:string}
+     */
+    public static function setActive(int $userId, int $id, bool $active): array
     {
+        $cur = self::get($userId, $id);
+        if (!$cur) { return ['ok' => false, 'message' => 'کالا پیدا نشد.']; }
+        if (!$active && abs((float)$cur['stock_qty']) > 0.0005) {
+            return ['ok' => false, 'message' => 'این کالا ' . formatQty((float)$cur['stock_qty']) . ' ' . $cur['unit']
+                . ' موجودی دارد؛ غیرفعال کردنش آن را از ارزشِ انبار بیرون می‌برد. اول موجودی را با انبارگردانی صفر کنید.'];
+        }
         $st = Database::getConnection()->prepare('UPDATE biz_products SET is_active = :a WHERE id = :id AND user_id = :u');
         $st->execute(['a' => $active ? 1 : 0, 'id' => $id, 'u' => $userId]);
-        return $st->rowCount() > 0;
+        return ['ok' => true, 'message' => $active ? 'کالا فعال شد.' : 'کالا غیرفعال شد؛ در فهرستِ «غیرفعال» می‌ماند.'];
     }
 
     /**
@@ -459,11 +505,14 @@ final class BizProducts
         $pdo = Database::getConnection();
         // ⛔ ردیفِ فاکتور — حتی پیش‌نویس — به کالا اشاره می‌کند (کلیدِ خارجیِ
         //    RESTRICT)؛ حذفش فاکتور را بی‌کالا می‌کرد.
-        $st  = $pdo->prepare('SELECT (SELECT COUNT(*) FROM biz_stock_moves WHERE product_id = :id AND user_id = :u AND ref_type IS NOT NULL)
-                                   + (SELECT COUNT(*) FROM biz_invoice_lines WHERE product_id = :id2 AND user_id = :u2)');
+        // ⛔ و کالایی که **انبارگردانی** دارد هم: کسریِ شمارش هزینه‌ی واقعی است
+        //    و در سودِ همان روز نشسته؛ با حذف (CASCADE) آن زیان از سودِ گذشته —
+        //    حتی دوره‌ی بسته — پاک می‌شد (بازرسیِ مهر ۱۴۰۵). همان قاعده در `UNUSED_SQL`.
+        $st  = $pdo->prepare("SELECT (SELECT COUNT(*) FROM biz_stock_moves WHERE product_id = :id AND user_id = :u AND (ref_type IS NOT NULL OR kind = 'adjust'))
+                                   + (SELECT COUNT(*) FROM biz_invoice_lines WHERE product_id = :id2 AND user_id = :u2)");
         $st->execute(['id' => $id, 'u' => $userId, 'id2' => $id, 'u2' => $userId]);
         if ((int)$st->fetchColumn() > 0) {
-            return ['ok' => false, 'message' => 'این کالا در فاکتور آمده و حذف نمی‌شود؛ غیرفعالش کنید.'];
+            return ['ok' => false, 'message' => 'این کالا در فاکتور یا انبارگردانی آمده و حذف نمی‌شود؛ غیرفعالش کنید.'];
         }
         $st = $pdo->prepare('DELETE FROM biz_products WHERE id = :id AND user_id = :u');
         $st->execute(['id' => $id, 'u' => $userId]);
@@ -488,7 +537,8 @@ final class BizProducts
      *    نه یک `:u` تکراری (EMULATE_PREPARES = false).
      */
     private const UNUSED_SQL = 'NOT EXISTS (SELECT 1 FROM biz_invoice_lines ul WHERE ul.product_id = p.id AND ul.user_id = :uu1)
-        AND NOT EXISTS (SELECT 1 FROM biz_stock_moves um WHERE um.product_id = p.id AND um.user_id = :uu2 AND um.ref_type IS NOT NULL)';
+        AND NOT EXISTS (SELECT 1 FROM biz_stock_moves um WHERE um.product_id = p.id AND um.user_id = :uu2
+                        AND (um.ref_type IS NOT NULL OR um.kind = \'adjust\'))';
 
     /** دامنه‌ی پاک‌سازی — `empty`: فقط بی‌موجودی (پیش‌فرض)، `all`: با موجودیِ اول دوره هم. */
     public const CLEANUP_SCOPES = [
@@ -1070,7 +1120,13 @@ final class BizStock
             }
             // ⛔ اول دوره تاریخِ ساختِ کالا را دارد و بهای همه‌ی فروش‌های بعدی از آن
             //    ساخته می‌شود؛ کالای قدیمی در دوره‌ی بسته دیگر اول دوره‌اش عوض نمی‌شود
-            if (($e = Biz::lockError($userId, substr((string)$p['created_at'], 0, 10), 'موجودیِ اول دوره‌ی این کالا')) !== null) { return $e; }
+            // ⛔ و با **قدیمی‌ترین حرکتِ** کالا، نه فقط تاریخِ ساخت: اول دوره پیش از
+            //    همه‌ی حرکت‌ها حساب می‌شود، پس فروشِ تاریخ‌گذشته‌ی کالای تازه هم
+            //    بهایش را از آن می‌گیرد — و سودِ ماهِ بسته عوض می‌شد (بازرسیِ مهر ۱۴۰۵).
+            $mm = $pdo->prepare('SELECT MIN(move_date) FROM biz_stock_moves WHERE user_id = :u AND product_id = :p');
+            $mm->execute(['u' => $userId, 'p' => $productId]);
+            $since = BizCommon::earliest([substr((string)$p['created_at'], 0, 10), (string)$mm->fetchColumn()]);
+            if (($e = Biz::lockError($userId, $since, 'موجودیِ اول دوره‌ی این کالا')) !== null) { return $e; }
             $pdo->prepare("DELETE FROM biz_stock_moves WHERE product_id = :p AND user_id = :u AND kind = 'opening'")
                 ->execute(['p' => $productId, 'u' => $userId]);
             if ($qty > 0) {
@@ -1232,6 +1288,18 @@ final class BizStock
    ================================================================= */
 final class BizParties
 {
+    /** قدیمی‌ترین تاریخِ سند یا دریافت/پرداختِ این طرف‌حساب ('' اگر هیچ). */
+    public static function firstDocDate(int $userId, int $partyId): string
+    {
+        $st = Database::getConnection()->prepare(
+            "SELECT LEAST(COALESCE((SELECT MIN(inv_date) FROM biz_invoices WHERE user_id = :u AND party_id = :p AND status = 'issued'), '9999-12-31'),
+                          COALESCE((SELECT MIN(pay_date) FROM biz_payments WHERE user_id = :u2 AND party_id = :p2 AND status = 'ok'), '9999-12-31'))"
+        );
+        $st->execute(['u' => $userId, 'p' => $partyId, 'u2' => $userId, 'p2' => $partyId]);
+        $d = (string)$st->fetchColumn();
+        return $d === '9999-12-31' ? '' : $d;
+    }
+
     public const KINDS = [
         'customer' => 'مشتری',
         'supplier' => 'تأمین‌کننده',
@@ -1483,8 +1551,10 @@ final class BizParties
             if (!$cur) { return ['ok' => false, 'message' => 'طرف‌حساب پیدا نشد.']; }
             // ⛔ مانده‌ی اول دوره پیش از همه‌ی اسناد است؛ طرف‌حسابی که در دوره‌ی
             //    بسته ساخته شده، دیگر عوضش نمی‌کند (نام و تلفن آزادند)
+            // ⛔ و با قدیمی‌ترین سندِ همین طرف‌حساب (فاکتورِ تاریخ‌گذشته پیش از ساختش)
             if ((int)$cur['opening_balance'] !== $opening
-                && ($e = Biz::lockError($userId, substr((string)$cur['created_at'], 0, 10), 'مانده‌ی اول دوره‌ی این طرف‌حساب')) !== null) {
+                && ($e = Biz::lockError($userId, BizCommon::earliest([substr((string)$cur['created_at'], 0, 10),
+                        self::firstDocDate($userId, $id)]), 'مانده‌ی اول دوره‌ی این طرف‌حساب')) !== null) {
                 return ['ok' => false, 'message' => $e];
             }
             $pdo->prepare(
@@ -1507,11 +1577,23 @@ final class BizParties
         return ['ok' => true, 'message' => 'طرف‌حساب ذخیره شد.', 'id' => $id];
     }
 
-    public static function setActive(int $userId, int $id, bool $active): bool
+    /**
+     * ⛔ طرف‌حسابِ **مانده‌دار** غیرفعال نمی‌شود: طلب و بدهیِ داشبورد فقط
+     *    طرف‌حسابِ فعال را می‌شمارند، پس طلبش بی‌صدا صفر دیده می‌شد
+     *    (بازرسیِ مهر ۱۴۰۵). اول تسویه کنید.
+     * @return array{ok:bool, message:string}
+     */
+    public static function setActive(int $userId, int $id, bool $active): array
     {
+        $cur = self::get($userId, $id);
+        if (!$cur) { return ['ok' => false, 'message' => 'طرف‌حساب پیدا نشد.']; }
+        if (!$active && (int)($cur['balance'] ?? 0) !== 0) {
+            return ['ok' => false, 'message' => 'این طرف‌حساب ' . formatMoney(abs((int)$cur['balance'])) . ' تومان مانده دارد؛'
+                . ' غیرفعال کردنش آن را از طلب و بدهی بیرون می‌برد. اول تسویه کنید.'];
+        }
         $st = Database::getConnection()->prepare('UPDATE biz_parties SET is_active = :a WHERE id = :id AND user_id = :u');
         $st->execute(['a' => $active ? 1 : 0, 'id' => $id, 'u' => $userId]);
-        return $st->rowCount() > 0;
+        return ['ok' => true, 'message' => $active ? 'طرف‌حساب فعال شد.' : 'طرف‌حساب غیرفعال شد.'];
     }
 
     /** حذف — طرف‌حسابی که فاکتور یا دریافت/پرداخت دارد فقط غیرفعال می‌شود. */
@@ -1562,6 +1644,16 @@ final class BizParties
    ================================================================= */
 final class BizCash
 {
+    /** قدیمی‌ترین دریافت/پرداختِ این حساب ('' اگر هیچ). */
+    public static function firstPayDate(int $userId, int $accountId): string
+    {
+        $st = Database::getConnection()->prepare(
+            "SELECT MIN(pay_date) FROM biz_payments WHERE user_id = :u AND status = 'ok' AND (account_id = :a OR to_account_id = :a2)"
+        );
+        $st->execute(['u' => $userId, 'a' => $accountId, 'a2' => $accountId]);
+        return (string)($st->fetchColumn() ?: '');
+    }
+
     public const KINDS = [
         'cash' => 'صندوق نقدی',
         'bank' => 'حساب بانکی',
@@ -1668,7 +1760,8 @@ final class BizCash
                 return ['ok' => false, 'message' => 'صندوقِ چک را خودِ برنامه نگه می‌دارد و ویرایش نمی‌شود.'];
             }
             if ((int)$cur['opening_balance'] !== $ob
-                && ($e = Biz::lockError($userId, substr((string)$cur['created_at'], 0, 10), 'موجودیِ اولیه‌ی این حساب')) !== null) {
+                && ($e = Biz::lockError($userId, BizCommon::earliest([substr((string)$cur['created_at'], 0, 10),
+                        self::firstPayDate($userId, $id)]), 'موجودیِ اولیه‌ی این حساب')) !== null) {
                 return ['ok' => false, 'message' => $e];
             }
             $st = $pdo->prepare('UPDATE biz_accounts SET name = :n, kind = :k, opening_balance = :o WHERE id = :id AND user_id = :u');
@@ -1699,6 +1792,17 @@ final class BizCash
             $st->execute(['u' => $userId, 'id' => $id]);
             if ((int)$st->fetchColumn() === 0) {
                 return ['ok' => false, 'message' => 'فروشگاه دست‌کم یک صندوقِ فعال لازم دارد.'];
+            }
+        }
+        // ⛔ حسابِ **موجودی‌دار** غیرفعال نمی‌شود: جمعِ نقدِ داشبورد فقط حسابِ
+        //    فعال را می‌شمارد، پس پولش بی‌صدا ناپدید می‌شد (بازرسیِ مهر ۱۴۰۵).
+        if (!$active) {
+            $bl = $pdo->prepare('SELECT ' . self::BALANCE_SQL . ' FROM biz_accounts a WHERE a.id = :id AND a.user_id = :u');
+            $bl->execute(['id' => $id, 'u' => $userId]);
+            $bal = (int)$bl->fetchColumn();
+            if ($bal !== 0) {
+                return ['ok' => false, 'message' => 'این حساب ' . formatMoney(abs($bal)) . ' تومان موجودی دارد؛'
+                    . ' اول آن را به حسابِ دیگری انتقال دهید، بعد غیرفعالش کنید.'];
             }
         }
         $st = $pdo->prepare('UPDATE biz_accounts SET is_active = :a WHERE id = :id AND user_id = :u');

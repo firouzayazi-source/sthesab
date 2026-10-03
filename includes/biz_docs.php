@@ -405,6 +405,14 @@ final class BizInvoices
             if ((int)$l['line_total'] > 0) { $last = $k; }
         }
         if ($last !== null && $used !== $adj) { $lines[$last]['net_total'] += $adj - $used; }
+        // ⛔ همه‌ی ردیف‌ها صفر (هدیه، نمونه) و هزینه‌ی جانبی: سهم به ردیفِ آخر.
+        //    پیش از این به هیچ ردیفی نمی‌رسید — مشتری بدهکار می‌شد ولی فروش صفر
+        //    دیده می‌شد، و در خرید هزینه‌ی حمل هرگز به بهای انبار نمی‌نشست
+        //    (بازرسیِ مهر ۱۴۰۵). «جمعِ ردیف‌ها = جمعِ فاکتور» همیشه برقرار است.
+        if ($last === null && $adj !== 0 && $lines) {
+            $k = array_key_last($lines);
+            $lines[$k]['net_total'] = (int)$lines[$k]['line_total'] + $adj;
+        }
         return ['lines' => $lines, 'subtotal' => $sub, 'total' => $total];
     }
 
@@ -629,7 +637,9 @@ final class BizInvoices
         $col = $kind === 'purchase' && $prefs['update_buy_price'] ? 'buy_price'
             : ($kind === 'sale' && $prefs['update_sell_price'] ? 'sell_price' : '');
         if ($col !== '') {
-            $upP = $pdo->prepare("UPDATE biz_products SET {$col} = :p WHERE id = :id AND user_id = :u");
+            // ⛔ کالای وصل به نرخِ روز: قیمتِ فروشش را فقط `BizRates::apply()` می‌نویسد
+            $rated = $col === 'sell_price' && tableHasColumn('biz_products', 'rate_code') ? ' AND rate_code IS NULL' : '';
+            $upP = $pdo->prepare("UPDATE biz_products SET {$col} = :p WHERE id = :id AND user_id = :u{$rated}");
             foreach ($lines as $l) {
                 if ($l['product_id'] !== null && (int)$l['unit_price'] > 0) {
                     $upP->execute(['p' => (int)$l['unit_price'], 'id' => (int)$l['product_id'], 'u' => $userId]);
@@ -1749,7 +1759,8 @@ final class BizSerial
      * @param string[] $imeis
      * @return array<string,array{dir:string, product_id:?int, imei1:string, imei2:?string, kind:string, invoice_id:int}>
      */
-    public static function states(PDO $pdo, int $userId, array $imeis, int $exceptInvoice = 0, bool $lock = false, ?array $before = null): array
+    public static function states(PDO $pdo, int $userId, array $imeis, int $exceptInvoice = 0, bool $lock = false, ?array $before = null,
+                                  int $depth = 0, ?array $asked = null): array
     {
         $imeis = array_values(array_unique(array_filter(array_map('strval', $imeis), fn($x) => $x !== '')));
         if (!$imeis) { return []; }
@@ -1773,15 +1784,35 @@ final class BizSerial
              ORDER BY {$ord}, i.id, l.id" . ($lock ? ' LOCK IN SHARE MODE' : '')
         );
         $st->execute($params);
-        $out = [];
-        foreach ($st->fetchAll() as $r) {
-            $row = ['dir' => in_array($r['kind'], self::IN_KINDS, true) ? 'in' : 'out',
-                    'product_id' => $r['product_id'] !== null ? (int)$r['product_id'] : null,
-                    'imei1' => (string)$r['imei1'], 'imei2' => $r['imei2'] !== null ? (string)$r['imei2'] : null,
-                    'kind' => (string)$r['kind'], 'invoice_id' => (int)$r['invoice_id']];
+        $rows = $st->fetchAll();
+        // ⛔ دو شماره‌ی یک گوشی یک دستگاه‌اند: گوشی‌ای که با IMEI ۱ و ۲ خریده و
+        //    با IMEI ۲ فروخته شده، با IMEI ۱ نباید «در انبار» بماند (بازرسیِ مهر
+        //    ۱۴۰۵: همان گوشی دو بار فروخته شد). شماره‌های همراه هم پرسیده می‌شوند
+        //    و سرگذشت به‌ازای **دستگاه** تا می‌شود — همان قاعده‌ی `inStock()`.
+        $more = [];
+        foreach ($rows as $r) {
             foreach ([$r['imei1'], $r['imei2']] as $v) {
-                if ($v !== null && in_array((string)$v, $imeis, true)) { $out[(string)$v] = $row; }
+                if ($v !== null && $v !== '' && !in_array((string)$v, $imeis, true)) { $more[(string)$v] = true; }
             }
+        }
+        if ($more && $depth < 2) {
+            return self::states($pdo, $userId, array_merge($imeis, array_keys($more)), $exceptInvoice, $lock, $before, $depth + 1, $asked ?? $imeis);
+        }
+        $asked = $asked ?? $imeis;
+        $alias = []; $last = [];
+        foreach ($rows as $r) {
+            $n1 = (string)$r['imei1']; $n2 = $r['imei2'] !== null && $r['imei2'] !== '' ? (string)$r['imei2'] : null;
+            $key = $alias[$n1] ?? ($n2 !== null ? ($alias[$n2] ?? null) : null) ?? $n1;
+            $alias[$n1] = $key;
+            if ($n2 !== null) { $alias[$n2] = $key; }
+            $last[$key] = ['dir' => in_array($r['kind'], self::IN_KINDS, true) ? 'in' : 'out',
+                           'product_id' => $r['product_id'] !== null ? (int)$r['product_id'] : null,
+                           'imei1' => $n1, 'imei2' => $n2,
+                           'kind' => (string)$r['kind'], 'invoice_id' => (int)$r['invoice_id']];
+        }
+        $out = [];
+        foreach ($asked as $v) {
+            if (isset($alias[$v], $last[$alias[$v]])) { $out[$v] = $last[$alias[$v]]; }
         }
         return $out;
     }
@@ -1836,6 +1867,44 @@ final class BizSerial
                 if (!$in && $s['product_id'] !== null && (int)($l['product_id'] ?? 0) !== $s['product_id']) {
                     return 'IMEI ' . $v . ' مالِ کالای دیگری است؛ ردیفِ «' . ($l['description'] ?? '') . '» را درست کنید.';
                 }
+            }
+        }
+        return $in ? null : self::unknownOutError($pdo, $userId, $lines, $states);
+    }
+
+    /**
+     * ⛔ IMEIِ **ناشناخته** در فروش فقط از موجودیِ بی‌IMEI.
+     *
+     * IMEIِ دیده‌نشده پذیرفته بود چون گوشیِ اول دوره IMEIِ ثبت‌شده ندارد. ولی
+     * اگر همه‌ی گوشی‌های در انبارِ آن کالا IMEI دارند، شماره‌ی ناشناخته یعنی
+     * **اشتباهِ تایپی**: فروش می‌گذشت، موجودی کم می‌شد، و گوشیِ واقعی — که
+     * هنوز در فهرستِ IMEI بود — دیگر فروختنی نبود (بازرسیِ مهر ۱۴۰۵).
+     *
+     * قاعده (بعد از `postDoc`، روی موجودیِ تازه): موجودیِ کالا باید هنوز همه‌ی
+     * گوشی‌های IMEIدارِ در انبار را بپوشاند — جز آن‌ها که همین سند می‌فروشد.
+     */
+    private static function unknownOutError(PDO $pdo, int $userId, array $lines, array $states): ?string
+    {
+        $unknown = []; $known = [];
+        foreach ($lines as $l) {
+            $pid = (int)($l['product_id'] ?? 0);
+            $v   = (string)($l['imei1'] ?? '');
+            if ($pid === 0 || $v === '') { continue; }
+            if (isset($states[$v]) || (!empty($l['imei2']) && isset($states[(string)$l['imei2']]))) {
+                $known[$pid] = ($known[$pid] ?? 0) + 1;
+            } else {
+                $unknown[$pid][] = $v;
+            }
+        }
+        foreach ($unknown as $pid => $nums) {
+            $st = $pdo->prepare('SELECT stock_qty, name FROM biz_products WHERE id = :p AND user_id = :u');
+            $st->execute(['p' => $pid, 'u' => $userId]);
+            $p = $st->fetch();
+            if (!$p) { continue; }
+            $tracked = count(self::inStock($userId, $pid)['rows']) - ($known[$pid] ?? 0);
+            if ((float)$p['stock_qty'] < $tracked - 0.0005) {
+                return 'IMEI ' . $nums[0] . ' در انبارِ «' . $p['name'] . '» ثبت نشده و همه‌ی گوشی‌های موجودِ این کالا IMEI دارند؛'
+                    . ' احتمالاً شماره اشتباه تایپ شده — از فهرستِ گوشی‌های در انبار انتخاب کنید.';
             }
         }
         return null;

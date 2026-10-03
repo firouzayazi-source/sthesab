@@ -228,8 +228,13 @@ T::ok($r['ok'], 'کارت‌خوان اضافه شد');
 $pos = (int)$r['id'];
 BizCash::save($a, ['name' => 'صندوق', 'kind' => 'cash', 'opening_balance' => '1000000'], (int)$acc[0]['id']);
 T::same(4000000, BizCash::total(BizCash::list($a)), 'جمعِ صندوق‌ها');
-T::ok(BizCash::setActive($a, $pos, false)['ok'], 'غیرفعال کردنِ یکی');
-T::same(1000000, BizCash::total(BizCash::list($a)), 'حسابِ غیرفعال در جمع نیست');
+// ⛔ حسابِ موجودی‌دار غیرفعال نمی‌شود — پولش بی‌صدا از جمع بیرون می‌افتاد
+//    (بازرسیِ مهر ۱۴۰۵؛ این تست پیش‌تر همان خرابی را «درست» می‌دانست)
+T::ok(!BizCash::setActive($a, $pos, false)['ok'], '⛔ حسابِ موجودی‌دار غیرفعال نمی‌شود');
+T::same(4000000, BizCash::total(BizCash::list($a)), 'و پولش در جمع می‌ماند');
+$zero = (int)BizCash::save($a, ['name' => 'حسابِ خالی', 'kind' => 'bank'])['id'];
+T::ok(BizCash::setActive($a, $zero, false)['ok'], 'حسابِ بی‌موجودی غیرفعال می‌شود');
+T::same(4000000, BizCash::total(BizCash::list($a)), 'حسابِ غیرفعال در جمع نیست (و چیزی هم کم نشد)');
 $r = BizCash::setActive($a, (int)$acc[0]['id'], false);
 T::ok(!$r['ok'], '⛔ آخرین صندوقِ فعال غیرفعال نمی‌شود', $r['message']);
 T::ok(!BizCash::save($a, ['name' => 'x', 'kind' => 'wallet'])['ok'], 'نوعِ ناشناخته رد می‌شود');
@@ -338,7 +343,7 @@ T::ok($c === 302 && preg_match('~party\.php\?id=(\d+)$~', $loc, $mp)
 
 [$c, , $loc] = $req('store/accounts.php', ['csrf_token' => $tok, 'action' => 'cash_save', 'acc_id' => '0',
     'name' => 'بانکِ ملی', 'kind' => 'bank', 'opening_balance' => '250000']);
-T::ok($c === 302 && BizCash::total(BizCash::list($a)) === 1250000, 'صندوقِ تازه از راهِ صفحه‌ی «صندوق و بانک»', "{$c}");
+T::ok($c === 302 && BizCash::total(BizCash::list($a)) === 4250000, 'صندوقِ تازه از راهِ صفحه‌ی «صندوق و بانک»', "{$c}");
 [$c, , $loc] = $req('store/settings.php', ['csrf_token' => $tok, 'shop_name' => 'فروشگاهِ آ']);
 $st = $pdo->prepare('SELECT shop_name FROM biz_settings WHERE user_id = :u');
 $st->execute(['u' => $a]);

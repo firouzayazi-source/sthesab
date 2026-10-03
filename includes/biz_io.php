@@ -396,6 +396,18 @@ final class BizImport
         return (string)preg_replace('/[^\p{L}\p{N}]+/u', '', $s);
     }
 
+    /**
+     * ⛔ کلیدِ تطبیقِ **نامِ کالا** — فقط شکلِ حروف و فاصله یکسان می‌شود
+     *    (`BizCommon::fold`)، نشانه‌ها نه. `norm()` (برای سرآیندِ ستون‌ها)
+     *    نقطه و خط‌تیره را هم دور می‌ریخت و «کابل 1.5 متری» با «کابل 15 متری»
+     *    یکی می‌شد: ورود از فایل کالای دیگری را بی‌صدا تغییرِ نام، قیمت و
+     *    موجودی می‌داد (بازرسیِ مهر ۱۴۰۵).
+     */
+    public static function nameKey(string $s): string
+    {
+        return BizCommon::fold($s);
+    }
+
     /** @param string[] $header @return array<string,int> فیلد ← ستون */
     public static function mapHeader(array $header): array
     {
@@ -482,7 +494,7 @@ final class BizImport
         $bySku = []; $byName = [];
         foreach ($st->fetchAll() as $p) {
             if ((string)$p['sku'] !== '') { $bySku[mb_strtolower((string)$p['sku'])] = (int)$p['id']; }
-            $byName[self::norm((string)$p['name'])] = (int)$p['id'];
+            $byName[self::nameKey((string)$p['name'])] = (int)$p['id'];
         }
 
         $seen = []; $out = [];
@@ -518,7 +530,7 @@ final class BizImport
                     if ($p[$k] !== null && $p[$k] < 0) { $err = 'عددِ منفی در «' . self::FIELDS[$k] . '»'; break; }
                 }
             }
-            $key = $sku !== '' ? 's:' . mb_strtolower($sku) : 'n:' . self::norm($name);
+            $key = $sku !== '' ? 's:' . mb_strtolower($sku) : 'n:' . self::nameKey($name);
             if ($err === null && isset($seen[$key])) {
                 $err = 'تکراری در همین فایل (ردیفِ ' . $seen[$key] . ')';
             }
@@ -528,7 +540,7 @@ final class BizImport
                 $p['action'] = 'error'; $p['notes'][] = $err;
             } else {
                 $id = $sku !== '' ? ($bySku[mb_strtolower($sku)] ?? 0) : 0;
-                if ($id === 0) { $id = $byName[self::norm($name)] ?? 0; }
+                if ($id === 0) { $id = $byName[self::nameKey($name)] ?? 0; }
                 $p['id'] = $id;
                 $p['action'] = $id === 0 ? 'create' : (!empty($opts['update']) ? 'update' : 'skip');
                 if ($p['action'] === 'skip') { $p['notes'][] = 'از قبل هست'; }
@@ -576,7 +588,8 @@ final class BizImport
                 'category'   => ($p['category'] ?? null) !== null && trim((string)$p['category']) !== '' ? (string)$p['category'] : (string)$cur['category'],
                 'unit'       => $p['unit'] ?? (string)$cur['unit'],
                 'buy_price'  => (string)($p['buy_price'] ?? (int)$cur['buy_price']),
-                'sell_price' => (string)($p['sell_price'] ?? (int)$cur['sell_price']),
+                // ⛔ کالای وصل به نرخِ روز: قیمتِ فروش را فقط `BizRates::apply()` می‌نویسد
+                'sell_price' => (string)(!empty($cur['rate_code']) ? (int)$cur['sell_price'] : ($p['sell_price'] ?? (int)$cur['sell_price'])),
                 'min_stock'  => (string)($p['min_stock'] ?? (float)$cur['min_stock']),
                 'note'       => (string)$cur['note'],
                 'is_service' => (int)$cur['track_stock'] === 1 ? '' : '1',

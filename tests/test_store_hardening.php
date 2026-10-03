@@ -22,6 +22,7 @@ require_once __DIR__ . '/../includes/signup.php';
 require_once __DIR__ . '/../includes/user_data.php';
 require_once __DIR__ . '/../includes/biz_catalog.php';
 require_once __DIR__ . '/../includes/biz_docs.php';
+require_once __DIR__ . '/../includes/biz_io.php';
 
 const HPREFIX = '__bhard_';
 const HPASS   = 'Hard12345';
@@ -189,6 +190,88 @@ $nums->execute(['u' => $u]);
 $all = array_map('intval', $nums->fetchAll(PDO::FETCH_COLUMN));
 T::same(count($all), count(array_unique($all)), '⛔ هیچ شماره‌ی تکراری');
 T::same($before - 8, $stock($u, $AC), 'موجودی دقیقاً هشت تا کم شد');
+
+// =================================================================
+T::group('۷ — نوعِ کالا، واحدِ گوشی، و تطبیقِ نام در ورود از فایل');
+$u = $make('d');
+$G = (int)BizProducts::save($u, ['type' => 'goods', 'name' => 'کابل 1.5 متری', 'unit' => 'عدد', 'buy_price' => '100', 'sell_price' => '200', 'opening_qty' => '10'])['id'];
+$sd = $doc($u, 'sale', [$L('کابل 1.5 متری', '10', '200')]);
+T::ok(is_int($sd), 'کلِ موجودی فروخته شد');
+$r = BizProducts::save($u, ['type' => 'service', 'name' => 'کابل 1.5 متری', 'unit' => 'عدد', 'sell_price' => '200'], $G);
+T::ok(!$r['ok'], '⛔ کالای فروخته‌شده (حتی با موجودیِ صفر) خدمت نمی‌شود — سودِ ماه‌های گذشته بازنویسی می‌شد', $r['message']);
+$NS = (int)BizProducts::save($u, ['type' => 'goods', 'name' => 'قلمِ تازه', 'unit' => 'عدد'])['id'];
+$r = BizProducts::save($u, ['type' => 'service', 'name' => 'قلمِ تازه', 'unit' => 'عدد'], $NS);
+T::ok($r['ok'], 'قلمِ بی‌سابقه آزادانه خدمت می‌شود', $r['message']);
+
+$PH = (int)BizProducts::save($u, ['type' => 'phone', 'name' => 'گوشی د', 'unit' => 'دستگاه'])['id'];
+$r = BizProducts::save($u, ['name' => 'گوشی د', 'unit' => 'کیلوگرم'], $PH);
+T::ok(!$r['ok'] && (int)BizProducts::get($u, $PH)['has_serial'] === 1 && BizProducts::get($u, $PH)['unit'] === 'دستگاه',
+    '⛔ مسیرِ بی‌`type` (ورود از فایل) گوشی را «کیلوگرمی» نمی‌کند', $r['message']);
+
+T::ok(BizImport::nameKey('کابل 1.5 متری') !== BizImport::nameKey('کابل 15 متری'),
+    '⛔ «کابل 1.5 متری» و «کابل 15 متری» دو کالای جدا هستند (نقطه دور ریخته نمی‌شود)');
+T::same(BizImport::nameKey('كابل  1.5 متري'), BizImport::nameKey('کابل 1.5 متری'), 'ی/ک عربی و فاصله‌ی دوتایی یکی می‌شوند');
+
+// =================================================================
+T::group('۸ — قفلِ دوره: موجودیِ اول دوره با قدیمی‌ترین حرکت سنجیده می‌شود');
+$O = (int)BizProducts::save($u, ['type' => 'goods', 'name' => 'قاب امروز', 'unit' => 'عدد', 'buy_price' => '100', 'opening_qty' => '10', 'opening_cost' => '100'])['id'];
+$past = date('Y-m-d', strtotime('-20 days'));
+$sp = $doc($u, 'sale', [$L('قاب امروز', '2', '200')], ['inv_date' => $past]);
+T::ok(is_int($sp), 'فروشِ تاریخ‌گذشته‌ی کالای امروز', is_int($sp) ? '' : (string)$sp);
+Biz::saveLock($u, date('Y-m-d', strtotime('-10 days')), true);
+$r = BizStock::setOpening($u, $O, 10, 140);
+T::ok(!$r['ok'], '⛔ اول دوره‌ی کالای تازه عوض نمی‌شود وقتی فروشش در دوره‌ی بسته است', $r['message']);
+Biz::saveLock($u, '', true);
+
+// =================================================================
+T::group('۹ — غیرفعال کردن پول را از جمع‌ها بیرون نمی‌برد');
+$cust = (int)BizParties::save($u, ['name' => 'بدهکار', 'kind' => 'customer'])['id'];
+$sc = BizInvoices::saveDraft($u, 'sale', ['party_id' => $cust, 'lines' => [$L('قاب امروز', '1', '1000')]]);
+BizInvoices::issue($u, (int)$sc['id'], ['amount' => '0', 'account_id' => $acc($u)]);
+$r = BizParties::setActive($u, $cust, false);
+T::ok(!$r['ok'], '⛔ طرف‌حسابِ بدهکار غیرفعال نمی‌شود', $r['message']);
+$r = BizProducts::setActive($u, $O, false);
+T::ok(!$r['ok'], '⛔ کالای موجوددار غیرفعال نمی‌شود', $r['message']);
+$bank = (int)BizCash::save($u, ['name' => 'بانک د', 'kind' => 'bank', 'opening_balance' => '5000'])['id'];
+$r = BizCash::setActive($u, $bank, false);
+T::ok(!$r['ok'], '⛔ حسابِ موجودی‌دار غیرفعال نمی‌شود', $r['message']);
+$empty = (int)BizParties::save($u, ['name' => 'بی‌مانده', 'kind' => 'customer'])['id'];
+T::ok(BizParties::setActive($u, $empty, false)['ok'], 'طرف‌حسابِ بی‌مانده آزادانه غیرفعال می‌شود');
+
+// =================================================================
+T::group('۱۰ — کالای انبارگردانی‌شده حذف نمی‌شود');
+$J = (int)BizProducts::save($u, ['type' => 'goods', 'name' => 'شمارشی', 'unit' => 'عدد', 'buy_price' => '10', 'opening_qty' => '5'])['id'];
+BizStock::adjustTo($u, $J, 3, 'کسری');
+$r = BizProducts::delete($u, $J);
+T::ok(!$r['ok'] && BizProducts::get($u, $J) !== null, '⛔ کسریِ شمارش زیانِ واقعی است؛ حذفِ کالا آن را از سود پاک نمی‌کند', $r['message']);
+$K = (int)BizProducts::save($u, ['type' => 'goods', 'name' => 'فقط اول دوره', 'unit' => 'عدد', 'opening_qty' => '2'])['id'];
+T::ok(BizProducts::delete($u, $K)['ok'], 'کالای فقط با اول دوره مثلِ قبل حذف‌شدنی است');
+
+// =================================================================
+T::group('۱۱ — IMEIِ ناشناخته و دو شماره‌ی یک گوشی');
+$u2 = $make('e');
+$P2 = (int)BizProducts::save($u2, ['type' => 'phone', 'name' => 'گوشی ه', 'unit' => 'دستگاه'])['id'];
+$doc($u2, 'purchase', [$L('گوشی ه', '1', '500', X, Y)]);
+$doc($u2, 'purchase', [$L('گوشی ه', '1', '500', Z)]);
+$typo = '350000000000014';
+$r = $doc($u2, 'sale', [$L('گوشی ه', '1', '700', $typo)]);
+T::ok(!is_int($r) && str_contains((string)$r, 'تایپ'), '⛔ IMEIِ ناشناخته وقتی همه‌ی گوشی‌ها IMEI دارند رد می‌شود (اشتباهِ تایپی)', (string)$r);
+$s2 = $doc($u2, 'sale', [$L('گوشی ه', '1', '700', Y)]);
+T::ok(is_int($s2), 'فروش با IMEIِ دومِ گوشی', is_int($s2) ? '' : (string)$s2);
+T::same('out', BizSerial::lookup($u2, X)['dir'] ?? null, '⛔ IMEIِ اولِ همان گوشی هم بیرون است (یک دستگاه، دو شماره)');
+T::ok(!is_int($doc($u2, 'sale', [$L('گوشی ه', '1', '700', X)])), '⛔ همان گوشی با IMEIِ اولش دوباره فروخته نمی‌شود');
+T::same([Z], $inStock($u2, $P2), 'فقط Z در انبار');
+// گوشیِ اول دوره (بی‌IMEI) هنوز با IMEIِ تازه فروختنی است
+BizStock::setOpening($u2, $P2, 1, 400);
+$r = $doc($u2, 'sale', [$L('گوشی ه', '1', '700', $typo)]);
+T::ok(is_int($r), 'IMEIِ ناشناخته از موجودیِ بی‌IMEI (اول دوره) پذیرفته است', is_int($r) ? '' : (string)$r);
+
+// =================================================================
+T::group('۱۲ — عددها: «۱٬۰۰۰» و هزینه‌ی جانبی روی فاکتورِ صفر');
+T::same(1000.0, sanitizeQty('1,000'), '⛔ «1,000» هزار است');
+T::same(2.5, sanitizeQty('2,5'), '«2,5» همان ۲٫۵');
+$t = BizInvoices::totals([['line_total' => 0], ['line_total' => 0]], 0, 70);
+T::same(70, array_sum(array_column($t['lines'], 'net_total')), '⛔ جمعِ ردیف‌ها = جمعِ فاکتور، حتی وقتی همه‌ی ردیف‌ها صفرند');
 
 // =================================================================
 T::group('۶ — دو بار زدنِ «ثبت»: یک سند (HTTP)');

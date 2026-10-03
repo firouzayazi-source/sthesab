@@ -50,8 +50,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         foreach ($form as $k => $_) { if (isset($_POST[$k])) { $form[$k] = (string)$_POST[$k]; } }
     } elseif ($party && $action === 'toggle') {
         $on = (int)$party['is_active'] !== 1;
-        BizParties::setActive($userId, $id, $on);
-        redirectWithMessage($self, 'success', $on ? 'طرف‌حساب فعال شد.' : 'طرف‌حساب غیرفعال شد.');
+        $res = BizParties::setActive($userId, $id, $on);
+        redirectWithMessage($self, $res['ok'] ? 'success' : 'error', $res['message']);
     } elseif ($party && $action === 'delete') {
         $res = BizParties::delete($userId, $id);
         redirectWithMessage($res['ok'] ? Biz::url('parties.php') : $self, $res['ok'] ? 'success' : 'error', $res['message']);
