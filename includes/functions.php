@@ -4381,10 +4381,12 @@ function defaultExternalBanks(): array
 function defaultAssetTypes(): array
 {
     return [
-        ['name' => 'دلار',          'unit' => 'دلار'],
-        ['name' => 'طلا (۱۸ عیار)', 'unit' => 'گرم'],
-        ['name' => 'نقره',          'unit' => 'گرم'],
-        ['name' => 'سکه تمام',      'unit' => 'عدد'],
+        // ⛔ `rate`: از همان ابتدا به نرخِ روز وصل (`includes/rates.php`) — ارزش به
+        //    تومان خودش به‌روز می‌شود. نقره نرخِ خودکار ندارد.
+        ['name' => 'دلار',          'unit' => 'دلار', 'rate' => 'usd'],
+        ['name' => 'طلا (۱۸ عیار)', 'unit' => 'گرم',  'rate' => 'gold18'],
+        ['name' => 'نقره',          'unit' => 'گرم',  'rate' => null],
+        ['name' => 'سکه تمام',      'unit' => 'عدد',  'rate' => 'coin_emami'],
     ];
 }
 
@@ -4427,9 +4429,17 @@ function seedUserDefaults(int $userId): void
             $bankStmt->execute(['user_id' => $userId, 'name' => $bankName]);
         }
 
-        $assetStmt = $pdo->prepare('INSERT IGNORE INTO asset_types (user_id, name, unit) VALUES (:user_id, :name, :unit)');
+        $withRate  = tableHasColumn('asset_types', 'rate_code');
+        $assetStmt = $pdo->prepare($withRate
+            ? 'INSERT IGNORE INTO asset_types (user_id, name, unit, rate_code) VALUES (:user_id, :name, :unit, :rc)'
+            : 'INSERT IGNORE INTO asset_types (user_id, name, unit) VALUES (:user_id, :name, :unit)');
         foreach (defaultAssetTypes() as $at) {
-            $assetStmt->execute(['user_id' => $userId, 'name' => $at['name'], 'unit' => $at['unit']]);
+            $assetStmt->execute(['user_id' => $userId, 'name' => $at['name'], 'unit' => $at['unit']]
+                + ($withRate ? ['rc' => $at['rate'] ?? null] : []));
+        }
+        if ($withRate) {
+            require_once __DIR__ . '/rates.php';
+            Rates::applyToAssets($userId);
         }
 
         if ($hasColumn) {

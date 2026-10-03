@@ -105,10 +105,22 @@ if ($action === 'add') {
                 jsonResponse(['success' => false, 'message' => 'این نوع دارایی قبلاً ثبت شده است.'], 422);
             }
 
-            $ins = $pdo->prepare('INSERT INTO asset_types (user_id, name, unit) VALUES (:user_id, :name, :unit)');
-            $ins->execute(['user_id' => $userId, 'name' => $name, 'unit' => $unit]);
+            // ⛔ نامی که نرخش معلوم است (دلار/دلار، طلا/گرم، سکه امامی/عدد) خودش به
+            //    نرخِ روز وصل می‌شود (`Rates::guessCode()`، واحد هم باید بخواند).
+            $rc = null;
+            if (tableHasColumn('asset_types', 'rate_code')) {
+                require_once __DIR__ . '/../includes/rates.php';
+                $rc = Rates::guessCode($name, $unit);
+            }
+            $ins = $pdo->prepare($rc !== null
+                ? 'INSERT INTO asset_types (user_id, name, unit, rate_code) VALUES (:user_id, :name, :unit, :rc)'
+                : 'INSERT INTO asset_types (user_id, name, unit) VALUES (:user_id, :name, :unit)');
+            $ins->execute(['user_id' => $userId, 'name' => $name, 'unit' => $unit] + ($rc !== null ? ['rc' => $rc] : []));
+            $newId = (int)$pdo->lastInsertId();
+            if ($rc !== null) { Rates::applyToAssets($userId); }
 
-            jsonResponse(['success' => true, 'id' => (int)$pdo->lastInsertId(), 'name' => $name, 'message' => 'نوع دارایی اضافه شد.']);
+            jsonResponse(['success' => true, 'id' => $newId, 'name' => $name,
+                'message' => $rc !== null ? 'نوع دارایی اضافه شد و به نرخِ روزِ «' . Rates::label($rc) . '» وصل شد.' : 'نوع دارایی اضافه شد.']);
         }
 
         if ($kind === 'wallet_kind') {

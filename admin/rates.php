@@ -126,7 +126,7 @@ include __DIR__ . '/../includes/header.php';
                     <?php if ($chg !== null && abs($chg) >= 0.05): ?>
                         <span class="rates-chg <?= $chg > 0 ? 'is-up' : 'is-down' ?> ltr-num"><?= $chg > 0 ? '▲' : '▼' ?> <?= h(toPersianDigits(number_format(abs($chg), 1))) ?>٪</span>
                     <?php endif; ?>
-                    <small><?= $r['manual'] ? '<span class="status-badge status-badge-warn">دستی</span>' : h((string)$r['source']) ?> · <?= h(Rates::ago($r['fetched_at'])) ?><?= Rates::isStale($r) ? ' · <b class="rates-old">کهنه</b>' : '' ?></small>
+                    <small><?= $r['manual'] ? '<span class="status-badge status-badge-warn">دستی</span>' : h((string)$r['source']) ?>، <?= h(Rates::ago($r['fetched_at'])) ?><?= Rates::isStale($r) ? '، <b class="rates-old">کهنه</b>' : '' ?></small>
                 <?php else: ?>
                     <span class="hint" style="margin:0;">هنوز نرخی نیامده</span>
                 <?php endif; ?>
@@ -165,9 +165,9 @@ include __DIR__ . '/../includes/header.php';
             </label>
             <span class="rate-src-state">
                 <?php if ($s['last_ok_at'] && (!$s['last_try_at'] || $s['last_ok_at'] >= $s['last_try_at'])): ?>
-                    <span class="status-badge status-badge-in">سالم · <?= h(Rates::ago($s['last_ok_at'])) ?></span>
+                    <span class="status-badge status-badge-in">سالم، <?= h(Rates::ago($s['last_ok_at'])) ?></span>
                 <?php elseif ($s['last_error']): ?>
-                    <span class="status-badge status-badge-out" title="<?= h($s['last_error']) ?>">خطا · <?= h(Rates::ago($s['last_try_at'])) ?></span>
+                    <span class="status-badge status-badge-out" title="<?= h($s['last_error']) ?>">خطا، <?= h(Rates::ago($s['last_try_at'])) ?></span>
                 <?php else: ?>
                     <span class="status-badge status-badge-warn">آزموده نشده</span>
                 <?php endif; ?>

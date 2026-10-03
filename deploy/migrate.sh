@@ -139,6 +139,7 @@ MIGRATIONS=(
     migration_biz_lock.sql
     migration_biz_new_menu.sql
     migration_rates.sql
+    migration_rates_link.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -345,6 +346,7 @@ declare -A SENTINEL=(
     [migration_biz_lock.sql]="biz_settings.lock_date"
     [migration_biz_new_menu.sql]="biz_settings.new_menu"
     [migration_rates.sql]="biz_settings.rate_round"
+    [migration_rates_link.sql]="app_settings~setting_key=asset_rates_linked"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

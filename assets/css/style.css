@@ -5924,3 +5924,29 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .asset-rate-hint { margin-top: 6px; }
 /* ⚠ قاعده ۱۸: خانه‌ی دستیِ نرخ با `hidden` کنار می‌رود (نرخِ خودکار). */
 .form-group[hidden], .hint[hidden] { display: none; }
+
+/* ارزش به نرخِ روز (`my-assets.php`) */
+.asset-rate-list { display: flex; flex-direction: column; }
+.asset-rate-row {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px;
+    align-items: center; padding: 12px 0; border-top: 1px solid var(--line-soft);
+}
+.asset-rate-row:first-child { border-top: 0; padding-top: 2px; }
+.asset-rate-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.asset-rate-main b { font-size: 14.5px; }
+.asset-rate-main small { font-size: 12px; color: var(--muted); }
+.asset-rate-src { color: var(--in) !important; }
+.asset-rate-src.is-stale { color: var(--warn-ink) !important; }
+.asset-rate-value { font-size: 15.5px; font-weight: 800; white-space: nowrap; }
+.asset-rate-pick { grid-column: 1 / -1; }
+.asset-rate-pick select { width: 100%; font-size: 12.5px; padding: 7px 10px; }
+@media (min-width: 760px) {
+    .asset-rate-row { grid-template-columns: minmax(0, 1fr) minmax(0, 260px) auto; }
+    .asset-rate-pick { grid-column: auto; order: 2; }
+    .asset-rate-value { order: 3; }
+}
+.asset-live-value {
+    margin: -4px 0 12px; padding: 9px 12px; border-radius: var(--r-sm);
+    background: var(--in-wash); color: var(--in); font-size: 13px; font-weight: 700;
+}
+.asset-live-value[hidden] { display: none; }

@@ -6318,6 +6318,55 @@ function appMain() {
     setupAmountFormatter('add_asset_price');
     setupAmountFormatter('edit_asset_price');
 
+    // ---------- ارزش به نرخِ روز (`includes/rates.php`) ----------
+    // منوی کنارِ هر نوعِ دارایی: انتخابِ نرخ = وصلِ خودکار؛ «دستی» = قطع با نگه
+    // داشتنِ همان قیمتِ فعلی (نه پاک کردنش — ارزش ناگهان به بهای خرید برمی‌گشت).
+    document.querySelectorAll('.js-asset-rate').forEach(function (sel) {
+        sel.addEventListener('change', function () {
+            var fd = new FormData();
+            fd.append('csrf_token', csrf());
+            fd.append('type_id', sel.getAttribute('data-id'));
+            fd.append('rate_code', sel.value);
+            if (!sel.value) {
+                var keep = parseInt(sel.getAttribute('data-price'), 10) || 0;
+                fd.append('price', keep > 0 ? String(keep) : '');
+            }
+            sel.disabled = true;
+            fetch(apiUrl('update_asset_price.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                .then(function (r) { return r.json(); })
+                .then(function (d) {
+                    if (d.success) { window.location.reload(); return; }
+                    alert(d.message || 'خطایی رخ داد.');
+                    sel.disabled = false;
+                })
+                .catch(function () { alert(netErr()); sel.disabled = false; });
+        });
+    });
+
+    // ارزشِ امروزِ داراییِ در حالِ ثبت، هم‌زمان با تایپِ مقدار
+    (function () {
+        var type = document.getElementById('add_asset_type');
+        var qty  = document.getElementById('add_asset_qty');
+        var out  = document.getElementById('addAssetLive');
+        if (!type || !qty || !out) return;
+        function fmt(n) { return toPersianDigitsJs(Math.round(n).toLocaleString('en-US').replace(/,/g, '\u066C')); }
+        function live() {
+            var opt = type.options[type.selectedIndex];
+            var price = opt ? (parseInt(opt.getAttribute('data-price'), 10) || 0) : 0;
+            var unit = opt ? (opt.getAttribute('data-unit') || 'واحد') : 'واحد';
+            var q = parseFloat(toLatinDigitsJs(qty.value).replace(/[,\u066C\s]/g, '').replace('٫', '.')) || 0;
+            if (price <= 0) { out.hidden = true; return; }
+            var src = opt.getAttribute('data-auto') === '1' ? 'نرخِ روزِ بازار' : 'نرخِ دستی';
+            out.hidden = false;
+            out.textContent = q > 0
+                ? 'ارزشِ امروز ≈ ' + fmt(q * price) + ' تومان (' + src + '، هر ' + unit + ' ' + fmt(price) + ')'
+                : 'هر ' + unit + ' امروز ' + fmt(price) + ' تومان (' + src + ')';
+        }
+        type.addEventListener('change', live);
+        qty.addEventListener('input', live);
+        live();
+    })();
+
     var addAssetForm = document.getElementById('addAssetForm');
     if (addAssetForm) {
         addAssetForm.addEventListener('submit', function (e) {

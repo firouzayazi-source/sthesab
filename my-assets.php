@@ -3,6 +3,7 @@ require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/csrf.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/store_share.php';
+require_once __DIR__ . '/includes/rates.php';
 
 Auth::initSession();
 Auth::requireLogin();
@@ -13,9 +14,14 @@ $todayStr = today();
 
 seedUserDefaults($userId);
 
-$typesStmt = $pdo->prepare('SELECT id, name, unit FROM asset_types WHERE user_id = :user_id ORDER BY name');
+// ⚠ نرخِ روز و وصلِ خودکار (`includes/rates.php`) فقط وقتی ستون‌هایش هست.
+$rateReady = tableHasColumn('asset_types', 'rate_code') && Rates::available();
+$typesStmt = $pdo->prepare($rateReady
+    ? 'SELECT id, name, unit, current_price, rate_code FROM asset_types WHERE user_id = :user_id ORDER BY name'
+    : 'SELECT id, name, unit, NULL AS current_price, NULL AS rate_code FROM asset_types WHERE user_id = :user_id ORDER BY name');
 $typesStmt->execute(['user_id' => $userId]);
 $assetTypes = $typesStmt->fetchAll();
+$typeById   = array_column($assetTypes, null, 'id');
 
 // موجودی تجمیع‌شده به تفکیک نوع
 //
@@ -33,7 +39,7 @@ $totalPortfolioCost = array_sum(array_column($assetSummary, 'total_cost'));
 
 // رکوردهای جزئی
 $listStmt = $pdo->prepare('
-    SELECT a.*, at.name AS type_name, at.unit
+    SELECT a.*, at.name AS type_name, at.unit, at.current_price
     FROM assets a
     JOIN asset_types at ON at.id = a.asset_type_id
     WHERE a.user_id = :user_id
@@ -332,6 +338,66 @@ $shSold    = $storeShare !== null ? (int)($storeShare['sold_count'] ?? 0) : 0;
 </div>
 <?php endif; ?>
 
+<?php /* ⛔ ارزش به نرخِ روز — **خواسته‌ی مالکِ نصب:** «وقتی دارایی طلا یا دلار
+         می‌ذاره به تومن در لحظه حساب بشه». هر نوعی که دارایی دارد: مقدار × نرخ =
+         ارزش، و از کجا آمده (خودکار/دستی/بهای خرید). وصل کردن همین‌جاست، نه فقط در
+         «فهرست‌های من». عددها همان `assetSummaryRows()`اند — محاسبه‌ی دومی نیست. */ ?>
+<?php if ($assetSummary): $__rates = $rateReady ? Rates::all() : []; ?>
+<div class="card asset-rates-card">
+    <div class="card-header-row">
+        <h2 class="card-title">ارزش به نرخِ روز</h2>
+        <?php if ($rateReady): ?><span class="asset-tag">به‌روز با نرخِ بازار</span><?php endif; ?>
+    </div>
+    <div class="asset-rate-list">
+        <?php foreach ($assetSummary as $__s):
+            $__t   = $typeById[$__s['id']] ?? [];
+            $__rc  = (string)($__t['rate_code'] ?? '');
+            $__auto = $rateReady && Rates::isCode($__rc);
+            $__r   = $__auto ? ($__rates[$__rc] ?? null) : null;
+            $__cp  = (int)($__s['current_price'] ?? 0);
+        ?>
+        <div class="asset-rate-row">
+            <div class="asset-rate-main">
+                <b><?= h($__s['name']) ?></b>
+                <small>
+                    <?php /* ⚠ با کلمه شروع می‌شود: عددِ چسبیده به لبه‌ی راست (قاعده‌ی ترازِ عددها) */ ?>
+                    موجودی <span class="ltr-num"><?= h(formatQuantity($__s['total_qty'])) ?></span> <?= h($__s['unit']) ?>
+                    <?php if ($__cp > 0): ?> × <span class="ltr-num"><?= formatMoney($__cp) ?></span><?php endif; ?>
+                </small>
+                <small class="asset-rate-src<?= $__auto && $__r && Rates::isStale($__r) ? ' is-stale' : '' ?>">
+                    <?php if ($__auto && $__r): ?>
+                        خودکار از نرخِ «<?= h(Rates::label($__rc)) ?>»، <?= h(Rates::ago($__r['fetched_at'])) ?><?= Rates::isStale($__r) ? ' (کهنه)' : '' ?>
+                    <?php elseif ($__auto): ?>
+                        وصل به «<?= h(Rates::label($__rc)) ?>» — هنوز نرخی نیامده، فعلاً <?= $__cp > 0 ? 'آخرین نرخ' : 'بهای خرید' ?>
+                    <?php elseif ($__cp > 0): ?>
+                        نرخِ دستی<?= !empty($__s['price_updated_at']) ? ' · ' . h(toJalali((string)$__s['price_updated_at'])) : '' ?>
+                    <?php else: ?>
+                        به بهای خرید — نرخِ روز ندارد
+                    <?php endif; ?>
+                </small>
+            </div>
+            <b class="asset-rate-value ltr-num"><?= formatMoney((int)round((float)$__s['total_value'])) ?></b>
+            <?php if ($rateReady): ?>
+            <label class="asset-rate-pick">
+                <span class="sr-only">نرخِ خودکارِ <?= h($__s['name']) ?></span>
+                <select class="js-asset-rate" data-id="<?= (int)$__s['id'] ?>" data-price="<?= $__cp ?>">
+                    <?= Rates::optionsHtml($__auto ? $__rc : null, 'نرخِ دستی / بهای خرید') ?>
+                </select>
+            </label>
+            <?php endif; ?>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    <?php if ($rateReady): ?>
+    <p class="hint">
+        دلار، طلا و سکه خودکار به نرخِ بازار وصل‌اند و ارزششان با هر نرخِ تازه به‌روز می‌شود. برای عوض کردن،
+        از منوی کنارِ هر ردیف نرخِ دیگری انتخاب کنید؛ نرخِ دستی در <a href="<?= APP_BASE_PATH ?>/references.php">فهرست‌های من</a>.
+        ⚠ واحدِ نوعِ دارایی باید با واحدِ نرخ یکی باشد (گرم با گرم).
+    </p>
+    <?php endif; ?>
+</div>
+<?php endif; ?>
+
 <div class="card">
     <div class="card-header-row">
         <h2 class="card-title">ثبت‌های دارایی</h2>
@@ -353,8 +419,11 @@ $shSold    = $storeShare !== null ? (int)($storeShare['sold_count'] ?? 0) : 0;
                 <div class="tx-row-details">
                     <div class="tx-row-details-line"><span>تاریخ</span><span><?= toJalali($a['entry_date']) ?></span></div>
                     <?php if (!empty($a['unit_price'])): ?>
-                        <div class="tx-row-details-line"><span>قیمت واحد</span><span><?= formatMoney($a['unit_price']) ?> تومان</span></div>
-                        <div class="tx-row-details-line"><span>ارزش کل</span><span><?= formatMoney((float)$a['quantity'] * (int)$a['unit_price']) ?> تومان</span></div>
+                        <div class="tx-row-details-line"><span>قیمت واحد هنگامِ خرید</span><span><?= formatMoney($a['unit_price']) ?> تومان</span></div>
+                        <div class="tx-row-details-line"><span>بهای خرید</span><span><?= formatMoney((float)$a['quantity'] * (int)$a['unit_price']) ?> تومان</span></div>
+                    <?php endif; ?>
+                    <?php if (!empty($a['current_price'])): ?>
+                        <div class="tx-row-details-line"><span>ارزشِ امروز</span><span><b><?= formatMoney((int)round((float)$a['quantity'] * (int)$a['current_price'])) ?></b> تومان</span></div>
                     <?php endif; ?>
                     <?php if (!empty($a['note'])): ?>
                         <div class="tx-row-details-line"><span>توضیح</span><span><?= h($a['note']) ?></span></div>
@@ -394,7 +463,9 @@ $shSold    = $storeShare !== null ? (int)($storeShare['sold_count'] ?? 0) : 0;
                 <label for="add_asset_type">نوع دارایی</label>
                 <select id="add_asset_type" name="asset_type_id" required>
                     <?php foreach ($assetTypes as $at): ?>
-                        <option value="<?= (int)$at['id'] ?>" data-unit="<?= h($at['unit']) ?>"><?= h($at['name']) ?></option>
+                        <option value="<?= (int)$at['id'] ?>" data-unit="<?= h($at['unit']) ?>"
+                                data-price="<?= (int)($at['current_price'] ?? 0) ?>"
+                                data-auto="<?= $rateReady && Rates::isCode((string)($at['rate_code'] ?? '')) ? '1' : '0' ?>"><?= h($at['name']) ?></option>
                     <?php endforeach; ?>
                 </select>
             </div>
@@ -413,9 +484,14 @@ $shSold    = $storeShare !== null ? (int)($storeShare['sold_count'] ?? 0) : 0;
                 </div>
             </div>
 
+            <?php /* ⛔ ارزشِ امروز همین‌جا، هم‌زمان با تایپِ مقدار (`app.js`، از
+                     `data-price`ِ گزینه) — کاربر پیش از ثبت می‌بیند به تومان چقدر است. */ ?>
+            <p class="asset-live-value" id="addAssetLive" hidden></p>
+
             <div class="form-group">
-                <label for="add_asset_price">قیمت واحد به تومان (اختیاری)</label>
+                <label for="add_asset_price">قیمت واحد هنگامِ خرید به تومان (اختیاری)</label>
                 <input type="text" inputmode="numeric" id="add_asset_price" name="unit_price" autocomplete="off">
+                <p class="hint">برای دیدنِ سود و زیان. ارزشِ امروز جدا و خودکار حساب می‌شود.</p>
             </div>
 
             <div class="form-group">

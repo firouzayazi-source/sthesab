@@ -164,6 +164,45 @@ final class Rates
 
     public static function forget(): void { self::$cache = null; }
 
+    /**
+     * نام و واحدِ یک نوعِ دارایی ⇒ کدِ نرخ، یا null.
+     *
+     * **خواسته‌ی مالکِ نصب:** «وقتی دارایی طلا یا دلار می‌ذاره به تومن در لحظه
+     * حساب بشه» — یعنی کاربر نباید خودش بداند «وصل به نرخ» چیست. نوعِ «دلار»
+     * با واحدِ «دلار» خودش وصل می‌شود.
+     * ⛔ **واحد هم باید بخواند**، نه فقط نام: «طلا» با واحدِ «مثقال» یا «سوت» به
+     *    گرمِ ۱۸ وصل نمی‌شود — ارزش چهار یا هزار برابر غلط درمی‌آمد. هر چه
+     *    مطمئن نیست null است و کاربر دستی وصل می‌کند.
+     */
+    public static function guessCode(string $name, string $unit): ?string
+    {
+        $n = str_replace(['ي', 'ك', '‌', ' '], ['ی', 'ک', '', ''], toLatinDigits(mb_strtolower(trim($name))));
+        $u = str_replace(['ي', 'ك', '‌', ' '], ['ی', 'ک', '', ''], mb_strtolower(trim($unit)));
+        $isGram = in_array($u, ['گرم', 'gr', 'g', 'gram'], true);
+        $isCount = in_array($u, ['عدد', 'سکه', 'قطعه', ''], true);
+        $has = fn(string ...$w): bool => (bool)array_filter($w, fn($x) => str_contains($n, $x));
+        if ($has('دلار', 'usd') && !$has('کانادا', 'استرالیا') && in_array($u, ['دلار', 'usd', '$', 'عدد', ''], true)) { return 'usd'; }
+        if ($has('یورو', 'eur') && in_array($u, ['یورو', 'eur', '€', 'عدد', ''], true)) { return 'eur'; }
+        if ($has('درهم', 'aed') && in_array($u, ['درهم', 'aed', 'عدد', ''], true)) { return 'aed'; }
+        if ($has('تتر', 'usdt') && in_array($u, ['تتر', 'usdt', 'عدد', ''], true)) { return 'usdt'; }
+        if ($has('سکه')) {
+            if (!$isCount) { return null; }
+            if ($has('ربع')) { return 'coin_quarter'; }
+            if ($has('نیم')) { return 'coin_half'; }
+            if ($has('گرمی')) { return 'coin_gram'; }
+            if ($has('بهار')) { return 'coin_bahar'; }
+            if ($has('امامی', 'تمام')) { return 'coin_emami'; }
+            return null;
+        }
+        if ($has('طلا', 'gold')) {
+            if ($has('آبشده', 'ابشده') || $u === 'مثقال') { return $u === 'مثقال' ? 'mesghal' : null; }
+            if (!$isGram) { return null; }
+            if ($has('24')) { return 'gold24'; }
+            return 'gold18';   // طلای گرمیِ بی‌عیار در بازارِ ایران یعنی ۱۸
+        }
+        return null;
+    }
+
     /* ---------------------------------------------------------------
        منبع‌ها
        --------------------------------------------------------------- */
@@ -603,7 +642,11 @@ final class Rates
        نمایش
        --------------------------------------------------------------- */
 
-    /** «۱۲ ساعت پیش» — برای کارت‌های نرخ. */
+    /**
+     * «۱۲ ساعت پیش» — برای کارت‌های نرخ.
+     * ⚠ کنارش «·» ننویسید: نقطه‌ی وسط کنارِ رقمِ فارسی عیناً «۰» دیده می‌شود
+     *   («· ۲ ساعت» در راست‌به‌چپ «۲۰ ساعت» خوانده شد)؛ «،» بگذارید.
+     */
     public static function ago(?string $dt): string
     {
         if (!$dt) { return 'هرگز'; }

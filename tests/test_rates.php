@@ -78,6 +78,26 @@ T::same('https://x.example/latest/', Rates::expandUrl('navasan', 'https://x.exam
 T::same('https://a.example', Rates::expandUrl('custom', 'https://a.example'), 'منبعِ بی‌آدرسِ پیش‌فرض (دلخواه) دست نمی‌خورد');
 
 // ---------------------------------------------------------------
+T::group('نرخ — وصلِ خودکارِ نوعِ دارایی از روی نام و واحد');
+$guessBad = [];
+foreach ([['دلار', 'دلار', 'usd'], ['دلار آمریکا', 'عدد', 'usd'], ['دلار کانادا', 'دلار', null], ['دلار', 'گرم', null],
+          ['طلا (۱۸ عیار)', 'گرم', 'gold18'], ['طلا', 'گرم', 'gold18'], ['طلای ۲۴ عیار', 'گرم', 'gold24'],
+          ['طلا', 'مثقال', 'mesghal'], ['طلا', 'سوت', null], ['طلای آب‌شده', 'گرم', null],
+          ['سکه تمام', 'عدد', 'coin_emami'], ['سکه امامی', 'عدد', 'coin_emami'], ['نیم سکه', 'عدد', 'coin_half'],
+          ['ربع سکه', 'عدد', 'coin_quarter'], ['سکه گرمی', 'عدد', 'coin_gram'], ['سکه بهار آزادی', 'عدد', 'coin_bahar'],
+          ['سکه', 'گرم', null], ['سکه', 'عدد', null], ['نقره', 'گرم', null], ['یورو', 'یورو', 'eur'], ['تتر', 'تتر', 'usdt'],
+          ['ملک', 'متر', null]] as [$n, $u, $want]) {
+    $got = Rates::guessCode($n, $u);
+    if ($got !== $want) { $guessBad[] = "{$n}/{$u} ⇒ " . var_export($got, true) . ' (انتظار ' . var_export($want, true) . ')'; }
+}
+T::bulk(22, $guessBad, '⛔ guessCode: نام و واحد هر دو باید بخوانند (طلا/مثقال ≠ گرمِ ۱۸، سکه/گرم هیچ)');
+$defBad = [];
+foreach (defaultAssetTypes() as $at) {
+    if (($at['rate'] ?? null) !== Rates::guessCode($at['name'], $at['unit'])) { $defBad[] = $at['name']; }
+}
+T::bulk(count(defaultAssetTypes()), $defBad, 'نوع‌های پیش‌فرض همان وصلی را دارند که guessCode می‌دهد');
+
+// ---------------------------------------------------------------
 T::group('نرخ — نرخِ ساختنی و سدِ جهش');
 $got = ['@gold24' => [$g24, 'bitpin'], 'usdt' => [106000, 'bitpin']];
 Rates::derive($got);
@@ -289,6 +309,19 @@ try {
         Biz::setType(end($ids), 'both');
     }
     [$ua, $ub] = $ids;
+
+    // ⛔ کاربرِ تازه: نوع‌های پیش‌فرض از همان ابتدا وصل‌اند و قیمتشان همین حالا از نرخِ روز
+    $pdo->prepare('DELETE FROM asset_types WHERE user_id = :u')->execute(['u' => $ub]);
+    try { $pdo->prepare('UPDATE users SET defaults_seeded_at = NULL WHERE id = :u')->execute(['u' => $ub]); } catch (Throwable $e) {}
+    seedUserDefaults($ub);
+    $seeded = $pdo->prepare('SELECT name, rate_code, current_price FROM asset_types WHERE user_id = :u');
+    $seeded->execute(['u' => $ub]);
+    $seeded = array_column($seeded->fetchAll(), null, 'name');
+    T::ok(($seeded['دلار']['rate_code'] ?? '') === 'usd' && ($seeded['سکه تمام']['rate_code'] ?? '') === 'coin_emami'
+        && ($seeded['طلا (۱۸ عیار)']['rate_code'] ?? '') === 'gold18' && isset($seeded['نقره']) && $seeded['نقره']['rate_code'] === null,
+        '⛔ کاربرِ تازه: دلار، طلای ۱۸ و سکه‌ی تمام وصل‌اند؛ نقره نه');
+    T::same((int)Rates::price('usd'), (int)($seeded['دلار']['current_price'] ?? 0), 'و قیمتِ دلار همین حالا از نرخِ روز آمد');
+    $pdo->prepare('DELETE FROM asset_types WHERE user_id = :u')->execute(['u' => $ub]);
 
     $mk = $pdo->prepare('INSERT INTO asset_types (user_id, name, unit, current_price, rate_code) VALUES (:u, :n, :un, :p, :rc)');
     $mk->execute(['u' => $ua, 'n' => 'طلای آب‌شده', 'un' => 'گرم', 'p' => 5000000, 'rc' => 'gold18']);
