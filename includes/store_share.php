@@ -301,6 +301,31 @@ final class StoreShare
     }
 
     /**
+     * چند سهامدارِ آینه هنوز به هیچ کاربری وصل نیست.
+     *
+     * ⛔ صفر یعنی فرمِ «وصل کردن» رندر نمی‌شود: منوی «سهامدار» آن‌وقت فقط
+     *    گزینه‌ی غیرفعال داشت و **خالی** دیده می‌شد — مالکِ نصب پرسید «گزینه
+     *    نداره، اسمِ من توش نیست» (خودِ فروشگاه هم عمداً در این فهرست نیست؛
+     *    سهمش از `house()` می‌آید).
+     *
+     * @param list<array<string,mixed>> $shareholders ردیف‌های آینه
+     * @param list<array<string,mixed>> $links        خروجیِ `links()`
+     */
+    public static function freeShareholders(array $shareholders, array $links): int
+    {
+        $taken = [];
+        foreach ($links as $l) {
+            if ((int)($l['is_active'] ?? 0) === 1) { $taken[(int)$l['store_contact_id']] = true; }
+        }
+        $free = 0;
+        foreach ($shareholders as $sh) {
+            $id = (int)($sh['id'] ?? 0);
+            if ($id > 0 && !isset($taken[$id])) { $free++; }
+        }
+        return $free;
+    }
+
+    /**
      * سهمِ خودِ فروشگاه به دفترِ کدام کاربر می‌رود، از چه تاریخی — یا `null`.
      *
      * @return array{user_id:int,from:string}|null

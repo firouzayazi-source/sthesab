@@ -407,6 +407,18 @@ T::ok($count($BOSS, $HP) >= 1, 'و سطرهای مدیرِ قبلی پاک نش�
 $off = StoreShare::setHouse(0, '');
 T::ok(!empty($off['ok']) && StoreShare::house() === null, 'خاموش شد');
 
+/* ─────────────── ۷. فرمِ «وصل کردن» ─────────────── */
+
+T::group('۷ — همه وصل‌اند: منوی خالی رندر نمی‌شود');
+
+$sh3   = [['id' => 3], ['id' => 167], ['id' => 5]];
+$lnk   = static fn(int $c, int $a = 1) => ['store_contact_id' => $c, 'is_active' => $a];
+T::ok(StoreShare::freeShareholders($sh3, [$lnk(3), $lnk(167), $lnk(5)]) === 0,
+    '⛔ هر سه وصل‌اند ⇒ صفر (فرم جایش پیام می‌دهد)');
+T::ok(StoreShare::freeShareholders($sh3, [$lnk(3), $lnk(167)]) === 1, 'یکی آزاد ⇒ یک');
+T::ok(StoreShare::freeShareholders($sh3, [$lnk(3), $lnk(167), $lnk(5, 0)]) === 1,
+    'پیوندِ غیرفعال سهامدار را آزاد می‌کند');
+
 /* ─────────────── پاک‌سازی ─────────────── */
 
 setSetting(StoreShare::HOUSE_USER_KEY, $savedHouseUser === '' ? '0' : $savedHouseUser);
