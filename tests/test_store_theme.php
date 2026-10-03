@@ -111,6 +111,21 @@ T::ok($dA !== [] && $dA === $dS, 'حالتِ شبِ انتخابی و حالتِ
 T::ok(($dA['st-accent'] ?? '') === 'var(--p-acc-n)' && ($dA['st-accent-ink'] ?? '') === 'var(--p-acc-ink-n)'
     && ($rootT['st-accent'] ?? '') === 'var(--p-acc)', 'لهجه در روز از --p-acc و در شب از --p-acc-n می‌آید');
 T::ok(str_contains(Biz::bootScript(), "setAttribute('data-st-theme'"), 'اسکریپتِ سرآیند حالت را پیش از رندر روی <html> می‌گذارد (بی‌چشمک)');
+// ⛔ «خودکار» پیش‌فرضِ همه (خواسته‌ی مالکِ نصب): یک بار انتخابِ دستیِ قدیمی پاک
+//    می‌شود، و راهِ برگشت به خودکار هم هست — بدونِ آن، یک تپ روی ماه/خورشید
+//    کاربر را برای همیشه دستی می‌کرد.
+$boot = Biz::bootScript();
+T::ok(str_contains($boot, "if(localStorage.getItem('st_theme_v')!=='2'){localStorage.removeItem('st_theme');localStorage.setItem('st_theme_v','2');}")
+    && strpos($boot, "st_theme_v") < strpos($boot, "t=localStorage.getItem('st_theme')"),
+    '⛔ فروشگاه: انتخابِ دستیِ قدیمی یک بار پاک می‌شود، پیش از خواندنِ حالت');
+$hdr = (string)file_get_contents(__DIR__ . '/../includes/header.php');
+T::ok(preg_match("~if \(localStorage\.getItem\('daftar_theme_v'\) !== '2'\) \{\s*localStorage\.removeItem\('daftar_theme'\);~", $hdr) === 1
+    && strpos($hdr, 'daftar_theme_v') < strpos($hdr, "var mode = localStorage.getItem('daftar_theme') || 'auto';"),
+    '⛔ شخصی: همان، و پیش‌فرضِ بی‌انتخاب «auto»');
+$stjs = (string)file_get_contents(__DIR__ . '/../assets/js/store.js');
+$sset = (string)file_get_contents(__DIR__ . '/../store/settings.php');
+T::ok(str_contains($sset, '<input type="checkbox" data-theme-auto') && str_contains($stjs, "store('st_theme', null);"),
+    '⛔ فروشگاه: کلیدِ «خودکار» در تنظیمات هست و انتخابِ دستی را پاک می‌کند');
 
 // ---------------------------------------------------------------
 T::group('۲ — خوانایی در هر رنگ، روز و شب (از خودِ توکن‌ها، نه کپیِ محلی)');

@@ -655,14 +655,37 @@
     function store(k, v) { try { if (v === null) { localStorage.removeItem(k); } else { localStorage.setItem(k, v); } } catch (e) {} }
 
     // ---------- حالتِ شب ----------
+    // ⛔ پیش‌فرض «خودکار» (پیروی از گوشی) است؛ دکمه‌ی بالا = دستی، و کلیدِ
+    //    «خودکار» در تنظیمات (`[data-theme-auto]`) برمی‌گرداند.
+    var autoBoxes = document.querySelectorAll('[data-theme-auto]');
+    function syncAuto() {
+        var own = null; try { own = localStorage.getItem('st_theme'); } catch (e) {}
+        Array.prototype.forEach.call(autoBoxes, function (c) { c.checked = !own; });
+    }
     Array.prototype.forEach.call(document.querySelectorAll('[data-theme-toggle]'), function (b) {
         b.hidden = false;
         b.addEventListener('click', function () {
             var next = doc.getAttribute('data-st-theme') === 'dark' ? 'light' : 'dark';
             doc.setAttribute('data-st-theme', next);
             store('st_theme', next);
+            syncAuto();
         });
     });
+    Array.prototype.forEach.call(autoBoxes, function (c) {
+        c.disabled = false;
+        c.addEventListener('change', function () {
+            if (c.checked) {
+                store('st_theme', null);
+                var sys = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches;
+                doc.setAttribute('data-st-theme', sys ? 'dark' : 'light');
+            } else {
+                // خاموش کردنِ «خودکار» همان حالتِ فعلی را دستی نگه می‌دارد
+                store('st_theme', doc.getAttribute('data-st-theme') === 'dark' ? 'dark' : 'light');
+            }
+            syncAuto();
+        });
+    });
+    syncAuto();
     // کاربری که خودش انتخاب نکرده، با سیستم جلو می‌رود
     if (window.matchMedia) {
         var mq = matchMedia('(prefers-color-scheme: dark)');

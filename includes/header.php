@@ -32,6 +32,16 @@ if (!isset($pageDesk)) {
            در حالت auto، اپ زنده از تنظیمات گوشی پیروی می‌کند. */
         (function () {
             try {
+                /* ⛔ «خودکار» پیش‌فرضِ همه است (خواسته‌ی مالکِ نصب: «حالتِ خودکارِ
+                   شب و روز پیش‌فرض فعال باشه مگه اینکه کاربر خاموش کنه»). یک بار
+                   (`daftar_theme_v`) هر انتخابِ دستیِ قدیمی پاک می‌شود — بیشترشان
+                   با یک تپِ گذرا روی ماه/خورشید ساخته شده بودند، نه با تصمیم. بعد از
+                   آن، انتخابِ دستی (دکمه‌ی بالا، یا خاموش کردنِ «خودکار» در حساب
+                   کاربری) دوباره می‌ماند. */
+                if (localStorage.getItem('daftar_theme_v') !== '2') {
+                    localStorage.removeItem('daftar_theme');
+                    localStorage.setItem('daftar_theme_v', '2');
+                }
                 var mode = localStorage.getItem('daftar_theme') || 'auto';
                 var sysDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
                 var dark = (mode === 'dark') || (mode === 'auto' && sysDark);

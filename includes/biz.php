@@ -653,7 +653,10 @@ final class Biz
     public static function bootScript(): string
     {
         return "(function(){var d=document.documentElement,t=null,m=null;"
-            . "try{t=localStorage.getItem('st_theme');m=localStorage.getItem('st_side_mini');}catch(e){}"
+            // ⛔ «خودکار» پیش‌فرض است؛ یک بار (`st_theme_v`) انتخابِ دستیِ قدیمی پاک
+            //    می‌شود — همان قاعده‌ی `daftar_theme_v` در `includes/header.php`.
+            . "try{if(localStorage.getItem('st_theme_v')!=='2'){localStorage.removeItem('st_theme');localStorage.setItem('st_theme_v','2');}"
+            . "t=localStorage.getItem('st_theme');m=localStorage.getItem('st_side_mini');}catch(e){}"
             . "if(t!=='dark'&&t!=='light'){t=(window.matchMedia&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';}"
             . "d.setAttribute('data-st-theme',t);if(m==='1'){d.setAttribute('data-st-mini','1');}})();";
     }

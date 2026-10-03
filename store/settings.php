@@ -112,6 +112,17 @@ require __DIR__ . '/../includes/biz_head.php';
     <?php endif; ?>
 </div>
 
+<h2 class="st-h2 st-section-title" id="theme">حالتِ شب و روز</h2>
+<div class="st-card st-form">
+    <?php /* ⛔ پیش‌فرض «خودکار» (پیروی از گوشی)؛ دکمه‌ی ماه/خورشیدِ بالا دستی‌اش
+             می‌کند و همین کلید برش می‌گرداند. در همین مرورگر ذخیره می‌شود
+             (`st_theme`)، پس فرم و سرور ندارد — بی‌جاوااسکریپت خاموش می‌ماند. */ ?>
+    <label class="st-check">
+        <input type="checkbox" data-theme-auto disabled checked>
+        <span>خودکار — هر وقت گوشی یا رایانه شب شد، فروشگاه هم شب می‌شود</span>
+    </label>
+    <p class="st-muted">با دکمه‌ی ماه/خورشید بالای صفحه حالت دستی می‌شود و همان می‌ماند؛ برای برگشت به خودکار، همین را روشن کنید.</p>
+</div>
 <h2 class="st-h2 st-section-title" id="palette">رنگِ فروشگاه</h2>
 <form method="post" class="st-card st-form" action="<?= h(Biz::url('settings.php')) ?>">
     <?= Csrf::field() ?>
