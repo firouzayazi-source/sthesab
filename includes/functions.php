@@ -4245,18 +4245,38 @@ function txStoreShareCols(string $alias = 't'): string
     return ", {$alias}.store_share_ref, {$alias}.store_share_origin, {$alias}.store_share_edited";
 }
 
+/**
+ * ⛔ نشانِ «از سهامِ فروشگاه» — لوگوی استوک‌لند (SL)، بازکشیده به‌صورتِ برداری
+ *    و روی همان دایره‌ی آیکنِ دسته. **خواسته‌ی مالکِ نصب:** «برای حساب‌هایی که
+ *    از حسابداری میاد این لوگو بخوره که معلوم باشه این معامله حسابداری فروشگاه
+ *    هست.» یک منبع برای هر سه جا (ردیف، سطرِ «منبع»، پنجره‌ی ویرایش).
+ *    ⚠ متنش «سهامِ فروشگاه» است نه «حسابداری فروشگاه» (`test_business_mode`).
+ */
+function storeShareMarkSvg(int $size = 22): string
+{
+    return '<svg class="store-mark-svg" width="' . $size . '" height="' . $size . '" viewBox="124 124 290 256" aria-hidden="true" focusable="false"><g fill="currentColor">'
+         . '<path d="M333 137L301 168H208C196 168 190 176 190 188V204C190 212 193 217 199 222L248 266H203L163 231C156 225 152 216 152 206V182C152 156 172 137 205 137Z"/>'
+         . '<path d="M229 225H265C287 237 305 252 305 276V316C305 324 300 330 293 334L247 366H137L174 329H253C266 329 273 320 273 306V280C273 262 256 247 229 225Z"/>'
+         . '<path d="M299 338H402L374 366H262Z"/></g></svg>';
+}
+
 function renderTransactionRow(array $tx): void
 {
     $icon  = categoryIconSvg($tx['cat_icon'] ?? null);
     $color = !empty($tx['cat_color']) ? $tx['cat_color'] : '#64748b';
+    $__ss  = !empty($tx['store_share_ref']) && array_key_exists('store_share_edited', $tx);
     ?>
-    <div class="tx-row" data-id="<?= (int)$tx['id'] ?>">
+    <div class="tx-row<?= $__ss ? ' is-store-share' : '' ?>" data-id="<?= (int)$tx['id'] ?>">
         <div class="tx-row-summary">
             <span class="tx-row-icon-wrap">
+                <?php if ($__ss): /* سودِ سهامِ فروشگاه: لوگو جای آیکنِ دسته */ ?>
+                <span class="cat-icon cat-icon-store" title="سهامِ فروشگاه" role="img" aria-label="سهامِ فروشگاه"><?= storeShareMarkSvg(24) ?></span>
+                <?php else: ?>
                 <span class="cat-icon" style="--cat-bg: <?= h($color) ?>22; color: <?= h($color) ?>;"><?= $icon ?></span>
+                <?php endif; ?>
                 <span class="tx-row-texts">
                     <span class="tx-row-title"><?= h($tx['title']) ?></span>
-                    <span class="tx-row-cat"><?= $tx['category_name'] ? h($tx['category_name']) : 'بدون دسته‌بندی' ?></span>
+                    <span class="tx-row-cat"><?= $__ss ? '<span class="tx-store-tag">سهامِ فروشگاه</span> · ' : '' ?><?= $tx['category_name'] ? h($tx['category_name']) : 'بدون دسته‌بندی' ?></span>
                 </span>
             </span>
             <span class="tx-row-amount amount-<?= h($tx['type']) ?>"><?= ($tx['type'] === 'expense' ? '−' : '+') ?><?= formatMoney($tx['amount']) ?></span>
@@ -4274,7 +4294,6 @@ function renderTransactionRow(array $tx): void
             <?php
             // ⛔ سودِ سهامِ فروشگاه: اصلاح‌پذیر، و عددِ فروشگاه کنارِ عددِ
             //    اصلاح‌شده (`migration_store_share_edit`).
-            $__ss      = !empty($tx['store_share_ref']) && array_key_exists('store_share_edited', $tx);
             $__ssEdit  = $__ss && (int)$tx['store_share_edited'] === 1;
             $__ssGone  = $__ss && $tx['store_share_origin'] === null;
             ?>
@@ -4282,8 +4301,8 @@ function renderTransactionRow(array $tx): void
                 <?php /* ⚠ «سهامِ فروشگاه» نه «حسابداری فروشگاه»: صفحه‌های شخصی
                          نباید هیچ نشانی از محیطِ فروشگاه داشته باشند
                          (`test_business_mode`) و این سطر سودِ سهام است. */ ?>
-                <div class="tx-row-details-line"><span>منبع</span><span>
-                    سهامِ فروشگاه
+                <div class="tx-row-details-line"><span>منبع</span><span class="tx-store-src">
+                    <span class="store-mark-chip"><?= storeShareMarkSvg(14) ?></span> سهامِ فروشگاه
                     <?php if ($__ssEdit && $__ssGone): ?>
                         — اصلاح‌شده، و در فروشگاه دیگر نیست
                     <?php elseif ($__ssEdit): ?>

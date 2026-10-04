@@ -321,12 +321,16 @@ T::ok(str_contains($html, 'js-store-revert') && str_contains($html, 'سهامِ 
     'سطرِ اصلاح‌شده دکمه‌ی «عددِ فروشگاه» دارد');
 T::ok(!str_contains($html, 'js-delete-tx'), '⛔ و دکمه‌ی حذف ندارد');
 T::ok(str_contains($html, 'data-store="1"'), 'ویرایش، راهنمای سودِ فروشگاه را باز می‌کند');
+// ⛔ لوگوی SL (خواسته‌ی مالکِ نصب) جای آیکنِ دسته — همان `storeShareMarkSvg()`
+T::ok(preg_match('/<span class="cat-icon cat-icon-store"[^>]*>' . preg_quote(storeShareMarkSvg(24), '/') . '<\/span>/', $html) === 1,
+    'سطرِ سودِ فروشگاه با لوگوی فروشگاه (SL) جای آیکنِ دسته');
+T::ok(str_contains($html, 'class="tx-row is-store-share"') && str_contains($html, 'tx-store-tag'), 'و برچسبِ «سهامِ فروشگاه» زیرِ عنوان');
 
 $plainTx = txCreate($PLAIN, ['type' => 'expense', 'amount' => '1000', 'title' => 'نان',
     'transaction_date' => '2026-09-20', 'category_id' => '']);
 $plainHtml = $render($PLAIN, (int)$plainTx['id']);
 T::ok(str_contains($plainHtml, 'js-delete-tx') && !str_contains($plainHtml, 'js-store-revert')
-    && !str_contains($plainHtml, 'سهامِ فروشگاه'),
+    && !str_contains($plainHtml, 'سهامِ فروشگاه') && !str_contains($plainHtml, 'store-mark-svg') && !str_contains($plainHtml, 'cat-icon-store'),
     'تراکنشِ عادی دست‌نخورده: حذف دارد، نشانِ فروشگاه ندارد');
 
 /* ─────────────── ۶. سهمِ خودِ فروشگاه ─────────────── */

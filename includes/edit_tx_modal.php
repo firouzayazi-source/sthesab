@@ -65,6 +65,7 @@ if (!isset($incomeCategories)) {
             <?php /* سودِ سهامِ فروشگاه: اصلاح ماندگار است و همگام‌سازی
                      دیگر عوضش نمی‌کند (`StoreShare::applyLines()`). */ ?>
             <p class="hint" id="editTxStoreHint" hidden>
+                <span class="store-mark-chip"><?= storeShareMarkSvg(14) ?></span>
                 این سود از سهامِ فروشگاه آمده. اگر عددش را عوض کنید، اصلاحِ شما می‌ماند
                 و همگام‌سازی دیگر رویش نمی‌نویسد؛ عددِ فروشگاه کنارش دیده می‌شود و با
                 «عددِ فروشگاه» برمی‌گردد.
