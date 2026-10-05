@@ -129,7 +129,7 @@ class Api
      * هر اندپوینتی جز login باید از همین رد شود. شناسه‌ی کاربر **همیشه**
      * از توکن می‌آید، هرگز از ورودی — همان قاعده‌ای که در کل پروژه هست.
      */
-    public static function requireUser(): int
+    public static function requireUser(?string $scope = null): int
     {
         if (!ApiAuth::available()) {
             self::fail('api_unavailable',
@@ -140,6 +140,14 @@ class Api
         if ($id === null) {
             if (!headers_sent()) { header('WWW-Authenticate: Bearer'); }
             self::fail('unauthenticated', 'برای این درخواست باید وارد شوید.', 401);
+        }
+
+        // ⛔ توکنِ محدود فقط مسیرِ خودش را باز می‌کند. پیش‌فرضِ `$scope = null`
+        //    یعنی هر مسیری که چیزی نگفته فقط توکنِ **کامل** را می‌پذیرد —
+        //    مسیرِ تازه‌ای که فراموش کند، بسته است نه باز.
+        $has = ApiAuth::scope();
+        if ($has !== null && $has !== $scope) {
+            self::fail('scope', 'این کلید فقط برای ثبتِ پیامکِ بانک است.', 403);
         }
 
         return $id;

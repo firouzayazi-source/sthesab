@@ -113,7 +113,13 @@ public class BankSmsReceiver extends BroadcastReceiver {
      */
     private static final String[] HINTS = {
         "برداشت", "واریز", "پرداخت", "خرید", "کسر", "انتقال",
-        "بدهکار", "بستانکار", "پرید", "نشست", "دریافت"
+        "بدهکار", "بستانکار", "پرید", "نشست", "دریافت",
+        // ⛔ پاسارگاد و مهر هیچ کلمه‌ی جهتی ندارند («-1,250,000» و «مانده»)،
+        //    و پیامکِ انگلیسیِ ملت/پاسارگاد فقط Withdrawal/Deposit دارد. بی‌این‌ها
+        //    پیامکِ آن بانک‌ها **هرگز** به پارسر نمی‌رسید. سخاوتمند است، نه
+        //    دقیق: پیامکِ «فقط مانده» را خودِ پارسر رد می‌کند.
+        "مانده", "موجودی", "withdraw", "deposit", "purchase", "payment", "balance",
+        "debit", "credit"
     };
 
     @Override
@@ -155,7 +161,20 @@ public class BankSmsReceiver extends BroadcastReceiver {
           .putString(PREF_LAST_WHY, why)
           .apply();
 
+        // ⚠ کارِ دوره‌ای همیشه زنده بماند (پیامکی که گیرنده‌اش خوابانده شد).
+        SmsSync.schedule(ctx);
+
         if (!WHY_OK.equals(why)) { return; }
+
+        // ⛔ **وصل** (`SmsSync.linked`): اعلانِ «بزن تا ثبت شود» ساخته
+        //    **نمی‌شود** — کارگرِ پس‌زمینه خودش ثبت می‌کند و اعلانِ «ثبت شد»
+        //    می‌دهد. با هر دو، تپ روی اعلان همان پیامک را از مسیرِ وب هم
+        //    ثبت می‌کرد: دو تراکنش. پیامکی که خودکار نشد، اعلانِ تپی را از
+        //    همان کارگر می‌گیرد.
+        if (SmsSync.linked(ctx)) {
+            SmsSync.offer(ctx, text, sender);
+            return;
+        }
 
         // ⛔ نشانه‌ی `PREF_SCAN_AT` اینجا جلو **نمی‌رود**. اعلان فقط یک
         //    پیشنهاد است؛ اگر کاربر آن را نزند و اپ را از آیکون باز کند،
@@ -164,6 +183,10 @@ public class BankSmsReceiver extends BroadcastReceiver {
         //    می‌برد و آن پیامک برای همیشه جا می‌ماند — همان «هیچ اتفاقی
         //    نیفتاد». تکراری شدنش را نگهبانِ اثرِ انگشتِ `app.js` می‌گیرد.
         postNotification(ctx, sender, text);
+        // ⚠ کدِ جفت شدن هست ولی کلید نه: کارگر بیدار شود تا کلید را بگیرد.
+        SharedPreferences link = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String nonce = link.getString(SmsSync.PREF_NONCE, "");
+        if (nonce != null && !nonce.isEmpty()) { SmsSync.kick(ctx); }
     }
 
     /**
@@ -180,9 +203,11 @@ public class BankSmsReceiver extends BroadcastReceiver {
     static String classify(String text) {
         if (text.length() < 12) { return WHY_SHORT; }
 
+        // ⚠ ی/ک عربی (ملی هنوز «بانك ملي» می‌فرستد) و حروفِ بزرگِ انگلیسی.
+        String t = text.replace('ي', 'ی').replace('ك', 'ک').toLowerCase(java.util.Locale.ROOT);
         boolean hint = false;
         for (String h : HINTS) {
-            if (text.contains(h)) { hint = true; break; }
+            if (t.contains(h)) { hint = true; break; }
         }
         if (!hint) { return WHY_NO_HINT; }
 
@@ -210,6 +235,49 @@ public class BankSmsReceiver extends BroadcastReceiver {
      *    آزمایش می‌توانست موفق شود در حالی که مسیرِ واقعی خراب است —
      *    یعنی بدترین نوعِ سنجش: سبز روی خرابی.
      */
+    /** کانالِ اعلان — یک جا، برای هر دو اعلان. */
+    private static NotificationManager channel(Context ctx) {
+        NotificationManager nm =
+                (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel ch = new NotificationChannel(
+                    CHANNEL_ID,
+                    ctx.getString(R.string.sms_channel_name),
+                    NotificationManager.IMPORTANCE_DEFAULT);
+            ch.setDescription(ctx.getString(R.string.sms_channel_desc));
+            nm.createNotificationChannel(ch);
+        }
+        return nm;
+    }
+
+    /**
+     * ⛔ «ثبت شد» — از کارگرِ پس‌زمینه (`SmsSync`). برچسب (نوع و مبلغ) را
+     *    **صفحه** ساخته (`smsWorker()`)؛ این‌جا هیچ عدد و واحدی
+     *    ساخته نمی‌شود. شناسه همان شناسه‌ی اعلانِ تپی است، پس اگر آن پیش‌تر
+     *    ساخته شده بود جایش را می‌گیرد. تپ → خودِ اپ، برای دیدن یا «لغو».
+     */
+    static void postSaved(Context ctx, String label, String text) {
+        try {
+            NotificationManager nm = channel(ctx);
+            if (nm == null) { return; }
+            Intent open = new Intent(Intent.ACTION_VIEW, Uri.parse(ctx.getString(R.string.launch_url)));
+            open.setPackage(ctx.getPackageName());
+            open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) { flags |= PendingIntent.FLAG_IMMUTABLE; }
+            PendingIntent pi = PendingIntent.getActivity(ctx, 7100, open, flags);
+            Notification.Builder b = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                    ? new Notification.Builder(ctx, CHANNEL_ID)
+                    : new Notification.Builder(ctx);
+            b.setSmallIcon(android.R.drawable.stat_sys_download_done)
+             .setContentTitle(ctx.getString(R.string.sms_saved_title))
+             .setContentText(label == null || label.isEmpty() ? ctx.getString(R.string.sms_saved_body) : label)
+             .setAutoCancel(true)
+             .setContentIntent(pi);
+            nm.notify(Math.abs(text.hashCode()), b.build());
+        } catch (Throwable ignored) { }
+    }
+
     static void postNotification(Context ctx, String sender, String text) {
         String url;
         try {
@@ -239,8 +307,7 @@ public class BankSmsReceiver extends BroadcastReceiver {
         PendingIntent pi = PendingIntent.getActivity(
                 ctx, Math.abs(text.hashCode()), open, flags);
 
-        NotificationManager nm =
-                (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
+        NotificationManager nm = channel(ctx);
         if (nm == null) { return; }
 
         // ⚠ روی اندروید ۱۳ به بالا، بدونِ `POST_NOTIFICATIONS` خطِ
@@ -249,15 +316,6 @@ public class BankSmsReceiver extends BroadcastReceiver {
         //   پیامک می‌گیرد و اگر داده نشده باشد همان‌جا صریح می‌گوید —
         //   اینجا کاری از دستِ گیرنده برنمی‌آید (از یک BroadcastReceiver
         //   نمی‌شود مجوز خواست).
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel ch = new NotificationChannel(
-                    CHANNEL_ID,
-                    ctx.getString(R.string.sms_channel_name),
-                    NotificationManager.IMPORTANCE_DEFAULT);
-            ch.setDescription(ctx.getString(R.string.sms_channel_desc));
-            nm.createNotificationChannel(ch);
-        }
 
         // ⚠ خلاصه‌ی خودِ پیامک در متنِ اعلان می‌آید تا کاربر **پیش از**
         //   باز کردن بداند دارد چه چیزی را ثبت می‌کند. اعلانی که فقط

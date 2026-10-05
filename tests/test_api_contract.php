@@ -491,9 +491,10 @@ T::group('قاعده ۹ — api/v1 هویت را از توکن می‌گیرد،
 $v1Files = glob($root . '/api/v1/routes/*.php');
 T::ok(count($v1Files) > 0, 'فایل‌های مسیر v1 پیدا شدند', 'تعداد: ' . count($v1Files));
 
-// فقط این دو عمداً بی‌نیاز از توکن‌اند: ping برای سنجش دسترسی، و login
-// که خودش توکن می‌سازد.
-$openHandlers = ['v1Ping', 'v1AuthLogin'];
+// فقط این سه عمداً بی‌نیاز از توکن‌اند: ping برای سنجش دسترسی، login که
+// خودش توکن می‌سازد، و `sms/claim` که کلیدِ پیامک را فقط با کدِ یک‌بارمصرفی
+// می‌دهد که صفحه‌ی **واردشده** به کاربرِ نشست بسته است (`SmsSync::claim`).
+$openHandlers = ['v1Ping', 'v1AuthLogin', 'v1SmsClaim'];
 
 $missing = [];
 $handlers = 0;
@@ -510,12 +511,23 @@ foreach ($v1Files as $f) {
         $end   = isset($m[0][$i + 1]) ? $m[0][$i + 1][1] : strlen($src);
         $body  = substr($src, $start, $end - $start);
 
-        if (!str_contains($body, 'Api::requireUser()')) {
+        // ⛔ `requireUser('sms')` فقط در `sms.php`: کلیدِ محدودِ اپ (`scope = sms`)
+        //    همان مسیرها را باز می‌کند و هر جای دیگر `requireUser()`ِ بی‌آرگومان
+        //    یعنی «فقط کلیدِ کامل» — مسیرِ تازه‌ای که دامنه را فراموش کند بسته است.
+        $ok = str_contains($body, 'Api::requireUser()')
+           || (basename($f) === 'sms.php' && str_contains($body, "Api::requireUser('sms')"));
+        if (!$ok) {
             $missing[] = basename($f) . " › {$name} توکن را نمی‌سنجد";
         }
     }
 }
 T::bulk($handlers, $missing, 'هر هندلر v1 هویت را می‌سنجد');
+
+// ⛔ کلیدِ محدود واقعاً محدود است: پیش‌فرضِ `requireUser()` «فقط کامل».
+$apiSrc = (string)@file_get_contents($root . '/includes/api.php');
+T::ok((bool)preg_match('~function requireUser\(\?string \$scope = null\)~', $apiSrc)
+      && (bool)preg_match('~\$has !== null && \$has !== \$scope~', $apiSrc),
+    '⛔ کلیدِ `sms` جز مسیرِ پیامک را باز نمی‌کند (پیش‌فرضِ requireUser = کلیدِ کامل)');
 
 // شناسه‌ی کاربر باید از توکن بیاید. Auth::userId() نشست را می‌خواند و در
 // درخواستِ API همیشه null است — استفاده‌اش یعنی باگِ خاموش.
@@ -1019,7 +1031,10 @@ if (!file_exists($gradlePath)) {
     if (!preg_match('~boolean\s+DEFAULT_ON\s*=\s*true\s*;~', $recvNC)) {
         $lauBad[] = 'BankSmsReceiver — DEFAULT_ON = true نیست؛ کسی که فقط اپ را نصب کند پیامکی نمی‌گیرد';
     }
-    foreach (['BankSmsReceiver' => $recvNC, 'SmsSetupActivity' => $setNC, 'HesabLauncherActivity' => $lauNC] as $who => $src) {
+    $syncNC = preg_replace('~/\*.*?\*/|(?<!:)//[^\n]*~s', '',
+                (string)@file_get_contents($mobile . 'java/' . str_replace('.', '/', $appId) . '/SmsSync.java')) ?? '';
+    foreach (['BankSmsReceiver' => $recvNC, 'SmsSetupActivity' => $setNC, 'HesabLauncherActivity' => $lauNC,
+              'SmsSync' => $syncNC] as $who => $src) {
         if (preg_match('~getBoolean\(\s*(?:BankSmsReceiver\.)?PREF_ON\s*,(?!\s*(?:BankSmsReceiver\.)?DEFAULT_ON\b)~', $src)) {
             $lauBad[] = "{$who} — پیش‌فرضِ PREF_ON سخت‌کد است؛ باید از DEFAULT_ON بیاید";
         }
@@ -1079,8 +1094,14 @@ if (!file_exists($gradlePath)) {
     //   بلافاصله آپدیت بشه» — فایل را خودِ اپ می‌گیرد و پنجره‌ی نصبِ سیستم را
     //   باز می‌کند. هیچ پیامکی نمی‌خواند و آدرسش را فقط از دامنه‌ی خودِ اپ
     //   می‌سازد (قاعده ۶۴).
+    // ⚠ و `SmsSync.java` پنجمی است، آگاهانه و همین‌جا (مهر ۱۴۰۵): «اپ هنوز
+    //   نمی‌تونه اس‌ام‌اس‌ها رو بخونه … خودش بذاره روی حساب». کارگرِ پس‌زمینه
+    //   (`JobService`) که پیامک را بی‌باز کردنِ اپ ثبت می‌کند — و باز هم
+    //   **پارسر نیست**: صفحه‌ی `assets/sms-worker.html` را در WebViewِ
+    //   نامرئی باز می‌کند و همان `smsWorker()`ِ سایت تصمیم می‌گیرد و می‌فرستد.
+    //   هیچ کلاسِ شبکه‌ای ندارد (قاعده ۱۹، پایین‌تر).
     $allowedNative = ['BankSmsReceiver.java', 'SmsSetupActivity.java', 'HesabLauncherActivity.java',
-                      'UpdateActivity.java'];
+                      'UpdateActivity.java', 'SmsSync.java'];
 
     $code = [];
     $it = new RecursiveIteratorIterator(
@@ -1602,9 +1623,23 @@ foreach ($nativeJava as $j) {
         //   و ۴۴ هم در آن افتادند.
         $srcNC = preg_replace('~/\\*.*?\\*/|//[^\\n]*~s', '', $src) ?? $src;
 
-        if (str_contains($srcNC, 'REQUEST_IGNORE_BATTERY_OPTIMIZATIONS')) {
-            $smsBad[] = "$name — اکشن/مجوزِ REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
-                      . ' محدودشده‌ی گوگل‌پلی است؛ از ..._SETTINGS استفاده کنید';
+        // ⛔ **برعکس شد (مهر ۱۴۰۵)** — گزارشِ مالکِ نصب: «اپ‌های دیگه
+        //    دسترسی به باتری می‌گیرن، مالِ ما نه». اپ از پلی پخش نمی‌شود، پس
+        //    هزینه‌ی «محدودشده‌ی پلی» این‌جا صفر است و هزینه‌ی نبودنش واقعی:
+        //    کاربر در فهرستِ صدها اپ گم می‌شد و ثبتِ پس‌زمینه می‌خوابید. حالا
+        //    دیالوگِ یک‌تپی **اول**، و فهرستِ `_SETTINGS` فقط پشتیبان — هر دو
+        //    داخلِ `openBatterySettings()`.
+        $obBody = '';
+        if (($obAt = strpos($srcNC, 'private void openBatterySettings()')) !== false) {
+            $obBody = substr($srcNC, $obAt, 900);
+        }
+        $reqAt = strpos($obBody, 'ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS');
+        $setAt = strpos($obBody, 'ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS');
+        if ($reqAt === false || $setAt === false || $reqAt > $setAt) {
+            $smsBad[] = "$name — دیالوگِ یک‌تپیِ باتری (REQUEST_IGNORE_…) پیش از فهرستِ تنظیمات نیست";
+        }
+        if (!str_contains($obBody, '"package:" + getPackageName()')) {
+            $smsBad[] = "$name — دیالوگِ باتری بی‌نامِ بسته است؛ اندروید آن را رد می‌کند";
         }
         if (!str_contains($srcNC, 'isIgnoringBatteryOptimizations')) {
             $smsBad[] = "$name — وضعیتِ بهینه‌سازیِ باتری سنجیده نمی‌شود؛"
@@ -1669,6 +1704,50 @@ foreach ($nativeJava as $j) {
         && str_contains(preg_replace('~/\*.*?\*/|//[^\n]*~s', '', $src) ?? $src, 'putLong(PREF_SCAN_AT')) {
         $smsBad[] = "$name — گیرنده PREF_SCAN_AT را جلو می‌برد؛ پیامکِ اعلانِ‌نزده با باز کردنِ اپ نمی‌آید";
     }
+    // ⛔ کارگرِ پس‌زمینه (`SmsSync`) — پنج مرز، هر کدام بی‌صدا شکستنی:
+    //    ۱. متن در prefs نه (فقط زمان‌ها و کلید). `JSONObject.put` مجاز است:
+    //       متن فقط در حافظه به صفحه داده می‌شود.
+    //    ۲. صندوق فقط در `readInbox()`، با صافیِ `classify` و سنجشِ مجوز.
+    //    ۳. WebView فقط همان صفحه‌ی کارگر، بی‌هیچ ناوبری، بی‌کش.
+    //    ۴. کلیدِ روشن/خاموش با `DEFAULT_ON` سنجیده شود.
+    //    ۵. وصل‌نشده هیچ پیامکی را ثبت نمی‌کند (دو پردازنده نه).
+    if ($name === 'SmsSync.java') {
+        $ssNC = preg_replace('~/\*.*?\*/|(?<!:)//[^\n]*~s', '', $src) ?? $src;
+        if (preg_match('~put(String|StringSet)\([^)]*\b(text|body|txt|items)\b~', $ssNC)) {
+            $smsBad[] = "$name — متنِ پیامک در prefs ذخیره می‌شود";
+        }
+        $ri = strpos($ssNC, 'static ArrayList<Item> readInbox(');
+        if ($ri === false || substr_count($ssNC, 'content://sms') !== 1 || strpos($ssNC, 'content://sms') < $ri) {
+            $smsBad[] = "$name — صندوق بیرون از readInbox() خوانده می‌شود";
+        } else {
+            $riBody = substr($ssNC, $ri, 1200);
+            foreach (['BankSmsReceiver.classify' => 'صافیِ مسیرِ واقعی', 'canRead(ctx)' => 'سنجشِ مجوزِ صندوق'] as $needle => $what) {
+                if (!str_contains($riBody, $needle)) { $smsBad[] = "$name — readInbox() {$what} را ندارد"; }
+            }
+        }
+        if (!str_contains($ssNC, '"/assets/sms-worker.html"')
+            || !preg_match('~shouldOverrideUrlLoading\(WebView v, WebResourceRequest r\)\s*\{\s*return true;~', $ssNC)
+            || !str_contains($ssNC, 'LOAD_NO_CACHE')) {
+            $smsBad[] = "$name — WebViewِ کارگر به صفحه‌ی خودش بسته نیست (ناوبری/کش)";
+        }
+        if (!preg_match('~getBoolean\(BankSmsReceiver\.PREF_ON,\s*BankSmsReceiver\.DEFAULT_ON\)\)\s*\{\s*return false;~', $ssNC)) {
+            $smsBad[] = "$name — کلیدِ «خاموش» کارگر را نمی‌ایستاند";
+        }
+        if (!preg_match('~if \(!hadToken && !items\.isEmpty\(\)\)\s*\{[^}]*items = new ArrayList~s', $ssNC)) {
+            $smsBad[] = "$name — بی‌کلید هم پیامک می‌فرستد؛ دو پردازنده (اعلان + کارگر) یعنی تراکنشِ تکراری";
+        }
+    }
+    // ⛔ و در حالتِ «وصل» نه اعلانِ تپی (گیرنده) و نه صندوق (درِ ورودی):
+    //    همان پیامک از مسیرِ وب هم ثبت می‌شد.
+    if ($name === 'BankSmsReceiver.java'
+        && !preg_match('~if \(SmsSync\.linked\(ctx\)\)\s*\{\s*SmsSync\.offer\(ctx, text, sender\);\s*return;~', $src)) {
+        $smsBad[] = "$name — در حالتِ وصل هم اعلانِ تپی می‌سازد؛ تپ روی آن تراکنشِ دوم است";
+    }
+    if ($name === 'HesabLauncherActivity.java'
+        && !preg_match('~if \(SmsSync\.linked\(this\)\)\s*\{\s*return SmsSync\.takeReview\(this\);~', $src)) {
+        $smsBad[] = "$name — در حالتِ وصل صندوق را به سایت می‌دهد؛ پیامکِ ثبت‌شده دوباره ثبت می‌شود";
+    }
+
     // ⛔ متنِ صندوق در درِ ورودی هم ذخیره نمی‌شود.
     if ($name === 'HesabLauncherActivity.java'
         && preg_match('~put[A-Za-z]*\([^)]*\b(body|txt|text|items)\b~',
@@ -1679,6 +1758,28 @@ foreach ($nativeJava as $j) {
         $smsBad[] = "$name — گیرنده صندوقِ پیامک را می‌خواند؛"
                   . ' خواندنِ صندوق فقط با تپِ کاربر در صفحه‌ی تنظیم است';
     }
+}
+
+// ⛔ زنجیره‌ی جفت شدن (ثبتِ پس‌زمینه) — چهار حلقه، هر کدام بی‌صدا شکستنی:
+//    اپ کد را در **فرگمنت** می‌گذارد → app.js آن را می‌خواند، پاک می‌کند و با
+//    CSRF به `sms_link.php` می‌دهد → صفحه‌ی تنظیمِ اپ با `S.linked=1` باز
+//    می‌شود → همان کلید (`EXTRA_LINKED`) آنجا خوانده می‌شود.
+$smsSeen++;
+$lauSrcL = (string)@file_get_contents($javaRoot . '/ir/stland/hesabland/HesabLauncherActivity.java');
+$setSrcL = (string)@file_get_contents($javaRoot . '/ir/stland/hesabland/SmsSetupActivity.java');
+$lp = strpos($appJs, 'function smsLinkFromFragment()');
+$lb = $lp === false ? '' : substr($appJs, $lp, 1800);
+if (!str_contains($lauSrcL, 'encodedFragment("smslink=" + SmsSync.nonce(this))')) {
+    $smsBad[] = 'HesabLauncherActivity — کدِ جفت شدن در فرگمنت (`#smslink=`) نیست';
+}
+if ($lb === '' || !str_contains($lb, "#smslink=") || !str_contains($lb, 'history.replaceState')
+    || !str_contains($lb, "apiUrl('sms_link.php')") || !str_contains($lb, "'csrf_token'")
+    || strpos($lb, 'history.replaceState') > strpos($lb, 'fetch(')) {
+    $smsBad[] = 'app.js — smsLinkFromFragment() کد را پیش از درخواست پاک نمی‌کند یا بی‌CSRF می‌فرستد';
+}
+if ($lb !== '' && (!str_contains($lb, ".SMS_SETUP;package=' + pkg + ';S.linked=1;end'")
+    || !preg_match('~EXTRA_LINKED\s*=\s*"linked"~', $setSrcL))) {
+    $smsBad[] = 'app.js/SmsSetupActivity — بعد از جفت شدن صفحه‌ی اپ با `S.linked=1` باز نمی‌شود';
 }
 
 // و خودِ گیرنده باید هنوز در manifest ثبت باشد — بدونِ آن اپ ساخته
@@ -1693,11 +1794,11 @@ if ($manifest !== '') {
             $smsBad[] = "AndroidManifest — {$what} ثبت نشده";
         }
     }
-    // ⛔ و آن مجوزِ محدودشده نباید هرگز اعلام شود — نه حالا، نه با یک
-    //    «فقط برای اینکه یک تپ کمتر شود» در آینده.
-    if (str_contains($manifest, 'REQUEST_IGNORE_BATTERY_OPTIMIZATIONS')) {
+    // ⛔ و آن مجوز **باید** اعلام شود (برعکسِ پیش از مهر ۱۴۰۵) — بی‌آن دیالوگِ
+    //    یک‌تپی بی‌صدا رد می‌شود و فقط فهرستِ تنظیمات می‌ماند.
+    if (!str_contains($manifest, 'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS')) {
         $smsBad[] = 'AndroidManifest — مجوزِ REQUEST_IGNORE_BATTERY_OPTIMIZATIONS'
-                  . ' محدودشده‌ی گوگل‌پلی است و لازم هم نیست';
+                  . ' اعلام نشده؛ دیالوگِ «اجرا در پس‌زمینه» باز نمی‌شود';
     }
 }
 
@@ -6321,9 +6422,13 @@ $idx65 = (string)@file_get_contents(__DIR__ . '/../index.php');
 if (!str_contains($idx65, 'id="smsPendingSlot"')) {
     $qBad[] = 'index.php — جای کارتِ بررسی نیست';
 }
-$mw65 = strpos($js65, 'window.smsMatchWallet = function');
-if ($mw65 === false || $dcl65 === false || $mw65 > $dcl65) {
-    $qBad[] = 'app.js — smsMatchWallet بیرون از DOMContentLoaded نیست (در node آزمودنی نمی‌ماند)';
+// ⛔ پارسر در `sms-core.js` است (هسته‌ی مشترکِ سایت و کارگرِ اندروید) و
+//    هیچ DOMContentLoaded ای ندارد — خالص، در node آزمودنی.
+$core65 = (string)@file_get_contents(__DIR__ . '/../assets/js/sms-core.js');
+$core65NC = (string)preg_replace('~/\*.*?\*/|(?<![:\'"])//[^\n]*~s', '', $core65);
+if (!str_contains($core65, 'window.smsMatchWallet = function') || str_contains($core65NC, 'DOMContentLoaded')
+    || str_contains($js65, 'window.smsMatchWallet = function')) {
+    $qBad[] = 'sms-core.js — smsMatchWallet تنها در هسته‌ی خالص نیست (در node آزمودنی نمی‌ماند)';
 }
 $sheet65 = (string)@file_get_contents(__DIR__ . '/../includes/add_tx_sheet.php');
 if (!str_contains($sheet65, 'window.SMS_WALLETS = <?= json_encode($__smsWallets')) {

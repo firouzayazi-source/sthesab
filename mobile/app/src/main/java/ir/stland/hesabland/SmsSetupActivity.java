@@ -83,6 +83,14 @@ public class SmsSetupActivity extends AppCompatActivity {
     private Button   fixBattery;
     private Button   fixRead;
     private Button   scan;
+    private Button   autostart;
+    private TextView sync;
+    private TextView restricted;
+
+    /** یک بار در عمرِ نصب، خودکار — بعد فقط با دکمه. */
+    static final String PREF_BATTERY_ASKED = "battery_asked";
+    /** از سایت بعد از جفت شدن (`#smslink=` → `S.linked=1`). */
+    static final String EXTRA_LINKED = "linked";
 
     @Override
     protected void onCreate(Bundle saved) {
@@ -108,7 +116,10 @@ public class SmsSetupActivity extends AppCompatActivity {
                         Toast.LENGTH_LONG).show();
             } catch (Throwable ignored) { }
             finish();
+            return;
         }
+        // ⚠ جدا از گاردِ بالا: شکستِ کارگر/دیالوگِ باتری صفحه را نمی‌بندد.
+        try { afterLink(); } catch (Throwable ignored) { }
     }
 
     private void build() {
@@ -175,6 +186,16 @@ public class SmsSetupActivity extends AppCompatActivity {
         });
         root.addView(fixRead);
 
+        // ⛔ اجرای خودکار در پس‌زمینه — شیائومی، هواوی، اوپو، ویوو و… جدا از
+        //    «بهینه‌سازیِ باتری» یک کلیدِ خودشان دارند و تا روشن نشود هیچ
+        //    کارِ پس‌زمینه‌ای (نه گیرنده، نه کارگر) اجرا نمی‌شود.
+        autostart = new Button(this);
+        autostart.setText(R.string.sms_autostart_fix);
+        autostart.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { openAutostart(); }
+        });
+        root.addView(autostart);
+
         scan = new Button(this);
         scan.setText(R.string.sms_scan);
         scan.setOnClickListener(new View.OnClickListener() {
@@ -191,6 +212,29 @@ public class SmsSetupActivity extends AppCompatActivity {
         diag.setGravity(Gravity.END);
         diag.setPadding(0, 32, 0, 16);
         root.addView(diag);
+
+        // ⛔ ثبتِ پس‌زمینه: وصل است؟ به کدام حساب؟ آخرین نوبت چه شد؟
+        sync = new TextView(this);
+        sync.setTextColor(Color.parseColor("#8C93A0"));
+        sync.setTextSize(13);
+        sync.setGravity(Gravity.END);
+        sync.setPadding(0, 0, 0, 16);
+        root.addView(sync);
+
+        // ⛔ «تنظیمِ محدود» اندروید ۱۳ به بالا برای اپی که از بیرونِ فروشگاه
+        //    نصب شده: دیالوگِ مجوزِ پیامک اصلاً بالا نمی‌آید و کلیدش در
+        //    تنظیمات خاکستری است. تنها راه همان منوی ⋮ صفحه‌ی اطلاعاتِ برنامه
+        //    است — و تا امروز هیچ‌جا گفته نمی‌شد؛ کاربر فقط می‌دید «کار نمی‌کند».
+        restricted = new TextView(this);
+        restricted.setText(R.string.sms_restricted_help);
+        restricted.setTextColor(Color.parseColor("#E8B54D"));
+        restricted.setTextSize(13);
+        restricted.setGravity(Gravity.END);
+        restricted.setPadding(0, 0, 0, 16);
+        restricted.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { openAppSettings(); }
+        });
+        root.addView(restricted);
 
         Button test = new Button(this);
         test.setText(R.string.sms_test);
@@ -279,24 +323,83 @@ public class SmsSetupActivity extends AppCompatActivity {
     }
 
     /**
-     * ⛔ `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS` است، نه
-     *    `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`.
+     * ⛔ دیالوگِ یک‌تپیِ «اجازه‌ی اجرا در پس‌زمینه»
+     *    (`ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) — و این یک بار برعکس
+     *    بود.
      *
-     *    دومی یک دیالوگِ یک‌تپی می‌دهد ولی مجوزِ
-     *    `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` می‌خواهد و آن از
-     *    مجوزهای **محدودشده‌ی گوگل‌پلی** است — یعنی برای یک دکمه‌ی
-     *    کمکی، ریسکِ ردِ کلِ اپ. اولی هیچ مجوزی نمی‌خواهد و همان فهرستِ
-     *    سیستم را باز می‌کند؛ یک تپ بیشتر است و هیچ هزینه‌ای ندارد.
+     *    نسخه‌ی قبلی فقط فهرستِ سیستم را باز می‌کرد، چون این مجوز در گوگل‌پلی
+     *    محدود است. ولی این اپ از پلی پخش نمی‌شود (بالای manifest) و **گزارشِ
+     *    مالکِ نصب** صریح بود: «اپ‌های دیگه دسترسی به باتری می‌گیرن، مالِ ما
+     *    نه». کاربر در فهرستِ صدها اپ گم می‌شد و ثبتِ پس‌زمینه بی‌صدا
+     *    می‌خوابید. حالا یک دیالوگ، و همان فهرست فقط پشتیبان.
      *
-     * ⚠ و بعضی رام‌ها این اکشن را ندارند. بدونِ `try`، تپِ کاربر اپ را
-     *   می‌بست — همان کرشِ بی‌توضیحی که گاردِ `onCreate` برایش نوشته شد.
-     *   اینجا به‌جای بستن، صریح می‌گوید مسیرِ دستی کجاست.
+     * ⚠ بعضی رام‌ها هیچ‌کدام را ندارند: به‌جای کرش، مسیرِ دستی گفته می‌شود.
      */
     private void openBatterySettings() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                        Uri.parse("package:" + getPackageName())));
+                return;
+            } catch (Throwable ignored) { }
+        }
         try {
             startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
         } catch (Throwable t) {
             Toast.makeText(this, R.string.sms_battery_none, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    /**
+     * ⛔ صفحه‌ی «اجرای خودکار»ِ سازنده‌ی گوشی. نامِ این صفحه‌ها استاندارد
+     *    نیست؛ فهرستِ زیر همان چیزی است که اپ‌های پیام‌رسان و بانکی هم امتحان
+     *    می‌کنند. اولی که باز شد کافی است؛ هیچ‌کدام → صفحه‌ی اطلاعاتِ برنامه.
+     */
+    private static final String[][] AUTOSTART = {
+        { "com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity" },
+        { "com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity" },
+        { "com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity" },
+        { "com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity" },
+        { "com.coloros.safecenter", "com.coloros.safecenter.startupapp.StartupAppListActivity" },
+        { "com.oppo.safe", "com.oppo.safe.permission.startup.StartupAppListActivity" },
+        { "com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity" },
+        { "com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.AddWhiteListActivity" },
+        { "com.letv.android.letvsafe", "com.letv.android.letvsafe.AutobootManageActivity" },
+        { "com.asus.mobilemanager", "com.asus.mobilemanager.MainActivity" },
+        { "com.samsung.android.lool", "com.samsung.android.sm.ui.battery.BatteryActivity" },
+        { "com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity" },
+    };
+
+    private Intent autostartIntent() {
+        PackageManager pm = getPackageManager();
+        for (String[] c : AUTOSTART) {
+            Intent i = new Intent();
+            i.setComponent(new android.content.ComponentName(c[0], c[1]));
+            if (pm.resolveActivity(i, PackageManager.MATCH_DEFAULT_ONLY) != null) { return i; }
+        }
+        return null;
+    }
+
+    private void openAutostart() {
+        Intent i = autostartIntent();
+        if (i != null) {
+            try { startActivity(i); return; } catch (Throwable ignored) { }
+        }
+        openAppSettings();
+    }
+
+    /**
+     * ⛔ بعد از جفت شدن (سایت این صفحه را با `S.linked=1` باز می‌کند): کارگر
+     *    همین حالا کلید را بگیرد، و **یک بار** دیالوگِ باتری پرسیده شود —
+     *    همان «دسترسی به باتری» که اپ‌های دیگر می‌گیرند. بعد از آن فقط دکمه.
+     */
+    private void afterLink() {
+        Intent it = getIntent();
+        if (it == null || !"1".equals(it.getStringExtra(EXTRA_LINKED))) { return; }
+        SmsSync.kick(this);
+        if (!batteryOk() && !prefs().getBoolean(PREF_BATTERY_ASKED, false)) {
+            prefs().edit().putBoolean(PREF_BATTERY_ASKED, true).apply();
+            openBatterySettings();
         }
     }
 
@@ -337,8 +440,27 @@ public class SmsSetupActivity extends AppCompatActivity {
         //   گوشیِ مجوزدار کاری نمی‌کرد.
         fixRead.setVisibility(on && !inboxGranted() ? View.VISIBLE : View.GONE);
         scan.setVisibility(on && inboxGranted() ? View.VISIBLE : View.GONE);
+        autostart.setVisibility(on && autostartIntent() != null ? View.VISIBLE : View.GONE);
+
+        // ⚠ راهنمای «تنظیمِ محدود» فقط وقتی مجوزِ پیامک نیست و اندروید ۱۳+ است.
+        restricted.setVisibility(enabled() && !granted()
+                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? View.VISIBLE : View.GONE);
 
         diag.setText(lastEventLine());
+        sync.setText(syncLine());
+    }
+
+    /** خطِ وضعیتِ ثبتِ پس‌زمینه — وصل؟ آخرین نوبت؟ */
+    private String syncLine() {
+        if (!SmsSync.linked(this)) { return getString(R.string.sms_sync_unlinked); }
+        String user = prefs().getString(SmsSync.PREF_USER, "");
+        String head = getString(R.string.sms_sync_linked, user == null || user.isEmpty() ? "—" : user);
+        long at = prefs().getLong(SmsSync.PREF_SYNC_AT, 0L);
+        if (at <= 0L) { return head; }
+        String why = prefs().getString(SmsSync.PREF_SYNC_WHY, "");
+        int n = prefs().getInt(SmsSync.PREF_SYNC_N, 0);
+        int msg = SmsSync.WHY_OK.equals(why) ? R.string.sms_sync_ok : R.string.sms_sync_offline;
+        return head + "\n" + getString(msg, ago(at), n);
     }
 
     /**

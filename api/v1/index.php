@@ -18,6 +18,7 @@ require_once __DIR__ . '/../../includes/api.php';
 require_once __DIR__ . '/routes/auth.php';
 require_once __DIR__ . '/routes/transactions.php';
 require_once __DIR__ . '/routes/reference.php';
+require_once __DIR__ . '/routes/sms.php';
 
 /**
  * مسیرِ درخواست، بدون پیشوند و بدون query string.
@@ -78,6 +79,11 @@ $routes = [
 
     ['GET',    'wallets',           'v1Wallets'],
     ['GET',    'categories',        'v1Categories'],
+
+    // پیامکِ بانک از پس‌زمینه‌ی اپ اندروید — توکنِ محدودِ `sms`
+    ['POST',   'sms/claim',         'v1SmsClaim'],
+    ['GET',    'sms/wallets',       'v1SmsWallets'],
+    ['POST',   'sms/tx',            'v1SmsTx'],
 ];
 
 /** آیا الگو با مسیر می‌خواند؟ در صورت تطابق، پارامترها برمی‌گردند. */

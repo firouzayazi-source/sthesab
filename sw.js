@@ -39,6 +39,7 @@ const PRECACHE = [
     rel('offline.html'),
     rel('assets/css/style.css'),
     rel('assets/js/app.js'),
+    rel('assets/js/sms-core.js'),
     rel('assets/js/jalali-datepicker.js'),
     rel('assets/js/chart.umd.js'),
     rel('assets/fonts/Vazirmatn.woff2'),

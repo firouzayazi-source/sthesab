@@ -79,6 +79,8 @@ require_once __DIR__ . '/user_data.php';
  */
 const USER_IMPORT_SKIP = [
     'api_tokens', 'password_resets', 'trusted_devices', 'sms_codes',
+    // ⛔ جفت شدنِ گوشی از فایل یعنی کلیدِ پیامکِ کسِ دیگری؛ نگهبانِ تکرار ماشینی است.
+    'sms_links', 'sms_posted',
     'payments',
     /*
      * ⛔ `push_subscriptions` — نوشتنش از فایلِ دستِ کاربر یعنی سرور را

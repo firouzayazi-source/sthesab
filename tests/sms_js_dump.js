@@ -58,7 +58,7 @@ sandbox.window.matchMedia = sandbox.matchMedia;
 sandbox.window.addEventListener = noop;
 
 vm.createContext(sandbox);
-for (const file of ['jalali-datepicker.js', 'app.js']) {
+for (const file of ['jalali-datepicker.js', 'sms-core.js', 'app.js']) {
     try {
         vm.runInContext(fs.readFileSync(path.join(assets, file), 'utf8'), sandbox,
             { filename: file });
@@ -68,7 +68,7 @@ for (const file of ['jalali-datepicker.js', 'app.js']) {
     }
 }
 
-for (const fn of ['parseBankSms', 'smsAutoOk', 'smsFingerprint', 'smsAutoEnabled', 'smsMatchWallet']) {
+for (const fn of ['parseBankSms', 'smsAutoOk', 'smsFingerprint', 'smsAutoEnabled', 'smsMatchWallet', 'smsWorker']) {
     if (typeof sandbox.window[fn] !== 'function') {
         console.error('ERR_EXPORT: window.' + fn + ' صادر نشد');
         process.exit(2);
@@ -138,6 +138,24 @@ process.stdin.on('end', () => {
                             M('برداشت 50,000 ریال', [{ id: 9, card4: null, acct4: null, banks: [] }]),
                             M('بانک تجارت برداشت 50,000 ریال', [W[0], { id: 4, banks: ['!تجارت'] }]),
                             M('بلو\n250,000 تومان پرید', [W[0], { id: 5, banks: ['!بلوبانک', '!بلو'] }]),
+                        ];
+                    })(),
+                    // ⛔ کارگرِ اپ اندروید (`smsWorker`): پیامک → فیلدهای ثبت.
+                    worker: (() => {
+                        const W = [
+                            { id: 1, card4: '1234', acct4: null, banks: [] },
+                            { id: 2, card4: null, acct4: '7008', banks: [] },
+                            { id: 3, card4: null, acct4: null, banks: ['ملت'] },
+                        ];
+                        const run = (raw, w, d) => sandbox.window.smsWorker(raw, w, d);
+                        return [
+                            run('بانك ملي ايران\nبرداشت:1,500,000\nازحساب:0101234567008\nمانده:23,456,789\n0705-12:30', W, '2026-10-03'),
+                            run('کارت ****1234 خرید 50,000 ریال\nمانده 900,000 ریال\n1405/07/12', W, '2026-10-03'),
+                            run('برداشت 250,000', W, '2026-10-03'),
+                            run('بانک ملت\nواریز:3,500,000+\nمانده:12,000,000', W, 'not-a-date'),
+                            run('سلام', W, '2026-10-03'),
+                            run('برداشت 50,000 ریال\nمانده 900,000 ریال', [{ id: 7, card4: null, acct4: null, banks: [] }], '2026-10-03'),
+                            run('رمز پویا خرید 1,000,000 ریال', W, '2026-10-03'),
                         ];
                     })(),
                     // ⛔ فرگمنتِ اپ اندروید → فهرستِ پیامک‌ها (`smsHashDecode`).

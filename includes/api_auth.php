@@ -25,6 +25,14 @@ class ApiAuth
     /** بیش از این تعداد توکنِ زنده برای یک کاربر نگه داشته نمی‌شود. */
     private const MAX_TOKENS_PER_USER = 10;
 
+    /**
+     * ⛔ دامنه‌های توکنِ محدود. `null` = دسترسیِ کامل (ورودِ اپ با رمز).
+     *    `sms` = فقط `api/v1/sms/*` — توکنی که اپ اندروید برای ثبتِ پیامک
+     *    در پس‌زمینه نگه می‌دارد (`SmsSync`). اگر لو برود، نه فهرستِ
+     *    تراکنش‌ها خوانده می‌شود و نه چیزی حذف.
+     */
+    public const SCOPES = ['sms'];
+
     /** کاربرِ درخواست جاری، بعد از یک بار حل شدن. */
     private static ?array $current = null;
 
@@ -38,24 +46,38 @@ class ApiAuth
      * توکن تازه برای یک کاربر. رشته‌ی خام فقط همین‌جا و همین یک بار
      * دیده می‌شود؛ بعد از این دیگر بازیابی‌شدنی نیست.
      */
-    public static function issue(int $userId, ?string $label = null, ?string $platform = null): string
+    public static function issue(int $userId, ?string $label = null, ?string $platform = null,
+                                 ?string $scope = null): string
     {
         $selector  = bin2hex(random_bytes(12));   // ۲۴ کاراکتر
         $validator = bin2hex(random_bytes(32));   // ۶۴ کاراکتر
 
+        // ⛔ توکنِ محدود بی‌ستونِ `scope` ساخته **نمی‌شود**: آنجا همان
+        //    توکن دسترسیِ کامل می‌گرفت — درست برعکسِ چیزی که خواسته شده.
+        if ($scope !== null && !in_array($scope, self::SCOPES, true)) {
+            throw new InvalidArgumentException('scope');
+        }
+        if ($scope !== null && !self::scopeAvailable()) {
+            throw new RuntimeException('api_tokens.scope missing');
+        }
+
         $pdo = Database::getConnection();
-        $stmt = $pdo->prepare('
-            INSERT INTO api_tokens (user_id, selector, token_hash, device_label, platform, expires_at)
-            VALUES (:u, :s, :h, :l, :p, DATE_ADD(NOW(), INTERVAL :d DAY))
-        ');
-        $stmt->execute([
+        $cols = 'user_id, selector, token_hash, device_label, platform, expires_at';
+        $vals = ':u, :s, :h, :l, :p, DATE_ADD(NOW(), INTERVAL :d DAY)';
+        $args = [
             'u' => $userId,
             's' => $selector,
             'h' => hash('sha256', $validator),
             'l' => self::cleanLabel($label),
             'p' => self::cleanPlatform($platform),
             'd' => self::TOKEN_DAYS,
-        ]);
+        ];
+        if ($scope !== null) {
+            $cols .= ', scope';
+            $vals .= ', :sc';
+            $args['sc'] = $scope;
+        }
+        $pdo->prepare("INSERT INTO api_tokens ({$cols}) VALUES ({$vals})")->execute($args);
 
         self::pruneUser($userId);
 
@@ -85,8 +107,10 @@ class ApiAuth
         if (!preg_match('/^[a-f0-9]{24}$/', $selector)) { return null; }
 
         $pdo = Database::getConnection();
+        $scopeCol = self::scopeAvailable() ? 't.scope' : 'NULL';
         $stmt = $pdo->prepare('
-            SELECT t.id, t.token_hash, u.id AS user_id, u.username, u.full_name, u.role, u.is_active
+            SELECT t.id, t.token_hash, ' . $scopeCol . ' AS scope,
+                   u.id AS user_id, u.username, u.full_name, u.role, u.is_active
             FROM api_tokens t
             JOIN users u ON u.id = t.user_id
             WHERE t.selector = :s AND t.revoked_at IS NULL AND t.expires_at > NOW()
@@ -116,9 +140,23 @@ class ApiAuth
             'username'  => $row['username'],
             'full_name' => $row['full_name'],
             'role'      => $row['role'],
+            'scope'     => $row['scope'] !== null ? (string)$row['scope'] : null,
         ];
 
         return self::$current;
+    }
+
+    /** آیا ستونِ `scope` ساخته شده است؟ (پیش از migration_sms_sync نه) */
+    public static function scopeAvailable(): bool
+    {
+        return tableHasColumn('api_tokens', 'scope');
+    }
+
+    /** دامنه‌ی توکنِ همین درخواست: `null` (کامل) یا یکی از `SCOPES`. */
+    public static function scope(): ?string
+    {
+        $u = self::user();
+        return $u ? ($u['scope'] ?? null) : null;
     }
 
     /** شناسه‌ی کاربر یا null. هرگز از ورودی کاربر خوانده نمی‌شود. */

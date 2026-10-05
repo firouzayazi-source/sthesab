@@ -129,6 +129,12 @@ public class HesabLauncherActivity extends LauncherActivity {
                     setIntent(copy);
                 }
             } catch (Throwable ignored) { /* ⛔ پیامک هرگز جلوی باز شدن را نمی‌گیرد */ }
+            // ⛔ کارگرِ پس‌زمینه: دوره‌ای زنده بماند، و اگر وصل است همین حالا
+            //    هم یک نوبت (پیامکی که گیرنده‌اش خوابانده شده بود).
+            try {
+                SmsSync.schedule(this);
+                if (SmsSync.linked(this)) { SmsSync.kick(this); }
+            } catch (Throwable ignored) { }
         }
         super.onCreate(saved);
     }
@@ -144,7 +150,33 @@ public class HesabLauncherActivity extends LauncherActivity {
             Uri withSms = withPendingSms(u, getIntent().getBooleanExtra(EXTRA_DEEP, false));
             if (withSms != null) { u = withSms; }
         } catch (Throwable ignored) { }
+        u = withSmsLink(u);
         return withAppVersion(u);
+    }
+
+    /**
+     * ⛔ **کارِ چهارم: جفت کردنِ گوشی برای ثبتِ پیامک در پس‌زمینه**
+     *    (`#smslink=<کد>`) — بی‌هیچ کارِ کاربر.
+     *
+     *    کد را خودِ اپ ساخته (`SmsSync.nonce`) و در **فرگمنت** است: نه به
+     *    سرور می‌رود (فقط صفحه‌ی واردشده آن را با `api/sms_link.php` به
+     *    کاربرِ نشست می‌بندد) نه در لاگ می‌نشیند. کارگر بعداً با همان کد
+     *    کلیدِ محدودِ `sms` را می‌گیرد.
+     *
+     * ⚠ فقط وقتی فرگمنتِ دیگری (`#smsq=`) در کار نیست — یک فرگمنت در هر
+     *   باز شدن؛ جفت شدن به بارِ بعد می‌ماند. و فقط با کلیدِ روشن و مجوزِ
+     *   صندوق: بی‌آن‌ها کارگر چیزی برای ثبت ندارد.
+     */
+    private Uri withSmsLink(Uri u) {
+        try {
+            if (u == null || u.getEncodedFragment() != null || SmsSync.linked(this)) { return u; }
+            if (!getSharedPreferences(BankSmsReceiver.PREFS, Context.MODE_PRIVATE)
+                    .getBoolean(BankSmsReceiver.PREF_ON, BankSmsReceiver.DEFAULT_ON)) { return u; }
+            if (!SmsSync.canRead(this)) { return u; }
+            return u.buildUpon().encodedFragment("smslink=" + SmsSync.nonce(this)).build();
+        } catch (Throwable t) {
+            return u;
+        }
     }
 
     /**
@@ -235,6 +267,12 @@ public class HesabLauncherActivity extends LauncherActivity {
         }
         SharedPreferences sp = getSharedPreferences(BankSmsReceiver.PREFS, Context.MODE_PRIVATE);
         if (!sp.getBoolean(BankSmsReceiver.PREF_ON, BankSmsReceiver.DEFAULT_ON)) { return out; }
+
+        // ⛔ **وصل** به کارگرِ پس‌زمینه: صندوق مالِ `SmsSync` است و همان نشانه را
+        //    جلو می‌برد. این‌جا فقط پیامک‌هایی می‌آیند که آن کارگر برای تأیید
+        //    کنار گذاشت — وگرنه پیامکی که در پس‌زمینه ثبت شده بود، با باز شدنِ
+        //    اپ از مسیرِ وب **دوباره** ثبت می‌شد.
+        if (SmsSync.linked(this)) { return SmsSync.takeReview(this); }
 
         long now  = System.currentTimeMillis();
         long mark = sp.getLong(BankSmsReceiver.PREF_SCAN_AT, 0L);
