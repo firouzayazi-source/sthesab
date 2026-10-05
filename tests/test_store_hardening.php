@@ -341,6 +341,33 @@ BizParties::save($u3, ['name' => 'مهدی', 'kind' => 'customer', 'phone' => '0
 T::same(1, BizParties::list($u3, '0935 111-2233')['total'], '⛔ و تلفنِ فاصله‌دارِ جست‌وجو تلفنِ بی‌فاصله را');
 
 // =================================================================
+T::group('۱۶ — رقمِ کنترلِ IMEI: هشدار، نه سد');
+T::same(true, BizSerial::luhnOk('490154203237518'), 'IMEIِ درست (نمونه‌ی استاندارد)');
+T::same(false, BizSerial::luhnOk('490154203237519'), 'یک رقمِ آخرِ غلط');
+T::same(false, BizSerial::luhnOk('490154203237528'), 'جابه‌جاییِ دو رقمِ کنار هم هم گرفته می‌شود');
+T::same(null, BizSerial::luhnOk('49015420323751'), '۱۴ رقم رقمِ کنترل ندارد');
+T::same(null, BizSerial::luhnOk('4901542032375180'), '۱۶ رقم (IMEISV) رقمِ کنترل ندارد');
+T::same(['490154203237519'], BizSerial::luhnWarnings([['imei1' => '490154203237518', 'imei2' => '490154203237519'], ['imei1' => '490154203237519']]),
+        'فقط IMEIِ غلط، یک بار');
+$u6 = $make('luhn');
+BizProducts::save($u6, ['type' => 'phone', 'name' => 'گوشی کپی', 'unit' => 'دستگاه', 'buy_price' => '100', 'sell_price' => '150']);
+const BAD = '490154203237519';
+$r = BizInvoices::saveDraft($u6, 'purchase', ['lines' => [$L('گوشی کپی', '1', '100', BAD)]]);
+$i = BizInvoices::issue($u6, (int)$r['id'], ['full' => true, 'account_id' => $acc($u6)]);
+T::ok($i['ok'], '⛔ خریدِ گوشی با IMEIِ نامعتبر **ثبت شد** (سد نیست)', $i['message']);
+T::ok(str_contains($i['message'], BAD) && str_contains($i['message'], 'رقمِ کنترل') && $i['imei_warn'] !== '', 'و پیامِ صدور هشدار دارد');
+$sId = BizInvoices::saveDraft($u6, 'sale', ['lines' => [$L('گوشی کپی', '1', '150', BAD)]]);
+$i2 = BizInvoices::issue($u6, (int)$sId['id'], ['full' => true, 'account_id' => $acc($u6)]);
+T::ok($i2['ok'] && $i2['imei_warn'] !== '', 'فروشش هم ثبت شد، با هشدار');
+$i3 = BizInvoices::createReturn($u6, (int)$sId['id'], [(int)BizInvoices::get($u6, (int)$sId['id'])['lines'][0]['id'] => '1'], ['full' => true, 'account_id' => $acc($u6)]);
+T::ok($i3['ok'] && ($i3['imei_warn'] ?? '') !== '', 'برگشتش هم، با هشدار', $i3['message']);
+$okP = BizInvoices::saveDraft($u6, 'purchase', ['lines' => [$L('گوشی کپی', '1', '100', '490154203237518')]]);
+$i4 = BizInvoices::issue($u6, (int)$okP['id'], ['full' => true, 'account_id' => $acc($u6)]);
+T::ok($i4['ok'] && $i4['imei_warn'] === '' && !str_contains($i4['message'], '⚠'), 'IMEIِ درست بی‌هشدار');
+T::ok(str_contains(BizDocView::luhnBadge(['imei1' => BAD]), 'st-imei-warn') && BizDocView::luhnBadge(['imei1' => '490154203237518']) === '',
+      'نشانِ صفحه‌ی سند فقط برای IMEIِ غلط');
+
+// =================================================================
 T::group('۶ — دو بار زدنِ «ثبت»: یک سند (HTTP)');
 $root = dirname(__DIR__);
 $port = 0;
@@ -413,7 +440,29 @@ if (!$up) {
     $req('store/quick-sale.php', $bad);
     T::same($before + 3, $sales($w), '⛔ پس از شکست، همان فرمِ اصلاح‌شده ثبت می‌شود (نشان آزاد شد)');
 
-    // صفحه‌ی «رمز و بکاپ» برای حسابِ فروشگاه
+    // ⛔ IMEIِ با رقمِ کنترلِ غلط: فروشِ سریع ثبت می‌شود، پیام «هشدار» است (نمی‌پرد) و صفحه‌ی فاکتور نشانش را دارد
+    BizProducts::save($w, ['type' => 'phone', 'name' => 'گوشی وب', 'unit' => 'دستگاه', 'buy_price' => '100', 'sell_price' => '150']);
+    $bp = BizInvoices::saveDraft($w, 'purchase', ['lines' => [$L('گوشی وب', '1', '100', '490154203237519')]]);
+    BizInvoices::issue($w, (int)$bp['id'], ['full' => true, 'account_id' => $acc($w)]);
+    [, $qs4] = $req('store/quick-sale.php');
+    $lp4 = ['csrf_token' => $field($qs4, 'csrf_token'), '_once' => $field($qs4, '_once'), 'action' => 'sale', 'pay_mode' => 'full',
+            'account_id' => (string)$acc($w), 'method' => 'cash',
+            'lines' => [['item' => 'گوشی وب', 'qty' => '1', 'price' => '150', 'imei1' => '490154203237519']]];
+    $n4 = $sales($w);
+    [$c] = $req('store/quick-sale.php', $lp4);
+    [, $after4] = $req('store/quick-sale.php');
+    T::ok($sales($w) === $n4 + 1 && str_contains($after4, 'st-flash st-flash-warn') && str_contains($after4, 'رقمِ کنترلِ درستی ندارد')
+          && !preg_match('/st-flash-warn"[^>]*data-toast/', $after4), '⛔ فروشِ سریع ثبت شد و هشدار ماندگار (نه پیامِ پرنده) نشان داده شد');
+    $lastSale = (int)$pdo->query("SELECT MAX(id) FROM biz_invoices WHERE user_id = {$w} AND kind = 'sale'")->fetchColumn();
+    [$c, $ip] = $req('store/invoice.php?id=' . $lastSale);
+    T::ok(str_contains($ip, 'st-imei-warn'), 'صفحه‌ی فاکتور کنارِ IMEI نشانِ هشدار دارد');
+    [$c, $pp] = $req('store/print.php?doc=invoice&id=' . $lastSale);
+    T::ok($c === 200 && !str_contains($pp, 'st-imei-warn') && !str_contains($pp, 'رقمِ کنترل'), '⛔ برگه‌ی چاپ (دستِ مشتری) هشدار ندارد');
+    [, $ie] = $req('store/invoice-edit.php?k=sale', ['csrf_token' => $field($qs4, 'csrf_token'), 'action' => 'addrows', 'party_id' => '0',
+        'inv_date' => '', 'lines' => [['item' => 'گوشی وب', 'qty' => '1', 'price' => '150', 'imei1' => '490154203237519']]]);
+    T::ok(str_contains($ie, 'data-imei-luhn'), 'ویرایشگرِ فاکتور پیش از صدور هم هشدار می‌دهد');
+
+        // صفحه‌ی «رمز و بکاپ» برای حسابِ فروشگاه
     [$c, $ac] = $req('store/account.php');
     T::ok($c === 200 && str_contains($ac, '</html>') && str_contains($ac, 'name="new_password"'), 'صفحه‌ی رمز و بکاپ باز می‌شود');
     [$c, , $loc] = $req('store/account.php', ['csrf_token' => $field($ac, 'csrf_token'), 'action' => 'password',

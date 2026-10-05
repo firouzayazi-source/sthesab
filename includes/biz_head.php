@@ -199,5 +199,6 @@ foreach (Biz::NEW_MENU as $__h => $__l) { $__bizCmd['new'][] = ['t' => $__l, 'u'
 </header>
 <main class="st-main">
 <?php if ($__bizFlash !== null): ?>
-    <div class="st-flash st-flash-<?= $__bizFlash['type'] === 'success' ? 'ok' : 'err' ?>" role="status" data-toast><?= h($__bizFlash['message']) ?></div>
+    <?php /* «warning» = کار انجام شد ولی چیزی دیدنی است (IMEIِ مشکوک) — نمی‌پرد تا خوانده شود */ ?>
+    <div class="st-flash st-flash-<?= $__bizFlash['type'] === 'success' ? 'ok' : ($__bizFlash['type'] === 'warning' ? 'warn' : 'err') ?>" role="status"<?= $__bizFlash['type'] === 'warning' ? '' : ' data-toast' ?>><?= h($__bizFlash['message']) ?></div>
 <?php endif; ?>

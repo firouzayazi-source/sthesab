@@ -240,6 +240,13 @@ final class BizDocView
     }
 
     /** IMEIِ یک ردیفِ سند زیرِ شرح — سند، برگشت و چاپ همه از همین. */
+    /** نشانِ «رقمِ کنترلِ IMEI نامعتبر» برای صفحه‌ی سند — ⛔ نه برای چاپ (برگه دستِ مشتری است). */
+    public static function luhnBadge(array $l): string
+    {
+        $bad = BizSerial::luhnWarnings([$l]);
+        return $bad ? ' <span class="st-imei-warn" title="' . h(BizSerial::luhnMessage($bad)) . '">⚠ رقمِ کنترلِ IMEI نامعتبر</span>' : '';
+    }
+
     public static function imeiLine(array $l, string $class = 'st-imei'): string
     {
         $n = array_values(array_filter([(string)($l['imei1'] ?? ''), (string)($l['imei2'] ?? '')], fn($v) => $v !== ''));

@@ -389,6 +389,27 @@
         }
         form.addEventListener('change', function (e) { if (e.target.matches('[data-party],[data-paymode]')) { recalc(); } });
 
+        // ⛔ رقمِ کنترلِ IMEIِ ۱۵ رقمی (Luhn) — فقط هشدار روی همان خانه؛ ثبت بسته نیست
+        //    (همان `BizSerial::luhnOk()` سمتِ سرور، که پیامِ صدور را هم می‌سازد)
+        function luhnBad(v) {
+            v = imeiNorm(v);
+            if (!/^\d{15}$/.test(v)) { return false; }
+            var sum = 0;
+            for (var i = 0; i < 15; i++) {
+                var d = +v.charAt(14 - i);
+                if (i % 2 === 1) { d *= 2; if (d > 9) { d -= 9; } }
+                sum += d;
+            }
+            return sum % 10 !== 0;
+        }
+        function luhnMark(inp) {
+            var bad = luhnBad(inp.value);
+            inp.classList.toggle('is-warn', bad);
+            inp.title = bad ? 'رقمِ کنترلِ این IMEI درست نیست — با جعبه یا *#06# مقایسه کنید. ثبت انجام می‌شود.' : '';
+        }
+        form.addEventListener('input', function (e) { if (e.target.matches('[data-imei1],[data-imei2]')) { luhnMark(e.target); } });
+        form.querySelectorAll('[data-imei1],[data-imei2]').forEach(luhnMark);
+
         // «شرحِ کالا»: گوشی → IMEI، بقیه → توضیح (توضیحِ نوشته‌شده هرگز پنهان نمی‌شود)
         function imeiBox(row, show) {
             var box = row.querySelector('[data-imei-box]'), note = field(row, 'note');

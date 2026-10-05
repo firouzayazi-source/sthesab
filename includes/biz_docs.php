@@ -752,7 +752,10 @@ final class BizInvoices
         } else {
             BizPay::reallocateTx($pdo, $userId, $inv['party_id'] !== null ? (int)$inv['party_id'] : null, $id);
         }
-        return ['ok' => true, 'message' => self::KINDS[$kind] . ' شماره‌ی ' . toPersianDigits((string)$number) . ' صادر شد.'];
+        // ⛔ هشدارِ رقمِ کنترلِ IMEI — فقط پیام، صدور انجام شده است
+        $lw = BizSerial::luhnMessage(BizSerial::luhnWarnings($lines));
+        return ['ok' => true, 'message' => self::KINDS[$kind] . ' شماره‌ی ' . toPersianDigits((string)$number) . ' صادر شد.'
+                                           . ($lw !== '' ? ' ⚠ ' . $lw : ''), 'imei_warn' => $lw];
     }
 
     /** برگشتی‌های صادرشده یا پیش‌نویسی که به این سند اشاره می‌کنند. */
@@ -1028,7 +1031,7 @@ final class BizInvoices
         self::writeLines($pdo, $userId, $id, $lines);
         $r = self::issueTx($pdo, $userId, $id, $pay);
         if (!$r['ok']) { return $r; }
-        return ['ok' => true, 'message' => $r['message'], 'id' => $id];
+        return ['ok' => true, 'message' => $r['message'], 'id' => $id, 'imei_warn' => $r['imei_warn'] ?? ''];
     }
 
     /* ------------------------------------------------------------
@@ -1900,6 +1903,44 @@ final class BizSerial
     public static function valid(string $imei): bool
     {
         return (bool)preg_match('/^\d{14,17}$/', $imei);
+    }
+
+    /**
+     * رقمِ کنترلِ IMEI (Luhn) — فقط برای IMEIِ ۱۵ رقمی؛ بقیه null (رقمِ کنترل ندارند).
+     * ⛔ **فقط هشدار، هرگز سد** (خواسته‌ی مالکِ نصب: «هشدار بده اما مانع ثبت نشه»):
+     *    گوشیِ ارزان/کپی اغلب IMEIِ نامعتبر دارد و فروشش نباید بسته شود؛ ولی
+     *    IMEIِ نامعتبر بیشترِ وقت‌ها اشتباهِ تایپی است و باید دیده شود.
+     */
+    public static function luhnOk(string $imei): ?bool
+    {
+        if (!preg_match('/^\d{15}$/', $imei)) { return null; }
+        $sum = 0;
+        foreach (str_split(strrev($imei)) as $i => $d) {
+            $d = (int)$d;
+            if ($i % 2 === 1) { $d *= 2; if ($d > 9) { $d -= 9; } }
+            $sum += $d;
+        }
+        return $sum % 10 === 0;
+    }
+
+    /** IMEIهای ردیف‌ها که رقمِ کنترلشان نمی‌خواند (یکتا، به ترتیب). @return list<string> */
+    public static function luhnWarnings(array $lines): array
+    {
+        $out = [];
+        foreach ($lines as $l) {
+            foreach ([(string)($l['imei1'] ?? ''), (string)($l['imei2'] ?? '')] as $m) {
+                if ($m !== '' && self::luhnOk($m) === false && !in_array($m, $out, true)) { $out[] = $m; }
+            }
+        }
+        return $out;
+    }
+
+    /** متنِ هشدار (یا خالی) — یک متن برای پیامِ صدور، صفحه‌ی فاکتور و ویرایشگر. */
+    public static function luhnMessage(array $imeis): string
+    {
+        if (!$imeis) { return ''; }
+        return 'IMEI ' . implode('، ', $imeis) . ' رقمِ کنترلِ درستی ندارد — یک بار با جعبه یا ‎*#06#‎ مقایسه کنید'
+             . ' (اشتباهِ تایپی، یا گوشیِ کپی). ثبت انجام می‌شود.';
     }
 
     /**

@@ -179,7 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     header('Location: ' . Biz::url('print.php?doc=invoice&id=' . $id));
                     exit;
                 }
-                redirectWithMessage(Biz::url('invoice.php?id=' . $id), 'success', $r['message']);
+                redirectWithMessage(Biz::url('invoice.php?id=' . $id), ($r['imei_warn'] ?? '') !== '' ? 'warning' : 'success', $r['message']);
             }
             // ⚠ پیش‌نویس ذخیره شده؛ فقط صدور انجام نشد — کاربر روی همان پیش‌نویس می‌ماند
             redirectWithMessage(Biz::url('invoice-edit.php?id=' . $id), 'error', $r['message'] . ' (پیش‌نویس ذخیره شد.)');
@@ -238,6 +238,9 @@ require __DIR__ . '/../includes/biz_head.php';
 <?php if ($notice !== ''): ?><div class="st-flash st-flash-ok" role="status"><?= h($notice) ?></div><?php endif; ?>
 <?php if ($stockWarn): ?>
 <div class="st-flash st-flash-warn" role="status">بیش از موجودی — صدور انجام نمی‌شود تا موجودی برسد: <?= h(implode('، ', $stockWarn)) ?></div>
+<?php endif; ?>
+<?php if (($lw = BizSerial::luhnMessage(BizSerial::luhnWarnings($parsed['lines']))) !== ''): /* فقط هشدار — صدور بسته نیست */ ?>
+<div class="st-flash st-flash-warn" role="status" data-imei-luhn><?= h($lw) ?></div>
 <?php endif; ?>
 <?php if ($costWarn): ?>
 <div class="st-flash st-flash-warn" role="status">زیرِ بهای خرید: <?= h(implode('، ', array_map(fn($w) => '«' . $w['desc'] . '» ' . formatMoney($w['per']) . ' (بها ' . formatMoney($w['cost']) . ')', $costWarn))) ?></div>

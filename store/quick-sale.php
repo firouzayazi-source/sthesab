@@ -70,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     header('Location: ' . BizPrint::url('invoice', ['id' => $id, 'back' => 'quick']));
                     exit;
                 }
-                redirectWithMessage($self, 'success', $r['message']);
+                redirectWithMessage($self, ($r['imei_warn'] ?? '') !== '' ? 'warning' : 'success', $r['message']);
             }
             BizInvoices::deleteDraft($userId, $id);
             BizOnce::release();

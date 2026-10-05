@@ -49,7 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $rd['date'], $form['note']);
     if ($r['ok']) {
         BizOnce::done(Biz::url('invoice.php?id=' . (int)$r['id']));
-        redirectWithMessage(Biz::url('invoice.php?id=' . (int)$r['id']), 'success', $r['message']);
+        redirectWithMessage(Biz::url('invoice.php?id=' . (int)$r['id']), ($r['imei_warn'] ?? '') !== '' ? 'warning' : 'success', $r['message']);
     }
     BizOnce::release();
     $error = $r['message'];
