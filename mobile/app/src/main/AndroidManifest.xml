@@ -73,6 +73,8 @@
          نمی‌کند. این مجوز خودش چیزی نصب نمی‌کند؛ فقط اجازه می‌دهد اپ
          پنجره‌ی نصبِ سیستم را نشان بدهد و کاربر «به‌روزرسانی» را بزند. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- اندروید ۱۲ به بالا: به‌روزرسانیِ بعدی بی‌پنجره (اپ نصب‌کننده‌ی خودش است) -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION"/>
 
     <!-- ⛔ ثبتِ پیامک در پس‌زمینه (`SmsSync`) — **گزارشِ مالکِ نصب:** «اپ‌های
          دیگه دسترسی به باتری و اینا می‌گیرن، مالِ ما نه».
@@ -204,6 +206,7 @@
              دامنه‌ی خودِ اپ می‌سازد، نه از لینک (بالای خودِ فایل). -->
         <activity
             android:name=".UpdateActivity"
+            android:launchMode="singleTop"
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.HesabLand">

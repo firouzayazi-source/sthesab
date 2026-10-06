@@ -296,7 +296,7 @@ sudo ./hesabland release     # همان abc1234 — و فقط همان — رو�
 ### `docs/decisions/transactions.md` — فرمِ ثبت، پیامکِ بانک، جست‌وجو، ورود از فایل
 - منطقِ نوشتن فقط `includes/transactions.php` (`txCreate`/`txUpdate`)، خواندن فقط `includes/tx_query.php`؛ خروجیِ CSV همان صافی‌ها (BOM اجباری، مبلغ عددِ خام).
 - پیش‌فرضِ نوع «هزینه»؛ عنوان اختیاری (`fallbackTxTitle()` بعد از `txResolveCategory()`)؛ شبکه‌ی دسته از `categoriesForGrid()` با `JSON_HEX_TAG`؛ بودجه‌ی تپ در `test_tap_budget`.
-- پارسرِ پیامک فقط `assets/js/sms-core.js` (خالص، بی‌DOM؛ سایت **و** کارگرِ WebViewِ اپ)؛ متنِ پیامک **هرگز** روی سیم نمی‌رود (فرگمنت `#sms=`/`#smsq=`، و ثبتِ پس‌زمینه فقط `smsWorker().post`). نبودِ واحد = ریال؛ ثبتِ بی‌تپ فقط با `smsAutoOk()` (بی‌واحد فقط با خطِ «مانده») و `smsMatchWallet()` قطعی؛ رمزِ پویا هرگز تراکنش نیست؛ شماره‌ی طرفِ مقابل حسابِ کاربر نیست؛ مانده فقط از پیامکِ تازه‌تر.
+- پارسرِ پیامک فقط `assets/js/sms-core.js` (خالص، بی‌DOM؛ سایت **و** کارگرِ WebViewِ اپ)؛ متنِ پیامک **هرگز** روی سیم نمی‌رود (فرگمنت `#sms=`/`#smsq=`، و ثبتِ پس‌زمینه فقط `smsWorker().post`). نبودِ واحد = ریال (مبلغ و مانده، به تومان — خواسته‌ی مالکِ نصب) و خودکار؛ ثبتِ بی‌تپ فقط با `smsAutoOk()` و `smsMatchWallet()` قطعی؛ رمزِ پویا هرگز تراکنش نیست؛ شماره‌ی طرفِ مقابل حسابِ کاربر نیست؛ مانده فقط از پیامکِ تازه‌تر.
 - پیلودِ «ورود از فایل» داده است نه دستور: دسته و حساب در برابرِ مالکیتِ کاربر سنجیده می‌شوند.
 
 ### `docs/decisions/auth.md` — ورود، نشست، ثبت‌نام، پیامک، نقش‌ها
@@ -361,6 +361,7 @@ sudo ./hesabland release     # همان abc1234 — و فقط همان — رو�
 ### `docs/decisions/mobile.md` — PWA، api/v1، اندروید
 - `api/` داخلی است، اپ فقط `api/v1` (افزودن مجاز، تغییر ممنوع)؛ `Auth::userId()` در v1 ممنوع؛ قاعده‌ی nginx بی‌`^~`.
 - نامِ بسته فقط `applicationId` (پنج مصرف‌کننده)؛ `keyAlias`، کلیدهای `localStorage` و `VERSION`ِ `sw.js` با برند عوض نمی‌شوند؛ اثر انگشتِ امضا = `assetlinks.json`.
+- **مجوزها در هر گوشی (`HesabLauncherActivity.nextStep`):** دیالوگِ پیامک+اعلان → اگر پیامک هنوز نیست (تنظیمِ محدودِ اندروید ۱۳+) راهنمای `SmsSetupActivity` (`EXTRA_GUIDE`، چک‌لیستِ ✓/✗) → دیالوگِ باتری → TWA؛ شمارنده‌ها **در هر نسخه** (`PREF_ASKS_VC`). به‌روزرسانی فقط با جلسه‌ی `PackageInstaller` و `PACKAGE_SOURCE_STORE` (نصبِ «از فایل» اپ را محدود می‌کند)؛ نتیجه فقط برای جلسه‌ی خودِ اپ.
 - اپ جز پنج فایلِ بومی (`BankSmsReceiver`، `SmsSetupActivity`، `HesabLauncherActivity`، `UpdateActivity`، `SmsSync`) کدی ندارد؛ پارسرِ دومِ پیامک ممنوع؛ `versionCode` هر انتشار بالا می‌رود.
 - **ثبتِ پیامک در پس‌زمینه (`SmsSync`):** WebViewِ نامرئی روی `assets/sms-worker.html` (همان `sms-core.js`)، بی‌کلاسِ شبکه در جاوا؛ جفت شدن فقط با کدِ خودِ اپ (`#smslink=` → `api/sms_link.php` → `sms/claim`)؛ کلیدِ `scope = sms` فقط `api/v1/sms/*` (`requireUser()`ِ بی‌آرگومان = فقط کلیدِ کامل)؛ منطقِ سرور فقط `includes/sms_sync.php` (نگهبانِ تکرارِ `sms_posted`، مانده با `sms_balance_at`)؛ در حالتِ وصل یک پردازنده (نه اعلانِ تپی، نه صندوق به سایت جز `PREF_REVIEW`).
 

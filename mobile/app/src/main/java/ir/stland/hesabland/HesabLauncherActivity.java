@@ -10,6 +10,8 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.provider.Settings;
 
 import androidx.annotation.Nullable;
 
@@ -75,11 +77,24 @@ import java.util.ArrayList;
  */
 public class HesabLauncherActivity extends LauncherActivity {
 
-    private static final int    REQ_START  = 4031;
+    private static final int    REQ_START   = 4031;
+    private static final int    REQ_GUIDE   = 4032;
+    private static final int    REQ_BATTERY = 4033;
     private static final String KEY_ASKING = "hesabland.asking";
 
-    /** چند بار در عمرِ نصب پرسیده شده — نه بیشتر از `MAX_ASKS`. */
-    static final String PREF_ASKS = "perm_asks";
+    /**
+     * چند بار پرسیده شده — نه بیشتر از `MAX_ASKS`، **در هر نسخه‌ی اپ**.
+     *
+     * ⛔ **گزارشِ مالکِ نصب (مهر ۱۴۰۵):** «نسخه‌ی آخر رو نصب کردم … از من
+     *    درخواستِ دسترسی به باتری و اس‌ام‌اس نخواست.» شمارنده در عمرِ **نصب**
+     *    بود و نصبِ نسخه‌ی تازه روی قبلی prefs را نگه می‌دارد؛ کسی که دو بار
+     *    دیالوگ را رد کرده (یا اندروید بی‌صدا ردش کرده بود) دیگر هرگز پرسیده
+     *    نمی‌شد. حالا با هر نسخه‌ی تازه از صفر (`PREF_ASKS_VC`).
+     */
+    static final String PREF_ASKS    = "perm_asks";
+    static final String PREF_ASKS_VC = "perm_asks_vc";
+    static final String PREF_GUIDES  = "perm_guides";
+    static final String PREF_BATTERY = "perm_battery";
     static final int    MAX_ASKS  = 2;
 
     /**
@@ -319,9 +334,13 @@ public class HesabLauncherActivity extends LauncherActivity {
         if (asking) { return false; }
         try {
             String[] need = missingPermissions();
-            if (need.length == 0) { return true; }
+            if (need.length == 0) {
+                // ⛔ مجوزها هست؛ گامِ بعد (باتری) اگر لازم است — و بعد TWA
+                if (nextStep()) { asking = true; return false; }
+                return true;
+            }
 
-            SharedPreferences sp = getSharedPreferences(BankSmsReceiver.PREFS, Context.MODE_PRIVATE);
+            SharedPreferences sp = prefsForVersion();
             int n = sp.getInt(PREF_ASKS, 0);
             if (n >= MAX_ASKS) { return true; }
             sp.edit().putInt(PREF_ASKS, n + 1).apply();
@@ -333,6 +352,72 @@ public class HesabLauncherActivity extends LauncherActivity {
             asking = false;
             return true;   // ⛔ هر خطایی یعنی «همین حالا باز کن»، نه کرش
         }
+    }
+
+    /**
+     * prefs با شمارنده‌های «پرسیده شد» که با هر نسخه‌ی تازه‌ی اپ صفر می‌شوند.
+     */
+    private SharedPreferences prefsForVersion() {
+        SharedPreferences sp = getSharedPreferences(BankSmsReceiver.PREFS, Context.MODE_PRIVATE);
+        long vc = 0;
+        try { vc = installedVersionCode(); } catch (Throwable ignored) { }
+        if (sp.getLong(PREF_ASKS_VC, -1L) != vc) {
+            sp.edit().putLong(PREF_ASKS_VC, vc).putInt(PREF_ASKS, 0)
+              .putInt(PREF_GUIDES, 0).putInt(PREF_BATTERY, 0).apply();
+        }
+        return sp;
+    }
+
+    /**
+     * ⛔ گامِ بعد از دیالوگِ مجوز — **در همان زنجیره**، نه یک پنجره در هر اجرا:
+     *
+     *    ۱. پیامک هنوز اجازه ندارد → راهنمای `SmsSetupActivity`. علتِ رایجش
+     *       «تنظیمِ محدود»ِ اندروید ۱۳ به بالاست: اپی که از مرورگر یا مدیرِ فایل
+     *       نصب شده، دیالوگِ مجوزِ پیامک را **اصلاً نمی‌بیند** (اندروید بی‌صدا رد
+     *       می‌کند) و تنها راه منوی ⋮ صفحه‌ی اطلاعاتِ برنامه است — همان چیزی که
+     *       مالکِ نصب دید: «درخواستِ دسترسی نخواست».
+     *    ۲. پیامک هست ولی اندروید اپ را در پس‌زمینه محدود کرده → دیالوگِ
+     *       یک‌تپیِ «اجرا در پس‌زمینه» (همان که اپ‌های دیگر می‌گیرند).
+     *
+     *    هر کدام حداکثر `MAX_ASKS` بار در هر نسخه؛ بعد اپ عادی باز می‌شود و
+     *    صفحه‌ی تنظیمِ پیامک همان‌ها را با دکمه نشان می‌دهد.
+     * @return آیا اکتیویتی‌ای باز شد (جوابش در `onActivityResult` می‌رسد)
+     */
+    private boolean nextStep() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) { return false; }
+        SharedPreferences sp = prefsForVersion();
+        if (!sp.getBoolean(BankSmsReceiver.PREF_ON, BankSmsReceiver.DEFAULT_ON)) { return false; }
+        if (!has(Manifest.permission.RECEIVE_SMS)) {
+            int g = sp.getInt(PREF_GUIDES, 0);
+            if (g >= MAX_ASKS) { return false; }
+            sp.edit().putInt(PREF_GUIDES, g + 1).apply();
+            Intent i = new Intent(this, SmsSetupActivity.class);
+            i.putExtra(SmsSetupActivity.EXTRA_GUIDE, "1");
+            startActivityForResult(i, REQ_GUIDE);
+            return true;
+        }
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName())) {
+            int b = sp.getInt(PREF_BATTERY, 0);
+            if (b >= 1) { return false; }
+            sp.edit().putInt(PREF_BATTERY, b + 1).apply();
+            startActivityForResult(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:" + getPackageName())), REQ_BATTERY);
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req != REQ_GUIDE && req != REQ_BATTERY) { return; }
+        asking = false;
+        // ⛔ هر جوابی → گامِ بعد اگر هست، وگرنه همان لحظه اپ باز می‌شود
+        try {
+            if (req == REQ_GUIDE && nextStep()) { asking = true; return; }
+        } catch (Throwable ignored) { }
+        launchTwa();
     }
 
     /**
@@ -372,7 +457,10 @@ public class HesabLauncherActivity extends LauncherActivity {
         super.onRequestPermissionsResult(req, perms, results);
         if (req != REQ_START) { return; }
         asking = false;
-        // ⛔ جواب هر چه باشد، اپ باز می‌شود.
+        // ⛔ جواب هر چه باشد، اپ باز می‌شود — پس از گامِ بعد اگر لازم است.
+        try {
+            if (nextStep()) { asking = true; return; }
+        } catch (Throwable ignored) { }
         launchTwa();
     }
 

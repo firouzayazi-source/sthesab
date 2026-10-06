@@ -1,7 +1,9 @@
 package ir.stland.hesabland;
 
 import android.app.DownloadManager;
+import android.app.PendingIntent;
 import android.content.Intent;
+import android.content.pm.PackageInstaller;
 import android.database.Cursor;
 import android.graphics.Color;
 import android.net.Uri;
@@ -20,6 +22,9 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 
 /**
  * به‌روزرسانیِ اپ با یک تپ — دریافتِ APKِ تازه و باز کردنِ پنجره‌ی نصب.
@@ -53,6 +58,8 @@ public class UpdateActivity extends AppCompatActivity {
     static final String APK_PATH = "/download/hesabland.apk";
     static final String APK_MIME = "application/vnd.android.package-archive";
     static final String FILE_NAME = "hesabland-update.apk";
+    /** بازگشتِ نتیجه‌ی نصب از `PackageInstaller` به همین صفحه. */
+    static final String ACTION_STATUS = "ir.stland.hesabland.UPDATE_STATUS";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private DownloadManager dm;
@@ -69,6 +76,7 @@ public class UpdateActivity extends AppCompatActivity {
         //    فقط یک اپِ بسته‌شده می‌دید. راهِ فرار، دانلود در مرورگر است.
         try {
             build();
+            if (handleStatus(getIntent())) { return; }
             start();
         } catch (Throwable t) {
             try {
@@ -78,6 +86,12 @@ public class UpdateActivity extends AppCompatActivity {
             openInBrowser();
             finish();
         }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        try { handleStatus(intent); } catch (Throwable t) { failed(); }
     }
 
     @Override
@@ -206,6 +220,8 @@ public class UpdateActivity extends AppCompatActivity {
             }
             return;
         }
+        // ⛔ اول نصب از راهِ `PackageInstaller` (جلسه‌ی نصب)، بعد پنجره‌ی قدیمی.
+        if (installSession()) { return; }
         try {
             Uri file;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
@@ -224,6 +240,92 @@ public class UpdateActivity extends AppCompatActivity {
         } catch (Throwable t) {
             failed();
         }
+    }
+
+    /**
+     * ⛔ نصب با **جلسه‌ی `PackageInstaller`** و منبعِ «فروشگاه»
+     *    (`PACKAGE_SOURCE_STORE`)، نه باز کردنِ فایل با `ACTION_VIEW`.
+     *
+     *    **گزارشِ مالکِ نصب (مهر ۱۴۰۵):** «نسخه‌ی آخر رو نصب کردم ولی پیام‌ها
+     *    رو نمی‌خونه … درخواستِ دسترسی به اس‌ام‌اس نخواست.» اندروید ۱۳ به بالا
+     *    اپی را که از فایلِ دانلودشده نصب شده («منبع: فایل») **محدود** می‌کند
+     *    و دیالوگِ مجوزِ پیامک را بی‌صدا رد می‌کند. نصب از جلسه‌ای که خودِ اپ
+     *    باز کرده و منبعش را «فروشگاه» گفته، محدود نیست — پس از اولین
+     *    به‌روزرسانی از داخلِ اپ، مجوزِ پیامک دوباره عادی پرسیده می‌شود.
+     *
+     * ⚠ و اندروید ۱۲ به بالا به اپی که نصب‌کننده‌ی خودش است اجازه می‌دهد
+     *   به‌روزرسانیِ **بعدی** را بی‌پنجره نصب کند (`USER_ACTION_NOT_REQUIRED`،
+     *   مجوزِ `UPDATE_PACKAGES_WITHOUT_USER_ACTION`). بارِ اول همان یک تپ.
+     *
+     * @return آیا جلسه ثبت شد (نتیجه با `ACTION_STATUS` برمی‌گردد)
+     */
+    private boolean installSession() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) { return false; }
+        PackageInstaller.Session session = null;
+        try {
+            PackageInstaller pi = getPackageManager().getPackageInstaller();
+            PackageInstaller.SessionParams sp =
+                    new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+            sp.setAppPackageName(getPackageName());
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                sp.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED);
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                sp.setPackageSource(PackageInstaller.PACKAGE_SOURCE_STORE);
+            }
+            int id = pi.createSession(sp);
+            session = pi.openSession(id);
+            File f = target();
+            try (InputStream in = new FileInputStream(f);
+                 OutputStream out = session.openWrite("base.apk", 0, f.length())) {
+                byte[] buf = new byte[65536];
+                int n;
+                while ((n = in.read(buf)) > 0) { out.write(buf, 0, n); }
+                session.fsync(out);
+            }
+            Intent cb = new Intent(this, UpdateActivity.class).setAction(ACTION_STATUS);
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) { flags |= PendingIntent.FLAG_MUTABLE; }
+            PendingIntent pend = PendingIntent.getActivity(this, id, cb, flags);
+            session.commit(pend.getIntentSender());
+            session.close();
+            status.setText(getString(R.string.update_installing));
+            return true;
+        } catch (Throwable t) {
+            if (session != null) { try { session.abandon(); } catch (Throwable ignored) { } }
+            return false;
+        }
+    }
+
+    /**
+     * نتیجه‌ی جلسه‌ی نصب. ⛔ این صفحه `exported` است، پس «نتیجه» فقط وقتی
+     * پذیرفته می‌شود که جلسه‌اش **واقعاً** مالِ خودِ این اپ باشد — وگرنه یک
+     * صفحه‌ی وب می‌توانست با `EXTRA_INTENT`ِ دلخواه، اپ را وادار به باز کردنِ
+     * هر اکتیویتی‌ای کند.
+     * @return آیا این intent یک نتیجه‌ی نصب بود
+     */
+    @SuppressWarnings("deprecation")
+    private boolean handleStatus(Intent it) {
+        if (it == null || !ACTION_STATUS.equals(it.getAction())) { return false; }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) { failed(); return true; }
+        int id = it.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1);
+        PackageInstaller.SessionInfo info = id < 0 ? null : getPackageManager().getPackageInstaller().getSessionInfo(id);
+        boolean ours = info != null && getPackageName().equals(info.getInstallerPackageName())
+                && getPackageName().equals(info.getAppPackageName());
+        int st = it.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE);
+        if (st == PackageInstaller.STATUS_PENDING_USER_ACTION && ours) {
+            Intent confirm = it.getParcelableExtra(Intent.EXTRA_INTENT);
+            if (confirm != null) {
+                confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(confirm);
+                status.setText(getString(R.string.update_confirm));
+                return true;
+            }
+        }
+        if (st == PackageInstaller.STATUS_SUCCESS) { finish(); return true; }
+        if (st == PackageInstaller.STATUS_FAILURE_ABORTED) { finish(); return true; }
+        failed();
+        return true;
     }
 
     /** شکست هرگز بی‌راه نمی‌ماند: همان دانلودِ مرورگر. */

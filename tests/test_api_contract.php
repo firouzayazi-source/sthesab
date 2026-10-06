@@ -1022,6 +1022,29 @@ if (!file_exists($gradlePath)) {
             $lauBad[] = 'HesabLauncherActivity — pendingApplied پیش از سنجشِ READ_SMS می‌خورد';
         }
     }
+    // ⛔ زنجیره‌ی اولین اجرا (مهر ۱۴۰۵ — «نسخه‌ی آخر رو نصب کردم … درخواستِ
+    //    دسترسی به باتری و اس‌ام‌اس نخواست»): شمارنده‌ها با هر نسخه صفر،
+    //    پیامکِ بی‌اجازه (تنظیمِ محدود) → راهنما، بعد دیالوگِ باتری، بعد TWA.
+    if ($lauSrc !== '') {
+        if (!preg_match('~if \(sp\.getLong\(PREF_ASKS_VC, -1L\) != vc\)\s*\{\s*sp\.edit\(\)\.putLong\(PREF_ASKS_VC, vc\)\.putInt\(PREF_ASKS, 0\)~', $lauNC)) {
+            $lauBad[] = 'HesabLauncherActivity — شمارنده‌ی پرسیدن با نسخه‌ی تازه صفر نمی‌شود؛ به‌روزرسانی دیگر هرگز نمی‌پرسد';
+        }
+        $sli = strpos($lauNC, 'protected boolean shouldLaunchImmediately()');
+        if ($sli === false || !str_contains(substr($lauNC, $sli, 900), 'SharedPreferences sp = prefsForVersion();')) {
+            $lauBad[] = 'HesabLauncherActivity — shouldLaunchImmediately() شمارنده‌ی نسخه را نمی‌خواند';
+        }
+        $ns = strpos($lauNC, 'private boolean nextStep()');
+        $nsBody = $ns === false ? '' : substr($lauNC, $ns, 1800);
+        if (!preg_match('~if \(!has\(Manifest\.permission\.RECEIVE_SMS\)\)\s*\{.*?SmsSetupActivity\.EXTRA_GUIDE.*?startActivityForResult\(i, REQ_GUIDE\)~s', $nsBody)
+            || !preg_match('~isIgnoringBatteryOptimizations.*?ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS.*?REQ_BATTERY~s', $nsBody)
+            || substr_count($nsBody, '>= MAX_ASKS') + substr_count($nsBody, 'if (b >= 1)') < 2) {
+            $lauBad[] = 'HesabLauncherActivity — nextStep(): راهنمای پیامک یا دیالوگِ باتری (با سقف) نیست';
+        }
+        $oar = strpos($lauNC, 'protected void onActivityResult(');
+        if ($oar === false || !str_contains(substr($lauNC, $oar, 700), 'launchTwa();')) {
+            $lauBad[] = 'HesabLauncherActivity — بعد از راهنما/باتری launchTwa() صدا زده نمی‌شود؛ اپ باز نمی‌شود';
+        }
+    }
     // ⛔ کلاسِ خامِ کتابخانه دیگر نباید به‌عنوان اکتیویتی اعلام شود، وگرنه
     //    دو درِ ورودی هست و یکی‌شان هرگز مجوز نمی‌پرسد.
     if (str_contains($mf, 'android:name="com.google.androidbrowserhelper.trusted.LauncherActivity"')) {
@@ -1045,7 +1068,7 @@ if (!file_exists($gradlePath)) {
     if (preg_match_all('~putBoolean\(\s*BankSmsReceiver\.PREF_ON\s*,\s*false\s*\)~', $setNC) > 1) {
         $lauBad[] = 'SmsSetupActivity — ردِ مجوز کلید را خاموش می‌کند';
     }
-    T::bulk(14, $lauBad, 'مجوز در اولین اجرا پرسیده می‌شود و ثبتِ خودکار پیش‌فرض روشن است');
+    T::bulk(18, $lauBad, 'مجوز در اولین اجرا پرسیده می‌شود و ثبتِ خودکار پیش‌فرض روشن است');
 
     // آدرسِ باز شونده باید روی همان دامنه‌ای باشد که intent-filter
     // تأییدش می‌کند؛ وگرنه اپ صفحه‌ای را باز می‌کند که برایش تأیید ندارد.
@@ -6344,6 +6367,21 @@ if ($ua === '') {
     if (preg_match('~content://sms|Telephony|SmsMessage~', $uaCode)) {
         $oneBad[] = 'UpdateActivity — به پیامک دست می‌زند';
     }
+    // ⛔ نصب با جلسه‌ی `PackageInstaller` و منبعِ «فروشگاه» — نصبِ «از فایل»
+    //    اپ را «محدود» می‌کرد و مجوزِ پیامک بی‌صدا رد می‌شد (مهر ۱۴۰۵). و نتیجه‌ی
+    //    نصب فقط برای جلسه‌ی **خودِ** اپ پذیرفته می‌شود (این صفحه exported است).
+    $isb = strpos($uaCode, 'private boolean installSession()');
+    $isBody = $isb === false ? '' : substr($uaCode, $isb, 2200);
+    if (!str_contains($isBody, 'sp.setPackageSource(PackageInstaller.PACKAGE_SOURCE_STORE)')
+        || !str_contains($isBody, 'session.commit(')) {
+        $oneBad[] = 'UpdateActivity — نصب با جلسه و منبعِ «فروشگاه» نیست؛ اپ «محدود» می‌ماند';
+    }
+    if (!preg_match('~private void install\(\)\s*\{.*?if \(installSession\(\)\) \{ return; \}.*?ACTION_VIEW~s', $uaCode)) {
+        $oneBad[] = 'UpdateActivity — اول جلسه‌ی نصب، بعد پنجره‌ی قدیمی نیست';
+    }
+    if (!preg_match('~boolean ours = info != null && getPackageName\(\)\.equals\(info\.getInstallerPackageName\(\)\).*?if \(st == PackageInstaller\.STATUS_PENDING_USER_ACTION && ours\)~s', $uaCode)) {
+        $oneBad[] = 'UpdateActivity — نتیجه‌ی نصبِ جلسه‌ی دیگران پذیرفته می‌شود (هدایتِ intent)';
+    }
 }
 $mf = (string)@file_get_contents(__DIR__ . '/../mobile/app/src/main/AndroidManifest.xml');
 if (!str_contains($mf, 'android.permission.REQUEST_INSTALL_PACKAGES')) {
@@ -6376,7 +6414,7 @@ preg_match('~window\.APP_UPDATE_NATIVE_MIN\s*=\s*(\d+)~', $js, $nm);
 if (!$gv || !$nm || (int)$nm[1] > (int)$gv[1]) {
     $oneBad[] = 'APP_UPDATE_NATIVE_MIN از versionCodeِ اپ بالاتر است';
 }
-T::bulk(13, $oneBad, 'به‌روزرسانی با یک تپ: اپ خودش می‌گیرد و پنجره‌ی نصب را باز می‌کند');
+T::bulk(16, $oneBad, 'به‌روزرسانی با یک تپ: اپ خودش می‌گیرد و پنجره‌ی نصب را باز می‌کند');
 
 // ---------------------------------------------------------------
 // ⛔ قاعده ۶۵ — صفِ پیامکِ بانک هیچ چیزی را باز نمی‌کند

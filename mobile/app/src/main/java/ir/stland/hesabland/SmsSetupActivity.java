@@ -91,6 +91,13 @@ public class SmsSetupActivity extends AppCompatActivity {
     static final String PREF_BATTERY_ASKED = "battery_asked";
     /** از سایت بعد از جفت شدن (`#smslink=` → `S.linked=1`). */
     static final String EXTRA_LINKED = "linked";
+    /**
+     * از درِ ورودی، وقتی مجوزِ پیامک هنوز نیست (`HesabLauncherActivity.nextStep`):
+     * همین صفحه به‌شکلِ «راهنمای راه‌اندازی» — چک‌لیستِ مراحل و دکمه‌ی «ادامه».
+     */
+    static final String EXTRA_GUIDE = "guide";
+
+    private TextView checklist;
 
     @Override
     protected void onCreate(Bundle saved) {
@@ -136,12 +143,23 @@ public class SmsSetupActivity extends AppCompatActivity {
         root.addView(title);
 
         TextView body = new TextView(this);
-        body.setText(R.string.sms_setup_body);
+        body.setText(guide() ? R.string.sms_guide_body : R.string.sms_setup_body);
         body.setTextColor(Color.parseColor("#B6BCC6"));
         body.setTextSize(14);
         body.setGravity(Gravity.END);
         body.setPadding(0, 32, 0, 32);
         root.addView(body);
+
+        // ⛔ چک‌لیستِ مراحل — «احساس می‌کنم دسترسی دادم ولی نمی‌خونه» (مالکِ
+        //    نصب) یعنی کاربر نمی‌دانست کدام گام مانده. هر خط ✓ یا ✗ از خودِ
+        //    سیستم، نه از حدس.
+        checklist = new TextView(this);
+        checklist.setTextColor(Color.WHITE);
+        checklist.setTextSize(15);
+        checklist.setGravity(Gravity.END);
+        checklist.setLineSpacing(10f, 1f);
+        checklist.setPadding(0, 0, 0, 24);
+        root.addView(checklist);
 
         state = new TextView(this);
         state.setTextColor(Color.parseColor("#E8B54D"));
@@ -244,9 +262,9 @@ public class SmsSetupActivity extends AppCompatActivity {
         root.addView(test);
 
         Button bottom = new Button(this);
-        bottom.setText(R.string.sms_setup_back);
+        bottom.setText(guide() ? R.string.sms_setup_continue : R.string.sms_setup_back);
         bottom.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { finish(); }
+            @Override public void onClick(View v) { setResult(RESULT_OK); finish(); }
         });
         root.addView(bottom);
 
@@ -432,7 +450,7 @@ public class SmsSetupActivity extends AppCompatActivity {
         //   برنامه محدود است. روی گوشیِ معافْ دکمه هیچ کاری نمی‌کرد و
         //   فقط صفحه را شلوغ می‌کرد — «دکمه‌ی بی‌کار از نبودنش بدتر
         //   است». و با روشن شدنِ معافیت، خودش ناپدید می‌شود.
-        fixBattery.setVisibility(on && !batteryOk() ? View.VISIBLE : View.GONE);
+        fixBattery.setVisibility(!batteryOk() ? View.VISIBLE : View.GONE);
 
         // ⚠ همان قاعده، برای دو دکمه‌ی صندوق: هر کدام دقیقاً در یک حالت
         //   دیده می‌شود و در آن یکی حالت اصلاً رندر نمی‌شود. دکمه‌ی
@@ -440,15 +458,36 @@ public class SmsSetupActivity extends AppCompatActivity {
         //   گوشیِ مجوزدار کاری نمی‌کرد.
         fixRead.setVisibility(on && !inboxGranted() ? View.VISIBLE : View.GONE);
         scan.setVisibility(on && inboxGranted() ? View.VISIBLE : View.GONE);
-        autostart.setVisibility(on && autostartIntent() != null ? View.VISIBLE : View.GONE);
+        autostart.setVisibility(autostartIntent() != null ? View.VISIBLE : View.GONE);
 
         // ⚠ راهنمای «تنظیمِ محدود» فقط وقتی مجوزِ پیامک نیست و اندروید ۱۳+ است.
-        restricted.setVisibility(enabled() && !granted()
+        restricted.setVisibility(!granted()
                 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ? View.VISIBLE : View.GONE);
 
         diag.setText(lastEventLine());
         sync.setText(syncLine());
+        checklist.setText(checklistText());
     }
+
+    private boolean guide() {
+        Intent it = getIntent();
+        return it != null && "1".equals(it.getStringExtra(EXTRA_GUIDE));
+    }
+
+    /** پنج گام، هر کدام ✓ یا ✗ از خودِ سیستم. */
+    private String checklistText() {
+        boolean autostartKnown = autostartIntent() != null;
+        StringBuilder sb = new StringBuilder();
+        sb.append(mark(enabled() && granted())).append(getString(R.string.sms_step_sms)).append('\n');
+        sb.append(mark(inboxGranted())).append(getString(R.string.sms_step_inbox)).append('\n');
+        sb.append(mark(notifVisible())).append(getString(R.string.sms_step_notif)).append('\n');
+        sb.append(mark(batteryOk())).append(getString(R.string.sms_step_battery)).append('\n');
+        if (autostartKnown) { sb.append("• ").append(getString(R.string.sms_step_autostart)).append('\n'); }
+        sb.append(mark(SmsSync.linked(this))).append(getString(R.string.sms_step_link));
+        return sb.toString();
+    }
+
+    private static String mark(boolean ok) { return ok ? "✓ " : "✗ "; }
 
     /** خطِ وضعیتِ ثبتِ پس‌زمینه — وصل؟ آخرین نوبت؟ */
     private String syncLine() {
