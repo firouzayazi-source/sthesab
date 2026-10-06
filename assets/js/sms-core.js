@@ -587,6 +587,33 @@
     window.SMS_BALANCE_HOW = ['card', 'acct', 'bank', 'learn'];
 
     /**
+     * ⛔ دسته‌ی پیامک از **انتخابِ قبلیِ خودِ کاربر** — «یک بار بپرس» برای دسته.
+     *
+     *    کلید نامِ پذیرنده/بابتِ پیامک است (`r.note`، همان که عنوانِ تراکنش
+     *    می‌شود)، نه بانک: بلو برای سوپرمارکت و تاکسی یک پیامک می‌دهد، پس دسته
+     *    از فرستنده یاد گرفته نمی‌شود. پیامکی که پذیرنده ندارد (بلو) دسته‌ای
+     *    نمی‌گیرد — حدس نه.
+     * ⚠ داده همان عنوان‌های اخیر است (`recentTransactionTitles()`، آخرین ردیفِ
+     *   هر عنوان): کاربر دسته‌ی یک تراکنشِ «فروشگاه رفاه» را عوض کند، پیامکِ
+     *   بعدی همان را می‌گیرد؛ «بدون دسته» کند، دیگر نمی‌گیرد. سرور همین را با
+     *   `smsLearnedCategoryId()` می‌کند (کارگرِ اپ).
+     *
+     * @param {?string} note   پذیرنده/بابت
+     * @param {string}  type   income|expense
+     * @param {Array}   titles [{title, type, category}]
+     * @returns {number} شناسه‌ی دسته یا ۰
+     */
+    window.smsLearnedCategory = function (note, type, titles) {
+        var n = String(note || '').trim();
+        if (!n || !Array.isArray(titles)) { return 0; }
+        for (var i = 0; i < titles.length; i++) {
+            var t = titles[i];
+            if (t && t.title === n && t.type === type) { return +t.category > 0 ? +t.category : 0; }
+        }
+        return 0;
+    };
+
+    /**
      * ⛔ پیامک مالِ کدام حساب است؟ — تنها جای این تصمیم.
      *
      *    ترتیب از قطعی به کم‌قطعی: چهار رقمِ آخرِ **کارت** → چهار رقمِ

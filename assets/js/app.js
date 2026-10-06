@@ -1472,6 +1472,20 @@ function appMain() {
               || document.querySelector('[name="csrf_token"]');
         return el ? el.value : '';
     }
+    /** عنوان‌های اخیر از `#recentTitles` (همان datalist) برای `smsLearnedCategory()`. */
+    function smsCategoryFor(r) {
+        var list = document.getElementById('recentTitles');
+        var titles = [];
+        if (list) {
+            for (var i = 0; i < list.options.length; i++) {
+                var o = list.options[i];
+                titles.push({ title: o.value, type: o.getAttribute('data-type'),
+                              category: o.getAttribute('data-category') });
+            }
+        }
+        return window.smsLearnedCategory(r.note, r.type, titles);
+    }
+
     function smsPostTx(r, walletId) {
         var fd = new FormData();
         fd.set('csrf_token', smsCsrf());
@@ -1481,7 +1495,8 @@ function appMain() {
         fd.set('note', '');
         var dEl = document.getElementById('transaction_date');
         fd.set('transaction_date', r.date || (dEl ? dEl.defaultValue : ''));
-        fd.set('category_id', '');
+        var lc = smsCategoryFor(r);
+        fd.set('category_id', lc ? String(lc) : '');
         fd.set('wallet_id', String(walletId));
         return fetch(apiUrl('add_transaction.php'), {
             method: 'POST', body: fd,
@@ -2012,6 +2027,17 @@ function appMain() {
             if (r.type && quickAddToggle) { quickAddToggle.setType(r.type); done.push('نوع'); }
             if (r.date && setDate(r.date)) { done.push('تاریخ'); }
             if (r.note && titleEl && !titleEl.value) { titleEl.value = r.note; done.push('عنوان'); }
+            // ⛔ دسته از انتخابِ قبلیِ کاربر برای همین پذیرنده (`smsLearnedCategory`)
+            //    — بعد از `setType`، که فهرستِ دسته‌ها را از نو می‌سازد.
+            var learnedCat = smsCategoryFor(r);
+            var catEl = document.getElementById('category_id');
+            if (learnedCat && catEl) {
+                catEl.value = String(learnedCat);
+                if (catEl.value === String(learnedCat)) {
+                    catEl.dispatchEvent(new Event('change', { bubbles: true }));
+                    done.push('دسته');
+                }
+            }
 
             // ⚠ حساب فقط از `smsMatchWallet()` (کارت → حساب → نامِ بانک →
             //   تک‌حساب) — وگرنه پول در حسابِ اشتباه می‌نشست.

@@ -6527,7 +6527,17 @@ if (!str_contains($sw65, "if (postParam('sms_forget') === '1') { smsForgetWallet
     || !str_contains($wp65, 'name="sms_forget"') || !str_contains($wp65, 'data-sms-learned=')) {
     $lBad[] = 'wallets.php/save_wallet.php — راهِ «فراموش کن» برای انتخابِ اشتباه نیست';
 }
-T::bulk(6, $lBad, '«یک بار بپرس، بعد خودکار»: حساب پرسیده، یاد گرفته و قابلِ فراموشی است');
+// ⛔ دسته از انتخابِ قبلیِ کاربر برای همین پذیرنده — هر سه مسیر (صف، فرم، اپ).
+if (!preg_match("~function smsPostTx\(.*?smsCategoryFor\(r\).*?fd\.set\('category_id', lc~s", $js65)
+    || !str_contains($goBody, 'var learnedCat = smsCategoryFor(r);')
+    || !str_contains($js65, 'return window.smsLearnedCategory(r.note, r.type, titles);')) {
+    $lBad[] = 'app.js — دسته‌ی یادگرفته در صف یا فرمِ پیامک به کار نمی‌رود';
+}
+$ss65 = (string)@file_get_contents(__DIR__ . '/../includes/sms_sync.php');
+if (!str_contains($ss65, "'category_id' => (string)(smsLearnedCategoryId(\$userId, \$type, \$note) ?? ''),")) {
+    $lBad[] = 'sms_sync.php — کارگرِ اپ دسته‌ی یادگرفته را نمی‌گذارد';
+}
+T::bulk(8, $lBad, '«یک بار بپرس، بعد خودکار»: حساب پرسیده، یاد گرفته و قابلِ فراموشی است؛ دسته از پذیرنده');
 
 // ---------------------------------------------------------------
 // قاعده ۶۶ — خرید امانی/نسیه و فروش نسیه: پول تکان نمی‌خورد، طلب/بدهی

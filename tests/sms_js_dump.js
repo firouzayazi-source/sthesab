@@ -68,7 +68,7 @@ for (const file of ['jalali-datepicker.js', 'sms-core.js', 'app.js']) {
     }
 }
 
-for (const fn of ['parseBankSms', 'smsAutoOk', 'smsFingerprint', 'smsAutoEnabled', 'smsMatchWallet', 'smsWorker', 'smsSourceKeys']) {
+for (const fn of ['parseBankSms', 'smsAutoOk', 'smsFingerprint', 'smsAutoEnabled', 'smsMatchWallet', 'smsWorker', 'smsSourceKeys', 'smsLearnedCategory']) {
     if (typeof sandbox.window[fn] !== 'function') {
         console.error('ERR_EXPORT: window.' + fn + ' صادر نشد');
         process.exit(2);
@@ -186,6 +186,26 @@ process.stdin.on('end', () => {
                                 { id: 2, card4: null, acct4: null, banks: [], learned: K(mellat) },
                             ]),
                         };
+                    })(),
+                    // ⛔ دسته از انتخابِ قبلیِ کاربر برای همین پذیرنده.
+                    learnCat: (() => {
+                        const T = [
+                            { title: 'فروشگاه رفاه', type: 'expense', category: '12' },
+                            { title: 'اسنپ', type: 'expense', category: '0' },
+                            { title: 'فروشگاه رفاه', type: 'income', category: '30' },
+                            { title: '', type: 'expense', category: '5' },
+                        ];
+                        const L = (n, t, l) => sandbox.window.smsLearnedCategory(n, t, l);
+                        return [
+                            L('فروشگاه رفاه', 'expense', T),
+                            L('  فروشگاه رفاه ', 'expense', T),
+                            L('فروشگاه رفاه', 'income', T),
+                            L('اسنپ', 'expense', T),
+                            L('فروشگاه', 'expense', T),
+                            L(null, 'expense', T),
+                            L('فروشگاه رفاه', 'expense', null),
+                            L(sandbox.window.parseBankSms('خرید 120,000 ریال\nپذیرنده: فروشگاه رفاه\nکارت 1234').note, 'expense', T),
+                        ];
                     })(),
                     // ⛔ کارگرِ اپ اندروید (`smsWorker`): پیامک → فیلدهای ثبت.
                     worker: (() => {

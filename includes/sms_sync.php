@@ -240,7 +240,9 @@ final class SmsSync
 
         $res = txCreate($userId, [
             'type' => $type, 'amount' => (string)($in['amount'] ?? ''), 'title' => $title,
-            'note' => '', 'transaction_date' => $date, 'category_id' => '', 'wallet_id' => $walletId,
+            'note' => '', 'transaction_date' => $date, 'wallet_id' => $walletId,
+            // ⛔ دسته از انتخابِ قبلیِ کاربر برای همین پذیرنده — همان `smsLearnedCategory()`ِ سایت.
+            'category_id' => (string)(smsLearnedCategoryId($userId, $type, $note) ?? ''),
         ]);
         if (!$res['ok']) {
             // ثبت نشد → جای اثرِ انگشت آزاد، تا پیامک از راهِ دیگر (اعلان) ثبت شود.

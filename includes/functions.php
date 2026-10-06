@@ -1203,6 +1203,24 @@ function smsKeysParse($raw): array
     return $out;
 }
 
+/**
+ * ⛔ دسته‌ی پیامکِ بانک از انتخابِ قبلیِ کاربر برای همین پذیرنده — همتای
+ *    `window.smsLearnedCategory()` (سایت) برای کارگرِ پس‌زمینه‌ی اپ
+ *    (`SmsSync::post()`). همان داده (`recentTransactionTitles()`، آخرین ردیفِ هر
+ *    عنوان) و همان قاعده: عنوانِ دقیق + همان نوع؛ پذیرنده‌ی خالی = هیچ.
+ */
+function smsLearnedCategoryId(int $userId, string $type, string $note): ?int
+{
+    // ⚠ پذیرنده‌ی خالی هیچ می‌دهد بی‌شرطِ جدا: `recentTransactionTitles()` عنوانِ خالی نمی‌آورد.
+    $note = trim($note);
+    foreach (recentTransactionTitles($userId) as $r) {
+        if ((string)$r['title'] === $note && (string)$r['type'] === $type) {
+            return (int)$r['category_id'] > 0 ? (int)$r['category_id'] : null;
+        }
+    }
+    return null;
+}
+
 /** رندرِ datalist عنوان‌های اخیر — یک بار در فوتر، مثل peopleDatalist. */
 function recentTitlesDatalist(int $userId): string
 {

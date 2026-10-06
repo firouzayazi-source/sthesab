@@ -353,6 +353,48 @@ if (!tableHasColumn('wallets', 'sms_keys')) {
         '…پاک شد؛ و کاربرِ دیگر حسابِ او را فراموش نمی‌کند');
     T::ok($learnedOf($alice, $wCash) !== [], '…حسابِ کاربرِ دیگر دست نخورد');
 
+    // ⛔ دسته از انتخابِ قبلیِ کاربر برای همین پذیرنده (`smsLearnedCategoryId`).
+    $catOf = function (int $type) use ($pdo, $alice): int {
+        $c = $pdo->prepare("SELECT id FROM categories WHERE type = :t AND is_active = 1 AND " . categoryScopeSql() . ' ORDER BY id LIMIT 1');
+        $c->execute(['t' => $type === 1 ? 'income' : 'expense'] + categoryScopeParams($alice));
+        return (int)$c->fetchColumn();
+    };
+    $food = $catOf(0); $salary = $catOf(1);
+    $txOf = function (int $id) use ($pdo): array {
+        $q = $pdo->prepare('SELECT title, category_id FROM transactions WHERE id = :id');
+        $q->execute(['id' => $id]);
+        return $q->fetch() ?: [];
+    };
+    // ⚠ `??` نمی‌شود: `null` (بی‌دسته) همان چیزی است که انتظارش را داریم.
+    $catCol = function (array $j) use ($txOf) {
+        $r = $txOf((int)($j['data']['id'] ?? 0));
+        return array_key_exists('category_id', $r) ? $r['category_id'] : 'MISSING';
+    };
+    $ins = $pdo->prepare('INSERT INTO transactions (user_id, category_id, wallet_id, type, amount, title, note, transaction_date)
+                          VALUES (:u, :c, :w, :t, 1000, :ti, "", CURDATE())');
+    $ins->execute(['u' => $alice, 'c' => $food, 'w' => $wBlu, 't' => 'expense', 'ti' => 'فروشگاه رفاه']);
+    $ins->execute(['u' => $bob, 'c' => $food, 'w' => $wBob, 't' => 'expense', 'ti' => 'نانوایی']);
+    [$c, $j] = $post(['fp' => 'd1d2d3d1', 'wallet_id' => $wBlu, 'note' => 'فروشگاه رفاه', 'balance' => null]);
+    $got = $txOf((int)($j['data']['id'] ?? 0));
+    T::same(['فروشگاه رفاه', $food], [$got['title'] ?? null, (int)($got['category_id'] ?? 0)],
+        '⛔ پذیرنده‌ی آشنا: دسته‌ی قبلیِ کاربر (کارگرِ اپ)');
+    [$c, $j] = $post(['fp' => 'd1d2d3d2', 'wallet_id' => $wBlu, 'note' => 'فروشگاه رفاه', 'type' => 'income', 'balance' => null]);
+    T::same(null, $catCol($j), 'نوعِ دیگر (واریز) دسته‌ی هزینه را نمی‌گیرد');
+    [$c, $j] = $post(['fp' => 'd1d2d3d3', 'wallet_id' => $wBlu, 'note' => '', 'balance' => null]);
+    T::same(null, $catCol($j), '⛔ بی‌پذیرنده (بلو) حدس زده نمی‌شود');
+    [$c, $j] = $post(['fp' => 'd1d2d3d4', 'wallet_id' => $wBlu, 'note' => 'نانوایی', 'balance' => null]);
+    T::same(null, $catCol($j), '⛔ انتخابِ کاربرِ دیگر یاد گرفته نمی‌شود');
+    $ins->execute(['u' => $alice, 'c' => null, 'w' => $wBlu, 't' => 'expense', 'ti' => 'فروشگاه رفاه']);
+    [$c, $j] = $post(['fp' => 'd1d2d3d5', 'wallet_id' => $wBlu, 'note' => 'فروشگاه رفاه', 'balance' => null]);
+    T::same(null, $catCol($j), 'آخرین انتخاب «بدون دسته» بود → بی‌دسته');
+    T::ok($salary > 0 && $food > 0, 'دسته‌های پیش‌فرض برای آزمون هست');
+    $ins->execute(['u' => $alice, 'c' => $food, 'w' => $wBlu, 't' => 'expense', 'ti' => 'کافه']);
+    $ins->execute(['u' => $alice, 'c' => $food, 'w' => $wBlu, 't' => 'expense', 'ti' => '']);
+    T::same([$food, null, null], [smsLearnedCategoryId($alice, 'expense', 'کافه'),
+                                  smsLearnedCategoryId($alice, 'income', 'کافه'),
+                                  smsLearnedCategoryId($alice, 'expense', '  ')],
+        '`smsLearnedCategoryId()`: همان نوع، و پذیرنده‌ی خالی هیچ (حتی اگر ردیفِ بی‌عنوان باشد)');
+
     // گروهِ بعد (کارگرِ اپ) از تطبیقِ کارت و نامِ بانک می‌گوید، نه از این‌ها.
     $pdo->prepare('UPDATE wallets SET sms_keys = NULL, is_active = (id <> :b) WHERE user_id = :u')
         ->execute(['u' => $alice, 'b' => $wBlu]);
