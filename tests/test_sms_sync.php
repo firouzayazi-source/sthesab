@@ -298,6 +298,67 @@ $mk->execute(['id' => $wMellat]);
 T::same(1, (int)$mk->fetchColumn(), '⛔ نشانه‌ی مانده به آینده نمی‌رود');
 
 // ---------------------------------------------------------------
+T::group('⛔ «یک بار بپرس، بعد خودکار» — حسابی که کاربر انتخاب کرد یاد گرفته می‌شود');
+
+// گزارشِ مالکِ نصب: «پیامک‌های بلو رو نخونده … مگه نباید بپرسه از چه حسابی
+// و از دفعه بعد خودش وارد اون حساب کنه و از همون حساب موجودی کم کنه؟»
+$learnedOf = function (int $u, int $w): array {
+    foreach (walletSmsKeys($u) as $row) { if ((int)$row['id'] === $w) { return $row['learned']; } }
+    return ['MISSING'];
+};
+if (!tableHasColumn('wallets', 'sms_keys')) {
+    T::blocked('یادگیریِ حساب', 'migration_sms_learn.sql اجرا نشده — اول: bash deploy/migrate.sh --apply');
+} else {
+    $sBlu = 's0a1b2c3d';
+    T::same(true, SmsSync::learn($alice, $wCash, [$sBlu, 'c1234']), 'انتخابِ حساب برای پیامکِ بلو یاد گرفته شد');
+    T::same([$sBlu, 'c1234'], $learnedOf($alice, $wCash), '…و `walletSmsKeys()` (صفحه و اپ) آن را می‌دهد');
+    T::same([], $learnedOf($alice, $wMellat), '…فقط روی همان حساب');
+
+    T::same(true, SmsSync::learn($alice, $wMellat, [$sBlu]), 'انتخابِ دوباره، حسابِ دیگر (اصلاح)');
+    T::same([[$sBlu], ['c1234']], [$learnedOf($alice, $wMellat), $learnedOf($alice, $wCash)],
+        '⛔ نشانه جابه‌جا می‌شود، در دو حساب نمی‌ماند (وگرنه مبهم و همیشه پرسیده)');
+
+    T::same(false, SmsSync::learn($alice, $wBob, ['s11112222']), '⛔ حسابِ کاربرِ دیگر رد می‌شود');
+    T::same([], $learnedOf($bob, $wBob), '…و چیزی روی حسابِ او ننشست');
+    T::same(false, SmsSync::learn($alice, $wCash, ['بلو', '6037991234561234', 's0a1b2c3', 'x1234']),
+        '⛔ فقط نشانه، نه متن و نه شماره‌ی کامل');
+    T::same(['c1234'], $learnedOf($alice, $wCash), '…و هیچ‌کدام ذخیره نشد');
+
+    SmsSync::learn($alice, $wMellat, ['a0001', 'a0002', 'a0003', 'a0004', 'a0005', 'a0006', 'a0007', 'a0008']);
+    T::same([$sBlu, 'a0001', 'a0002', 'a0003', 'a0004', 'a0005', 'a0006'], $learnedOf($alice, $wMellat),
+        'یک درخواست حداکثر شش نشانه');
+    $pdo->prepare('UPDATE wallets SET sms_keys = :k WHERE id = :id')->execute(['k' => $sBlu, 'id' => $wMellat]);
+
+    $pdo->prepare('UPDATE wallets SET is_active = 0 WHERE id = :id')->execute(['id' => $wCash]);
+    T::same(false, SmsSync::learn($alice, $wCash, ['a9999']), 'حسابِ غیرفعال یاد نمی‌گیرد');
+    $pdo->prepare('UPDATE wallets SET is_active = 1 WHERE id = :id')->execute(['id' => $wCash]);
+
+    for ($i = 0; $i < SmsSync::LEARN_MAX + 3; $i++) {
+        SmsSync::learn($alice, $wCash, [sprintf('a%04d', $i)]);
+    }
+    $many = $learnedOf($alice, $wCash);
+    T::same([SmsSync::LEARN_MAX, sprintf('a%04d', SmsSync::LEARN_MAX + 2)], [count($many), end($many)],
+        'سقفِ نشانه‌ها؛ تازه‌ترین می‌ماند');
+
+    // ⛔ پیامکِ بعدیِ همان بانک (`how = learn`): خودکار، و موجودیِ بانک روی همان حساب.
+    $wBlu = $wallet($alice, 'بلو آلیس', null);
+    [$c, $j] = $post(['fp' => 'c1c2c3c4', 'wallet_id' => $wBlu, 'how' => 'learn', 'amount' => 65000, 'balance' => 2818035]);
+    T::same([201, true, 2818035], [$c, $j['data']['balance_set'] ?? null, $balanceOf($alice, $wBlu)],
+        '⛔ حسابِ یادگرفته موجودیِ پیامک را می‌گیرد («از همون حساب موجودی کم کنه»)');
+
+    T::same([$wMellat, $wCash], (function () use ($alice) { $x = smsLearnedWalletIds($alice); sort($x); return $x; })(),
+        'فهرستِ حساب‌های یادگرفته برای «فراموش کن»');
+    T::same(true, smsForgetWallet($alice, $wMellat), '«فراموش کن» از ویرایشِ حساب');
+    T::same([[], false], [$learnedOf($alice, $wMellat), smsForgetWallet($bob, $wCash)],
+        '…پاک شد؛ و کاربرِ دیگر حسابِ او را فراموش نمی‌کند');
+    T::ok($learnedOf($alice, $wCash) !== [], '…حسابِ کاربرِ دیگر دست نخورد');
+
+    // گروهِ بعد (کارگرِ اپ) از تطبیقِ کارت و نامِ بانک می‌گوید، نه از این‌ها.
+    $pdo->prepare('UPDATE wallets SET sms_keys = NULL, is_active = (id <> :b) WHERE user_id = :u')
+        ->execute(['u' => $alice, 'b' => $wBlu]);
+}
+
+// ---------------------------------------------------------------
 T::group('⛔ کارگرِ اپ (`sms-worker.js`) روی همین سرور — متن روی سیم نمی‌رود');
 
 exec('command -v node 2>/dev/null', $o, $rc);

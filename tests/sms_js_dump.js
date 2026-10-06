@@ -68,7 +68,7 @@ for (const file of ['jalali-datepicker.js', 'sms-core.js', 'app.js']) {
     }
 }
 
-for (const fn of ['parseBankSms', 'smsAutoOk', 'smsFingerprint', 'smsAutoEnabled', 'smsMatchWallet', 'smsWorker']) {
+for (const fn of ['parseBankSms', 'smsAutoOk', 'smsFingerprint', 'smsAutoEnabled', 'smsMatchWallet', 'smsWorker', 'smsSourceKeys']) {
     if (typeof sandbox.window[fn] !== 'function') {
         console.error('ERR_EXPORT: window.' + fn + ' صادر نشد');
         process.exit(2);
@@ -139,6 +139,53 @@ process.stdin.on('end', () => {
                             M('بانک تجارت برداشت 50,000 ریال', [W[0], { id: 4, banks: ['!تجارت'] }]),
                             M('بلو\n250,000 تومان پرید', [W[0], { id: 5, banks: ['!بلوبانک', '!بلو'] }]),
                         ];
+                    })(),
+                    // ⛔ «یک بار بپرس، بعد خودکار» (`smsSourceKeys` + `learned`).
+                    learn: (() => {
+                        const blu1 = 'بلو\nبرداشت پول\nسمیه عزیز، 650,000ریال از حساب شما پرید.\nموجودی: 28,180,354 ریال\n۱۲:۰۷\n۱۴۰۵.۰۷.۱۴';
+                        const blu2 = 'بلو\nواریز پول\nسمیه عزیز، 1,000,000ریال به حساب شما نشست.\nموجودی: 29,180,354 ریال\n۱۳:۰۷\n۱۴۰۵.۰۷.۱۴';
+                        const mellat = 'بانک ملت\nانتقال:2,000,000-\nمانده:8,500,000';
+                        const P = (raw) => sandbox.window.parseBankSms(raw);
+                        const K = (raw) => sandbox.window.smsSourceKeys(raw, P(raw));
+                        const M = (raw, w) => {
+                            const m = sandbox.window.smsMatchWallet(raw, P(raw), w);
+                            return { id: m.id, how: m.how };
+                        };
+                        const kBlu = K(blu1);
+                        const W = (l1, l2) => [
+                            { id: 1, card4: null, acct4: null, banks: [], learned: l1 },
+                            { id: 2, card4: null, acct4: null, banks: [], learned: l2 },
+                        ];
+                        return {
+                            keysBlu: kBlu,
+                            keysBlu2: K(blu2),
+                            keysCard: K('کارت ****1234 برداشت 50,000 ریال'),
+                            keysAcct: K('*بانک تجارت*\nحساب: 0377803217328\nبرداشت: 209,000 ریال'),
+                            keysName: K('سمیه عزیز\nبرداشت 50,000 ریال'),
+                            keysDir: K('برداشت پول\n50,000 ریال'),
+                            keysMellat: K(mellat),
+                            before: M(blu1, W([], [])),
+                            workerBefore: sandbox.window.smsWorker(blu1, W([], []), '2026-10-06').ok,
+                            after: M(blu2, W([], kBlu)),
+                            workerAfter: sandbox.window.smsWorker(blu1, W([], kBlu), '2026-10-06').post,
+                            keysSecondLine: K('سمیه عزیز\nبلو\nبرداشت 50,000 ریال'),
+                            keysLong: K('اطلاعیه بسیار مهم برای همه دوستان خوبمان در کشور\nبرداشت 50,000 ریال'),
+                            keysShort: K('ب\nبرداشت 50,000 ریال'),
+                            ambiguous: M(blu1, [
+                                { id: 1, card4: null, acct4: null, banks: ['!بلو'], learned: kBlu },
+                                { id: 2, card4: null, acct4: null, banks: [], learned: kBlu },
+                            ]),
+                            otherBank: M('بانک ملت\nبرداشت 50,000 ریال', W([], kBlu)),
+                            cardFirst: M('کارت ****1234 برداشت 50,000 ریال', [
+                                { id: 1, card4: '1234', acct4: null, banks: [], learned: [] },
+                                { id: 2, card4: null, acct4: null, banks: [], learned: ['c1234'] },
+                            ]),
+                            learnedCard: M('کارت ****1234 برداشت 50,000 ریال', W([], ['c1234'])),
+                            learnBeatsBank: M(mellat, [
+                                { id: 1, card4: null, acct4: null, banks: ['ملت'], learned: [] },
+                                { id: 2, card4: null, acct4: null, banks: [], learned: K(mellat) },
+                            ]),
+                        };
                     })(),
                     // ⛔ کارگرِ اپ اندروید (`smsWorker`): پیامک → فیلدهای ثبت.
                     worker: (() => {

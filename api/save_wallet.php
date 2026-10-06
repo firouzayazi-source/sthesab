@@ -155,6 +155,7 @@ try {
         }
         $stmt->execute($params);
         saveWalletKind($pdo, $userId, $walletId, $kind, $kindLabel);
+        if (postParam('sms_forget') === '1') { smsForgetWallet($userId, $walletId); }
 
         jsonResponse(['success' => true, 'message' => 'حساب بروزرسانی شد.']);
     }

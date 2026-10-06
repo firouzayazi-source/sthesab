@@ -543,16 +543,60 @@
     };
 
     /**
+     * ⛔ نشانه‌های «این پیامک از کجاست» — برای «یک بار بپرس، بعد خودکار».
+     *
+     *    **گزارشِ مالکِ نصب (مهر ۱۴۰۵):** «پیامک‌های بلو رو نخونده … مگه نباید
+     *    بپرسه از چه حسابی برداشت یا به چه حسابی واریز شده و از دفعه بعد خودش
+     *    وارد اون حساب کنه؟» پیامکِ بلو (و خیلی از بانک‌ها) نه شماره‌ی کارت دارد
+     *    نه حساب، پس هیچ‌وقت خودکار نمی‌شد. مثلِ اپ‌های حسابداریِ پیامکی، کاربر
+     *    یک بار حساب را انتخاب می‌کند و این نشانه‌ها روی آن حساب می‌نشینند.
+     *
+     *    به ترتیبِ قطعیت: `c` + چهار رقمِ کارت، `a` + چهار رقمِ حساب، `s` +
+     *    اثرِ انگشتِ **خطِ اول** (نامِ فرستنده: «بلو»، «بانک ملت») — فقط وقتی
+     *    آن خط رقم و کلمه‌ی تراکنش/خطاب ندارد («سمیه عزیز» یا «برداشت» نامِ
+     *    فرستنده نیست و همه‌ی بانک‌ها را یکی می‌کرد).
+     *
+     * ⛔ متن روی سیم نمی‌رود: خطِ فرستنده فقط به‌صورتِ اثرِ انگشتِ هشت‌رقمی
+     *    (`smsFingerprint`) بیرون می‌رود (قاعده ۱۹).
+     *
+     * @returns {string[]}
+     */
+    var SENDER_SKIP = /[0-9]|عزیز|گرامی|محترم|مشتری|برداشت|واریز|انتقال|خرید|پرداخت|مانده|موجودی|حساب|کارت|مبلغ|ریال|تومان|رمز|کد|withdraw|deposit|balance|amount/;
+    window.smsSourceKeys = function (raw, r) {
+        var out = [];
+        if (r && r.card4) { out.push('c' + r.card4); }
+        if (r && r.acct4) { out.push('a' + r.acct4); }
+        var lines = normalize(raw).split(/\r?\n/);
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].replace(/[\s:،,.\-_*|•()\[\]«»]+/g, ' ').trim();
+            if (!line) { continue; }
+            if (line.length >= 2 && line.length <= 30 && !SENDER_SKIP.test(line)) {
+                out.push('s' + window.smsFingerprint(line));
+            }
+            break;
+        }
+        return out;
+    };
+
+    /**
+     * ⛔ «مانده»ی پیامک موجودیِ حساب را فقط وقتی برابر می‌کند که حساب با
+     *    **نشانه‌ی خودِ پیامک** پیدا شد — نه «کاربر فقط یک حساب دارد»
+     *    (`single`): کیف پولِ نقدی موجودیِ بانک را نمی‌گیرد. همان
+     *    `SmsSync::BALANCE_HOW` در سرور.
+     */
+    window.SMS_BALANCE_HOW = ['card', 'acct', 'bank', 'learn'];
+
+    /**
      * ⛔ پیامک مالِ کدام حساب است؟ — تنها جای این تصمیم.
      *
      *    ترتیب از قطعی به کم‌قطعی: چهار رقمِ آخرِ **کارت** → چهار رقمِ
-     *    آخرِ **حساب** → **نامِ بانک**، اگر کاربر فقط **یک** حساب از آن
+     *    آخرِ **حساب** → نشانه‌ای که **کاربر یاد داد** (`learn`) → **نامِ بانک**، اگر کاربر فقط **یک** حساب از آن
      *    بانک دارد → کاربر اصلاً یک حساب دارد. هر تطبیقی که بیش از یک
      *    حساب را بدهد «پیدا نشد» است، نه «اولی»: پولِ حسابِ اشتباه
      *    خرابیِ بی‌صداست.
      *
      * ⚠ `how` به فراخواننده می‌گوید چقدر مطمئن است: هم‌ترازیِ مانده فقط
-     *   با `card`/`acct`/`bank` انجام می‌شود، نه با `single` — کاربری که
+     *   با `SMS_BALANCE_HOW` (`card`/`acct`/`bank`/`learn`) انجام می‌شود، نه با `single` — کاربری که
      *   فقط «کیف پولِ» نقدی دارد نباید موجودیِ بانکش روی کیف پول بنشیند.
      *
      * ⚠ کلیدِ بانک فقط با پیشوندِ «بانک» پذیرفته می‌شود — «دی» در «ماه
@@ -574,6 +618,19 @@
         };
         var got = pick('card4', r.card4, 'card') || pick('acct4', r.acct4, 'acct');
         if (got) { return got; }
+
+        // ⛔ نشانه‌ای که **کاربر یاد داد** (`learned`، `SmsSync::learn()`) پیش از
+        //    نامِ بانک: انتخابِ صریحِ او از حدسِ ما قطعی‌تر است. به ترتیبِ
+        //    `smsSourceKeys()` (کارت → حساب → فرستنده)؛ نشانه‌ای که در بیش از
+        //    یک حساب است «پیدا نشد» است، نه «اولی».
+        var keys = window.smsSourceKeys(raw, r);
+        for (var i = 0; i < keys.length; i++) {
+            var lh = wallets.filter(function (w) {
+                return w && Array.isArray(w.learned) && w.learned.indexOf(keys[i]) !== -1;
+            });
+            if (lh.length === 1) { return { id: +lh[0].id, how: 'learn' }; }
+            if (lh.length > 1) { return none; }
+        }
 
         var text = normalize(raw);
         var esc = function (s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
@@ -722,7 +779,7 @@ window.smsWorker = function (raw, wallets, receivedIso) {
             date: r.date || (/^\d{4}-\d{2}-\d{2}$/.test(String(receivedIso || '')) ? receivedIso : ''),
             // ⛔ مانده فقط وقتی حساب با شماره یا نامِ بانک پیدا شد — نه «تک‌حساب»
             //    (همان شرطِ `smsProcessBatch()` در app.js)
-            balance: (m.how === 'card' || m.how === 'acct' || m.how === 'bank') && r.balanceKnown && r.balance !== null ? r.balance : null,
+            balance: window.SMS_BALANCE_HOW.indexOf(m.how) !== -1 && r.balanceKnown && r.balance !== null ? r.balance : null,
             note: r.note || ''
         }
     };

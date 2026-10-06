@@ -38,6 +38,74 @@ final class SmsSync
     /** نگهبانِ تکرار پس از این‌قدر روز پاک می‌شود (پیامکِ کهنه دوباره نمی‌آید). */
     public const SEEN_DAYS = 30;
 
+    /**
+     * ⛔ مانده‌ی پیامک فقط وقتی حساب با **نشانه‌ی خودِ پیامک** پیدا شد: شماره‌ی
+     *    کارت/حساب، نامِ بانک، یا نشانه‌ای که کاربر خودش یاد داد (`learn`).
+     *    «کاربر فقط یک حساب دارد» (`single`) نه — کیف پولِ نقدی موجودیِ بانک
+     *    را نمی‌گیرد. همان فهرستِ `smsBalanceHow()` در `sms-core.js`.
+     */
+    public const BALANCE_HOW = ['card', 'acct', 'bank', 'learn'];
+
+    /** سقفِ نشانه‌های یادگرفته‌ی هر حساب (کهنه‌ترها کنار می‌روند). */
+    public const LEARN_MAX = 12;
+
+    /**
+     * ⛔ «یک بار بپرس، بعد خودکار» — کاربر برای پیامکی که حسابش پیدا نشد
+     *    حساب را انتخاب کرد؛ نشانه‌های همان پیامک (`smsSourceKeys()`) روی
+     *    همان حساب می‌نشیند و پیامکِ بعدیِ همان بانک خودکار ثبت می‌شود.
+     *
+     * ⛔ نشانه از حساب‌های **دیگرِ** همین کاربر برداشته می‌شود: انتخابِ تازه‌ی
+     *    کاربر اصلاحِ انتخابِ قبلی است. اگر در دو حساب می‌ماند، `smsMatchWallet()`
+     *    آن را مبهم می‌دید و پیامک دوباره برای بررسی می‌ماند — بی‌آنکه کاربر
+     *    بفهمد چرا یاد نگرفت.
+     * ⚠ فقط شکلِ `SMS_KEY_RE`؛ هر چیزِ دیگری (متن، شماره‌ی کامل) رد می‌شود —
+     *   متنِ پیامک هرگز ذخیره نمی‌شود (قاعده ۱۹).
+     *
+     * @param list<string> $keys
+     */
+    public static function learn(int $userId, int $walletId, array $keys): bool
+    {
+        if (!tableHasColumn('wallets', 'sms_keys')) { return false; }
+        $clean = [];
+        foreach (array_slice($keys, 0, 6) as $k) {
+            $k = trim((string)$k);
+            if (preg_match(SMS_KEY_RE, $k) && !in_array($k, $clean, true)) { $clean[] = $k; }
+        }
+        if (!$clean) { return false; }
+
+        $pdo = Database::getConnection();
+        $pdo->beginTransaction();
+        try {
+            $st = $pdo->prepare('SELECT id, sms_keys, is_active FROM wallets WHERE user_id = :u ORDER BY id FOR UPDATE');
+            $st->execute(['u' => $userId]);
+            $rows = $st->fetchAll();
+            $ok = false;
+            foreach ($rows as $r) {
+                if ((int)$r['id'] === $walletId && (int)$r['is_active'] === 1) { $ok = true; }
+            }
+            if (!$ok) { $pdo->rollBack(); return false; }
+
+            $up = $pdo->prepare('UPDATE wallets SET sms_keys = :k WHERE id = :id AND user_id = :u');
+            foreach ($rows as $r) {
+                $have = smsKeysParse($r['sms_keys']);
+                if ((int)$r['id'] === $walletId) {
+                    $next = array_values(array_diff($have, $clean));
+                    $next = array_slice(array_merge($next, $clean), -self::LEARN_MAX);
+                } else {
+                    $next = array_values(array_diff($have, $clean));
+                    if ($next === $have) { continue; }
+                }
+                $up->execute(['k' => $next ? implode(',', $next) : null, 'id' => (int)$r['id'], 'u' => $userId]);
+            }
+            $pdo->commit();
+            return true;
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            throw $e;
+        }
+    }
+
+
     /** کدی که اپ می‌سازد: ۳۲ تا ۶۴ رقمِ شانزده‌شانزدهی. */
     public static function validNonce(string $nonce): bool
     {
@@ -125,7 +193,7 @@ final class SmsSync
      *    ۲. اثرِ انگشت (`fp`) پیش‌تر ثبت نشده — پاسخِ گم‌شده و تلاشِ دوباره‌ی
      *       اپ نباید تراکنشِ دوم بسازد. کلیدِ یکتا (`user_id`, `fp`) داور است،
      *       نه یک SELECT پیش از INSERT.
-     *    ۳. مانده فقط با `how` ∈ card/acct/bank، و فقط از پیامکی **تازه‌تر**
+     *    ۳. مانده فقط با `how` ∈ card/acct/bank/learn، و فقط از پیامکی **تازه‌تر**
      *       از آخرین مانده‌ی همان حساب (`wallets.sms_balance_at`) — همان دو
      *       شرطِ `smsProcessBatch()` در سایت.
      *
@@ -202,7 +270,7 @@ final class SmsSync
 
         $balSet = false;
         $bal = $in['balance'] ?? null;
-        if ($bal !== null && $bal !== '' && in_array($how, ['card', 'acct', 'bank'], true)
+        if ($bal !== null && $bal !== '' && in_array($how, self::BALANCE_HOW, true)
             && is_numeric($bal) && abs((float)$bal) <= TX_MAX_AMOUNT) {
             $balSet = self::setBalance($userId, $walletId, (int)round((float)$bal), $smsAt ?? date('Y-m-d H:i:s'));
         }

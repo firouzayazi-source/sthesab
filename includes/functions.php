@@ -1092,13 +1092,15 @@ function recentTransactionTitles(int $userId, int $limit = 30): array
  *   نباید داخلِ سورسِ صفحه بنشینند.
  * ⚠ تطبیق خودش در `window.smsMatchWallet()` است (تنها جای آن تصمیم)؛
  *   اینجا فقط داده ساخته می‌شود.
+ * ⛔ `learned`: نشانه‌هایی که کاربر با انتخابِ حساب برای یک پیامک یاد داد
+ *   (`SmsSync::learn()`) — «یک بار بپرس، بعد خودکار».
  *
- * @return list<array{id:int, card4:?string, acct4:?string, banks:list<string>}>
+ * @return list<array{id:int, card4:?string, acct4:?string, banks:list<string>, learned:list<string>}>
  */
 function walletSmsKeys(int $userId): array
 {
     $cols = ['id'];
-    foreach (['card_number', 'account_number', 'bank_code', 'bank_name'] as $c) {
+    foreach (['card_number', 'account_number', 'bank_code', 'bank_name', 'sms_keys'] as $c) {
         if (tableHasColumn('wallets', $c)) { $cols[] = $c; }
     }
     try {
@@ -1156,7 +1158,47 @@ function walletSmsKeys(int $userId): array
             'card4' => $tail($r['card_number'] ?? null),
             'acct4' => $tail($r['account_number'] ?? null),
             'banks' => $banks,
+            'learned' => smsKeysParse($r['sms_keys'] ?? null),
         ];
+    }
+    return $out;
+}
+
+/** نشانه‌ی یادگرفته‌ی پیامک: چهار رقمِ کارت (`c`)، حساب (`a`) یا اثرِ انگشتِ فرستنده (`s`). */
+const SMS_KEY_RE = '/^(c\d{4}|a\d{4}|s[0-9a-f]{8})$/';
+
+/** حساب‌هایی که پیامکِ بانک را یاد گرفته‌اند (برای «فراموش کن» در ویرایشِ حساب). */
+function smsLearnedWalletIds(int $userId): array
+{
+    if (!tableHasColumn('wallets', 'sms_keys')) { return []; }
+    $st = Database::getConnection()->prepare(
+        'SELECT id FROM wallets WHERE user_id = :u AND sms_keys IS NOT NULL'
+    );
+    $st->execute(['u' => $userId]);
+    return array_map('intval', $st->fetchAll(PDO::FETCH_COLUMN));
+}
+
+/**
+ * ⛔ «پیامک‌های یادگرفته‌ی این حساب را فراموش کن» — راهِ اصلاحِ انتخابِ اشتباه.
+ *    بعدش پیامکِ همان بانک دوباره حساب را می‌پرسد.
+ */
+function smsForgetWallet(int $userId, int $walletId): bool
+{
+    if (!tableHasColumn('wallets', 'sms_keys')) { return false; }
+    $st = Database::getConnection()->prepare(
+        'UPDATE wallets SET sms_keys = NULL WHERE id = :id AND user_id = :u AND sms_keys IS NOT NULL'
+    );
+    $st->execute(['id' => $walletId, 'u' => $userId]);
+    return $st->rowCount() === 1;
+}
+
+/** ستونِ `wallets.sms_keys` → فهرستِ پاک (هر چیزِ نامعتبر کنار می‌رود). */
+function smsKeysParse($raw): array
+{
+    $out = [];
+    foreach (explode(',', (string)$raw) as $k) {
+        $k = trim($k);
+        if ($k !== '' && preg_match(SMS_KEY_RE, $k) && !in_array($k, $out, true)) { $out[] = $k; }
     }
     return $out;
 }

@@ -937,6 +937,15 @@ function appMain() {
                 delete quickAddForm.dataset.smsBal;
             }
 
+            // ⛔ «یاد بگیر» فقط برای ثبتِ **دستیِ** همین پیامک (نه خودکار — آنجا
+            //    حساب از قبل قطعی بود)، و مثلِ مانده خوانده و **پاک** می‌شود.
+            var smsLearn = null;
+            if (quickAddForm.dataset.smsLearn) {
+                try { smsLearn = JSON.parse(quickAddForm.dataset.smsLearn); } catch (e) { smsLearn = null; }
+                delete quickAddForm.dataset.smsLearn;
+            }
+            if (auto) { smsLearn = null; }
+
             submitBtn.disabled = true;
             submitBtnText.textContent = 'در حال ثبت...';
 
@@ -975,6 +984,11 @@ function appMain() {
                             + ' تومان',
                             { ep: 'delete_transaction.php', field: 'transaction_id', value: data.id }
                         );
+                    }
+                    var chosen = String(formData.get('wallet_id') || '');
+                    if (smsLearn && /^[1-9][0-9]*$/.test(chosen)) {
+                        smsLearnWallet(chosen, smsLearn).then(function () { window.location.reload(); });
+                        return;
                     }
                     // ⛔ مانده‌ی پیامک فقط روی همان حسابی که پیامک نشان داد؛
                     //    اگر کاربر حساب را در فرم عوض کرده، دست نمی‌زنیم.
@@ -1516,6 +1530,37 @@ function appMain() {
         .catch(function () { return false; });
     }
 
+    /**
+     * ⛔ حسابی که کاربر برای یک پیامک انتخاب کرد → یاد گرفته می‌شود
+     *    (`SmsSync::learn()`) و «مانده»ی همان پیامک روی آن حساب می‌نشیند —
+     *    کاربر خودش گفت این پیامک مالِ این حساب است، پس مانده هم مالِ اوست.
+     *    نوار می‌گوید از این به بعد چه می‌شود.
+     */
+    function smsLearnWallet(walletId, learn) {
+        var fd = new FormData();
+        fd.set('csrf_token', smsCsrf());
+        fd.set('wallet_id', String(walletId));
+        fd.set('keys', (learn.keys || []).join(','));
+        return fetch(apiUrl('sms_learn.php'), {
+            method: 'POST', body: fd,
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (j) {
+            if (!j || !j.success) { return false; }
+            var sel = document.getElementById('wallet_select');
+            var opt = sel && sel.options[sel.selectedIndex];
+            var name = opt ? opt.textContent.trim() : '';
+            queueUndoBar('از این به بعد پیامک‌های همین بانک خودکار'
+                + (name ? ' در «' + name + '»' : ' در همین حساب') + ' ثبت می‌شوند.', null);
+            if (learn.b !== null && learn.b !== undefined) {
+                return smsPostBalance(walletId, learn.b, learn.d);
+            }
+            return true;
+        })
+        .catch(function () { return false; });
+    }
+
     // ---------- نوارِ «انجام شد — لغو» ----------
     //
     // ⛔ **یک نوار برای همه**: هم ثبتِ خودکار از پیامک، هم هر حذفی که
@@ -1875,7 +1920,7 @@ function appMain() {
                         smsMarkAuto(fp);
                         saved.push({ id: id, type: r.type, amount: r.amount });
                         if (r.balance !== null && r.balanceKnown
-                            && (m.how === 'card' || m.how === 'acct' || m.how === 'bank')) {
+                            && window.SMS_BALANCE_HOW.indexOf(m.how) !== -1) {
                             bal[m.id] = { b: r.balance, d: r.date || today };
                         }
                     }).catch(function () {
@@ -2028,7 +2073,7 @@ function appMain() {
                     // ⛔ مانده‌ی پیامک فقط وقتی حساب با شماره یا نامِ بانک
                     //    پیدا شده — همان شرطِ `smsProcessBatch()`.
                     if (r.balance !== null && r.balanceKnown
-                        && (match.how === 'card' || match.how === 'acct' || match.how === 'bank')) {
+                        && window.SMS_BALANCE_HOW.indexOf(match.how) !== -1) {
                         var dEl0 = document.getElementById('transaction_date');
                         quickAddForm.dataset.smsBal = JSON.stringify({
                             w: match.id, b: r.balance,
@@ -2044,7 +2089,45 @@ function appMain() {
                 // ⚠ چرا خودکار نشد **گفته می‌شود**. سکوت اینجا یعنی کاربر
                 //   کلید را روشن کرده و گاهی کار می‌کند و گاهی نه، بی‌آنکه
                 //   بفهمد چرا — و آن‌وقت نتیجه می‌گیرد کلید خراب است.
-                done.push('خودکار نشد (' + verdict.why + ')');
+                if (match.id || !walletEl) { done.push('خودکار نشد (' + verdict.why + ')'); }
+            }
+
+            // ⛔ «یک بار بپرس، بعد خودکار» (گزارشِ مالکِ نصب: «مگه نباید بپرسه
+            //    از چه حسابی برداشت شده و از دفعه بعد خودش وارد اون حساب کنه؟»).
+            //    حسابی که کاربر حالا انتخاب و ثبت می‌کند، با نشانه‌های همین
+            //    پیامک (`smsSourceKeys()`) یاد گرفته می‌شود — شنونده‌ی submit
+            //    بعد از ثبتِ موفق `api/sms_learn.php` را می‌زند و مانده‌ی پیامک
+            //    را روی همان حساب می‌گذارد. فقط نشانه‌ها می‌روند، نه متن.
+            var learnKeys = window.smsSourceKeys(ta.value, r);
+            if (quickAddForm && learnKeys.length) {
+                var dEl1 = document.getElementById('transaction_date');
+                quickAddForm.dataset.smsLearn = JSON.stringify({
+                    keys: learnKeys,
+                    b: r.balanceKnown && r.balance !== null ? r.balance : null,
+                    d: r.date || (dEl1 ? dEl1.defaultValue : '')
+                });
+            }
+            // ⛔ و حساب **واقعاً پرسیده می‌شود**: `<select>` پیش‌فرض اولین حساب را
+            //    دارد، پس بی‌این گزینه‌ی خالیِ اجباری، کاربری که فقط «ثبت» را زد
+            //    پیامکِ بلو را برای همیشه به حسابِ اول یاد می‌داد — و مانده‌ی
+            //    بانک را روی آن می‌نشاند.
+            var askWallet = !match.id && !!walletEl;
+            if (askWallet) {
+                var ph = walletEl.querySelector('option[value=""]');
+                if (!ph) {
+                    ph = document.createElement('option');
+                    ph.value = '';
+                    ph.textContent = '— این پیامک مالِ کدام حساب است؟ —';
+                    walletEl.insertBefore(ph, walletEl.firstChild);
+                }
+                walletEl.value = '';
+                walletEl.required = true;
+                walletEl.focus();
+                msg.classList.add('warn');
+                msg.textContent = 'این پیامک مالِ کدام حساب است؟ «از/به حساب» را انتخاب و ثبت کنید — '
+                    + 'از این به بعد پیامک‌های همین بانک خودکار در همان حساب ثبت می‌شوند. ('
+                    + done.join('، ') + ' پر شد.)';
+                return;
             }
 
             // ⚠ وقتی واحد در متن نبود و ریال **فرض** شده، پیام زرد است
@@ -2717,6 +2800,8 @@ function appMain() {
             var el = document.getElementById(id);
             if (el) el.value = '';
         });
+        var smsRow = document.getElementById('walletSmsForgetRow');
+        if (smsRow) { smsRow.hidden = true; document.getElementById('wallet_sms_forget').checked = false; }
         var kind = document.getElementById('wallet_kind');
         if (kind) kind.value = 'cash';
         var bcode = document.getElementById('wallet_bank_code');
@@ -3148,6 +3233,9 @@ function appMain() {
                 else { klNew.value = ''; }
                 walletKindLabelField();
             }
+
+            var smsRow = document.getElementById('walletSmsForgetRow');
+            if (smsRow) { smsRow.hidden = this.getAttribute('data-sms-learned') !== '1'; }
 
             var extra = document.getElementById('walletExtraActions');
             extra.hidden = false;

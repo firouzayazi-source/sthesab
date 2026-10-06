@@ -6443,8 +6443,8 @@ if ($batch65 === '') {
     if (str_contains($batch65, 'openWithSms(') || str_contains($batch65, "classList.add('show')")) {
         $qBad[] = 'app.js — صف شیتِ ثبت را خودش باز می‌کند';
     }
-    // ⛔ مانده فقط وقتی حساب با شماره یا نامِ بانک پیدا شده — نه «تک‌حساب».
-    if (!str_contains($batch65, "(m.how === 'card' || m.how === 'acct' || m.how === 'bank')")) {
+    // ⛔ مانده فقط وقتی حساب با نشانه‌ی خودِ پیامک پیدا شده — نه «تک‌حساب».
+    if (!str_contains($batch65, "window.SMS_BALANCE_HOW.indexOf(m.how) !== -1")) {
         $qBad[] = 'app.js — مانده‌ی پیامک بدونِ تطبیقِ واقعیِ حساب روی حساب می‌نشیند';
     }
     if (!str_contains($batch65, 'window.smsAutoOk(') || !str_contains($batch65, 'window.smsMatchWallet(')) {
@@ -6475,6 +6475,13 @@ if (!str_contains($core65, 'window.smsMatchWallet = function') || str_contains($
     || str_contains($js65, 'window.smsMatchWallet = function')) {
     $qBad[] = 'sms-core.js — smsMatchWallet تنها در هسته‌ی خالص نیست (در node آزمودنی نمی‌ماند)';
 }
+// ⛔ فهرستِ «مانده روی حساب می‌نشیند» در هسته و سرور یکی است و `single` ندارد.
+require_once __DIR__ . '/../includes/sms_sync.php';
+$bh65 = preg_match("~window\.SMS_BALANCE_HOW = \[([^\]]*)\];~", $core65, $bhm)
+    ? array_map(static fn($x) => trim($x, " '\""), explode(',', $bhm[1])) : [];
+if ($bh65 !== SmsSync::BALANCE_HOW || in_array('single', $bh65, true)) {
+    $qBad[] = 'sms-core.js/sms_sync.php — SMS_BALANCE_HOW با SmsSync::BALANCE_HOW یکی نیست (یا تک‌حساب مانده می‌گیرد)';
+}
 $sheet65 = (string)@file_get_contents(__DIR__ . '/../includes/add_tx_sheet.php');
 if (!str_contains($sheet65, 'window.SMS_WALLETS = <?= json_encode($__smsWallets')) {
     $qBad[] = 'add_tx_sheet.php — نشانه‌های حساب (walletSmsKeys) به صفحه نمی‌رسد';
@@ -6486,7 +6493,41 @@ $wkBody = $wk65 === false ? '' : substr($fn65, $wk65, 3000);
 if ($wkBody === '' || !str_contains($wkBody, 'substr($digits, -4)')) {
     $qBad[] = 'functions.php — walletSmsKeys بیش از چهار رقمِ آخر بیرون می‌دهد';
 }
-T::bulk(11, $qBad, 'صف بی‌صدا ثبت می‌کند، نامطمئن را فقط روی خانه نگه می‌دارد');
+T::bulk(12, $qBad, 'صف بی‌صدا ثبت می‌کند، نامطمئن را فقط روی خانه نگه می‌دارد');
+
+// ⛔ «یک بار بپرس، بعد خودکار» (گزارشِ مالکِ نصب: «مگه نباید بپرسه از چه
+//    حسابی و از دفعه بعد خودش وارد اون حساب کنه؟»). منطق در `SmsSync::learn()`
+//    و `smsSourceKeys()` است و آنجا آزموده می‌شود؛ این‌جا فقط سیم‌کشیِ صفحه.
+$lBad = [];
+$goAt = strpos($js65, "go.addEventListener('click'");
+$goEnd = $goAt === false ? false : strpos($js65, '// ---- انتخابِ یک عنوانِ قبلی', $goAt);
+$goBody = $goAt === false || $goEnd === false ? '' : substr($js65, $goAt, $goEnd - $goAt);
+// حساب واقعاً پرسیده می‌شود: گزینه‌ی خالیِ اجباری، نه «اولین حساب» بی‌صدا.
+if (!str_contains($goBody, "walletEl.value = '';") || !str_contains($goBody, 'walletEl.required = true;')) {
+    $lBad[] = 'app.js — پیامکِ بی‌حساب حساب را نمی‌پرسد (اولین حساب بی‌صدا یاد گرفته می‌شود)';
+}
+if (!str_contains($goBody, 'window.smsSourceKeys(ta.value, r)') || !str_contains($goBody, 'quickAddForm.dataset.smsLearn')) {
+    $lBad[] = 'app.js — ثبتِ دستیِ پیامک نشانه‌ها را برای یادگیری نگه نمی‌دارد';
+}
+$subAt = strpos($js65, "quickAddForm.addEventListener('submit'");
+$subBody = $subAt === false ? '' : substr($js65, $subAt, 16000);
+if (!str_contains($subBody, 'if (auto) { smsLearn = null; }') || !str_contains($subBody, 'smsLearnWallet(chosen, smsLearn)')) {
+    $lBad[] = 'app.js — بعد از ثبت یاد گرفته نمی‌شود (یا ثبتِ خودکار هم «یاد» می‌دهد)';
+}
+if (!preg_match("~function smsLearnWallet\(.*?apiUrl\('sms_learn\.php'\).*?smsPostBalance\(walletId~s", $js65)) {
+    $lBad[] = 'app.js — smsLearnWallet به sms_learn.php نمی‌رود یا مانده را روی حسابِ انتخاب‌شده نمی‌گذارد';
+}
+$learnApi = (string)@file_get_contents(__DIR__ . '/../api/sms_learn.php');
+if (!str_contains($learnApi, 'SmsSync::learn($userId, $walletId, $keys)') || str_contains($learnApi, "postParam('text')")) {
+    $lBad[] = 'api/sms_learn.php — یادگیری از SmsSync::learn نیست (یا متن می‌گیرد)';
+}
+$sw65 = (string)@file_get_contents(__DIR__ . '/../api/save_wallet.php');
+$wp65 = (string)@file_get_contents(__DIR__ . '/../wallets.php');
+if (!str_contains($sw65, "if (postParam('sms_forget') === '1') { smsForgetWallet(\$userId, \$walletId); }")
+    || !str_contains($wp65, 'name="sms_forget"') || !str_contains($wp65, 'data-sms-learned=')) {
+    $lBad[] = 'wallets.php/save_wallet.php — راهِ «فراموش کن» برای انتخابِ اشتباه نیست';
+}
+T::bulk(6, $lBad, '«یک بار بپرس، بعد خودکار»: حساب پرسیده، یاد گرفته و قابلِ فراموشی است');
 
 // ---------------------------------------------------------------
 // قاعده ۶۶ — خرید امانی/نسیه و فروش نسیه: پول تکان نمی‌خورد، طلب/بدهی

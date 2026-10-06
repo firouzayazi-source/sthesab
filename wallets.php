@@ -11,6 +11,7 @@ $userId = Auth::userId();
 $todayStr = today();
 
 $wallets = walletBalances($userId);
+$__smsLearned = smsLearnedWalletIds($userId);
 $total   = 0;
 foreach ($wallets as $__w) {
     if ((int)$__w['is_active'] === 1) { $total += (int)$__w['balance']; }
@@ -161,6 +162,7 @@ include __DIR__ . '/includes/header.php';
                     data-color="<?= h($w['color']) ?>"
                     data-init="<?= (int)$w['initial_balance'] ?>"
                     data-active="<?= (int)$w['is_active'] ?>"
+                    data-sms-learned="<?= in_array((int)$w['id'], $__smsLearned, true) ? '1' : '0' ?>"
                     aria-label="ویرایش">
                     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg>
                 </button>
@@ -312,6 +314,15 @@ include __DIR__ . '/includes/header.php';
                     <label for="wallet_color">رنگ</label>
                     <input type="color" id="wallet_color" name="color" value="#16794f">
                 </div>
+            </div>
+
+            <div class="form-group" id="walletSmsForgetRow" hidden>
+                <label class="switch">
+                    <input type="checkbox" name="sms_forget" value="1" id="wallet_sms_forget">
+                    <span class="switch-track"><span class="switch-knob"></span></span>
+                    <span class="switch-text">فراموش کردنِ پیامک‌های بانکِ یادگرفته</span>
+                </label>
+                <p class="hint">پیامکِ بانکی که خودکار در این حساب ثبت می‌شد، دوباره می‌پرسد مالِ کدام حساب است.</p>
             </div>
 
             <div id="walletMessage" class="form-message" hidden></div>
