@@ -56,6 +56,7 @@ const STORE_BUDGET = [
     'store/parties.php'  => 9,
     'store/party.php'    => 8,
     'store/products-io.php'    => 5,
+    'store/import.php'         => 4,   // ورود از نرم‌افزارِ دیگر — بی‌پیش‌نمایش (همان پوسته)
     'store/products-cleanup.php' => 6,
     'store/invoice-design.php'   => 9,   // لوگو + آخرین فاکتور + دو سنجشِ migration
     'store/reports.php'        => 15,

@@ -84,7 +84,7 @@ final class Biz
                        'payroll.php' => 'حقوق و مساعده'],
         'گزارش‌ها' => ['reports.php' => 'گزارش‌ها و چاپ', 'accounting.php' => 'دفاتر و مالیات'],
         'سیستم'    => ['settings.php' => 'تنظیمات فروشگاه', 'invoice-design.php' => 'طراحی فاکتور', 'print-settings.php' => 'تنظیمات چاپ',
-                       'products-io.php' => 'ورود و خروجِ اکسل'],
+                       'import.php' => 'ورود و خروجِ اطلاعات'],
     ];
 
     /**
@@ -110,6 +110,8 @@ final class Biz
         // رمز و بکاپ — از منوی پروفایل (بالای صفحه)، زیرِ «تنظیمات»
         'account.php'      => 'settings.php',
         'cash-count.php'   => 'accounts.php',
+        // دریافتِ کالا از سایت — زیرِ «ورود و خروجِ اطلاعات»
+        'products-io.php'  => 'import.php',
     ];
 
     /**
@@ -278,7 +280,7 @@ final class Biz
             'index.php'          => '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
             'search.php'         => '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',
             'products.php'       => '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
-            'products-io.php'    => '<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
+            'import.php'         => '<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
             'parties.php'        => '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7"/><path d="M18 14a6 6 0 0 1 3.5 6"/>',
             'reports.php'        => '<path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M22 20H2"/>',
             'settings.php'       => '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3.1 15H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 4.1V4a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',

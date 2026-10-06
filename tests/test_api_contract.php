@@ -6877,7 +6877,7 @@ foreach (array_merge($storeFiles70, [__DIR__ . '/../includes/biz_head.php', __DI
 foreach (array_merge($storeFiles70, [__DIR__ . '/../includes/biz_catalog.php', __DIR__ . '/../includes/biz_io.php',
                                      __DIR__ . '/../includes/biz_print.php', __DIR__ . '/../includes/biz_docs.php',
                                      __DIR__ . '/../includes/biz_docview.php', __DIR__ . '/../includes/biz_reports.php',
-                                     __DIR__ . '/../includes/biz_dash.php']) as $f) {
+                                     __DIR__ . '/../includes/biz_dash.php', __DIR__ . '/../includes/biz_migrate.php']) as $f) {
     $src = $strip70((string)file_get_contents($f));
     if (preg_match('/walletBalances|totalBalance|activeWallets|\b(?:FROM|JOIN|INTO|UPDATE)\s+`?(?:transactions|wallets|transfers|debts|debt_payments|cheques|trades|trade_sales|assets)\b/i', $src, $pm)) {
         $bBad[] = basename(dirname($f)) . '/' . basename($f) . " — به دفترِ شخصی دست می‌زند ({$pm[0]})";
@@ -7023,6 +7023,31 @@ foreach (array_merge(glob(__DIR__ . '/../*.php') ?: [], glob(__DIR__ . '/../stor
 }
 if (!str_contains($io70, "strpbrk(\$s[0], '=+-@') !== false ? \"'\" . \$s : \$s")) {
     $bBad[] = 'biz_io.php — CSVِ خروجی فرمولِ تزریقی (= + - @) را خنثی نمی‌کند';
+}
+// ⛔ ورود از نرم‌افزارِ دیگر (`BizMigrate`): هر نوشتن از راهِ همان فرم —
+//    `BizParties::save()`، `BizCash::save()`، `BizPay::createTx()` و جبرانِ
+//    `BizParties::shiftOpening()`؛ تنها UPDATEِ مستقیم پرچمِ `opening_import`
+//    روی چکی است که همان‌جا ساخته شد. ثبتِ چک و جبرانش یک تراکنش‌اند، و مانده‌ی
+//    شخصِ سنددار از فایل بازنویسی نمی‌شود.
+$mg70 = $strip70((string)@file_get_contents(__DIR__ . '/../includes/biz_migrate.php'));
+preg_match_all('/\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+`?(\w+)`?\s*(?:SET\s+(\w+))?/i', $mg70, $mgw, PREG_SET_ORDER);
+$mgWrites = array_map(fn($m) => $m[1] . '.' . ($m[2] ?? ''), $mgw);
+if ($mgWrites !== ['biz_payments.opening_import']) {
+    $bBad[] = 'biz_migrate.php — جز پرچمِ opening_import مستقیم می‌نویسد: ' . json_encode($mgWrites);
+}
+foreach (['BizParties::save($userId, $in,', 'BizCash::save($userId, [', 'BizPay::createTx($pdo, $userId, [', 'BizParties::shiftOpening($pdo, $userId,',
+          'BizImport::plan($userId, $rows, $opts)', 'BizImport::apply($userId, $plan, $opts)'] as $need) {
+    if (!str_contains($mg70, $need)) { $bBad[] = "biz_migrate.php — «{$need}» نیست؛ نوشتن باید از راهِ همان فرم باشد"; }
+}
+if (!preg_match('/private static function applyCheque\(.*?beginTransaction\(\);\s*Biz::lockShop\(\$pdo, \$userId\);.*?createTx.*?shiftOpening.*?\$pdo->commit\(\);/s', $mg70)) {
+    $bBad[] = 'biz_migrate.php — ثبتِ چک و جبرانِ اول دوره در یک تراکنشِ قفل‌دار نیستند';
+}
+if (substr_count($mg70, "isset(\$withDocs[\$id])") !== 2) {
+    $bBad[] = 'biz_migrate.php — مانده‌ی شخص/صندوقِ سنددار از فایل بازنویسی می‌شود';
+}
+$imp70 = $strip70((string)@file_get_contents(__DIR__ . '/../store/import.php'));
+if (substr_count($imp70, 'BizMigrate::apply(') !== 1 || !preg_match("/if \(\\\$action === 'apply'\) \{.*?BizMigrate::load\(\\\$userId\).*?BizMigrate::apply\(/s", $imp70)) {
+    $bBad[] = 'import.php — ثبت باید فقط از گامِ «ثبت نهایی» و روی پیش‌نمایشِ ذخیره‌شده باشد';
 }
 $pio70 = $strip70((string)file_get_contents(__DIR__ . '/../store/products-io.php'));
 if (substr_count($pio70, 'BizImport::apply(') !== 1 || !preg_match("/if \(\\\$action === 'apply'\) \{.*?BizImport::load\(\\\$userId\).*?BizImport::apply\(/s", $pio70)) {
@@ -7178,7 +7203,7 @@ if (!str_contains((string)file_get_contents(__DIR__ . '/../store/print.php'), "\
     $bBad[] = 'store/print.php — مانده‌ی قبلی باید پشتِ کلیدِ show_balance ِ طراحیِ فاکتور باشد';
 }
 
-T::bulk(81, $bBad, 'محیطِ فروشگاهی: دروازه‌ی بی‌کوئری، سه نوعِ حساب، تنها نویسنده، دفترِ جدا از پولِ شخصی، و طرفِ شخصیِ دست‌نخورده');
+T::bulk(86, $bBad, 'محیطِ فروشگاهی: دروازه‌ی بی‌کوئری، سه نوعِ حساب، تنها نویسنده، دفترِ جدا از پولِ شخصی، و طرفِ شخصیِ دست‌نخورده');
 
 // =================================================================
 // قاعده ۷۰ب — دفترِ چکِ فروشگاه (`BizCheques`). رفتار در test_store_cheques

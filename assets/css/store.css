@@ -1043,6 +1043,15 @@ html.st-locked, html.st-locked body { overflow: hidden; }
 
 /* ---------- ورود و خروجِ کالا ---------- */
 .st-io-opts { margin: 4px 0 14px; gap: 8px; }
+/* تطبیقِ ستون‌ها (ورود از نرم‌افزارِ دیگر): منوی هر ستون تمام‌عرض، نمونه کم‌رنگ */
+.st-map-table select {
+    width: 100%; min-width: 150px; font: inherit; font-size: 13.5px; color: var(--st-ink);
+    background: var(--st-surface); border: 1px solid var(--st-line-2); border-radius: var(--st-radius-sm);
+    padding: 6px 10px; min-height: 36px;
+}
+.st-map-table select:focus { outline: none; border-color: var(--st-accent); box-shadow: var(--st-ring); }
+.st-map-table td { vertical-align: middle; }
+.st-field-inline { max-width: 220px; }
 
 /* ---------- ویرایشگرِ سند ---------- */
 .st-sumrow {

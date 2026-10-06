@@ -144,6 +144,7 @@ MIGRATIONS=(
     migration_biz_hardening.sql
     migration_biz_accounting.sql
     migration_sms_sync.sql
+    migration_biz_import.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -358,6 +359,7 @@ declare -A SENTINEL=(
     # ⚠ شاهدش داده است: آن `INSERT` آخرین کارِ فایل است (پس از هفت تغییرِ ساختار)
     [migration_biz_accounting.sql]="app_settings~setting_key=biz_accounting_seeded"
     [migration_sms_sync.sql]="sms_posted"
+    [migration_biz_import.sql]="biz_payments.opening_import"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

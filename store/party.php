@@ -33,7 +33,10 @@ $form = [
     'national_id'    => (string)($party['national_id'] ?? ''),
     'economic_code'  => (string)($party['economic_code'] ?? ''),
     'postal_code'    => (string)($party['postal_code'] ?? ''),
+    'code'           => (string)($party['code'] ?? ''),
 ];
+// ⚠ همان شگرد: ردیفِ موجود می‌گوید ستونِ «کد» آمده یا نه
+$hasPcode = $party ? array_key_exists('code', $party) : BizParties::hasPartyCode();
 // ردیفِ موجود (`p.*`) خودش می‌گوید ستون‌ها آمده‌اند — بی‌کوئریِ نقشه‌ی ساختار
 $hasCodes = $party ? array_key_exists('economic_code', $party) : BizParties::hasCodes();
 
@@ -145,6 +148,12 @@ require __DIR__ . '/../includes/biz_head.php';
             <?php endforeach; ?>
         </div>
     </fieldset>
+    <?php if ($hasPcode): ?>
+    <label class="st-field">
+        <span>کدِ طرف‌حساب <small class="st-muted">(اختیاری — همان کدِ نرم‌افزارِ قبلی؛ ورود از فایل با آن تطبیق می‌دهد)</small></span>
+        <input type="text" name="code" dir="ltr" maxlength="<?= BizParties::CODE_MAX ?>" value="<?= h((string)$form['code']) ?>">
+    </label>
+    <?php endif; ?>
     <div class="st-row2">
         <label class="st-field">
             <span>تلفن <small class="st-muted">(اختیاری)</small></span>

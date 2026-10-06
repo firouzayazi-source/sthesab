@@ -1384,6 +1384,51 @@ final class BizParties
         return function_exists('tableHasColumn') && tableHasColumn('biz_parties', 'economic_code');
     }
 
+    /** طولِ «کدِ طرف‌حساب» (migration_biz_import). */
+    public const CODE_MAX = 30;
+
+    /** ستونِ «کدِ طرف‌حساب» آمده؟ (migration_biz_import) */
+    public static function hasPartyCode(): bool
+    {
+        return function_exists('tableHasColumn') && tableHasColumn('biz_parties', 'code');
+    }
+
+    /**
+     * ⛔ جبرانِ چک‌های در جریانِ واردشده (`biz_payments.opening_import`) —
+     *    مقداری که **رویِ** مانده‌ی فایلِ نرم‌افزارِ قبلی به مانده‌ی اول دوره
+     *    افزوده شده: دریافتیِ c مانده را c کم می‌کند، پس اول دوره c بالاتر است
+     *    (پرداختی برعکس). وضعیتِ چک مهم نیست — چکِ برگشتی باطل می‌شود و بدهی
+     *    درست برمی‌گردد، چون جبران سرِ جایش است.
+     */
+    public static function chequeComp(int $userId, int $partyId): int
+    {
+        if (!tableHasColumn('biz_payments', 'opening_import')) { return 0; }
+        $st = Database::getConnection()->prepare(
+            "SELECT COALESCE(SUM(CASE kind WHEN 'receipt' THEN amount WHEN 'payment' THEN -amount ELSE 0 END), 0)
+             FROM biz_payments WHERE user_id = :u AND party_id = :p AND opening_import = 1"
+        );
+        $st->execute(['u' => $userId, 'p' => $partyId]);
+        return (int)$st->fetchColumn();
+    }
+
+    /**
+     * ⛔ تنها جابه‌جاییِ مانده‌ی اول دوره **بیرون از فرم** — جبرانِ چکِ
+     *    واردشده، داخلِ همان تراکنشِ ثبتِ چک. همان سدِ دوره‌ی بسته‌ی `save()`.
+     * @return ?string پیامِ خطا یا null
+     */
+    public static function shiftOpening(PDO $pdo, int $userId, int $partyId, int $delta): ?string
+    {
+        $cur = self::get($userId, $partyId);
+        if (!$cur) { return 'طرف‌حساب پیدا نشد.'; }
+        if (($e = Biz::lockError($userId, BizCommon::earliest([substr((string)$cur['created_at'], 0, 10),
+                self::firstDocDate($userId, $partyId)]), 'مانده‌ی اول دوره‌ی این طرف‌حساب')) !== null) {
+            return $e;
+        }
+        $pdo->prepare('UPDATE biz_parties SET opening_balance = opening_balance + :d WHERE id = :id AND user_id = :u')
+            ->execute(['d' => $delta, 'id' => $partyId, 'u' => $userId]);
+        return null;
+    }
+
     /**
      * ⛔ تنها تعریفِ «مانده‌ی یک طرف‌حساب» — فهرست، صافیِ بدهکار/طلبکار،
      *    داشبورد، صورت‌حساب و چاپ همه از همین.
@@ -1608,6 +1653,21 @@ final class BizParties
             if (!$c['ok']) { return ['ok' => false, 'message' => $c['message']]; }
             $codes[$ck] = $c['value'];
         }
+        // ⛔ «کدِ طرف‌حساب» — فقط اگر فرستاده شده (همان قاعده‌ی کدهای رسمی) و
+        //    یکتا در همین فروشگاه: کلیدِ تطبیقِ ورود از فایل است و دو شخص با
+        //    یک کد یعنی ورودِ بعدی مانده‌ی یکی را روی دیگری می‌نشاند.
+        $pcode = null;
+        $hasPcode = array_key_exists('code', $in) && self::hasPartyCode();
+        if ($hasPcode) {
+            $pcode = BizCommon::line(toLatinDigits((string)$in['code']));
+            if (mb_strlen($pcode) > self::CODE_MAX) { return ['ok' => false, 'message' => 'کدِ طرف‌حساب بیش از ' . self::CODE_MAX . ' نویسه است.']; }
+            if ($pcode !== '') {
+                $dup = Database::getConnection()->prepare('SELECT name FROM biz_parties WHERE user_id = :u AND code = :c AND id <> :id LIMIT 1');
+                $dup->execute(['u' => $userId, 'c' => $pcode, 'id' => $id]);
+                $other = $dup->fetchColumn();
+                if ($other !== false) { return ['ok' => false, 'message' => 'کدِ «' . $pcode . '» مالِ «' . $other . '» است؛ کدِ طرف‌حساب یکتاست.']; }
+            }
+        }
 
         $pdo = Database::getConnection();
         $row = ['u' => $userId, 'n' => $name, 'k' => $kind, 'ph' => $phone === '' ? null : $phone,
@@ -1639,6 +1699,10 @@ final class BizParties
         if (self::hasCodes() && array_intersect_key($in, array_flip(self::CODE_KEYS))) {
             $pdo->prepare('UPDATE biz_parties SET national_id = :ni, economic_code = :ec, postal_code = :pc WHERE id = :id AND user_id = :u')
                 ->execute(['ni' => $codes['national_id'], 'ec' => $codes['economic_code'], 'pc' => $codes['postal_code'], 'id' => $id, 'u' => $userId]);
+        }
+        if ($hasPcode) {
+            $pdo->prepare('UPDATE biz_parties SET code = :c WHERE id = :id AND user_id = :u')
+                ->execute(['c' => $pcode === '' ? null : $pcode, 'id' => $id, 'u' => $userId]);
         }
         return ['ok' => true, 'message' => 'طرف‌حساب ذخیره شد.', 'id' => $id];
     }
