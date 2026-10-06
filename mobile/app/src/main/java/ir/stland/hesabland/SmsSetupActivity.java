@@ -254,6 +254,14 @@ public class SmsSetupActivity extends AppCompatActivity {
         });
         root.addView(restricted);
 
+        TextView share = new TextView(this);
+        share.setText(R.string.sms_share_help);
+        share.setTextColor(Color.parseColor("#8C93A0"));
+        share.setTextSize(13);
+        share.setGravity(Gravity.END);
+        share.setPadding(0, 0, 0, 16);
+        root.addView(share);
+
         Button test = new Button(this);
         test.setText(R.string.sms_test);
         test.setOnClickListener(new View.OnClickListener() {

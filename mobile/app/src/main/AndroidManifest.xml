@@ -124,6 +124,14 @@
                 android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR"
                 android:resource="@color/colorPrimary"/>
 
+            <!-- ⛔ «اشتراک‌گذاری» از اپِ پیامک → حساب‌لند (`takeShared()`): روشی که
+                 در هر گوشی و بی‌هیچ مجوزی کار می‌کند. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="text/plain"/>
+            </intent-filter>
+
             <!-- ⚠ صفحه‌ی راه‌اندازیِ تصویری عمداً اضافه نشده.
                  کتابخانه برای آن به یک FileProvider و فایل filepaths.xml
                  هم نیاز دارد تا تصویر را به کروم بدهد — سه قطعه‌ی به‌هم‌

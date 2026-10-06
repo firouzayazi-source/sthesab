@@ -133,6 +133,10 @@ public class HesabLauncherActivity extends LauncherActivity {
         //    تازه می‌رود — **فقط وقتی پیامکِ تازه‌ای هست**؛ وگرنه هر تپ
         //    روی آیکون صفحه را به خانه برمی‌گرداند.
         if (saved == null) {
+            // ⛔ «اشتراک‌گذاری» از اپِ پیامک — راهی که **در هر گوشی** کار می‌کند،
+            //    حتی بی‌هیچ مجوزی (اپِ نصب‌شده از بیرونِ فروشگاه که اندروید
+            //    مجوزِ پیامکش را بسته). متن در **فرگمنت** می‌رود، مثلِ اعلان.
+            try { takeShared(); } catch (Throwable ignored) { }
             try {
                 Intent it = getIntent();
                 Uri base = it.getData() != null ? it.getData()
@@ -167,6 +171,36 @@ public class HesabLauncherActivity extends LauncherActivity {
         } catch (Throwable ignored) { }
         u = withSmsLink(u);
         return withAppVersion(u);
+    }
+
+    /**
+     * ⛔ **کارِ پنجم: پیامکِ اشتراک‌گذاشته** (`ACTION_SEND`، `text/plain`).
+     *
+     *    روشِ همه‌ی اپ‌های پیامک‌خوان برای گوشی‌ای که مجوز ندارد: در اپِ
+     *    پیامک، پیامکِ بانک را نگه دارید ← «اشتراک‌گذاری» ← حساب‌لند. متن به
+     *    همان `#sms=`ِ اعلان تبدیل می‌شود (فرگمنت، نه query — قاعده ۱۹) و
+     *    intent دیگر «SEND» نیست تا کتابخانه آن را «هدفِ اشتراکِ وب» نپندارد.
+     * ⚠ سقفِ طول: یک پیامک، نه یک کتاب — متنِ بلندتر بریده می‌شود.
+     */
+    static final int SHARE_MAX = 1000;
+
+    private void takeShared() throws Exception {
+        Intent it = getIntent();
+        if (it == null || !Intent.ACTION_SEND.equals(it.getAction())) { return; }
+        CharSequence cs = it.getCharSequenceExtra(Intent.EXTRA_TEXT);
+        String text = cs == null ? "" : cs.toString().trim();
+        Intent copy = new Intent(it);
+        copy.setAction(Intent.ACTION_VIEW);
+        copy.removeExtra(Intent.EXTRA_TEXT);
+        copy.setType(null);
+        Uri base = Uri.parse(getString(R.string.launch_url));
+        if (!text.isEmpty()) {
+            if (text.length() > SHARE_MAX) { text = text.substring(0, SHARE_MAX); }
+            String enc = URLEncoder.encode(text, "UTF-8").replace("+", "%20");
+            base = base.buildUpon().encodedFragment("sms=" + enc).build();
+        }
+        copy.setData(base);
+        setIntent(copy);
     }
 
     /**

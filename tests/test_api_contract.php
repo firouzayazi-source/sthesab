@@ -1040,6 +1040,13 @@ if (!file_exists($gradlePath)) {
             || substr_count($nsBody, '>= MAX_ASKS') + substr_count($nsBody, 'if (b >= 1)') < 2) {
             $lauBad[] = 'HesabLauncherActivity — nextStep(): راهنمای پیامک یا دیالوگِ باتری (با سقف) نیست';
         }
+        // ⛔ «اشتراک‌گذاری» از اپِ پیامک: در هر گوشی، بی‌مجوز — متن فقط در
+        //    فرگمنت، intent دیگر SEND نیست، و پیش از super.onCreate
+        if (!preg_match('~private void takeShared\(\).*?Intent\.ACTION_SEND\.equals.*?copy\.setAction\(Intent\.ACTION_VIEW\).*?encodedFragment\("sms=" \+ enc\)~s', $lauNC)
+            || !preg_match('~protected void onCreate\(.*?takeShared\(\).*?super\.onCreate\(saved\)~s', $lauNC)
+            || !preg_match('~\.HesabLauncherActivity".*?<action android:name="android\.intent\.action\.SEND"/>.*?android:mimeType="text/plain"~s', $mf)) {
+            $lauBad[] = 'HesabLauncherActivity — «اشتراک‌گذاریِ پیامک» (SEND → #sms=) نیست یا متن بیرون از فرگمنت می‌رود';
+        }
         $oar = strpos($lauNC, 'protected void onActivityResult(');
         if ($oar === false || !str_contains(substr($lauNC, $oar, 700), 'launchTwa();')) {
             $lauBad[] = 'HesabLauncherActivity — بعد از راهنما/باتری launchTwa() صدا زده نمی‌شود؛ اپ باز نمی‌شود';
@@ -1068,7 +1075,7 @@ if (!file_exists($gradlePath)) {
     if (preg_match_all('~putBoolean\(\s*BankSmsReceiver\.PREF_ON\s*,\s*false\s*\)~', $setNC) > 1) {
         $lauBad[] = 'SmsSetupActivity — ردِ مجوز کلید را خاموش می‌کند';
     }
-    T::bulk(18, $lauBad, 'مجوز در اولین اجرا پرسیده می‌شود و ثبتِ خودکار پیش‌فرض روشن است');
+    T::bulk(19, $lauBad, 'مجوز در اولین اجرا پرسیده می‌شود و ثبتِ خودکار پیش‌فرض روشن است');
 
     // آدرسِ باز شونده باید روی همان دامنه‌ای باشد که intent-filter
     // تأییدش می‌کند؛ وگرنه اپ صفحه‌ای را باز می‌کند که برایش تأیید ندارد.
