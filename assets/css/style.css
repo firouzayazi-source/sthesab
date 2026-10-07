@@ -2331,6 +2331,14 @@ html[data-theme="dark"] .balance-ribbon { box-shadow: none; }
 /* اسکرول روان‌تر و بدون کشسانی مزاحم داخل شیت‌ها */
 .sheet, .more-sheet { overscroll-behavior: contain; }
 
+/* ⛔ شیت هرگز بلندتر از لایه‌اش نیست. با کیبوردِ باز، `fitOverlaysToKeyboard()`
+   لایه را به اندازه‌ی viewport دیداری کوتاه می‌کند؛ بی‌این، شیت با همان ۹۰dvh
+   از بالای لایه بیرون می‌زد و پایینش زیرِ کیبورد می‌ماند (اندروید). */
+@media (max-width: 900px) {
+    .sheet-overlay > .sheet { max-height: min(90dvh, 100%); }
+    .more-sheet-overlay > .more-sheet { max-height: min(82dvh, 100%); }
+}
+
 /* جلوگیری از پرش چیدمان وقتی نوار اسکرول ظاهر می‌شود */
 html { scrollbar-gutter: stable; }
 

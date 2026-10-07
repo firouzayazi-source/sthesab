@@ -463,6 +463,32 @@ if ('serviceWorker' in navigator) {
  * ⚠ بیرون از `DOMContentLoaded` است تا در node آزمودنی باشد — همان
  *   قاعده‌ی `parseBankSms()` و `kbNeedsKeyboard()`.
  */
+/**
+ * ⛔ دکمه‌ی «برگشت»ِ اندروید **لایه‌ی باز را می‌بندد**، نه صفحه را — گزارشِ
+ *    مالکِ نصب (مهر ۱۴۰۵): «منو میاد روی صفحه قبلی … انگار صفحه بسته میشه و
+ *    خیلی سخت از اونجا میتونم بیام بیرون». هر شیت/مودالی که باز می‌شود یک
+ *    خانه در تاریخچه می‌گذارد (`watchOverlays()`)، و «برگشت» همان را برمی‌دارد.
+ *
+ * ⛔ پس **هر** تازه‌سازیِ صفحه از این راه است، نه `location.reload()`ِ خام:
+ *    بیشترِ ثبت‌ها با شیتِ هنوز باز صفحه را تازه می‌کنند؛ با تازه‌سازیِ خام آن
+ *    خانه‌ی تاریخچه می‌ماند و کاربر برای بیرون رفتن **دو بار** «برگشت» می‌زد
+ *    (بارِ اول همان صفحه دوباره بار می‌شد). اینجا اول خانه برداشته می‌شود،
+ *    بعد تازه‌سازی.
+ */
+window.OVERLAY_STATE = 'hlOverlay';
+window.reloadPage = function () {
+    var st = window.history ? window.history.state : null;
+    if (st && st[window.OVERLAY_STATE]) {
+        window.__hlReloading = true;
+        window.addEventListener('popstate', function () { window.location.reload(); }, { once: true });
+        window.history.back();
+        // ⚠ اگر «برگشت» هیچ رویدادی نداد (تاریخچه‌ی خالی)، تازه‌سازی گم نشود.
+        setTimeout(function () { window.location.reload(); }, 700);
+        return;
+    }
+    window.location.reload();
+};
+
 window.skeletonHtml = function (rows) {
     var n = Math.max(1, Math.min(6, parseInt(rows, 10) || 1));
     var out = '<div class="skel" role="status" aria-busy="true"><span class="sr-only">در حال بارگذاری…</span>';
@@ -987,17 +1013,17 @@ function appMain() {
                     }
                     var chosen = String(formData.get('wallet_id') || '');
                     if (smsLearn && /^[1-9][0-9]*$/.test(chosen)) {
-                        smsLearnWallet(chosen, smsLearn).then(function () { window.location.reload(); });
+                        smsLearnWallet(chosen, smsLearn).then(function () { window.reloadPage(); });
                         return;
                     }
                     // ⛔ مانده‌ی پیامک فقط روی همان حسابی که پیامک نشان داد؛
                     //    اگر کاربر حساب را در فرم عوض کرده، دست نمی‌زنیم.
                     if (smsBal && String(formData.get('wallet_id')) === String(smsBal.w)) {
                         smsPostBalance(smsBal.w, smsBal.b, smsBal.d)
-                            .then(function () { window.location.reload(); });
+                            .then(function () { window.reloadPage(); });
                         return;
                     }
-                    window.location.reload();
+                    window.reloadPage();
                 } else {
                     formMessage.classList.add('show', 'error');
                     formMessage.textContent = data.message || 'خطایی رخ داد. دوباره تلاش کنید.';
@@ -1036,7 +1062,7 @@ function appMain() {
                 e.preventDefault();
                 post(apiUrl('save_reminder.php'), reminderForm)
                     .then(function (d) {
-                        if (d.success) { window.location.reload(); }
+                        if (d.success) { window.reloadPage(); }
                         else { alert(d.message || 'ذخیره نشد.'); }
                     })
                     .catch(function () { alert(netErr()); });
@@ -1247,7 +1273,7 @@ function appMain() {
                 });
             });
             if (resetBtn) {
-                resetBtn.addEventListener('click', function () { window.location.reload(); });
+                resetBtn.addEventListener('click', function () { window.reloadPage(); });
             }
         }
 
@@ -1257,7 +1283,7 @@ function appMain() {
                 e.preventDefault();
                 post(f.getAttribute('action'), f)
                     .then(function (d) {
-                        if (d.success) { window.location.reload(); }
+                        if (d.success) { window.reloadPage(); }
                         else { alert(d.message || 'انجام نشد.'); }
                     })
                     .catch(function () { alert(netErr()); });
@@ -1281,7 +1307,7 @@ function appMain() {
                                     value: d.undo_token
                                 });
                             }
-                            window.location.reload();
+                            window.reloadPage();
                         })
                         .catch(function () { alert(netErr()); });
                 });
@@ -1310,7 +1336,7 @@ function appMain() {
                 msg.textContent = d.message || (d.success ? 'ثبت شد.' : 'ثبت نشد.');
                 // تازه‌سازی تا فهرستِ «پرداخت‌های شما» همان لحظه به‌روز شود —
                 // بدون آن کاربر فکر می‌کند ثبت نشده و دوباره می‌فرستد.
-                if (d.success) { setTimeout(function () { window.location.reload(); }, 1200); }
+                if (d.success) { setTimeout(function () { window.reloadPage(); }, 1200); }
             })
             .catch(function () {
                 msg.hidden = false;
@@ -1660,7 +1686,7 @@ function appMain() {
                     return p.then(function (j) { return (j && !j.success) ? j : one(v); });
                 }, Promise.resolve(null))
                 .then(function (j) {
-                    if (j && j.success) { window.location.reload(); return; }
+                    if (j && j.success) { window.reloadPage(); return; }
                     btn.disabled = false;
                     txt.textContent = (j && j.message) || 'لغو انجام نشد.';
                 })
@@ -1962,13 +1988,13 @@ function appMain() {
                     queueUndoBar(text, ids.length
                         ? { ep: 'delete_transaction.php', field: 'transaction_id', value: ids }
                         : null);
-                    window.location.reload();
+                    window.reloadPage();
                     return;
                 }
                 if (pending) { renderSmsPending(true); return; }
                 if (dup && items.length === 1) {
                     queueUndoBar('این پیامک قبلاً ثبت شده بود.', null);
-                    window.location.reload();
+                    window.reloadPage();
                 }
             });
         }
@@ -2236,7 +2262,7 @@ function appMain() {
                 queueUndoBar(opts.text || 'حذف شد.',
                     { ep: 'undo_delete.php', field: 'undo_token', value: j.undo_token });
             }
-            window.location.reload();
+            window.reloadPage();
         })
         .catch(function () { alert(netErr()); });
     }
@@ -2281,7 +2307,7 @@ function appMain() {
         .then(function (r) { return r.json(); })
         .then(function (j) {
             if (!j.success) { alert(j.message || 'برگرداندن انجام نشد.'); btn.disabled = false; return; }
-            window.location.reload();
+            window.reloadPage();
         })
         .catch(function () { alert(netErr()); btn.disabled = false; });
     });
@@ -2353,7 +2379,7 @@ function appMain() {
                 if (data.success) {
                     msgEl.classList.add('show', 'success');
                     msgEl.textContent = data.message || 'با موفقیت ذخیره شد.';
-                    window.location.reload();
+                    window.reloadPage();
                 } else {
                     msgEl.classList.add('show', 'error');
                     msgEl.textContent = data.message || 'خطایی رخ داد.';
@@ -2463,7 +2489,7 @@ function appMain() {
                 if (data.success) {
                     msgEl.classList.add('show', 'success');
                     msgEl.textContent = data.message || 'با موفقیت ثبت شد.';
-                    window.location.reload();
+                    window.reloadPage();
                 } else {
                     msgEl.classList.add('show', 'error');
                     msgEl.textContent = data.message || 'خطایی رخ داد.';
@@ -2530,7 +2556,7 @@ function appMain() {
                 if (data.success) {
                     msgEl.classList.add('show', 'success');
                     msgEl.textContent = data.message || 'با موفقیت ذخیره شد.';
-                    window.location.reload();
+                    window.reloadPage();
                 } else {
                     msgEl.classList.add('show', 'error');
                     msgEl.textContent = data.message || 'خطایی رخ داد.';
@@ -2607,7 +2633,7 @@ function appMain() {
                 fetch(pending.opts.url, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                     .then(function (r) { return r.json(); })
                     .then(function (d) {
-                        if (d.success) { window.location.reload(); return; }
+                        if (d.success) { window.reloadPage(); return; }
                         fail(d.message || 'خطایی رخ داد.');
                     })
                     .catch(function () { fail('خطا در ارتباط با سرور.'); });
@@ -2652,7 +2678,7 @@ function appMain() {
             .then(function (res) { return res.json(); })
             .then(function (data) {
                 if (data.success) {
-                    window.location.reload();
+                    window.reloadPage();
                 } else {
                     alert(data.message || 'خطایی رخ داد.');
                     checkboxEl.checked = !checkboxEl.checked;
@@ -3120,7 +3146,7 @@ function appMain() {
                     // ⚠ تازه‌سازی لازم است نه پنهان کردنِ کارت: عددهای بالای
                     //   صفحه سمتِ سرور رندر شده‌اند و کاربر باید ببیند چیزی
                     //   عوض نشده — همان قاعده‌ی «هر تغییر باید دیده شود».
-                    .then(function () { window.location.reload(); })
+                    .then(function () { window.reloadPage(); })
                     .catch(function () { startSkip.disabled = false; });
             });
         }
@@ -3298,7 +3324,7 @@ function appMain() {
             fd.append('csrf_token', csrf());
             fetch(apiUrl('toggle_wallet.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
                 .then(function(r){return r.json();})
-                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .then(function(d){ if (d.success) { window.reloadPage(); } else { alert(d.message || 'خطا'); } })
                 .catch(function(){ alert(netErr()); });
         });
     }
@@ -3313,7 +3339,7 @@ function appMain() {
             fetch(apiUrl('delete_wallet.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
                 .then(function(r){return r.json();})
                 .then(function(d){
-                    if (d.success) { window.location.reload(); }
+                    if (d.success) { window.reloadPage(); }
                     else {
                         var m = document.getElementById('walletMessage');
                         m.hidden = false; m.classList.remove('success');
@@ -3460,7 +3486,7 @@ function appMain() {
             fd.append('csrf_token', csrf());
             fetch(apiUrl('toggle_budget.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
                 .then(function(r){return r.json();})
-                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .then(function(d){ if (d.success) { window.reloadPage(); } else { alert(d.message || 'خطا'); } })
                 .catch(function(){ alert(netErr()); });
         });
     }
@@ -3575,7 +3601,7 @@ function appMain() {
             fd.append('csrf_token', csrf());
             fetch(apiUrl('archive_goal.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
                 .then(function(r){return r.json();})
-                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .then(function(d){ if (d.success) { window.reloadPage(); } else { alert(d.message || 'خطا'); } })
                 .catch(function(){ alert(netErr()); });
         });
     }
@@ -3722,7 +3748,7 @@ function appMain() {
                     if (d.success) {
                         msgEl.classList.add('show', 'success');
                         msgEl.textContent = d.message || 'ثبت شد.';
-                        window.location.reload();
+                        window.reloadPage();
                     } else {
                         msgEl.classList.add('show', 'error');
                         msgEl.textContent = d.message || 'خطایی رخ داد.';
@@ -3842,7 +3868,7 @@ function appMain() {
             fd.append('csrf_token', csrf());
             fetch(apiUrl('toggle_recurring.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
                 .then(function(r){return r.json();})
-                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .then(function(d){ if (d.success) { window.reloadPage(); } else { alert(d.message || 'خطا'); } })
                 .catch(function(){ alert(netErr()); });
         });
     }
@@ -3856,7 +3882,7 @@ function appMain() {
             fd.append('csrf_token', csrf());
             fetch(apiUrl('delete_recurring.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
                 .then(function(r){return r.json();})
-                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .then(function(d){ if (d.success) { window.reloadPage(); } else { alert(d.message || 'خطا'); } })
                 .catch(function(){ alert(netErr()); });
         });
     }
@@ -3894,7 +3920,7 @@ function appMain() {
             fd.append('csrf_token', csrf());
             fetch(apiUrl('skip_recurring.php'), { method:'POST', body: fd, headers:{'X-Requested-With':'XMLHttpRequest'} })
                 .then(function(r){return r.json();})
-                .then(function(d){ if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .then(function(d){ if (d.success) { window.reloadPage(); } else { alert(d.message || 'خطا'); } })
                 .catch(function(){ alert(netErr()); });
         });
     });
@@ -4452,7 +4478,7 @@ function appMain() {
             fd.append('csrf_token', csrf());
             fetch(apiUrl('revoke_device.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (r) { return r.json(); })
-                .then(function (d) { if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .then(function (d) { if (d.success) { window.reloadPage(); } else { alert(d.message || 'خطا'); } })
                 .catch(function () { alert(netErr()); });
         });
     });
@@ -4780,20 +4806,102 @@ function appMain() {
         }
     })();
 
+    // ⛔ و همین ناظر «برگشت»ِ اندروید را به لایه گره می‌زند (`reloadPage()`
+    //    بالای فایل دلیلش را دارد): بازِ اولین لایه یک خانه در تاریخچه می‌گذارد،
+    //    «برگشت» فقط **رویی‌ترین** لایه را می‌بندد، و بستن از راهِ دیگر (×،
+    //    پس‌زمینه، Escape) همان خانه را برمی‌دارد تا «برگشت»ِ بعدی صفحه را ببرد.
     (function watchOverlays() {
         var overlays = document.querySelectorAll('.modal-overlay, .sheet-overlay, .more-sheet-overlay');
         if (!overlays.length || !window.MutationObserver) return;
+        var KEY = window.OVERLAY_STATE;
+        var stack = [];
+        var ours = function (st) { return !!(st && st[KEY]); };
+        var mark = function () {
+            var st = {};
+            st[KEY] = true;
+            try { history.pushState(st, ''); } catch (e) { /* بی‌تاریخچه: فقط × و پس‌زمینه */ }
+        };
+        function opened(el) {
+            if (stack.indexOf(el) === -1) { stack.push(el); }
+            if (!ours(history.state)) { mark(); }
+        }
+        function closed(el) {
+            var i = stack.indexOf(el);
+            if (i !== -1) { stack.splice(i, 1); }
+            if (!stack.length && ours(history.state) && !window.__hlReloading) { history.back(); }
+        }
+        window.addEventListener('popstate', function (e) {
+            if (window.__hlReloading) return;
+            if (stack.length) {
+                var top = stack[stack.length - 1];
+                if (stack.length > 1) { mark(); }   // لایه‌ی زیرین هنوز باز است
+                top.classList.remove('show');
+                return;
+            }
+            // ⚠ خانه‌ی کهنه (فرمی که با لایه‌ی باز به صفحه‌ی دیگری رفت): ردش کن.
+            if (ours(e.state)) { history.back(); }
+        });
         overlays.forEach(function (el) {
             var wasOpen = el.classList.contains('show');
-            if (wasOpen) lockBodyScroll();
+            if (wasOpen) { lockBodyScroll(); opened(el); }
             new MutationObserver(function () {
                 var isOpen = el.classList.contains('show');
                 if (isOpen === wasOpen) return;
                 wasOpen = isOpen;
-                isOpen ? lockBodyScroll() : unlockBodyScroll();
+                if (isOpen) { lockBodyScroll(); opened(el); }
+                else { unlockBodyScroll(); closed(el); }
             }).observe(el, { attributes: true, attributeFilter: ['class'] });
         });
     })();
+
+    // ---------- شیتِ کفِ صفحه وقتی کیبورد باز است ----------
+    // ⛔ گزارشِ مالکِ نصب (اندروید): «این منو که میاد بالا دیگه با دست من بالا
+    //    پایین نمیشه». شیتِ ثبت با فوکوسِ مبلغ باز می‌شود و کیبورد بالا می‌آید؛
+    //    کرومِ اندروید (`resizes-visual`، مثلِ iOS) فقط viewport **دیداری** را
+    //    کوچک می‌کند و لایه‌ی `fixed`ِ `inset: 0` قدِ کاملِ صفحه می‌ماند. پس
+    //    پایینِ شیت (حساب، عنوان، دکمه‌ی ثبت) **زیرِ کیبورد** بود و شیت فقط به
+    //    اندازه‌ی سرریزِ خودش (روی پیکسل ۷: ۷۱ پیکسل) اسکرول می‌شد — یعنی هیچ‌وقت
+    //    به آن‌ها نمی‌رسید، و صفحه‌ی پشت هم قفل بود.
+    //    رفع: تا کیبورد باز است، لایه‌ی باز دقیقاً روی viewport دیداری می‌نشیند
+    //    و `.sheet` با `max-height: min(…, 100%)` در آن جا می‌شود و تا ته اسکرول
+    //    می‌خورد. (`interactive-widget=resizes-content` نه: کلِ صفحه را با هر
+    //    کیبورد از نو می‌چید و تشخیصِ کیبوردِ نوارِ پایین را کور می‌کرد.)
+    (function fitOverlaysToKeyboard() {
+        var vv = window.visualViewport;
+        if (!vv) return;
+        var KB_MIN = 120;   // همان کفِ `keyboardAwareNav()`
+        function fit() {
+            var kb = vv.height < window.innerHeight - KB_MIN;
+            document.querySelectorAll('.sheet-overlay, .more-sheet-overlay, .modal-overlay').forEach(function (ov) {
+                var on = kb && ov.classList.contains('show');
+                ov.style.top    = on ? Math.round(vv.offsetTop) + 'px' : '';
+                ov.style.height = on ? Math.round(vv.height) + 'px' : '';
+                ov.style.bottom = on ? 'auto' : '';
+            });
+        }
+        window.fitOverlaysToKeyboard = fit;
+        vv.addEventListener('resize', fit);
+        vv.addEventListener('scroll', fit);
+    })();
+
+    // ---------- کشیدنِ سرِ شیت به پایین = بستن ----------
+    // ⛔ حرکتِ طبیعیِ گوشی برای بستنِ شیت (همان کارِ دستگیره‌ی «بیشتر»)، روی
+    //    دستگیره و سرِ شیت — نه روی بدنه‌ی فرم، که کشیدنش اسکرول است.
+    document.querySelectorAll('.sheet-overlay').forEach(function (ov) {
+        var sheet = ov.querySelector('.sheet');
+        if (!sheet) return;
+        var y0 = null;
+        sheet.querySelectorAll('.more-sheet-handle, .sheet-head').forEach(function (grip) {
+            grip.addEventListener('touchstart', function (e) { y0 = e.touches[0].clientY; }, { passive: true });
+            grip.addEventListener('touchmove', function (e) {
+                if (y0 !== null && sheet.scrollTop <= 0 && e.touches[0].clientY - y0 > 60) {
+                    y0 = null;
+                    ov.classList.remove('show');
+                }
+            }, { passive: true });
+            grip.addEventListener('touchend', function () { y0 = null; }, { passive: true });
+        });
+    });
 
     // ---------- نوارِ پایین وقتی کیبورد باز است ----------
     // ⛔ خرابیِ واقعی که کاربر گزارش کرد: «گاهی منوی پایین می‌رود وسطِ
@@ -5258,7 +5366,7 @@ function appMain() {
                     .then(function (r) { return r.json(); })
                     .then(function (d) {
                         if (d.success) {
-                            window.location.reload();
+                            window.reloadPage();
                         } else {
                             saveBtn.disabled = false;
                             showMsg(d.message || 'خطا در بارگذاری.', 'error');
@@ -5486,7 +5594,7 @@ function appMain() {
             fd.append('csrf_token', csrf());
             fetch(apiUrl('delete_avatar.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (r) { return r.json(); })
-                .then(function (d) { if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                .then(function (d) { if (d.success) { window.reloadPage(); } else { alert(d.message || 'خطا'); } })
                 .catch(function () { alert(netErr()); });
         });
     }
@@ -5548,7 +5656,7 @@ function appMain() {
             })
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
-                    if (d.success) { window.location.reload(); return; }
+                    if (d.success) { window.reloadPage(); return; }
                     if (apMsg) {
                         apMsg.hidden = false;
                         apMsg.classList.add('show', 'error');
@@ -5593,7 +5701,7 @@ function appMain() {
                     // تازه‌سازی لازم است: همین دسته‌ها باید فوراً در
                     // شیت ثبت و بودجه و گزارش دیده شوند، و خودِ ردیفِ
                     // پیشنهاد هم باید ناپدید شود.
-                    location.reload();
+                    window.reloadPage();
                 })
                 .catch(function () {
                     alert(netErr());
@@ -5643,7 +5751,7 @@ function appMain() {
             fetch(apiUrl('manage_reference.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
-                    if (d.success) { window.location.reload(); }
+                    if (d.success) { window.reloadPage(); }
                     else { alert(d.message || 'خطایی رخ داد.'); }
                 })
                 .catch(function () { alert(netErr()); });
@@ -5698,7 +5806,7 @@ function appMain() {
                 .then(function (d) {
                     // فقط برداشتن چیپ کافی نیست: فهرست «پیش‌فرض‌ها» و
                     // فرم‌های دیگرِ همین صفحه هم از همین داده ساخته شده‌اند
-                    if (d.success) { if (chip) chip.remove(); window.location.reload(); }
+                    if (d.success) { if (chip) chip.remove(); window.reloadPage(); }
                     else { alert(d.message || 'قابل حذف نیست.'); }
                 })
                 .catch(function () { alert(netErr()); });
@@ -5811,7 +5919,7 @@ function appMain() {
                 if (d.success) {
                     msgEl.classList.add('show', 'success');
                     msgEl.textContent = d.message || 'انجام شد.';
-                    window.location.reload();
+                    window.reloadPage();
                 } else {
                     msgEl.classList.add('show', 'error');
                     msgEl.textContent = d.message || 'خطایی رخ داد.';
@@ -5956,7 +6064,7 @@ function appMain() {
             fetch(apiUrl('toggle_cheque_settled.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
-                    if (d.success) { window.location.reload(); }
+                    if (d.success) { window.reloadPage(); }
                     else { alert(d.message || 'خطایی رخ داد.'); el.checked = !el.checked; el.disabled = false; }
                 })
                 .catch(function () { alert(netErr()); el.checked = !el.checked; el.disabled = false; });
@@ -5992,7 +6100,7 @@ function appMain() {
             fetch(apiUrl('update_asset_price.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (r) { return r.json(); })
                 .then(function (d) {
-                    if (d.success) { window.location.reload(); return; }
+                    if (d.success) { window.reloadPage(); return; }
                     alert(d.message || 'خطایی رخ داد.');
                     sel.disabled = false;
                 })
@@ -6044,7 +6152,7 @@ function appMain() {
                     if (d.success) {
                         msgEl.classList.add('show', 'success');
                         msgEl.textContent = d.message || 'ثبت شد.';
-                        window.location.reload();
+                        window.reloadPage();
                     } else {
                         msgEl.classList.add('show', 'error');
                         msgEl.textContent = d.message || 'خطایی رخ داد.';
@@ -6096,7 +6204,7 @@ function appMain() {
                     if (d.success) {
                         msgEl.classList.add('show', 'success');
                         msgEl.textContent = d.message || 'ذخیره شد.';
-                        window.location.reload();
+                        window.reloadPage();
                     } else {
                         msgEl.classList.add('show', 'error');
                         msgEl.textContent = d.message || 'خطایی رخ داد.';
@@ -6260,7 +6368,7 @@ function appMain() {
                     // بی‌تازه‌سازی، دکمه‌ی معاملات تا ناوبری بعدی سر جایش
                     // می‌ماند (یا برعکس، غایب می‌ماند) و کاربر فکر می‌کند
                     // کلید کار نکرد.
-                    window.location.reload();
+                    window.reloadPage();
                 })
                 .catch(function () {
                     tradesToggle.checked = !tradesToggle.checked;
@@ -6534,7 +6642,7 @@ function appMain() {
                 fetch(apiUrl('toggle_trades.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                     .then(function (r) { return r.json(); })
                     .then(function (d) {
-                        if (d.success) { window.location.reload(); return; }
+                        if (d.success) { window.reloadPage(); return; }
                         enableBtn.disabled = false;
                         var m = document.getElementById('enableTradesMsg');
                         if (m) { m.hidden = false; m.classList.add('show', 'error'); m.textContent = d.message || 'خطا'; }
@@ -6741,7 +6849,7 @@ function appMain() {
                 fd.append('trade_id', this.getAttribute('data-id'));
                 fetch(apiUrl('delete_trade.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                     .then(function (r) { return r.json(); })
-                    .then(function (d) { if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                    .then(function (d) { if (d.success) { window.reloadPage(); } else { alert(d.message || 'خطا'); } })
                     .catch(function () { alert(netErr()); });
             });
         });
@@ -6773,7 +6881,7 @@ function appMain() {
                 fd.append('sale_id', this.getAttribute('data-id'));
                 fetch(apiUrl('delete_trade_sale.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                     .then(function (r) { return r.json(); })
-                    .then(function (d) { if (d.success) { window.location.reload(); } else { alert(d.message || 'خطا'); } })
+                    .then(function (d) { if (d.success) { window.reloadPage(); } else { alert(d.message || 'خطا'); } })
                     .catch(function () { alert(netErr()); });
             });
         });

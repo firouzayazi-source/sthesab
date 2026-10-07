@@ -7857,4 +7857,30 @@ foreach ($shFiles71 as $f) {
 if ($heredocs71 < 5) { $bad71[] = "پیمایشِ heredoc فقط {$heredocs71} مورد یافت — خودِ سنجه کور شده"; }
 T::bulk(29, $bad71, 'release فقط کامیتِ دیده‌شده، staging جدا و پشتِ رمز، و هیچ بک‌تیکی در heredoc اجرا نمی‌شود');
 
+// ---------------------------------------------------------------
+// قاعده ۷۲ — شیتِ روی گوشی: «برگشت» می‌بندد، و هر تازه‌سازی از `reloadPage()`
+// ---------------------------------------------------------------
+// ⛔ گزارشِ مالکِ نصب (اپ اندروید): «منو میاد روی صفحه قبلی … خیلی سخت از
+//    اونجا میتونم بیام بیرون». هر لایه‌ی باز یک خانه در تاریخچه دارد؛ یک
+//    `location.reload()`ِ خام با شیتِ باز آن خانه را جا می‌گذاشت و کاربر برای
+//    بیرون رفتن دو بار «برگشت» می‌زد. رفتار در `test_sheet_mobile` سنجیده می‌شود؛
+//    این‌جا فقط اینکه تازه‌سازیِ تازه‌ای از کنارش رد نشود.
+T::group('قاعده ۷۲ — شیتِ روی گوشی: «برگشت» و تازه‌سازی');
+$bad72 = [];
+$app72 = (string)@file_get_contents(__DIR__ . '/../assets/js/app.js');
+$rpAt = strpos($app72, 'window.reloadPage = function');
+$rpEnd = $rpAt === false ? false : strpos($app72, "\n};", $rpAt);
+$rest72 = $rpAt === false || $rpEnd === false ? $app72
+    : substr($app72, 0, $rpAt) . substr($app72, $rpEnd);
+$rest72 = (string)preg_replace('~/\*.*?\*/|(?<![:\'"])//[^\n]*~s', '', $rest72);
+if ($rpAt === false) { $bad72[] = 'app.js — window.reloadPage نیست'; }
+if (preg_match_all('~location\.reload\s*\(~', $rest72, $mm72)) {
+    $bad72[] = 'app.js — ' . count($mm72[0]) . ' تازه‌سازیِ خام بیرون از reloadPage() (خانه‌ی شیت در تاریخچه جا می‌ماند)';
+}
+$css72 = (string)@file_get_contents(__DIR__ . '/../assets/css/style.css');
+if (!str_contains($css72, '.sheet-overlay > .sheet { max-height: min(90dvh, 100%); }')) {
+    $bad72[] = 'style.css — شیت به قدِ لایه (با کیبوردِ باز) محدود نیست';
+}
+T::bulk(3, $bad72, 'هر تازه‌سازی از reloadPage()؛ شیت با کیبورد در لایه جا می‌شود');
+
 exit(T::report());
