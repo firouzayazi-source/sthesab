@@ -4,7 +4,7 @@
  *
  * ⛔ `biz_accounts`، نه حساب‌های حساب لند (`wallets`): پولِ مغازه دفترِ
  *    خودش را دارد و هرگز در `walletBalances()` نمی‌نشیند. موجودی از
- *    `BizCash::BALANCE_SQL` می‌آید (اولیه + دریافت/درآمد − پرداخت/هزینه ±
+ *    `BizCash::balanceSql()` می‌آید (اولیه + دریافت/درآمد − پرداخت/هزینه ±
  *    انتقال)؛ «گردش» همان فهرستِ `payments.php?acc=` است.
  */
 require_once __DIR__ . '/../includes/auth.php';

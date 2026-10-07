@@ -7,7 +7,7 @@
  *
  * ⛔ هیچ وابستگیِ npm ندارد — همان الگوی `tap_probe.js`.
  *
- * اجرا: node sms_batch_probe.js <baseUrl> <cookieName> <cookieValue> <smsqJson>
+ * اجرا: node sms_batch_probe.js <baseUrl> <cookieName> <cookieValue> <smsqJson> [busy]
  * خروجی: یک خط JSON روی stdout.
  */
 'use strict';
@@ -112,6 +112,30 @@ if (!bin) { fail('no_chromium'); }
         };`);
 
     const out = { ok: true };
+
+    // ۵ — ⛔ پیامکِ دوم وقتی اولی هنوز در حالِ ثبت است (تپ روی اعلانِ دوم →
+    //      `hashchange`). فرگمنتش همان لحظه پاک می‌شود، پس اگر صف نگهش ندارد
+    //      **برای همیشه** گم است. ثبتِ اولی عمداً کند می‌شود تا هم‌پوشانی قطعی باشد.
+    if (process.argv[6] === 'busy') {
+        const two = JSON.parse(smsq);
+        await send('Page.navigate', { url: baseUrl + 'transactions.php' }, sid);
+        await waitFor(`return document.readyState === 'complete' && !document.documentElement.classList.contains('js-loading');`, 10000);
+        await sleep(300);
+        await evalJs(`var of = window.fetch;
+            window.fetch = function (u) {
+                var p = of.apply(this, arguments);
+                return String(u).indexOf('add_transaction.php') === -1 ? p
+                    : p.then(function (r) { return new Promise(function (res) { setTimeout(function () { res(r); }, 900); }); });
+            };
+            window.__probeMark = 1;
+            location.hash = '#sms=' + encodeURIComponent(${JSON.stringify(two[0])});
+            return 1;`);
+        await waitFor(`return location.hash === '';`, 3000);
+        await evalJs(`location.hash = '#sms=' + encodeURIComponent(${JSON.stringify(two[1])}); return 1;`);
+        out.busy = { bar: await waitFor(`if (window.__probeMark === 1) { return null; }
+            var b = document.querySelector('.undo-bar'); return b ? b.textContent : null;`, 15000) };
+        done(out);
+    }
 
     // ۱ — صفحه‌ی حساب‌ها، همان جایی که صفِ قبلی هیچ کاری را نمی‌گذاشت.
     await send('Page.navigate', { url: baseUrl + 'wallets.php#smsq=' + encodeURIComponent(smsq) }, sid);

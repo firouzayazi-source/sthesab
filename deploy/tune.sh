@@ -47,10 +47,11 @@ if [[ "$(id -u)" != "0" ]]; then
 fi
 
 # ---------- پیدا کردن نسخه‌ی PHP از روی خود فایل pool ----------
-POOL_FILE=""
-for f in /etc/php/*/fpm/pool.d/${SITE_NAME}.conf; do
-    [[ -f "$f" ]] && POOL_FILE="$f"
-done
+# منطقِ کشف در config-lib.sh است تا hesabland هم همان را به کار ببرد
+# (پیش از این آنجا «اولین php-fpmِ فعال» reload می‌شد، نه مالِ این اپ).
+# shellcheck source=config-lib.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/config-lib.sh"
+POOL_FILE="$(fpm_pool_file "$SITE_NAME")"
 
 if [[ -z "$POOL_FILE" ]]; then
     red "⛔ فایل pool پیدا نشد: /etc/php/*/fpm/pool.d/${SITE_NAME}.conf"
@@ -58,7 +59,7 @@ if [[ -z "$POOL_FILE" ]]; then
     exit 1
 fi
 
-PHP_VER="$(printf '%s' "$POOL_FILE" | sed -E 's#^/etc/php/([^/]+)/.*#\1#')"
+PHP_VER="$(fpm_version_of "$POOL_FILE")"
 FPM_SERVICE="php${PHP_VER}-fpm"
 
 step "وضعیت فعلی"
@@ -132,12 +133,10 @@ with open(path, 'w', encoding='utf-8') as fh:
 PY
 
 # ---------- تست پیکربندی پیش از reload ----------
-if ! "php-fpm${PHP_VER}" -t 2>/dev/null; then
-    if ! /usr/sbin/php-fpm${PHP_VER} -t; then
-        red "⛔ پیکربندی php-fpm ایراد دارد — به حالت قبل برگشت."
-        cp -a "$BACKUP" "$POOL_FILE"
-        exit 1
-    fi
+if ! fpm_config_test "$PHP_VER"; then
+    red "⛔ پیکربندی php-fpm ایراد دارد — به حالت قبل برگشت."
+    cp -a "$BACKUP" "$POOL_FILE"
+    exit 1
 fi
 green "✓ پیکربندی php-fpm سالم است."
 

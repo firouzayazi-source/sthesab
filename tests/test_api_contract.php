@@ -7919,4 +7919,22 @@ if ($anchorCalls < 4) {
 }
 T::bulk(4, $bad73, 'تعدیل نسبی، پرداخت قفل‌دار، سررسید شرطی، و لنگرِ سری');
 
+// ---------------------------------------------------------------
+// قاعده ۷۴ — فهرستِ نوعِ دریافت/پرداختِ فروشگاه فقط در `BizPay`
+// ---------------------------------------------------------------
+// ⛔ بازبینیِ کلِ پروژه (مهر ۱۴۰۵): `('receipt','income','capital')` در شش جای SQL
+//    دستی تکرار شده بود؛ نوعِ تازه‌ای که فقط به `IN_KINDS` اضافه می‌شد آن‌جاها جا
+//    می‌ماند و مانده‌ی صندوق بی‌صدا غلط می‌شد. حالا همه از `BizPay::IN_KINDS`/
+//    `OUT_KINDS` (`sqlList()`، `BizCash::balanceSql()`) ساخته می‌شوند.
+T::group('قاعده ۷۴ — فهرستِ نوع‌های پرداختِ فروشگاه یک‌جا');
+$bad74 = [];
+$kindRe = "~'receipt'\s*,\s*'income'\s*,\s*'capital'|'payment'\s*,\s*'expense'\s*,\s*'drawing'~";
+foreach (array_merge(glob(__DIR__ . '/../includes/biz*.php') ?: [], glob(__DIR__ . '/../store/*.php') ?: []) as $f74) {
+    $src = (string)@file_get_contents($f74);
+    $n = preg_match_all($kindRe, $src);
+    $allowed = basename($f74) === 'biz_docs.php' ? 2 : 0;   // خودِ IN_KINDS و OUT_KINDS
+    if ($n > $allowed) { $bad74[] = basename($f74) . " — فهرستِ دستیِ نوع‌ها ({$n})"; }
+}
+T::bulk(1, $bad74, 'نوع‌های دریافت/پرداخت فقط از BizPay::IN_KINDS/OUT_KINDS');
+
 exit(T::report());

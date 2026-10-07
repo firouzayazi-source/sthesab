@@ -214,4 +214,9 @@ renderMonthComparisonCard($comparison, $insights);
     </div>
 </div>
 
+<?php /* ⛔ ردیف‌های تراکنش اینجا هم دکمه‌ی «ویرایش» دارند (جزئیاتِ روزِ تقویم
+         در گزارش، و نتیجه‌ی جست‌وجو)؛ بی این مودال آن دکمه بی‌صدا هیچ
+         کاری نمی‌کرد. دسته‌ها از `cachedCategories()` — کوئریِ تازه‌ای نیست. */ ?>
+<?php include __DIR__ . '/includes/edit_tx_modal.php'; ?>
+
 <?php include __DIR__ . '/includes/footer.php'; ?>

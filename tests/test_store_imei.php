@@ -25,6 +25,7 @@ require_once __DIR__ . '/../includes/signup.php';
 require_once __DIR__ . '/../includes/user_data.php';
 require_once __DIR__ . '/../includes/biz_catalog.php';
 require_once __DIR__ . '/../includes/biz_docs.php';
+require_once __DIR__ . '/../includes/biz_dash.php';
 
 $root = dirname(__DIR__);
 const MPREFIX = '__bimei_';
@@ -233,7 +234,9 @@ T::group('۷ — فاکتور سررسید ندارد');
 T::ok(!isset(BizInvoices::FILTERS['overdue']), 'صافیِ «سررسید گذشته» نیست');
 $pdo->prepare("UPDATE biz_invoices SET due_date = '2020-01-01', paid = 0 WHERE id = :i AND user_id = :u")->execute(['i' => $s4, 'u' => $a]);
 T::ok(BizInvoices::state(BizInvoices::get($a, $s4)) !== 'overdue', '⛔ حتی سندِ قدیمیِ سررسیددار «سررسید گذشته» نمی‌شود');
-T::ok(!array_key_exists('overdue_sale', BizInvoices::attention($a)), 'داشبورد سررسید نمی‌شمارد');
+// همان عددی که داشبورد می‌خواند (`BizDash::invoiceFlags()`): «معوق» از سنِ سند است، نه سررسید
+$fl = BizDash::invoiceFlags($a);
+T::ok(!array_key_exists('overdue_sale', $fl) && $fl['late'] === 0, 'داشبورد سررسید نمی‌شمارد', json_encode($fl));
 
 // =================================================================
 T::group('۸ — صفحه‌ها با HTTP: «+»، IMEI، بی‌سررسید');

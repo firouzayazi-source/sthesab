@@ -11,7 +11,7 @@
  *   (`BizParties::BALANCE_SQL`) می‌رسد. سندِ صادرشده حذف نمی‌شود، باطل
  *   می‌شود و همه‌ی اثرش برمی‌گردد — شماره و ردش می‌ماند.
  * - `BizPay` — دریافت، پرداخت، هزینه، درآمدِ متفرقه و انتقال. موجودیِ صندوق
- *   (`BizCash::BALANCE_SQL`) از همین جمع زده می‌شود.
+ *   (`BizCash::balanceSql()`) از همین جمع زده می‌شود.
  *   ⛔ `reallocate()` تنها نویسنده‌ی `biz_allocations`، `biz_invoices.paid`
  *      و `biz_payments.allocated` است: تخصیص همیشه از نو و قطعی ساخته
  *      می‌شود (اول فاکتورِ ترجیحیِ هر دریافت، بعد قدیمی‌ترین فاکتورِ باز)،
@@ -425,7 +425,18 @@ final class BizInvoices
             $used += $share;
             if ((int)$l['line_total'] > 0) { $last = $k; }
         }
-        if ($last !== null && $used !== $adj) { $lines[$last]['net_total'] += $adj - $used; }
+        // باقیمانده‌ی گرد کردن به ردیفِ آخر — ⛔ ولی هیچ ردیفی زیرِ صفر نمی‌رود:
+        // تخفیفِ ۵ روی ردیف‌های ۲، ۲، ۲، ۱ ردیفِ آخر را −۱ می‌کرد (فروشِ منفی،
+        // مالیاتِ منفی و بهای خریدِ منفی در انبار). کسریِ ردیفِ آخر از ردیف‌های
+        // پیش از آن، از آخر به اول، برداشته می‌شود؛ جمع همان است.
+        $rest = $adj - $used;
+        if ($last !== null && $rest > 0) { $lines[$last]['net_total'] += $rest; $rest = 0; }
+        foreach (array_reverse(array_keys($lines)) as $k) {
+            if ($rest >= 0) { break; }
+            $take = max($rest, -(int)$lines[$k]['net_total']);
+            $lines[$k]['net_total'] += $take;
+            $rest -= $take;
+        }
         // ⛔ همه‌ی ردیف‌ها صفر (هدیه، نمونه) و هزینه‌ی جانبی: سهم به ردیفِ آخر.
         //    پیش از این به هیچ ردیفی نمی‌رسید — مشتری بدهکار می‌شد ولی فروش صفر
         //    دیده می‌شد، و در خرید هزینه‌ی حمل هرگز به بهای انبار نمی‌نشست
@@ -854,8 +865,12 @@ final class BizInvoices
                 return ['ok' => false, 'message' => $post['message'] . ' (کالاهای این سند بعداً جابه‌جا شده‌اند)'];
             }
 
+            // ⛔ ابطالِ فاکتورِ گذری **همه‌ی** پول‌هایش را باطل می‌کند، نه فقط همراهش:
+            //    پولِ جدا طرف‌حسابی ندارد که پیش‌پرداخت رویش بماند، و خودش هم جدا باطل
+            //    نمی‌شد (`BizPay::void()`) — پس در صندوق می‌ماند و در دفتر مالِ هیچ‌کس.
+            $walkIn = $to === 'void' && $inv['party_id'] === null;
             foreach ($linked as $p) {
-                if ((int)$p['origin_invoice'] === 1) {
+                if ((int)$p['origin_invoice'] === 1 || $walkIn) {
                     $pdo->prepare("UPDATE biz_payments SET status = 'void', voided_at = NOW() WHERE id = :id AND user_id = :u")
                         ->execute(['id' => (int)$p['id'], 'u' => $userId]);
                     BizLog::add($pdo, $userId, 'payment', (int)$p['id'], 'void', null);
@@ -894,11 +909,20 @@ final class BizInvoices
     public static function deleteDraft(int $userId, int $id): array
     {
         $pdo = Database::getConnection();
-        $up = $pdo->prepare("UPDATE biz_invoices SET status = 'void', voided_at = NOW()
-                             WHERE id = :id AND user_id = :u AND status = 'draft' AND number IS NOT NULL");
-        $up->execute(['id' => $id, 'u' => $userId]);
-        if ($up->rowCount() > 0) {
-            BizLog::add($pdo, $userId, 'invoice', $id, 'void', null);
+        // ⛔ ابطال و ردِ سرگذشتش در **یک** تراکنش (قاعده‌ی `BizLog`): کارِ موفق بی‌رد نمی‌ماند
+        $pdo->beginTransaction();
+        try {
+            $up = $pdo->prepare("UPDATE biz_invoices SET status = 'void', voided_at = NOW()
+                                 WHERE id = :id AND user_id = :u AND status = 'draft' AND number IS NOT NULL");
+            $up->execute(['id' => $id, 'u' => $userId]);
+            $voided = $up->rowCount() > 0;
+            if ($voided) { BizLog::add($pdo, $userId, 'invoice', $id, 'void', null); }
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            throw $e;
+        }
+        if ($voided) {
             return ['ok' => true, 'message' => 'این سند شماره داشت؛ حذف نشد، باطل شد تا شماره‌اش به سندِ دیگری نرسد.'];
         }
         $st = $pdo->prepare("DELETE FROM biz_invoices WHERE id = :id AND user_id = :u AND status = 'draft' AND number IS NULL");
@@ -1037,29 +1061,6 @@ final class BizInvoices
     /* ------------------------------------------------------------
        خلاصه‌ها — داشبورد و گزارش
        ------------------------------------------------------------ */
-
-    /** شمارِ پیش‌نویس‌ها (کارتِ «نیازمندِ اقدام»؛ سررسید دیگر نیست — `state()`). */
-    public static function attention(int $userId): array
-    {
-        $st = Database::getConnection()->prepare("SELECT COALESCE(SUM(status = 'draft'), 0) AS drafts FROM biz_invoices WHERE user_id = :u");
-        $st->execute(['u' => $userId]);
-        $r = $st->fetch() ?: [];
-        return array_map('intval', $r + ['drafts' => 0]);
-    }
-
-    /** آخرین اسناد (همه‌ی نوع‌ها). */
-    public static function recent(int $userId, int $limit = 8): array
-    {
-        $st = Database::getConnection()->prepare(
-            'SELECT i.id, i.kind, i.number, i.status, i.inv_date, i.due_date, i.total, i.paid, p.name AS party_name
-             FROM biz_invoices i LEFT JOIN biz_parties p ON p.id = i.party_id AND p.user_id = i.user_id
-             WHERE i.user_id = :u ORDER BY i.updated_at DESC, i.id DESC LIMIT :lim'
-        );
-        $st->bindValue('u', $userId, PDO::PARAM_INT);
-        $st->bindValue('lim', $limit, PDO::PARAM_INT);
-        $st->execute();
-        return $st->fetchAll();
-    }
 }
 
 /* =================================================================
@@ -1083,6 +1084,20 @@ final class BizPay
 
     /** ⛔ نوع‌هایی که پول را **به** صندوق می‌آورند — تنها فهرست؛ بقیه (جز انتقال) می‌برند. */
     public const IN_KINDS = ['receipt', 'income', 'capital'];
+
+    /**
+     * ⛔ نوع‌هایی که پول را **از** صندوق می‌برند — تنها فهرست. انتقال در هیچ‌کدام
+     *    نیست (از یک صندوق می‌برد و به دیگری می‌آورد). هر نوعِ `KINDS` دقیقاً در
+     *    یکی از این دو یا «انتقال» است (تست). پیش از این همین دو فهرست در شش
+     *    کوئری و صفحه دست‌نویس بود و نوعِ تازه در یکی جا می‌ماند.
+     */
+    public const OUT_KINDS = ['payment', 'expense', 'drawing'];
+
+    /** فهرستِ `IN (…)`ِ SQL از یکی از دو ثابتِ بالا (ثابتِ کد، نه ورودی). */
+    public static function sqlList(array $kinds): string
+    {
+        return "'" . implode("','", $kinds) . "'";
+    }
 
     /** نوع‌هایی که طرف‌حساب و فاکتور ندارند (شرح و سرفصل دارند). */
     public const FREE_KINDS = ['expense', 'income', 'capital', 'drawing'];
@@ -1226,7 +1241,7 @@ final class BizPay
         if ($party > 0 && !BizParties::get($userId, $party)) { return ['ok' => false, 'message' => 'طرف‌حساب پیدا نشد.']; }
         if ($title === '' && in_array($kind, ['capital', 'drawing'], true)) { $title = self::KINDS[$kind]; }
         if ($invId > 0) {
-            $iv = $pdo->prepare('SELECT kind, party_id, status FROM biz_invoices WHERE id = :id AND user_id = :u');
+            $iv = $pdo->prepare('SELECT kind, party_id, status, total FROM biz_invoices WHERE id = :id AND user_id = :u');
             $iv->execute(['id' => $invId, 'u' => $userId]);
             $inv = $iv->fetch();
             if (!$inv || $inv['status'] !== 'issued' || !in_array($inv['kind'], self::SETTLES[$kind] ?? [], true)) {
@@ -1234,7 +1249,21 @@ final class BizPay
             }
             // ⛔ پول باید مالِ همان طرف‌حسابِ فاکتور باشد
             if ($inv['party_id'] !== null && $party !== (int)$inv['party_id']) { $party = (int)$inv['party_id']; }
-            if ($inv['party_id'] === null) { $party = 0; }
+            if ($inv['party_id'] === null) {
+                $party = 0;
+                // ⛔ فاکتورِ گذری مازاد نمی‌پذیرد: طرف‌حسابی نیست که پیش‌پرداخت رویش
+                //    بماند، پس دریافتِ اضافه پولی بود که در صندوق هست و در دفترِ هیچ‌کس
+                //    نه (`reconcile()` «گذری» را ناصفر می‌دید)، و جدا هم باطل نمی‌شد
+                //    (بازبینیِ مهر ۱۴۰۵، بازتولید شد). سقف = جمعِ سند − دریافت‌های زنده‌اش.
+                $sum = $pdo->prepare("SELECT COALESCE(SUM(amount), 0) FROM biz_payments WHERE user_id = :u AND invoice_id = :i AND status = 'ok'");
+                $sum->execute(['u' => $userId, 'i' => $invId]);
+                $left = (int)$inv['total'] - (int)$sum->fetchColumn();
+                if ($amount > $left) {
+                    return ['ok' => false, 'message' => $left > 0
+                        ? 'مبلغ (' . formatMoney($amount) . ') از مانده‌ی این فاکتورِ گذری (' . formatMoney($left) . ') بیشتر است.'
+                        : 'این فاکتورِ گذری تسویه شده است؛ دریافت/پرداختِ اضافه طرف‌حسابی ندارد که رویش بماند.'];
+                }
+            }
         }
         if (in_array($kind, ['receipt', 'payment'], true) && $party === 0 && $invId === 0) {
             return ['ok' => false, 'message' => 'برای دریافت/پرداخت، طرف‌حساب را انتخاب کنید (یا از صفحه‌ی خودِ فاکتور ثبت کنید).'];
@@ -1494,9 +1523,10 @@ final class BizPay
                  LEFT JOIN biz_accounts a ON a.id = y.account_id AND a.user_id = y.user_id
                  LEFT JOIN biz_accounts t ON t.id = y.to_account_id AND t.user_id = y.user_id';
         $pdo = Database::getConnection();
+        $in = self::sqlList(self::IN_KINDS); $out = self::sqlList(self::OUT_KINDS);
         $st = $pdo->prepare("SELECT COUNT(*) AS n,
-                     COALESCE(SUM(CASE WHEN y.status = 'ok' AND y.kind IN ('receipt','income','capital') THEN y.amount ELSE 0 END), 0) AS i,
-                     COALESCE(SUM(CASE WHEN y.status = 'ok' AND y.kind IN ('payment','expense','drawing') THEN y.amount ELSE 0 END), 0) AS o
+                     COALESCE(SUM(CASE WHEN y.status = 'ok' AND y.kind IN ({$in}) THEN y.amount ELSE 0 END), 0) AS i,
+                     COALESCE(SUM(CASE WHEN y.status = 'ok' AND y.kind IN ({$out}) THEN y.amount ELSE 0 END), 0) AS o
                      {$join} WHERE {$w}");
         $st->execute($params);
         $agg = $st->fetch() ?: ['n' => 0, 'i' => 0, 'o' => 0];
@@ -1679,8 +1709,16 @@ final class BizCheques
                 return ['ok' => false, 'message' => 'حسابی را که چک در آن وصول شد انتخاب کنید.'];
             }
             $in = $p['kind'] === 'receipt';
+            $date = isValidDate($date) ? $date : date('Y-m-d');
+            // ⛔ همان سدِ `endorse()`: وصولِ پیش از ثبتِ چک پولی را در بانک می‌گذاشت که
+            //    هنوز نیامده بود و صندوقِ چک را تا روزِ ثبت منفی (مانده‌ی تاریخ‌دارِ
+            //    شمارشِ صندوق غلط) — بازبینیِ مهر ۱۴۰۵، بازتولید شد.
+            if ($date < (string)$p['pay_date']) {
+                $pdo->rollBack();
+                return ['ok' => false, 'message' => 'تاریخِ وصول نمی‌تواند پیش از ' . ($in ? 'دریافت' : 'پرداخت') . 'ِ چک باشد.'];
+            }
             $r = BizPay::createTx($pdo, $userId, [
-                'kind' => 'transfer', 'amount' => (int)$p['amount'], 'pay_date' => isValidDate($date) ? $date : date('Y-m-d'),
+                'kind' => 'transfer', 'amount' => (int)$p['amount'], 'pay_date' => $date,
                 'account_id' => $in ? (int)$p['account_id'] : $bankAcc, 'to_account_id' => $in ? $bankAcc : (int)$p['account_id'],
                 'title' => 'وصولِ ' . self::label($p), '_cheque_settle' => 1,
             ]);
@@ -1864,14 +1902,21 @@ final class BizSerial
     }
 
     /**
-     * ⛔ تنها ترتیبِ سرگذشتِ گوشی: **اولین** صدور، نه آخرین. «اصلاح و صدورِ
-     *    دوباره»ی خریدی که گوشی‌اش بعداً فروخته شده، آن را جلوی فروش نمی‌برد.
+     * ⛔ تنها ترتیبِ سرگذشتِ گوشی — **همان ترتیبِ انبار** (`BizStock::inDocOrder()`):
+     *    تاریخِ سند، بعد **اولین** صدور، بعد شناسه‌ی سند. سه ستون، برای `ORDER BY`
+     *    و مقایسه‌ی ردیفی (`(…) < (:d, :t, :i)`).
+     *
+     * «اصلاح و صدورِ دوباره»ی خریدی که گوشی‌اش بعداً فروخته شده آن را جلوی فروش
+     * نمی‌برد (اولین صدور). و ⛔ تاریخِ سند اول است، نه زمانِ صدور: خریدِ
+     * تاریخ‌گذشته‌ای که **بعد از** فروشِ همان گوشی ثبت شد، با ترتیبِ صدور «آخرین
+     * رخداد» می‌شد — گوشیِ فروخته‌شده «در انبار» و دو بار فروختنی بود، در حالی که
+     * انبار (به ترتیبِ تاریخ) آن را بیرون می‌دانست (بازبینیِ مهر ۱۴۰۵، بازتولید شد).
      */
     public static function orderSql(string $alias = 'i'): string
     {
         return self::hasFirstIssued()
-            ? "COALESCE({$alias}.first_issued_at, {$alias}.issued_at)"
-            : "{$alias}.issued_at";
+            ? "{$alias}.inv_date, COALESCE({$alias}.first_issued_at, {$alias}.issued_at), {$alias}.id"
+            : "{$alias}.inv_date, {$alias}.issued_at, {$alias}.id";
     }
 
     /**
@@ -1951,20 +1996,22 @@ final class BizSerial
      * @param string[] $imeis
      * @return array<string,array{dir:string, product_id:?int, imei1:string, imei2:?string, kind:string, invoice_id:int}>
      */
-    public static function states(PDO $pdo, int $userId, array $imeis, int $exceptInvoice = 0, bool $lock = false, ?array $before = null,
-                                  int $depth = 0, ?array $asked = null): array
+    public static function states(PDO $pdo, int $userId, array $imeis, int $exceptInvoice = 0, bool $lock = false, ?array $at = null,
+                                  bool $after = false, int $depth = 0, ?array $asked = null): array
     {
         $imeis = array_values(array_unique(array_filter(array_map('strval', $imeis), fn($x) => $x !== '')));
         if (!$imeis) { return []; }
         $a = []; $b = []; $params = ['u' => $userId, 'x' => $exceptInvoice];
         foreach ($imeis as $n => $v) { $a[] = ':a' . $n; $b[] = ':b' . $n; $params['a' . $n] = $v; $params['b' . $n] = $v; }
         $ord = self::orderSql('i');
-        // ⛔ `$before` = [زمانِ اولین صدور، شناسه]: وضعیتِ گوشی **درست پیش از** این
-        //    سند در سرگذشت — برای صدورِ دوباره‌ی سندی که جایش از قبل معلوم است.
+        // ⛔ `$at` = [تاریخِ سند، اولین صدور، شناسه] — جای یک سند در سرگذشت (`docKey()`).
+        //    بی‌`$after`: وضعیتِ گوشی **درست پیش از** آن (آخرین رخدادِ پیش از آن)؛
+        //    با `$after`: **اولین** رخدادِ بعد از آن. سندِ تاریخ‌گذشته وسطِ سرگذشت
+        //    می‌نشیند، پس صدورش هر دو سو را می‌خواهد (`check()`).
         $cut = '';
-        if ($before !== null) {
-            $cut = " AND ({$ord} < :bt OR ({$ord} = :bt2 AND i.id < :bi))";
-            $params['bt'] = $before[0]; $params['bt2'] = $before[0]; $params['bi'] = (int)$before[1];
+        if ($at !== null) {
+            $cut = " AND ({$ord}) " . ($after ? '>' : '<') . ' (:bd, :bt, :bi)';
+            $params['bd'] = (string)$at[0]; $params['bt'] = (string)$at[1]; $params['bi'] = (int)$at[2];
         }
         // ⚠ قفلِ اشتراکی: درونِ صدور، خواندنِ عادی عکسِ ابتدای تراکنش را می‌دید
         //    و صدورِ هم‌زمانِ دیگری که همین حالا کامیت شده پنهان می‌ماند.
@@ -1973,7 +2020,7 @@ final class BizSerial
              FROM biz_invoice_lines l JOIN biz_invoices i ON i.id = l.invoice_id AND i.user_id = l.user_id
              WHERE l.user_id = :u AND i.status = 'issued' AND i.id <> :x{$cut}
                AND (l.imei1 IN (" . implode(',', $a) . ') OR l.imei2 IN (' . implode(',', $b) . "))
-             ORDER BY {$ord}, i.id, l.id" . ($lock ? ' LOCK IN SHARE MODE' : '')
+             ORDER BY {$ord}, l.id" . ($lock ? ' LOCK IN SHARE MODE' : '')
         );
         $st->execute($params);
         $rows = $st->fetchAll();
@@ -1988,7 +2035,7 @@ final class BizSerial
             }
         }
         if ($more && $depth < 2) {
-            return self::states($pdo, $userId, array_merge($imeis, array_keys($more)), $exceptInvoice, $lock, $before, $depth + 1, $asked ?? $imeis);
+            return self::states($pdo, $userId, array_merge($imeis, array_keys($more)), $exceptInvoice, $lock, $at, $after, $depth + 1, $asked ?? $imeis);
         }
         $asked = $asked ?? $imeis;
         $alias = []; $last = [];
@@ -1997,6 +2044,7 @@ final class BizSerial
             $key = $alias[$n1] ?? ($n2 !== null ? ($alias[$n2] ?? null) : null) ?? $n1;
             $alias[$n1] = $key;
             if ($n2 !== null) { $alias[$n2] = $key; }
+            if ($after && isset($last[$key])) { continue; }          // «بعد از»: فقط اولین رخداد
             $last[$key] = ['dir' => in_array($r['kind'], self::IN_KINDS, true) ? 'in' : 'out',
                            'product_id' => $r['product_id'] !== null ? (int)$r['product_id'] : null,
                            'imei1' => $n1, 'imei2' => $n2,
@@ -2018,6 +2066,20 @@ final class BizSerial
     }
 
     /**
+     * جای سند در سرگذشت (`orderSql()`): [تاریخ، اولین صدور، شناسه]. سندی که
+     * هنوز صادر نشده همین حالا صادر می‌شود (`first_issued_at = NOW()`)، پس
+     * «اکنون» — آخرِ همان روز.
+     */
+    private static function docKey(PDO $pdo, int $userId, int $invoiceId): ?array
+    {
+        $t = self::hasFirstIssued() ? 'COALESCE(first_issued_at, NOW())' : 'NOW()';
+        $f = $pdo->prepare("SELECT inv_date, {$t} FROM biz_invoices WHERE id = :i AND user_id = :u");
+        $f->execute(['i' => $invoiceId, 'u' => $userId]);
+        $r = $f->fetch(PDO::FETCH_NUM);
+        return $r ? [(string)$r[0], (string)$r[1], $invoiceId] : null;
+    }
+
+    /**
      * ⛔ سدِ صدور — داخلِ تراکنشِ `issueTx`. ورود (خرید، برگشت از فروش):
      *    گوشیِ همان IMEI نباید همین حالا در انبار باشد. خروج (فروش، برگشت
      *    از خرید): نباید از قبل بیرون رفته باشد، و اگر در انبار است باید
@@ -2033,22 +2095,26 @@ final class BizSerial
             foreach (['imei1', 'imei2'] as $c) { if (!empty($l[$c])) { $nums[] = (string)$l[$c]; } }
         }
         if (!$nums) { return null; }
-        // صدورِ دوباره (سندی که پیش‌تر صادر شده): وضعیت در **جای خودش** در
-        // سرگذشت، نه در آخرِ آن — وگرنه اصلاحِ فروشی که گوشی‌اش بعداً دوباره
-        // خریده و فروخته شده، بی‌دلیل رد می‌شد.
-        $before = null;
-        if (self::hasFirstIssued()) {
-            $f = $pdo->prepare('SELECT first_issued_at FROM biz_invoices WHERE id = :i AND user_id = :u');
-            $f->execute(['i' => $invoiceId, 'u' => $userId]);
-            $fi = $f->fetchColumn();
-            if ($fi !== false && $fi !== null) { $before = [(string)$fi, $invoiceId]; }
-        }
-        $states = self::states($pdo, $userId, $nums, $invoiceId, true, $before);
+        // ⛔ وضعیت در **جای خودِ سند** در سرگذشت (تاریخِ سند، اولین صدور)، نه در
+        //    آخرِ آن: صدورِ دوباره‌ی فروشی که گوشی‌اش بعداً دوباره خریده و فروخته
+        //    شده بی‌دلیل رد نمی‌شود — و سندِ تاریخ‌گذشته‌ی تازه هم وسطِ سرگذشت
+        //    می‌نشیند. پس رخدادِ **بعدی** هم سنجیده می‌شود: فروشِ تاریخ‌گذشته‌ی
+        //    گوشی‌ای که بعداً (با تاریخِ دیرتر) فروخته شده، همان گوشی را دو بار
+        //    بیرون می‌برد؛ خریدِ تاریخ‌گذشته‌اش پیش از خریدِ بعدی، دو بار وارد.
+        $key  = self::docKey($pdo, $userId, $invoiceId);
+        $states = self::states($pdo, $userId, $nums, $invoiceId, true, $key);
+        $next   = $key !== null ? self::states($pdo, $userId, $nums, $invoiceId, true, $key, true) : [];
         $in = in_array($kind, self::IN_KINDS, true);
         foreach ($lines as $l) {
             foreach (['imei1', 'imei2'] as $c) {
                 $v = (string)($l[$c] ?? '');
-                if ($v === '' || !isset($states[$v])) { continue; }
+                if ($v === '') { continue; }
+                if (isset($next[$v]) && ($next[$v]['dir'] === 'in') === $in) {
+                    return 'گوشی با IMEI ' . $v . ' در سندِ بعدی‌اش (' . BizInvoices::KINDS[$next[$v]['kind']] ?? $next[$v]['kind'] . ') دوباره '
+                        . ($in ? 'وارد' : 'بیرون') . ' شده است؛ با این تاریخ یک گوشی دو بار ' . ($in ? 'وارد' : 'بیرون')
+                        . ' می‌شود — تاریخِ سند را درست کنید.';
+                }
+                if (!isset($states[$v])) { continue; }
                 $s = $states[$v];
                 if ($in && $s['dir'] === 'in') {
                     return 'گوشی با IMEI ' . $v . ' همین حالا در انبار است؛ یک گوشی دو بار وارد نمی‌شود.';
@@ -2122,7 +2188,7 @@ final class BizSerial
                 LEFT JOIN biz_products p FORCE INDEX (PRIMARY) ON p.id = l.product_id AND p.user_id = l.user_id
                 LEFT JOIN biz_parties pa ON pa.id = i.party_id AND pa.user_id = i.user_id
                 WHERE l.user_id = :u AND i.status = 'issued' AND l.imei1 IS NOT NULL"
-             . ($productId > 0 ? ' AND l.product_id = :p' : '') . ' ORDER BY ' . self::orderSql('i') . ', i.id, l.id';
+             . ($productId > 0 ? ' AND l.product_id = :p' : '') . ' ORDER BY ' . self::orderSql('i') . ', l.id';
         $st = Database::getConnection()->prepare($sql);
         $st->execute($productId > 0 ? ['u' => $userId, 'p' => $productId] : ['u' => $userId]);
         $alias = []; $units = [];
@@ -2162,7 +2228,7 @@ final class BizSerial
         $sql = "SELECT l.imei1, l.imei2, l.product_id, i.kind
                 FROM biz_invoice_lines l JOIN biz_invoices i ON i.id = l.invoice_id AND i.user_id = l.user_id
                 WHERE l.user_id = :u AND i.status = 'issued' AND l.imei1 IS NOT NULL AND l.product_id IS NOT NULL"
-             . ($productId > 0 ? ' AND l.product_id = :p' : '') . ' ORDER BY ' . self::orderSql('i') . ', i.id, l.id';
+             . ($productId > 0 ? ' AND l.product_id = :p' : '') . ' ORDER BY ' . self::orderSql('i') . ', l.id';
         $st = Database::getConnection()->prepare($sql);
         $st->execute($productId > 0 ? ['u' => $userId, 'p' => $productId] : ['u' => $userId]);
         $alias = []; $units = [];

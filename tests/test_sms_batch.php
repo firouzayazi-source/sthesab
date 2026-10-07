@@ -222,6 +222,23 @@ try {
     $st->execute(['u' => $uid]);
     T::same(1, count($st->fetchAll()), '⛔ تپِ دوباره روی همان پیامک‌ها هیچ ثبتِ تازه‌ای نمی‌سازد');
     T::same(1, $ag['pending'] ?? null, 'پیامکِ ردشده دوباره برای بررسی نمی‌آید');
+
+    // ---- ⛔ پیامکِ دوم وسطِ ثبتِ اولی گم نمی‌شود ----
+    $busyPair = json_encode([
+        str_replace(['209,000', '99,139,363'], ['310,000', '98,829,363'], $tejarat),
+        str_replace(['209,000', '99,139,363'], ['420,000', '98,409,363'], $tejarat),
+    ], JSON_UNESCAPED_UNICODE);
+    $raw = trim((string)shell_exec(escapeshellarg($node) . ' ' . escapeshellarg(__DIR__ . '/sms_batch_probe.js') . ' '
+         . escapeshellarg("http://127.0.0.1:{$port}/") . ' DAFTAR_SESSION ' . escapeshellarg($sess)
+         . ' ' . escapeshellarg($busyPair) . ' busy 2>/dev/null'));
+    $bo = json_decode($raw, true);
+    T::ok(is_array($bo) && !empty($bo['ok']), 'probeِ «پیامک وسطِ ثبت» اجرا شد', substr($raw, 0, 200));
+    $st2 = $pdo->prepare('SELECT amount FROM transactions WHERE user_id = :u ORDER BY amount');
+    $st2->execute(['u' => $uid]);
+    T::same([20900, 31000, 42000], array_map('intval', $st2->fetchAll(PDO::FETCH_COLUMN)),
+        '⛔ پیامکی که وسطِ ثبتِ پیامکِ قبلی رسید هم ثبت شد (گم نشد)');
+    T::ok(str_contains((string)($bo['busy']['bar'] ?? ''), '۲ تراکنش'), 'یک نوار برای هر دو',
+        (string)($bo['busy']['bar'] ?? ''));
 } catch (Throwable $e) {
     T::ok(false, 'اجرای تست', get_class($e) . ': ' . $e->getMessage());
 }

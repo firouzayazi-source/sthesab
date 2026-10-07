@@ -814,7 +814,7 @@ final class BizMigrate
         if ($entity === 'accounts') {
             $f = self::FIELDS['accounts'];
             $out = [[$f['name'], $f['kind'], $f['balance']]];
-            $st = $pdo->prepare("SELECT a.name, a.kind, " . BizCash::BALANCE_SQL . " AS balance FROM biz_accounts a
+            $st = $pdo->prepare("SELECT a.name, a.kind, " . BizCash::balanceSql() . " AS balance FROM biz_accounts a
                                  WHERE a.user_id = :u AND a.kind IN ('cash','bank','pos') ORDER BY a.sort_order, a.id");
             $st->execute(['u' => $userId]);
             while ($a = $st->fetch()) { $out[] = [(string)$a['name'], BizCash::KINDS[$a['kind']] ?? (string)$a['kind'], (int)$a['balance']]; }

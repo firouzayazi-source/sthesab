@@ -732,8 +732,10 @@ T::ok(count($txAfter) === count($pSet['shareholders'][0]['shares']),
     '⛔ تعدادِ تراکنش‌ها دقیقاً تعدادِ سهمِ سود است — تسویه چیزی اضافه نمی‌کند',
     'shares=' . count($pSet['shareholders'][0]['shares']) . ' tx=' . count($txAfter));
 
-T::ok(StoreShare::settledFor($A) === 30000000, 'جمعِ تسویه‌ها برای نمایش درست است',
-    'sum=' . StoreShare::settledFor($A));
+$setSum = $pdo->prepare('SELECT COALESCE(SUM(amount), 0) FROM store_settlements WHERE user_id = :u');
+$setSum->execute(['u' => $A]);
+$setSum = (int)$setSum->fetchColumn();
+T::ok($setSum === 30000000, 'جمعِ تسویه‌های ثبت‌شده درست است', 'sum=' . $setSum);
 
 /*
  * ⛔ و خالص دارایی تکان نمی‌خورد — همان چیزی که «انتقال» یعنی:

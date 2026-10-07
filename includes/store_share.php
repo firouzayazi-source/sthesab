@@ -1366,23 +1366,6 @@ final class StoreShare
     }
 
     /**
-     * جمعِ تسویه‌های نقدیِ همین کاربر — برای نمایش، نه برای محاسبه‌ی
-     * موجودی (آن کارِ `walletBalances()` است).
-     */
-    public static function settledFor(int $userId): int
-    {
-        if (!self::settlementsAvailable()) { return 0; }
-        try {
-            $st = Database::getConnection()
-                ->prepare('SELECT COALESCE(SUM(amount), 0) FROM store_settlements WHERE user_id = :u');
-            $st->execute(['u' => $userId]);
-            return (int)$st->fetchColumn();
-        } catch (PDOException $e) {
-            return 0;
-        }
-    }
-
-    /**
      * دسته‌بندیِ سیستمیِ سود/زیانِ سهام — اگر نبود ساخته می‌شود.
      *
      * ⛔ پیش‌فرضِ برنامه (`user_id IS NULL`)، همان استدلالِ «سود

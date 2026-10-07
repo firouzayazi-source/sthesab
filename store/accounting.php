@@ -113,9 +113,12 @@ if (in_array($t, ['trial', 'journal', 'moadian'], true)): ?>
 <?php if ($t === 'balance'):
     $at = BizDocView::gDate((string)getParam('at'));
     $at = $at !== '' ? $at : date('Y-m-d');
-    $entries = BizLedger::entries($userId, $at);
+    // ⛔ یک بار همه‌ی سندها: ترازنامه از «تا این تاریخ»، مغایرت‌گیری از کلِ دفتر
+    //    (عددِ صفحه‌ها مانده‌ی امروز با همه‌ی سندهاست — `BizLedger::reconcile()`)
+    $all = BizLedger::entries($userId, BizReports::ALL_TO);
+    $entries = BizLedger::upTo($all, $at);
     $bs = BizLedger::balanceSheet($userId, $at, $entries);
-    $rec = BizLedger::reconcile($userId, BizLedger::trial($userId, $at, '', $entries));
+    $rec = BizLedger::reconcile($userId, BizLedger::trial($userId, BizReports::ALL_TO, '', $all));
     $col = function (string $title, array $rows, int $sum) use ($money): string {
         $h = '<section class="st-card"><h2 class="st-h3">' . h($title) . '</h2><ul class="st-list">';
         foreach ($rows as $k => $v) { $h .= '<li class="st-list-row"><span>' . h($k) . '</span>' . $money((int)$v) . '</li>'; }

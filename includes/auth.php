@@ -139,24 +139,6 @@ class Auth
 
         $ip = $ip ?? (string)($_SERVER['REMOTE_ADDR'] ?? '');
 
-        // ---------- سدِ حدس رمز ----------
-        // پیش از هر کاری سنجیده می‌شود: نه فقط چون منطقی است، بلکه چون
-        // password_verify عمداً کند است و نباید به مهاجم هدیه شود.
-        $lockedFor = LoginThrottle::lockedFor($identifier, $ip);
-        if ($lockedFor !== null) {
-            // auth.php عمداً functions.php را لازم ندارد، پس تبدیل ارقام
-            // مشروط است — بدون این، صفحه‌ی ورود در هر مسیری که فقط auth را
-            // لود کرده باشد با «تابع تعریف‌نشده» می‌خوابید.
-            $mins = function_exists('toPersianDigits')
-                ? toPersianDigits((string)$lockedFor)
-                : (string)$lockedFor;
-            return [
-                'success' => false,
-                'locked'  => true,
-                'message' => "تلاش‌های ناموفق زیاد بوده است. {$mins} دقیقه دیگر دوباره تلاش کنید.",
-            ];
-        }
-
         $pdo = Database::getConnection();
 
         // از کامل‌ترین کوئری شروع می‌شود و اگر ستونی هنوز با migration
@@ -207,6 +189,38 @@ class Auth
             }
         }
 
+        // ⛔ کلیدِ شمارش **حساب** است، نه رشته‌ی تایپ‌شده.
+        //    پیش از این شمارنده روی خودِ ورودی بود، ولی جست‌وجو شماره را
+        //    نرمال می‌کند — پس `09129998877`، `0912-999-8877`، `+98912…`،
+        //    `۰۹۱۲…` و نامِ کاربری و ایمیلِ همان حساب هر کدام سقفِ ۵تاییِ
+        //    خودشان را داشتند: ۴۰ حدس به‌جای ۵ روی یک حساب، و بی‌صدا.
+        //    حسابِ پیدا‌شده با **نامِ کاربری‌اش** شمرده می‌شود (همان کلیدی
+        //    که «باز کردن قفل» در پنل مدیر و `user-admin.php --unlock`
+        //    پاک می‌کنند)؛ شناسه‌ی ناموجود با شکلِ نرمالِ خودش (شماره‌ی
+        //    نرمال، یا همان رشته که LoginThrottle کوچک‌حرفش می‌کند). رفتار
+        //    و پیام برای ناموجود دقیقاً همان است، پس وجودِ حساب لو نمی‌رود.
+        $throttleKey = $user ? (string)$user['username'] : ($phoneId ?? $identifier);
+
+        // ---------- سدِ حدس رمز ----------
+        // پیش از password_verify سنجیده می‌شود: نه فقط چون منطقی است، بلکه
+        // چون password_verify عمداً کند است و نباید به مهاجم هدیه شود.
+        // (پیدا کردنِ کاربر پیش از آن است چون کلیدِ شمارش از آن می‌آید —
+        //  یک کوئریِ ایندکس‌دار، نه هزینه‌ای که به مهاجم هدیه شود.)
+        $lockedFor = LoginThrottle::lockedFor($throttleKey, $ip);
+        if ($lockedFor !== null) {
+            // auth.php عمداً functions.php را لازم ندارد، پس تبدیل ارقام
+            // مشروط است — بدون این، صفحه‌ی ورود در هر مسیری که فقط auth را
+            // لود کرده باشد با «تابع تعریف‌نشده» می‌خوابید.
+            $mins = function_exists('toPersianDigits')
+                ? toPersianDigits((string)$lockedFor)
+                : (string)$lockedFor;
+            return [
+                'success' => false,
+                'locked'  => true,
+                'message' => "تلاش‌های ناموفق زیاد بوده است. {$mins} دقیقه دیگر دوباره تلاش کنید.",
+            ];
+        }
+
         // ⛔ حسابِ **بی‌رمز** (ثبت‌نام با شماره) هرگز به `password_verify()`
         //    نمی‌رسد.
         //
@@ -228,7 +242,7 @@ class Auth
         //    ⚠ پیامش عمداً همان پیامِ همیشگی است — «این حساب رمز ندارد»
         //      به مهاجم می‌گفت کدام حساب‌ها را با پیامک می‌شود گرفت.
         if ($user && ($user['password_hash'] === null || $user['password_hash'] === '')) {
-            LoginThrottle::recordFailure($identifier, $ip);
+            LoginThrottle::recordFailure($throttleKey, $ip);
             Audit::log('auth.login_failed', 'user', (int)$user['id'], ['why' => 'no_password'], null, (int)$user['id']);
             return ['success' => false, 'message' => 'نام کاربری یا رمز عبور اشتباه است.'];
         }
@@ -237,7 +251,7 @@ class Auth
             // نامِ ناموجود هم شمرده می‌شود، وگرنه امتحان کردن نام‌های
             // تصادفی هیچ هزینه‌ای ندارد. پیام هم عمداً همان پیام قبلی
             // می‌ماند تا وجود یا نبودِ حساب لو نرود.
-            LoginThrottle::recordFailure($identifier, $ip);
+            LoginThrottle::recordFailure($throttleKey, $ip);
             // ⛔ خودِ شناسه‌ی تایپ‌شده ثبت نمی‌شود (می‌تواند ایمیل باشد،
             //    یا حدسِ مهاجم)؛ فقط اینکه شکست خورد، از کدام آی‌پی، و
             //    اگر حسابی خورد، شناسه‌ی همان حساب. برای «رمزم را
@@ -254,7 +268,7 @@ class Auth
 
         // رمز درست بود، پس سابقه‌ی همین نام کاربری پاک می‌شود: کسی که چند
         // بار اشتباه زده ولی بالاخره وارد شده، دفعه‌ی بعد از صفر شروع کند.
-        LoginThrottle::clear($identifier);
+        LoginThrottle::clear($throttleKey);
         LoginThrottle::prune();
 
         return ['success' => true, 'message' => 'ورود موفقیت‌آمیز بود.', 'user' => $user];

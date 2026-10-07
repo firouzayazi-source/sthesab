@@ -261,11 +261,8 @@ if ($planRO) { echo planReadOnlyNotice('recurring'); }
 
 <meta name="csrf-token" content="<?= Csrf::token() ?>">
 
-<script>
-    window.CATEGORY_DATA = {
-        income: <?= json_encode(array_map(fn($c) => ['id' => (int)$c['id'], 'name' => $c['name']], $incomeCategories), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>,
-        expense: <?= json_encode(array_map(fn($c) => ['id' => (int)$c['id'], 'name' => $c['name']], $expenseCategories), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?>
-    };
-</script>
+<?php /* ⚠ `window.CATEGORY_DATA` را `add_tx_sheet.php` (در فوتر، از همین
+         `$incomeCategories`/`$expenseCategories`) می‌سازد؛ نسخه‌ی درون‌صفحه‌ایِ
+         قبلی همیشه بازنویسی می‌شد. */ ?>
 
 <?php include __DIR__ . '/includes/footer.php'; ?>

@@ -532,6 +532,10 @@ step "۷. اعمال تغییرات"
 info "reload می‌کنیم نه restart — سرویس‌های در حال کار قطع نمی‌شوند."
 run "nginx -t"
 run "systemctl reload nginx"
+# ⛔ php-fpm هم مثلِ nginx پیش از reload سنجیده می‌شود: reloadِ pool خراب
+#    کلِ آن php-fpm را می‌خواباند — که شاید سایت‌های دیگرِ این سرور هم روی
+#    آن باشند. با set -e شکستِ سنجش همین‌جا می‌ایستد و reload نمی‌شود.
+run "php-fpm${PHP_VER} -t 2>/dev/null || /usr/sbin/php-fpm${PHP_VER} -t"
 run "systemctl reload php${PHP_VER}-fpm"
 
 # ---------- ۸. باقی‌مانده ----------

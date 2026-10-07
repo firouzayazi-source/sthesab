@@ -64,6 +64,20 @@ SELF="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURC
 #    سلامت نوشته می‌شود: نشانه‌ای که روی خرابی هم بخورد، دروغ می‌گوید.
 DEPLOY_BEAT="$APP_DIR/var/deploy-ok.beat"
 
+# ⛔ کامیتی که **پیش از** آخرین فرودِ کد روی دیسک بود — مقصدِ پیش‌فرضِ
+#    `rollback`. پیش از این `rollback` به `HEAD~1` برمی‌گشت؛ ولی یک
+#    استقرار معمولاً چند کامیت را با هم می‌آورد، پس `HEAD~1` نسخه‌ای بود
+#    که **هرگز روی سرور نبوده** (نیمه‌ی راهِ همان چند کامیت) — برگشت به
+#    کدی که هیچ‌کس ندیده. نسبی است چون اسکریپت در APP_DIR اجرا می‌شود.
+DEPLOY_PREV="${DEPLOY_PREV:-var/deploy-prev}"
+
+# نامِ pool این نصب (pool.d/<نام>.conf) — staging pool خودش را دارد.
+if [[ "$HESAB_ROLE" == "staging" ]]; then
+    POOL_NAME="${POOL_NAME:-$STAGING_SITE}"
+else
+    POOL_NAME="${POOL_NAME:-hesab}"
+fi
+
 # config-lib.sh با گارد source می‌شود: در همان **یک** استقرارِ گذار که
 # خودش را می‌آورد، هنوز روی دیسک نیست. (درسِ همان استقرارِ گذارِ deploy.sh.)
 # shellcheck source=deploy/config-lib.sh
@@ -276,23 +290,47 @@ api_ping_check() {
 #      پاک می‌کند و همان «تورِ نجاتِ نسخه‌ی قبلیِ فایل» را می‌برد که
 #      برای صفحه‌ی بی‌جان نوشته شده بود.
 # ---------------------------------------------------------------------
+#
+# ⛔ سرویس از روی **خودِ فایلِ pool این اپ** پیدا می‌شود، نه «اولین
+#    php-fpmِ فعال از یک فهرستِ ثابت»: روی سروری با دو نسخه‌ی PHP آن
+#    می‌توانست سرویسِ ربات‌ها باشد — opcacheِ این اپ پاک نمی‌شد و سرویسِ
+#    دیگری بی‌دلیل reload می‌شد (قانونِ جداسازی). و پیش از reload
+#    `php-fpmX.Y -t`: reloadِ پیکربندیِ خراب کلِ آن php-fpm را می‌خواباند.
+#    کشف و سنجش در `deploy/config-lib.sh` است (همان که tune.sh هم دارد).
 clear_php_cache() {
     if ! command -v systemctl >/dev/null 2>&1; then
         warn "⚠ systemctl نیست؛ کشِ PHP پاک نشد."
         return 1
     fi
-    local svc
-    for svc in php8.4-fpm php8.3-fpm php8.2-fpm php8.1-fpm php-fpm; do
-        if systemctl is-active --quiet "$svc" 2>/dev/null; then
-            if systemctl reload "$svc" >/dev/null 2>&1; then
-                green "✓ کشِ $svc پاک شد (reload، نه restart)"
-                return 0
-            fi
-            red "⛔ reload سرویس $svc شکست خورد."
-            return 1
-        fi
-    done
-    warn "⚠ هیچ سرویسِ php-fpm فعالی پیدا نشد؛ کشِ PHP پاک نشد."
+    # در همان یک استقرارِ گذار، config-libِ قدیمی (بی این توابع) پیش از
+    # فرود source شده بود؛ نسخه‌ی تازه حالا روی دیسک است.
+    if ! declare -F fpm_pool_file >/dev/null 2>&1 && [[ -r deploy/config-lib.sh ]]; then
+        # shellcheck source=deploy/config-lib.sh
+        . deploy/config-lib.sh
+    fi
+    if ! declare -F fpm_pool_file >/dev/null 2>&1; then
+        warn "⚠ deploy/config-lib.sh خوانده نشد؛ کشِ PHP پاک نشد."
+        return 1
+    fi
+    local pool ver svc out
+    pool="$(fpm_pool_file "$POOL_NAME")"
+    if [[ -z "$pool" ]]; then
+        warn "⚠ pool این اپ پیدا نشد (/etc/php/*/fpm/pool.d/${POOL_NAME}.conf)؛ کشِ PHP پاک نشد."
+        warn "  هیچ php-fpm دیگری reload نشد — آن‌ها مالِ این اپ نیستند."
+        return 1
+    fi
+    ver="$(fpm_version_of "$pool")"
+    svc="php${ver}-fpm"
+    if ! out="$(fpm_config_test "$ver")"; then
+        red "⛔ پیکربندیِ $svc سالم نیست — reload **نشد** (سرویسِ در حالِ کار دست نخورد):"
+        printf '%s\n' "$out" | tail -5 | sed 's/^/     /'
+        return 1
+    fi
+    if systemctl reload "$svc" >/dev/null 2>&1; then
+        green "✓ کشِ $svc پاک شد (reload، نه restart)"
+        return 0
+    fi
+    red "⛔ reload سرویس $svc شکست خورد."
     return 1
 }
 
@@ -481,13 +519,14 @@ cmd_status() {
         warn "  ⚠ دیسک بالای ۸۰٪ — پیش از رسیدن به ۹۰٪ فکری بکنید."
         info "     بکاپ‌های قدیمی:  ls -lh /opt/hesab/backups | tail"
     fi
-    local svc
-    for svc in php8.4-fpm php8.3-fpm php8.2-fpm php8.1-fpm php-fpm; do
-        if systemctl is-active --quiet "$svc" 2>/dev/null; then
-            info "  $svc: فعال"
-            break
-        fi
-    done
+    local pool svc
+    pool="$(declare -F fpm_pool_file >/dev/null && fpm_pool_file "$POOL_NAME" || true)"
+    if [[ -n "$pool" ]]; then
+        svc="php$(fpm_version_of "$pool")-fpm"
+        systemctl is-active --quiet "$svc" 2>/dev/null && info "  $svc: فعال" || warn "  $svc: فعال نیست"
+    else
+        warn "  pool این اپ پیدا نشد (pool.d/${POOL_NAME}.conf)"
+    fi
     systemctl is-active --quiet nginx 2>/dev/null && info "  nginx: فعال" || warn "  nginx: فعال نیست"
     echo
 }
@@ -503,8 +542,22 @@ cmd_rollback() {
     done
 
     if [[ -z "$target" ]]; then
-        target=$(git rev-parse --short HEAD~1 2>/dev/null || true)
-        [[ -z "$target" ]] && { red "کامیتِ قبلی پیدا نشد."; return 1; }
+        # ⛔ نسخه‌ای که **واقعاً** پیش از آخرین استقرار روی سرور بود، نه
+        #    HEAD~1 (توضیحِ DEPLOY_PREV بالای فایل). اگر ثبت نشده، حدس
+        #    نمی‌زنیم: برگشت به کدی که هیچ‌وقت مستقر نبوده خودش یک خرابی است.
+        target="$(head -1 "$DEPLOY_PREV" 2>/dev/null | tr -cd '0-9a-f' || true)"
+        if [[ -z "$target" ]] || ! git cat-file -e "${target}^{commit}" 2>/dev/null; then
+            red "نسخه‌ی قبلیِ مستقرشده ثبت نشده ($DEPLOY_PREV)."
+            info "کامیتِ مقصد را صریح بدهید:  sudo ./hesabland rollback --to abc1234"
+            git log --oneline -8 2>/dev/null | sed 's/^/  /'
+            return 1
+        fi
+        if [[ "$(git rev-parse HEAD)" == "$(git rev-parse "$target")" ]]; then
+            red "سایت همین حالا روی نسخه‌ی ثبت‌شده‌ی قبلی ($(git rev-parse --short "$target")) است."
+            info "برای کامیتِ دیگر:  sudo ./hesabland rollback --to abc1234"
+            return 1
+        fi
+        target="$(git rev-parse --short "$target")"
     fi
 
     warn "برگشت از $(git rev-parse --short HEAD) به $target"
@@ -515,6 +568,7 @@ cmd_rollback() {
     read -r -p "ادامه؟ (y/N) " a
     [[ "${a,,}" == "y" ]] || { info "لغو شد."; return 1; }
 
+    record_prev "$target"
     git reset --hard "$target" --quiet
     apply_permissions
     clear_php_cache || true
@@ -522,17 +576,23 @@ cmd_rollback() {
     health_check || red "⛔ بعد از برگشت هم سالم نشد."
 }
 
+# ثبتِ کامیتِ فعلی پیش از فرود، **فقط** وقتی کد واقعاً عوض می‌شود: استقرارِ
+# بی‌تغییر نباید «قبلی» را با «فعلی» بازنویسی کند، وگرنه rollback جایی
+# برای رفتن نداشت.
+record_prev() {
+    local to="$1" cur
+    cur="$(git rev-parse HEAD 2>/dev/null || true)"
+    [[ -n "$cur" && "$cur" != "$(git rev-parse "$to" 2>/dev/null || true)" ]] || return 0
+    mkdir -p "$(dirname "$DEPLOY_PREV")" 2>/dev/null || true
+    printf '%s\n' "$cur" > "$DEPLOY_PREV" 2>/dev/null || true
+}
+
 # ---------------------------------------------------------------------
 apply_permissions() {
     mkdir -p uploads/avatars var var/sessions var/cron var/log
-
-    cat > uploads/.htaccess << 'HTACCESS'
-php_flag engine off
-Options -ExecCGI -Indexes
-<FilesMatch "\.(php|phtml|php3|php4|php5|phar|cgi|pl)$">
-    Require all denied
-</FilesMatch>
-HTACCESS
+    # (uploads/.htaccess دیگر نوشته نمی‌شود: پشتیبانیِ Apache برداشته شد و
+    #  nginx آن فایل را نمی‌خواند. محافظتِ واقعیِ uploads/ در سایتِ nginx
+    #  است — vps-setup.sh.)
 
     # نسخه‌ی مستقرشده، برای پروفایل و صفحه‌ی حریم خصوصی.
     # ⚠ اینجا نوشته می‌شود نه هنگام نمایش: pool این اپ exec/shell_exec را
@@ -543,8 +603,19 @@ HTACCESS
     # کد مالِ root می‌ماند تا نه PHP بتواند عوضش کند نه git خطای
     # «مالکیتِ مشکوک» بدهد. فقط uploads و var مالِ کاربرِ اپ‌اند.
     chown -R root:root . 2>/dev/null || true
-    find . -type d -not -path './.git/*' -exec chmod 755 {} \;
-    find . -type f -not -path './.git/*' -exec chmod 644 {} \;
+    # ⛔ var/ و config/ از chmodِ سراسری بیرون‌اند. پیش از این هر استقرار
+    #    همه‌چیز را ۶۴۴/۷۵۵ می‌کرد: کلیدِ خصوصیِ VAPID (var/push/vapid.json،
+    #    0600)، فایل‌های ورودِ فروشگاه (var/biz-import، 0700/0600) و
+    #    بکاپ‌های رمزدارِ config.php.bak* برای **هر کاربرِ دیگرِ این سرور**
+    #    خواندنی می‌شدند — و config.php هم تا خطِ ۶۴۰ِ پایین چند لحظه ۶۴۴
+    #    بود. دسترسیِ هر دو پوشه پایین‌تر صریح تنظیم می‌شود.
+    find . \( -path ./.git -o -path ./var -o -path ./config \) -prune \
+         -o -type d -exec chmod 755 {} +
+    find . \( -path ./.git -o -path ./var -o -path ./config \) -prune \
+         -o -type f -exec chmod 644 {} +
+    chmod 755 config 2>/dev/null || true
+    chmod 644 config/config.example.php 2>/dev/null || true
+    chmod 600 config/config.php.bak* config/*.bak 2>/dev/null || true
     # گیت بیتِ اجرا را ردیابی می‌کند؛ بدونِ این خط git pull بعدی می‌شکند.
     find . -name '*.sh' -not -path './.git/*' -exec chmod 755 {} \;
     chmod 755 hesabland deploy.sh 2>/dev/null || true
@@ -563,6 +634,17 @@ HTACCESS
         # منقضی شده بود» گیر می‌کرد. هیچ‌کس نمی‌توانست وارد شود.
         chown -R "$APP_USER":"$APP_USER" var
         chmod 700 var/sessions
+
+        # ⛔ رازهای var/ به همان دسترسی‌ای برمی‌گردند که خودِ اپ ساخته بود
+        #    (includes/push.php و biz_migrate.php: پوشه ۷۰۰، فایل ۶۰۰). روی
+        #    نصبِ موجود، chmodِ سراسریِ استقرارهای قبلی آن‌ها را ۶۴۴ کرده بود
+        #    و فقط بیرون گذاشتنِ var/ از آن chmod، چیزی را درست نمی‌کرد.
+        local d
+        for d in var/push var/biz-import; do
+            [[ -d "$d" ]] || continue
+            find "$d" -type d -exec chmod 700 {} +
+            find "$d" -type f -exec chmod 600 {} +
+        done
 
         # و واقعاً آزموده می‌شود. سکوت اینجا بدترین حالت است، چون اپ
         # بالا می‌آید و فقط هیچ‌کس نمی‌تواند وارد شود.
@@ -798,11 +880,12 @@ cmd_staging() {
             red "⛔ کپیِ دیتابیسِ واقعی با ایمیل/پیامکِ روشن انجام نمی‌شود."
             return 1
         fi
-        local bk; bk="$(ls -1t /opt/hesab/backups/*.sql.gz 2>/dev/null | head -1 || true)"
+        # ⚠ بکاپِ ایمنیِ restore.sh (`*_before-restore_*`) عکسِ وضعیتِ کنارگذاشته است، نه آخرین بکاپ.
+        local bk; bk="$(ls -1t /opt/hesab/backups/*.sql.gz 2>/dev/null | grep -v -- '_before-restore_' | head -1 || true)"
         [[ -n "$bk" ]] || { red "⛔ هیچ بکاپی نیست. اول:  sudo ./hesabland backup"; return 1; }
         step "پر کردنِ دیتابیسِ staging با $(basename "$bk")"
         warn "  ⚠ داده‌ی واقعیِ کاربران در staging می‌نشیند (پشتِ رمز، بی‌ایمیل و بی‌پیامک)."
-        APP_DIR="$PROD_DIR" bash "$PROD_DIR/deploy/restore.sh" --admin \
+        APP_DIR="$PROD_DIR" STAGING_DIR="$STAGING_DIR" bash "$PROD_DIR/deploy/restore.sh" --admin \
             --into "$(conf_get "$stg_conf" DB_NAME)" "$bk" 2>&1 | sed 's/^/  /'
         [[ ${PIPESTATUS[0]} -eq 0 ]] || { red "⛔ کپیِ دیتابیس شکست خورد."; return 1; }
     fi
@@ -989,6 +1072,7 @@ cmd_deploy() {
     fi
 
     # ---------- فرود ----------
+    record_prev "$TARGET"
     git reset --hard "$TARGET" --quiet
     AFTER=$(git rev-parse --short HEAD)
     if [[ "$BEFORE" == "$AFTER" ]]; then

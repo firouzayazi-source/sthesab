@@ -24,9 +24,10 @@
 #              دست نمی‌زند. این همان کاری است که باید هر چند وقت یک بار
 #              انجام دهید تا مطمئن باشید بکاپ‌ها واقعاً کار می‌کنند.
 #
-#   --into NAME  بازیابی روی دیتابیسی که خودتان نام می‌برید. برای
-#              برگرداندن واقعی. اگر نام همان دیتابیس زنده باشد، اول
-#              یک بکاپ ایمنی می‌گیرد و بعد تأیید تایپی می‌خواهد.
+#   --into NAME  بازیابی واقعی، فقط روی دیتابیسِ همین اپ (DB_NAME) یا
+#              دیتابیسِ staging (`hesab_staging`، یا DB_NAMEِ کانفیگِ
+#              staging). اگر نام همان دیتابیس زنده باشد، اول یک بکاپ
+#              ایمنی می‌گیرد و بعد تأیید تایپی می‌خواهد.
 #
 #   --admin    با کاربر مدیرِ دیتابیس (سوکت یونیکس) وصل می‌شود، نه با
 #              کاربر اپ. **برای حالت سنجش لازم است**، چون سنجش یک
@@ -96,6 +97,27 @@ if [[ $ADMIN -eq 0 && -z "$DB_USER" ]]; then
     exit 1
 fi
 
+# ---------- --into فقط روی دیتابیس‌های همین پروژه ----------
+# ⛔ با --admin اتصال با مدیرِ دیتابیس است و هر نامی را می‌پذیرد — یعنی
+#    یک غلطِ تایپی (یا تکمیلِ خودکارِ ترمینال) دیتابیسِ **ربات‌ها** را با
+#    بکاپِ حساب لند بازنویسی می‌کرد، و چون نامش DB_NAME نبود، بکاپِ ایمنی
+#    و تأییدِ تایپی هم نمی‌گرفت. قانونِ جداسازی: فقط hesab_db و staging.
+STAGING_DIR="${STAGING_DIR:-/opt/hesab/staging}"
+if [[ -n "$TARGET_DB" ]]; then
+    allowed_dbs=("$DB_NAME" "hesab_staging")
+    if [[ -r "$STAGING_DIR/config/config.php" ]]; then
+        stg_db="$(CONFIG="$STAGING_DIR/config/config.php" read_const DB_NAME)"
+        [[ -n "$stg_db" ]] && allowed_dbs+=("$stg_db")
+    fi
+    ok_db=0
+    for d in "${allowed_dbs[@]}"; do [[ "$TARGET_DB" == "$d" ]] && ok_db=1; done
+    if (( ! ok_db )); then
+        red "⛔ «$TARGET_DB» دیتابیسِ این پروژه نیست — بازیابی فقط روی این‌ها:"
+        printf '     %s\n' "${allowed_dbs[@]}" | sort -u
+        exit 1
+    fi
+fi
+
 # ---------- کدام کاربر دیتابیس ----------
 #
 # پیش‌فرض: همان کاربر اپ (`hesab_user`). برای بازیابی واقعی روی دیتابیس
@@ -115,14 +137,22 @@ if [[ $ADMIN -eq 1 ]]; then
     dump_do()   { mysqldump --default-character-set=utf8mb4 "$@"; }
     WHOAMI_DB="مدیر دیتابیس (سوکت یونیکس)"
 else
-    mysql_do()  { mysql --default-character-set=utf8mb4 -h "${DB_HOST:-localhost}" -u "$DB_USER" -p"$DB_PASS" "$@"; }
-    dump_do()   { mysqldump --default-character-set=utf8mb4 -h "${DB_HOST:-localhost}" -u "$DB_USER" -p"$DB_PASS" "$@"; }
+    # ⛔ رمز از فایلِ موقتِ 0600 می‌رود، نه `-p` در خطِ فرمان (config-lib.sh).
+    db_cnf_make "$DB_USER" "$DB_PASS" "${DB_HOST:-localhost}"
+    mysql_do()  { mysql --defaults-extra-file="$DB_CNF" --default-character-set=utf8mb4 "$@"; }
+    dump_do()   { mysqldump --defaults-extra-file="$DB_CNF" --default-character-set=utf8mb4 "$@"; }
     WHOAMI_DB="$DB_USER"
 fi
 
 # ---------- پیدا کردن فایل بکاپ ----------
+# ⚠ بکاپِ ایمنیِ خودِ همین اسکریپت (`*_before-restore_*`) انتخابِ پیش‌فرض
+#   نیست: آن عکسِ وضعیتی است که **داشت جایگزین می‌شد** (همان خرابی‌ای که
+#   برایش بازیابی کردید)، و چون تازه‌ترین فایل است، «آخرین بکاپ» همان
+#   می‌شد. فقط اگر هیچ بکاپِ دیگری نباشد سراغش می‌رود؛ با نامِ صریح هم
+#   همیشه قابلِ انتخاب است.
 if [[ -z "$FILE" ]]; then
-    FILE="$(ls -1t "$BACKUP_DIR"/*.sql.gz 2>/dev/null | head -1 || true)"
+    FILE="$(ls -1t "$BACKUP_DIR"/*.sql.gz 2>/dev/null | grep -v -- '_before-restore_' | head -1 || true)"
+    [[ -n "$FILE" ]] || FILE="$(ls -1t "$BACKUP_DIR"/*.sql.gz 2>/dev/null | head -1 || true)"
     [[ -n "$FILE" ]] || { red "هیچ بکاپی در $BACKUP_DIR پیدا نشد."; exit 1; }
     info "آخرین بکاپ انتخاب شد: $(basename "$FILE")"
 fi
@@ -231,7 +261,8 @@ if ! mysql_do -e "CREATE DATABASE IF NOT EXISTS \`$TMP_DB\` CHARACTER SET utf8mb
     exit 1
 fi
 
-cleanup_tmp() { mysql_do -e "DROP DATABASE IF EXISTS \`$TMP_DB\`" 2>/dev/null || true; }
+# ⚠ trapِ دوم اولی را می‌کشد — پس پاک کردنِ فایلِ رمز (db_cnf_make) هم اینجاست.
+cleanup_tmp() { mysql_do -e "DROP DATABASE IF EXISTS \`$TMP_DB\`" 2>/dev/null || true; db_cnf_cleanup; }
 trap cleanup_tmp EXIT
 
 if ! zcat "$FILE" | mysql_do "$TMP_DB"; then

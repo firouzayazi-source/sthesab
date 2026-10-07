@@ -318,19 +318,7 @@ final class Biz
     /** ستونِ نوعِ حساب آمده است؟ (migration_business_mode) */
     public static function available(): bool
     {
-        return function_exists('tableHasColumn')
-            ? tableHasColumn('users', 'account_type')
-            : self::columnProbe();
-    }
-
-    private static function columnProbe(): bool
-    {
-        try {
-            Database::getConnection()->query('SELECT account_type FROM users LIMIT 0');
-            return true;
-        } catch (PDOException $e) {
-            return false;
-        }
+        return self::hasColumn('users', 'account_type');
     }
 
     /**
@@ -975,7 +963,10 @@ final class Biz
         return self::$infoReady ??= self::hasColumn('biz_settings', 'invoice_prefs');
     }
 
-    /** ستونی از جدول‌های فروشگاه آمده است؟ — نصبِ migration‌نخورده نشکند. */
+    /**
+     * ستونی آمده است؟ — نصبِ migration‌نخورده نشکند. نقشه‌ی ساختار اگر
+     * `functions.php` لود شده، وگرنه یک `LIMIT 0` (تنها نسخه‌ی این سنجش).
+     */
     private static function hasColumn(string $table, string $col): bool
     {
         if (function_exists('tableHasColumn')) { return tableHasColumn($table, $col); }
@@ -1242,7 +1233,20 @@ final class BizOnce
         if ($e['s'] === 'done') { return (string)$e['url']; }
         if ($e['s'] === 'busy') { return ''; }
         $_SESSION[self::KEY][$t] = ['s' => 'busy', 'at' => time()];
+        // ⛔ خطای پیش‌بینی‌نشده (۵۰۰، بن‌بست) نه `done()` می‌زند نه `release()`:
+        //    نشان «در کار» می‌ماند و ارسالِ دوباره «یک بار ثبت شده بود» می‌گفت در
+        //    حالی که هیچ چیز ثبت نشده بود (تراکنش برگشته). پایانِ درخواست — پیش از
+        //    نوشتنِ نشست — نشانِ هنوز «در کار» را آزاد می‌کند (بازبینیِ مهر ۱۴۰۵).
+        register_shutdown_function([self::class, 'releaseIfBusy'], $t);
         return null;
+    }
+
+    /** @internal پایانِ درخواست: نشانی که نه ثبت شد نه آزاد، آزاد می‌شود. */
+    public static function releaseIfBusy(string $t): void
+    {
+        if (($_SESSION[self::KEY][$t]['s'] ?? '') === 'busy') {
+            $_SESSION[self::KEY][$t] = ['s' => 'new', 'at' => time()];
+        }
     }
 
     /** پس از موفقیت: ارسالِ دوباره به همین آدرس می‌رود. */

@@ -53,9 +53,14 @@ $inputs = [
     'chq'  => 'ثبت چک ۲ میلیون',
     'arab' => 'مشتري جديد',
     'none' => 'سلام',
+    'inc'  => 'درآمد ۲ میلیون',
+    'srchA'=> 'جست‌و‌جوی آرش احمدی',
 ];
+// ⛔ `fold` (جست‌وجوی کالا) و `norm` (فرمان) یکی‌اند و همان `BizCommon::fold()`ِ سرورند.
+$foldIn = ['آيفون ١٢ ٱؤ ـكتاب‌ها', 'ایفون', 'آیفون', 'IPHONE  13'];
 $runner = $block . "\nvar I = " . json_encode($inputs, JSON_UNESCAPED_UNICODE) . ", O = {};\n"
         . "Object.keys(I).forEach(function (k) { O[k] = k.indexOf('amt') === 0 ? stCmd.amount(I[k]) : stCmd.parse(I[k]); });\n"
+        . "O.fold = " . json_encode($foldIn, JSON_UNESCAPED_UNICODE) . ".map(function (x) { return [stCmd.fold(x), stCmd.norm(x)]; });\n"
         . "process.stdout.write(JSON.stringify(O));\n";
 $tmp = tempnam(sys_get_temp_dir(), 'stcmd') . '.js';
 file_put_contents($tmp, $runner);
@@ -88,10 +93,23 @@ T::same(['parties.php?f=debtor', 'parties.php?f=creditor'], $urls('debt'), 'بد
 T::same(['reports.php?p=today'], $urls('st'), 'فروش امروز ← گزارشِ امروز');
 T::same('payment.php?k=receipt&method=cheque&amount=2000000', $urls('chq')[0] ?? '', 'ثبتِ چک با مبلغ');
 T::same([], $r['none'], 'متنِ بی‌نیت هیچ فرمانی نمی‌سازد');
+T::same('payment.php?k=income&amount=2000000', $urls('inc')[0] ?? '', '«درآمد» بعد از تا شدنِ «آ» هم فهمیده می‌شود');
+T::same(['search.php?q=' . rawurlencode('آرش احمدی')], $urls('srchA'),
+    '⛔ عبارتِ جستجو همان واژه‌های کاربر است («آرش» نه «ارش») — سرور با LIKE می‌گردد');
+
+require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/biz_catalog.php';
+$foldBad = [];
+foreach ($foldIn as $i => $x) {
+    [$jf, $jn] = $r['fold'][$i] ?? ['', ''];
+    if ($jf !== BizCommon::fold($x) || $jn !== $jf) { $foldBad[] = "{$x} → js {$jf} / norm {$jn} / php " . BizCommon::fold($x); }
+}
+T::same([], $foldBad, '⛔ stCmd.fold = stCmd.norm = BizCommon::fold (آ/ٱ/ؤ، ارقامِ عربی، کشیده، نیم‌فاصله)');
+T::same($r['fold'][1][0] ?? 'x', $r['fold'][2][0] ?? 'y', '«ایفون» و «آیفون» یکی‌اند');
 
 // ⛔ همه‌ی آدرس‌ها به صفحه‌ی موجودِ store/ می‌روند
 $all = [];
-foreach ($r as $k => $v) { if (is_array($v)) { foreach ($v as $it) { $all[] = (string)$it['u']; } } }
+foreach ($r as $k => $v) { if (is_array($v) && $k !== 'fold') { foreach ($v as $it) { $all[] = (string)$it['u']; } } }
 $missing = [];
 foreach (array_unique($all) as $u) {
     $f = strtok($u, '?');

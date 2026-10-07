@@ -220,7 +220,7 @@ T::same(['create' => 3, 'update' => 0, 'skip' => 0, 'error' => 1], $planA['count
 T::same(['ملت 123-45', 'bank'], [$planA['rows'][0]['name'], $planA['rows'][0]['kind']], 'بی‌نام: «بانک + شماره»، نوع بانک');
 BizMigrate::apply($a, 'accounts', $planA, $opts);
 $accBal = function (string $name) use ($pdo, $a): ?int {
-    $st = $pdo->prepare('SELECT ' . BizCash::BALANCE_SQL . ' FROM biz_accounts a WHERE a.user_id = :u AND a.name = :n');
+    $st = $pdo->prepare('SELECT ' . BizCash::balanceSql() . ' FROM biz_accounts a WHERE a.user_id = :u AND a.name = :n');
     $st->execute(['u' => $a, 'n' => $name]);
     $v = $st->fetchColumn();
     return $v === false ? null : (int)$v;

@@ -77,3 +77,91 @@ config_problem() {
     fi
     return 0
 }
+
+# ────────────────────────────────────────────────────────────────────
+# رمزِ دیتابیس — هرگز در خطِ فرمان
+#
+# ⛔ `mysql -p"$DB_PASS"` را هر کاربرِ دیگرِ همین سرور در `ps aux` و
+#    `/proc/<pid>/cmdline` می‌بیند — و روی این VPS سرویس‌های دیگری هم
+#    هستند (همان قانونِ جداسازی). `perf-report.sh` از اول با فایلِ موقت
+#    کار می‌کرد ولی `backup.sh` (هر شب، با cron)، `migrate.sh` و
+#    `restore.sh` رمز را در خطِ فرمان می‌گذاشتند. حالا هر سه از همین یک
+#    تابع رد می‌شوند.
+#
+# `db_cnf_make USER PASS [HOST]` فایلی با دسترسیِ 0600 می‌سازد و مسیرش را
+# در متغیرِ `DB_CNF` می‌گذارد؛ مصرف: `mysql --defaults-extra-file="$DB_CNF" …`
+# (⚠ این گزینه باید **اولین** آرگومانِ mysql/mysqldump باشد).
+#
+# ⚠ عمداً با `$(…)` صدا زده نمی‌شود: در زیرپوسته نه متغیر برمی‌گردد نه
+#   trap — فایلِ رمز روی دیسک می‌ماند. trapِ EXIT را خودش می‌گذارد؛
+#   اسکریپتی که بعداً trapِ EXITِ خودش را می‌گذارد (مثلِ `restore.sh`)
+#   باید `db_cnf_cleanup` را هم در آن صدا بزند، وگرنه trapِ دوم اولی را
+#   می‌کشد.
+#
+# ⚠ HOST هم اینجا می‌رود (`DB_HOST`ِ کانفیگ): پیش از این فقط
+#   `restore.sh` آن را می‌خواند و `backup.sh`/`migrate.sh` بی‌صدا به
+#   localhost وصل می‌شدند — دیتابیسی که اپ به آن وصل است با دیتابیسی که
+#   بکاپ می‌شود یکی نبود.
+DB_CNF=""
+__DB_CNF_FILES=()
+db_cnf_cleanup() {
+    local f
+    for f in ${__DB_CNF_FILES[@]+"${__DB_CNF_FILES[@]}"}; do rm -f "$f"; done
+    __DB_CNF_FILES=()
+}
+db_cnf_make() {
+    local user="$1" pass="$2" host="${3:-}" esc
+    # umask پیش از ساختن، نه chmod بعدش: بینِ آن دو لحظه فایل خواندنی بود.
+    DB_CNF="$(umask 077; mktemp "${TMPDIR:-/tmp}/hesabdb.XXXXXX")"
+    chmod 600 "$DB_CNF"
+    __DB_CNF_FILES+=("$DB_CNF")
+    trap db_cnf_cleanup EXIT
+    # فایلِ گزینه‌ی MySQL بک‌اسلش را فرار می‌خواند: اول خودِ بک‌اسلش، بعد گیومه.
+    esc="${pass//\\/\\\\}"; esc="${esc//\"/\\\"}"
+    {
+        printf '[client]\n'
+        printf 'user="%s"\n' "$user"
+        printf 'password="%s"\n' "$esc"
+        [[ -n "$host" ]] && printf 'host="%s"\n' "$host"
+    } > "$DB_CNF"
+    return 0
+}
+
+# ────────────────────────────────────────────────────────────────────
+# php-fpmِ همین اپ — نه «اولین php-fpmِ فعال»
+#
+# ⛔ `hesabland` پیش از این از یک فهرستِ ثابت (8.4، 8.3، …) اولین سرویسِ
+#    فعال را reload می‌کرد. روی سروری که دو نسخه‌ی PHP دارد (یکی برای
+#    ربات‌ها)، آن سرویس می‌توانست **مالِ دیگری** باشد: opcacheِ این اپ
+#    پاک نمی‌شد (کدِ کهنه، سنجشِ سلامت روی کدِ قدیمی سبز) و سرویسِ
+#    دیگری بی‌دلیل reload می‌شد — همان چیزی که قانونِ جداسازی منع می‌کند.
+#    و `-t` هم نداشت: reloadِ پیکربندیِ خراب کلِ آن php-fpm را می‌خواباند.
+#    منطقِ کشف از `tune.sh` آمد که از روزِ اول درست بود: نسخه از روی
+#    خودِ فایلِ pool خوانده می‌شود.
+#
+# `fpm_pool_file [نامِ pool]` → مسیرِ pool.d/<نام>.conf یا خالی.
+# `fpm_version_of <مسیر>`     → «8.4».
+# `fpm_config_test <نسخه>`    → همان `php-fpmX.Y -t`؛ خروجیِ آن را چاپ می‌کند.
+PHP_ETC_DIR="${PHP_ETC_DIR:-/etc/php}"
+fpm_pool_file() {
+    local site="${1:-hesab}" f found=''
+    for f in "$PHP_ETC_DIR"/*/fpm/pool.d/"${site}".conf; do
+        [[ -f "$f" ]] && found="$f"
+    done
+    printf '%s' "$found"
+}
+fpm_version_of() {
+    local rest="${1#"$PHP_ETC_DIR"/}"
+    printf '%s' "${rest%%/*}"
+}
+fpm_config_test() {
+    local ver="$1" bin
+    for bin in "php-fpm${ver}" "/usr/sbin/php-fpm${ver}"; do
+        if command -v "$bin" >/dev/null 2>&1; then
+            "$bin" -t 2>&1
+            return
+        fi
+    done
+    printf 'php-fpm%s پیدا نشد — پیکربندی سنجیده نشد.\n' "$ver"
+    return 1
+}

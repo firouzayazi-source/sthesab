@@ -152,13 +152,15 @@ green "✓ nginx با reload قاعده را گرفت."
 # ---------- سنجشِ خودِ رفتار ----------
 # ⛔ با --resolve (نه سرآیندِ Host) و با صبر: کارگرهای قدیمی تا صدها
 #    میلی‌ثانیه با پیکربندیِ قبلی جواب می‌دهند.
+# ⛔ و با --noproxy: با پراکسیِ محیط، curl مقدارِ --resolve را نادیده می‌گیرد
+#    و پاسخ از جای دیگری می‌آید (همان درسِ hesabland).
 step "سنجش"
 ok=0
 for _ in $(seq 1 20); do
-    varCode="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
+    varCode="$(curl -sS --noproxy '*' -o /dev/null -w '%{http_code}' --max-time 5 \
         --resolve "${DOMAIN}:443:127.0.0.1" --resolve "${DOMAIN}:80:127.0.0.1" \
         "${SCHEME}://${DOMAIN}/var/version.txt" 2>/dev/null || true)"
-    loginCode="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
+    loginCode="$(curl -sS --noproxy '*' -o /dev/null -w '%{http_code}' --max-time 5 \
         --resolve "${DOMAIN}:443:127.0.0.1" --resolve "${DOMAIN}:80:127.0.0.1" \
         "${SCHEME}://${DOMAIN}/login.php" 2>/dev/null || true)"
     if [[ "$varCode" == "404" && "$loginCode" == "200" ]]; then ok=1; break; fi

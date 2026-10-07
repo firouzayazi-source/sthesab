@@ -10,15 +10,21 @@
 (function (root) {
     'use strict';
     var FA = '۰۱۲۳۴۵۶۷۸۹', AR = '٠١٢٣٤٥٦٧٨٩';
-    function norm(s) {
+    /**
+     * ⛔ تنها «تا» کردنِ متن در این فایل — همان `BizCommon::fold()`ِ سرور: حروفِ
+     *    عربی، «آ/ٱ/أ/إ» ← «ا»، «ؤ» ← «و»، ارقام، اعراب/کشیده، نیم‌فاصله، بزرگی.
+     *    جست‌وجوی کالا (`stCmd.fold`) و فرمانِ سریع (`norm`) هر دو از همین؛ پیش از
+     *    این `norm` «آ» را نگه می‌داشت و «ایفون» در فرمان «آیفون» را پیدا نمی‌کرد.
+     */
+    function fold(s) {
         return String(s == null ? '' : s)
             .replace(/[۰-۹]/g, function (d) { return FA.indexOf(d); })
             .replace(/[٠-٩]/g, function (d) { return AR.indexOf(d); })
-            .replace(/ي|ى/g, 'ی').replace(/ك/g, 'ک').replace(/أ|إ/g, 'ا').replace(/ۀ|ة/g, 'ه')
-            .replace(/[ً-ٟـ]/g, '')
-            .replace(/[‌‏‎]/g, ' ')
-            .replace(/\s+/g, ' ').trim().toLowerCase();
+            .replace(/[يى]/g, 'ی').replace(/ك/g, 'ک').replace(/[آأإٱ]/g, 'ا').replace(/ؤ/g, 'و').replace(/[ةۀ]/g, 'ه')
+            .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
+            .replace(/[\s\u200c\u200e\u200f]+/g, ' ').trim().toLowerCase();
     }
+    var norm = fold;
     /**
      * مبلغ از متن — «۵ میلیون»، «۲٫۵ میلیون»، «۳۰۰ هزار»، «۱,۲۰۰,۰۰۰»، «۵م».
      * ⛔ مبلغ به تومان است (واحدِ همه‌ی فرم‌های فروشگاه). عددِ بی‌واحدِ زیرِ
@@ -43,7 +49,7 @@
         { re: /(دریافت|وصول|گرفتم|واریز\s*مشتری)/, k: 'receipt', t: 'دریافت از مشتری' },
         { re: /(پرداخت|دادم)/,                    k: 'payment', t: 'پرداخت به تأمین‌کننده' },
         { re: /(هزینه|خرج|قبض|اجاره)/,           k: 'expense', t: 'هزینه‌ی فروشگاه' },
-        { re: /درآمد/,                            k: 'income',  t: 'درآمدِ متفرقه' },
+        { re: /درامد/,                            k: 'income',  t: 'درآمدِ متفرقه' },   // «درآمد» بعد از fold
         { re: /انتقال/,                           k: 'transfer', t: 'انتقال بینِ صندوق‌ها' }
     ];
     /**
@@ -55,7 +61,14 @@
         if (q === '') { return out; }
         function add(t, s, u, i) { if (!seen[u]) { seen[u] = 1; out.push({ t: t, s: s, u: u, i: i || 'go' }); } }
         var srch = q.match(/^(?:جستجو(?:ی)?|جست و جو(?:ی)?|پیدا کن|بگرد|search)\s+(.+)$/);
-        if (srch) { add('جستجوی «' + srch[1] + '»', 'در مشتری، کالا، فاکتور، چک و صندوق', 'search.php?q=' + encodeURIComponent(srch[1]), 'search'); return out; }
+        if (srch) {
+            // ⚠ عبارت از واژه‌های **خودِ کاربر** (بعد از همان تعدادِ واژه‌ی «جستجو …»)، نه از
+            //   متنِ تاشده: سرور نامِ طرف‌حساب را با LIKE می‌گردد و «ارش» «آرش» را پیدا نمی‌کند.
+            var words = String(text).replace(/[\s\u200c\u200e\u200f]+/g, ' ').trim().split(' ');
+            var term = words.slice(q.slice(0, q.length - srch[1].length).trim().split(' ').length).join(' ') || srch[1];
+            add('جستجوی «' + term + '»', 'در مشتری، کالا، فاکتور، چک و صندوق', 'search.php?q=' + encodeURIComponent(term), 'search');
+            return out;
+        }
         var amt = amount(q), amtQ = amt > 0 ? '&amount=' + amt : '', amtS = amt > 0 ? 'مبلغ ' + fa(amt) + ' تومان' : '';
         // گزارش و فهرست
         var per = q.match(/فروش\s*(?:(?:این|امروز)\s*)?(امروز|دیروز|هفته|ماه|امسال|سال)/);
@@ -96,7 +109,7 @@
         }
         return out.slice(0, 6);
     }
-    root.stCmd = { norm: norm, amount: amount, parse: parse };
+    root.stCmd = { norm: norm, fold: fold, amount: amount, parse: parse };
 })(typeof window !== 'undefined' ? window : globalThis);
 /* @cmd-end */
 
@@ -150,12 +163,8 @@
 
     // ---------- فهرستِ کالا از datalist ----------
     function imeiNorm(s) { return latin(s).replace(/[\s\u200c\-\/.]+/g, ''); }
-    // ⛔ همان `BizCommon::fold()`: حروفِ عربی، ارقام، اعراب/کشیده، نیم‌فاصله، بزرگی
-    function fold(s) {
-        return latin(s).replace(/[يى]/g, 'ی').replace(/ك/g, 'ک').replace(/[آأإٱ]/g, 'ا').replace(/ؤ/g, 'و').replace(/[ةۀ]/g, 'ه')
-            .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
-            .replace(/[\s\u200c\u200e\u200f]+/g, ' ').trim().toLowerCase();
-    }
+    // ⛔ همان `BizCommon::fold()` — یک پیاده‌سازی، بالای همین فایل (`stCmd.fold`)
+    var fold = window.stCmd.fold;
     var byName = {}, bySku = {}, byImei = {}, byFold = {}, index = [];
     var dl = document.getElementById('bizProducts');
     if (dl) {
@@ -327,9 +336,6 @@
             inp.setAttribute('aria-expanded', 'false');
         });
     }
-    window.stFold = fold;               // فقط برای تست (`search_probe.js`)
-    window.stSuggest = suggest;
-
     document.querySelectorAll('form[data-invoice]').forEach(function (form) {
         var body = form.querySelector('[data-lines]');
         if (!body) { return; }

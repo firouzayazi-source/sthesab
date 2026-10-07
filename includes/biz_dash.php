@@ -6,7 +6,7 @@
  * بفهمد.» هر تابعِ این فایل یک کوئری است و هر عدد از همان تعریف‌هایی
  * می‌آید که بقیه‌ی فروشگاه دارد: فروش خالصِ برگشت و فقط صادرشده
  * (`BizReports`)، مانده‌ی طرف‌حساب از `BizParties::BALANCE_SQL`، موجودیِ
- * صندوق از `BizCash::BALANCE_SQL`. **هیچ عددی اینجا دوباره تعریف نمی‌شود**
+ * صندوق از `BizCash::balanceSql()`. **هیچ عددی اینجا دوباره تعریف نمی‌شود**
  * جز دو مفهومِ تازه‌ی داشبورد، که هر دو همین‌جا مستندند:
  *
  * ۱. **جریانِ نقد** (`cashDaily()`): پولی که واقعاً وارد یا خارجِ صندوق‌های
@@ -65,11 +65,12 @@ final class BizDash
     public static function cashDaily(int $userId, string $from, string $to): array
     {
         $nc = self::NOT_CHEQUE;
+        $in = BizPay::sqlList(BizPay::IN_KINDS); $out = BizPay::sqlList(BizPay::OUT_KINDS);
         $st = Database::getConnection()->prepare(
             "SELECT y.pay_date AS d,
-                SUM(CASE WHEN y.kind IN ('receipt','income','capital') AND a.kind {$nc} THEN y.amount
+                SUM(CASE WHEN y.kind IN ({$in}) AND a.kind {$nc} THEN y.amount
                          WHEN y.kind = 'transfer' AND a.kind = 'cheque_in' AND t.kind {$nc} THEN y.amount ELSE 0 END) AS cin,
-                SUM(CASE WHEN y.kind IN ('payment','expense','drawing') AND a.kind {$nc} THEN y.amount
+                SUM(CASE WHEN y.kind IN ({$out}) AND a.kind {$nc} THEN y.amount
                          WHEN y.kind = 'transfer' AND t.kind = 'cheque_out' AND a.kind {$nc} THEN y.amount ELSE 0 END) AS cout,
                 SUM(CASE WHEN y.kind = 'expense' THEN y.amount ELSE 0 END) AS exp,
                 SUM(CASE WHEN y.kind = 'income' THEN y.amount ELSE 0 END) AS inc
@@ -128,7 +129,7 @@ final class BizDash
     }
 
     /**
-     * تغییرِ امروزِ هر صندوق (`BizCash::BALANCE_SQL` برای یک روز).
+     * تغییرِ امروزِ هر صندوق (`BizCash::balanceSql()` برای یک روز).
      * @return array<int,int> شناسه‌ی صندوق ← تغییر
      */
     public static function todayByAccount(int $userId, string $today): array
@@ -142,7 +143,7 @@ final class BizDash
         foreach ($st->fetchAll() as $r) {
             $a = (int)$r['account_id']; $s = (int)$r['s'];
             if (in_array($r['kind'], BizPay::IN_KINDS, true)) { $out[$a] = ($out[$a] ?? 0) + $s; }
-            elseif (in_array($r['kind'], ['payment', 'expense', 'drawing'], true)) { $out[$a] = ($out[$a] ?? 0) - $s; }
+            elseif (in_array($r['kind'], BizPay::OUT_KINDS, true)) { $out[$a] = ($out[$a] ?? 0) - $s; }
             elseif ($r['kind'] === 'transfer') {
                 $out[$a] = ($out[$a] ?? 0) - $s;
                 $t = (int)$r['to_account_id']; if ($t > 0) { $out[$t] = ($out[$t] ?? 0) + $s; }

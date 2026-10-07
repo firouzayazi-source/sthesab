@@ -186,6 +186,9 @@ final class BizVat
      *    - خرید: مالیاتِ فاکتورِ خرید − برگشت از خرید (اعتبارِ قابلِ کسر)
      *    - بدهی به سازمان = فروش − خرید (منفی = اعتبارِ قابلِ انتقال)
      *    مبلغِ «پیش از مالیات» = total − tax_total، فقط اسنادِ صادرشده.
+     *    - ⛔ «معاف» = جمعِ خالصِ **ردیف‌های** بی‌مالیات، نه فاکتورِ تمام‌معاف: ردیفِ
+     *      معافِ فاکتورِ مختلط (یک کالای معاف کنارِ یک مشمول) پیش از این صفر
+     *      شمرده می‌شد (بازبینیِ مهر ۱۴۰۵، بازتولید شد).
      * @return array{rows:array, sum:array}
      */
     public static function report(int $userId, string $from, string $to): array
@@ -194,11 +197,16 @@ final class BizVat
         if (!Biz::accReady()) { return ['rows' => [], 'sum' => $zero]; }
         $st = Database::getConnection()->prepare(
             "SELECT i.inv_date, i.kind, COUNT(*) AS n, SUM(i.total - i.tax_total) AS net, SUM(i.tax_total) AS tax,
-                    SUM(CASE WHEN i.tax_total = 0 THEN i.total ELSE 0 END) AS exempt
-             FROM biz_invoices i WHERE i.user_id = :u AND i.status = 'issued' AND i.inv_date BETWEEN :f AND :t
+                    COALESCE(SUM(x.exempt), 0) AS exempt
+             FROM biz_invoices i
+             LEFT JOIN (SELECT l.invoice_id, SUM(l.net_total) AS exempt
+                        FROM biz_invoice_lines l JOIN biz_invoices j ON j.id = l.invoice_id AND j.user_id = l.user_id
+                        WHERE l.user_id = :u2 AND l.tax_amount = 0 AND j.status = 'issued' AND j.inv_date BETWEEN :f2 AND :t2
+                        GROUP BY l.invoice_id) x ON x.invoice_id = i.id
+             WHERE i.user_id = :u AND i.status = 'issued' AND i.inv_date BETWEEN :f AND :t
              GROUP BY i.inv_date, i.kind ORDER BY i.inv_date"
         );
-        $st->execute(['u' => $userId, 'f' => $from, 't' => $to]);
+        $st->execute(['u' => $userId, 'u2' => $userId, 'f' => $from, 't' => $to, 'f2' => $from, 't2' => $to]);
         $rows = []; $sum = $zero;
         foreach ($st->fetchAll() as $r) {
             [$jy, $jm] = self::jym((string)$r['inv_date']);
@@ -398,7 +406,7 @@ final class BizLedger
         return $out;
     }
 
-    /** آیا هر سند تراز است؟ (برای تست و نشانِ صفحه) */
+    /** آیا هر سند تراز است؟ — فقط تست؛ هر سند بنا به ساخت تراز است و صفحه نشانی برایش ندارد. */
     public static function balanced(array $entries): bool
     {
         foreach ($entries as $e) {
@@ -431,7 +439,17 @@ final class BizLedger
         }
         ksort($rows);
         foreach ($rows as $k => $r) { $rows[$k]['balance'] = $r['dr'] - $r['cr']; }
-        return ['rows' => $rows, 'detail' => $detail, 'dr' => $dr, 'cr' => $cr];
+        return ['rows' => $rows, 'detail' => $detail, 'dr' => $dr, 'cr' => $cr, 'to' => $to, 'from' => $from];
+    }
+
+    /**
+     * سندهای تا یک روز از فهرستِ همه‌ی سندها — همان `entries($u, $at)` (هر منبع
+     * با تاریخِ خودش بریده می‌شود)، بی‌کوئریِ دوم. صفحه‌ی ترازنامه یک بار همه را
+     * می‌سازد: ترازنامه از «تا آن روز» و مغایرت‌گیری از «همه» (`reconcile()`).
+     */
+    public static function upTo(array $entries, string $at): array
+    {
+        return array_values(array_filter($entries, fn(array $e): bool => $e['date'] <= $at));
     }
 
     /**
@@ -472,15 +490,24 @@ final class BizLedger
     /**
      * ⛔ مغایرت‌گیری — همان چیزی که دفترِ مشتق واقعاً می‌سنجد: مانده‌ی هر
      *    صندوق و هر طرف‌حساب در دفتر باید **دقیقاً** همان عددِ صفحه‌های
-     *    فروشگاه باشد (`BizCash::BALANCE_SQL`، `BizParties::BALANCE_SQL`).
+     *    فروشگاه باشد (`BizCash::balanceSql()`، `BizParties::BALANCE_SQL`).
      *    ناهمخوانی یعنی سندی که به یکی رسیده و به دیگری نه — خطا. ارزشِ انبار
      *    (میانگینِ موزون) با جمعِ ورود و خروج به بهای سند چند تومانی گرد
      *    می‌خورد؛ آن فقط «اطلاع» است.
+     *
+     * ⛔ همیشه **کلِ** دفتر، نه دفترِ «تا یک تاریخ»: عددِ صفحه‌ها مانده‌ی امروز
+     *    با همه‌ی سندهاست، پس ترازنامه‌ی دیروز (یا امروز، کنارِ یک دریافتِ
+     *    تاریخِ آینده) «مغایرت»ِ قرمزِ دروغ نشان می‌داد (بازبینیِ مهر ۱۴۰۵،
+     *    بازتولید شد). این سنجش به تاریخ بسته نیست — درستیِ ساختِ دفتر است و
+     *    دفترِ هر تاریخ بریده‌ی همان سندهاست (`upTo()`). ترازِ ناقص نادیده
+     *    گرفته و کلِ دفتر ساخته می‌شود.
      * @return array{cash:list<array>, parties:list<array>, stock:array{ledger:int, book:int, diff:int}, ok:bool}
      */
     public static function reconcile(int $userId, ?array $trial = null): array
     {
-        $trial ??= self::trial($userId, BizReports::ALL_TO);
+        if ($trial === null || ($trial['to'] ?? '') !== BizReports::ALL_TO || ($trial['from'] ?? '') !== '') {
+            $trial = self::trial($userId, BizReports::ALL_TO);
+        }
         $pdo = Database::getConnection();
         $cash = [];
         foreach (BizCash::list($userId) as $a) {
@@ -509,21 +536,22 @@ final class BizLedger
                 'ok' => !$cash && !$parties];
     }
 
-    /** روزنامه به CSV (BOM، مبلغِ عددِ خام — همان قاعده‌ی خروجیِ تراکنش‌ها). */
+    /**
+     * روزنامه به CSV (BOM، مبلغِ عددِ خام — همان قاعده‌ی خروجیِ تراکنش‌ها).
+     * ⛔ از `BizSheet::writeCsv()`: شرح و تفصیلی نامِ طرف‌حساب و شرحِ هزینه‌اند —
+     *    متنِ کاربر — و نامی مثلِ `=HYPERLINK(…)` در اکسلِ حسابدار فرمول اجرا
+     *    می‌کرد (بازبینیِ مهر ۱۴۰۵، بازتولید شد). مبلغ عدد است و دست نمی‌خورد.
+     */
     public static function csv(array $entries): string
     {
-        $h = fopen('php://temp', 'w+');
-        fwrite($h, "\xEF\xBB\xBF");
-        fputcsv($h, ['شماره‌ی سند', 'تاریخ', 'شرح', 'کدِ حساب', 'حساب', 'تفصیلی', 'بدهکار', 'بستانکار']);
+        require_once __DIR__ . '/biz_io.php';
+        $rows = [['شماره‌ی سند', 'تاریخ', 'شرح', 'کدِ حساب', 'حساب', 'تفصیلی', 'بدهکار', 'بستانکار']];
         foreach (array_values($entries) as $n => $e) {
             foreach ($e['lines'] as [$code, , $dn, $d, $c]) {
-                fputcsv($h, [$n + 1, toJalali($e['date']), $e['desc'], $code, self::ACCOUNTS[$code][0], $dn, $d, $c]);
+                $rows[] = [$n + 1, toJalali($e['date']), $e['desc'], $code, self::ACCOUNTS[$code][0], $dn, (int)$d, (int)$c];
             }
         }
-        rewind($h);
-        $s = (string)stream_get_contents($h);
-        fclose($h);
-        return $s;
+        return BizSheet::writeCsv($rows);
     }
 }
 
@@ -605,18 +633,14 @@ final class BizYear
    ================================================================= */
 final class BizCashCount
 {
-    /** مانده‌ی یک صندوق تا پایانِ یک روز — همان منطقِ `BizCash::BALANCE_SQL`. */
+    /**
+     * مانده‌ی یک صندوق تا پایانِ یک روز — ⛔ همان `BizCash::balanceSql()` با تاریخ،
+     * نه کپیِ آن (کپیِ قبلی فهرستِ نوع‌های خودش را داشت).
+     */
     public static function balanceAt(PDO $pdo, int $userId, int $accountId, string $date): ?int
     {
-        $st = $pdo->prepare(
-            "SELECT a.opening_balance
-                + COALESCE((SELECT SUM(CASE WHEN bp.kind IN ('receipt','income','capital') THEN bp.amount ELSE -bp.amount END)
-                            FROM biz_payments bp WHERE bp.account_id = a.id AND bp.user_id = a.user_id AND bp.status = 'ok' AND bp.pay_date <= :d1), 0)
-                + COALESCE((SELECT SUM(bp.amount) FROM biz_payments bp
-                            WHERE bp.to_account_id = a.id AND bp.user_id = a.user_id AND bp.kind = 'transfer' AND bp.status = 'ok' AND bp.pay_date <= :d2), 0)
-             FROM biz_accounts a WHERE a.id = :a AND a.user_id = :u"
-        );
-        $st->execute(['d1' => $date, 'd2' => $date, 'a' => $accountId, 'u' => $userId]);
+        $st = $pdo->prepare('SELECT ' . BizCash::balanceSql(true) . ' FROM biz_accounts a WHERE a.id = :a AND a.user_id = :u');
+        $st->execute(['bal_d1' => $date, 'bal_d2' => $date, 'a' => $accountId, 'u' => $userId]);
         $v = $st->fetchColumn();
         return $v === false ? null : (int)$v;
     }

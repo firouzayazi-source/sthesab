@@ -1034,13 +1034,6 @@ final class BizStock
     }
 
     /**
-     * ردیف‌های سندیِ حرکت‌های یک کالا، به ترتیبِ ردیف — فقط برای سندی که
-     * شمارِ ردیف‌هایش با شمارِ حرکت‌هایش یکی است (کالایی که بعداً از «خدمت»
-     * به «کالا» تغییر کرده ردیفِ بی‌حرکت دارد؛ آنجا جفت کردن حدس می‌شد، پس
-     * آن سند به میانگین برمی‌گردد و ردیفش دست نمی‌خورد).
-     * @return array<int, list<array>> شناسه‌ی سند ← ردیف‌ها
-     */
-    /**
      * ⛔ ترتیبِ حرکت‌های **یک روز**: جای سند در تاریخچه (اولین صدورش)، نه
      *    شناسه‌ی ردیفِ حرکت.
      *
@@ -1074,17 +1067,40 @@ final class BizStock
                 if ($r['first_issued_at'] !== null) { $when[(int)$r['id']] = (string)$r['first_issued_at']; }
             }
         }
+        return self::sortMoves($moves, $when);
+    }
+
+    /**
+     * ⛔ تنها کلیدِ ترتیبِ حرکت‌ها — `recalc()`، کاردکس (`ledger()`) و فهرستِ صفحه‌ی
+     *    کالا (`moves()`) همه از همین. کاردکسی که ترتیبِ خودش را داشت، موجودیِ
+     *    جاری‌اش با زنجیره‌ی بها نمی‌خواند: حرکت‌های یک روز به شناسه‌ی ردیف
+     *    می‌آمدند و خریدِ «صدورِ دوباره»شده پشتِ فروشِ همان روز چاپ می‌شد.
+     *    `BizSerial::orderSql()` همین ترتیب در SQL است (تاریخ، اولین صدور، سند).
+     *
+     * @param array<int,string> $when شناسه‌ی سند ← اولین صدور
+     */
+    private static function sortMoves(array $moves, array $when): array
+    {
         $key = static function (array $m) use ($when): array {
             $at = ($m['ref_type'] === self::REF_INVOICE && isset($when[(int)$m['ref_id']]))
                 ? $when[(int)$m['ref_id']] : (string)($m['created_at'] ?? '');
-            // هم‌ثانیه: شناسه‌ی **سند** (ترتیبِ ساختش)، بعد ردیفِ حرکت
-            $doc = $m['ref_type'] === self::REF_INVOICE ? (int)$m['ref_id'] : 0;
+            // هم‌ثانیه: شناسه‌ی **سند** (ترتیبِ ساختش)، بعد ردیفِ حرکت. ⚠ حرکتِ بی‌سند
+            // (انبارگردانی) آخرِ همان ثانیه: شمارش موجودیِ «تا همین حالا» را می‌سنجد
+            // (`adjustTo()`)، پس سندی که در همان ثانیه پیش از آن صادر شد جلویش است.
+            $doc = $m['ref_type'] === self::REF_INVOICE ? (int)$m['ref_id'] : PHP_INT_MAX;
             return [$m['kind'] === 'opening' ? 0 : 1, (string)$m['move_date'], $at, $doc, (int)$m['id']];
         };
         usort($moves, static fn(array $a, array $b): int => $key($a) <=> $key($b));
         return $moves;
     }
 
+    /**
+     * ردیف‌های سندیِ حرکت‌های یک کالا، به ترتیبِ ردیف — فقط برای سندی که
+     * شمارِ ردیف‌هایش با شمارِ حرکت‌هایش یکی است (کالایی که بعداً از «خدمت»
+     * به «کالا» تغییر کرده ردیفِ بی‌حرکت دارد؛ آنجا جفت کردن حدس می‌شد، پس
+     * آن سند به میانگین برمی‌گردد و ردیفش دست نمی‌خورد).
+     * @return array<int, list<array>> شناسه‌ی سند ← ردیف‌ها
+     */
     private static function docLines(PDO $pdo, int $userId, int $productId, array $moves): array
     {
         $count = [];
@@ -1200,20 +1216,30 @@ final class BizStock
     {
         if ($actual < 0) { return ['ok' => false, 'message' => 'موجودیِ واقعی نمی‌تواند منفی باشد.']; }
         if (($e = BizCommon::qtyError($actual, 'موجودیِ واقعی')) !== null) { return ['ok' => false, 'message' => $e]; }
-        if (($e = Biz::lockError($userId, date('Y-m-d'), 'انبارگردانی')) !== null) { return ['ok' => false, 'message' => $e]; }
+        $today = date('Y-m-d');
+        if (($e = Biz::lockError($userId, $today, 'انبارگردانی')) !== null) { return ['ok' => false, 'message' => $e]; }
         $note = mb_substr(BizCommon::line($note), 0, 200);
         $changed = false;
-        $res = self::write($userId, $productId, function (PDO $pdo, array $p) use ($userId, $productId, $actual, $note, &$changed): ?string {
+        $res = self::write($userId, $productId, function (PDO $pdo, array $p) use ($userId, $productId, $actual, $note, $today, &$changed): ?string {
             if (!BizProducts::qtyFits((string)$p['unit'], $actual)) {
                 return 'موجودی برای واحدِ «' . $p['unit'] . '» باید عددِ صحیح باشد.';
             }
-            $delta = round($actual - (float)$p['stock_qty'], 3);
+            // ⛔ شمارش «امروز» است، پس با موجودیِ **تا امروز** سنجیده می‌شود، نه با
+            //    `stock_qty` (که سندهای تاریخِ آینده را هم دارد): فروشِ پیش‌فاکتورِ
+            //    هفته‌ی بعد شمارشِ درستِ امروز را «اضافه» نشان می‌داد و حرکتِ غلط
+            //    می‌ساخت، و خریدِ تاریخِ آینده شمارشِ درست را با «منفی می‌شود» رد
+            //    می‌کرد (بازبینیِ مهر ۱۴۰۵، بازتولید شد). انبارگردانی در ترتیبِ
+            //    `recalc()` آخرِ همان روز است، پس «تا امروز» = همه‌ی حرکت‌های تا امروز.
+            $q = $pdo->prepare("SELECT COALESCE(SUM(qty), 0) FROM biz_stock_moves
+                                WHERE user_id = :u AND product_id = :p AND (move_date <= :d OR kind = 'opening')");
+            $q->execute(['u' => $userId, 'p' => $productId, 'd' => $today]);
+            $delta = round($actual - (float)$q->fetchColumn(), 3);
             if (abs($delta) < 0.0005) { return null; }
             $changed = true;
             $pdo->prepare(
                 "INSERT INTO biz_stock_moves (user_id, product_id, move_date, kind, qty, unit_cost, note)
-                 VALUES (:u, :p, CURDATE(), 'adjust', :q, NULL, :n)"
-            )->execute(['u' => $userId, 'p' => $productId, 'q' => $delta, 'n' => $note === '' ? null : $note]);
+                 VALUES (:u, :p, :d, 'adjust', :q, NULL, :n)"
+            )->execute(['u' => $userId, 'p' => $productId, 'd' => $today, 'q' => $delta, 'n' => $note === '' ? null : $note]);
             return null;
         });
         if ($res['ok'] && !$changed) { $res['message'] = 'موجودی همان عدد بود؛ چیزی عوض نشد.'; }
@@ -1306,15 +1332,7 @@ final class BizStock
      */
     public static function ledger(int $userId, int $productId, int $cap = 2000): array
     {
-        $st = Database::getConnection()->prepare(
-            "SELECT * FROM biz_stock_moves WHERE product_id = :p AND user_id = :u
-             ORDER BY (kind = 'opening') DESC, move_date, id LIMIT :lim"
-        );
-        $st->bindValue('p', $productId, PDO::PARAM_INT);
-        $st->bindValue('u', $userId, PDO::PARAM_INT);
-        $st->bindValue('lim', $cap + 1, PDO::PARAM_INT);
-        $st->execute();
-        $rows = $st->fetchAll();
+        $rows = self::orderedMoves($userId, $productId, "(m.kind = 'opening') DESC, m.move_date, m.id", $cap + 1);
         $capped = count($rows) > $cap;
         $run = 0.0;
         foreach ($rows as &$m) { $run = round($run + (float)$m['qty'], 3); $m['balance'] = $run; }
@@ -1322,17 +1340,39 @@ final class BizStock
         return ['rows' => array_slice($rows, 0, $cap), 'capped' => $capped];
     }
 
+    /** آخرین حرکت‌ها برای صفحه‌ی کالا — همان ترتیبِ `recalc()`، وارونه (تازه‌ترین بالا، اول دوره ته). */
     public static function moves(int $userId, int $productId, int $limit = 50): array
     {
-        $st = Database::getConnection()->prepare(
-            "SELECT * FROM biz_stock_moves WHERE product_id = :p AND user_id = :u
-             ORDER BY (kind = 'opening'), move_date DESC, id DESC LIMIT :lim"
+        return array_reverse(self::orderedMoves($userId, $productId, "(m.kind = 'opening'), m.move_date DESC, m.id DESC", $limit));
+    }
+
+    /**
+     * حرکت‌های یک کالا به ترتیبِ `recalc()` (`sortMoves()`). SQL فقط **کدام**
+     * ردیف‌ها را با سقف برمی‌دارد؛ ترتیب را همان کلیدِ PHP می‌دهد. اولین صدورِ
+     * سند با همان کوئری (LEFT JOIN، بی‌قفل) می‌آید — صفحه کوئریِ تازه‌ای نمی‌گیرد.
+     */
+    private static function orderedMoves(int $userId, int $productId, string $pick, int $limit): array
+    {
+        $fi  = tableHasColumn('biz_invoices', 'first_issued_at');
+        $st  = Database::getConnection()->prepare(
+            'SELECT m.*' . ($fi ? ', i.first_issued_at AS doc_at' : '') . ' FROM biz_stock_moves m'
+            . ($fi ? ' LEFT JOIN biz_invoices i ON m.ref_type = :rt AND i.id = m.ref_id AND i.user_id = m.user_id' : '')
+            . " WHERE m.product_id = :p AND m.user_id = :u ORDER BY {$pick} LIMIT :lim"
         );
+        if ($fi) { $st->bindValue('rt', self::REF_INVOICE); }
         $st->bindValue('p', $productId, PDO::PARAM_INT);
         $st->bindValue('u', $userId, PDO::PARAM_INT);
         $st->bindValue('lim', $limit, PDO::PARAM_INT);
         $st->execute();
-        return $st->fetchAll();
+        $rows = $st->fetchAll();
+        if (!$fi) { return $rows; }
+        $when = [];
+        foreach ($rows as &$r) {
+            if ($r['doc_at'] !== null) { $when[(int)$r['ref_id']] = (string)$r['doc_at']; }
+            unset($r['doc_at']);
+        }
+        unset($r);
+        return self::sortMoves($rows, $when);
     }
 }
 
@@ -1829,16 +1869,29 @@ final class BizCash
     }
 
     /**
-     * ⛔ تنها تعریفِ «موجودیِ یک صندوق» — داشبورد، فهرستِ صندوق‌ها و گردشِ
-     *    حساب همه از همین. موجودیِ اولیه + دریافت و درآمد − پرداخت و هزینه،
-     *    و انتقال از این صندوق منفی و به این صندوق مثبت؛ فقط باطل‌نشده‌ها.
-     *    ⛔ هیچ‌چیز از `walletBalances()` (دفترِ شخصی) اینجا نیست.
+     * ⛔ تنها تعریفِ «موجودیِ یک صندوق» — داشبورد، فهرستِ صندوق‌ها، گردشِ حساب
+     *    و شمارشِ صندوق (`BizCashCount::balanceAt()`) همه از همین. موجودیِ اولیه
+     *    + نوع‌های `BizPay::IN_KINDS` − بقیه، و انتقال از این صندوق منفی و به این
+     *    صندوق مثبت؛ فقط باطل‌نشده‌ها. ⛔ هیچ‌چیز از `walletBalances()` (دفترِ شخصی)
+     *    اینجا نیست.
+     *
+     * ⛔ فهرستِ «پول می‌آید» از `BizPay::IN_KINDS` ساخته می‌شود، نه دست‌نویس:
+     *    نسخه‌ی قبلی (ثابتِ `BALANCE_SQL`) و کپیِ تاریخ‌دارش در شمارشِ صندوق
+     *    هر کدام فهرستِ خودشان را داشتند. `$dated` = «تا پایانِ یک روز» با دو
+     *    پارامترِ `:bal_d1` و `:bal_d2` (فراخواننده هر دو را می‌دهد).
      */
-    public const BALANCE_SQL = "(a.opening_balance
-        + COALESCE((SELECT SUM(CASE bp.kind WHEN 'receipt' THEN bp.amount WHEN 'income' THEN bp.amount WHEN 'capital' THEN bp.amount ELSE -bp.amount END)
-                    FROM biz_payments bp WHERE bp.account_id = a.id AND bp.user_id = a.user_id AND bp.status = 'ok'), 0)
+    public static function balanceSql(bool $dated = false): string
+    {
+        if (!class_exists('BizPay', false)) { require_once __DIR__ . '/biz_docs.php'; }
+        $in = BizPay::sqlList(BizPay::IN_KINDS);
+        $d1 = $dated ? ' AND bp.pay_date <= :bal_d1' : '';
+        $d2 = $dated ? ' AND bp.pay_date <= :bal_d2' : '';
+        return "(a.opening_balance
+        + COALESCE((SELECT SUM(CASE WHEN bp.kind IN ({$in}) THEN bp.amount ELSE -bp.amount END)
+                    FROM biz_payments bp WHERE bp.account_id = a.id AND bp.user_id = a.user_id AND bp.status = 'ok'{$d1}), 0)
         + COALESCE((SELECT SUM(bp.amount) FROM biz_payments bp
-                    WHERE bp.to_account_id = a.id AND bp.user_id = a.user_id AND bp.kind = 'transfer' AND bp.status = 'ok'), 0))";
+                    WHERE bp.to_account_id = a.id AND bp.user_id = a.user_id AND bp.kind = 'transfer' AND bp.status = 'ok'{$d2}), 0))";
+    }
 
     /**
      * فهرستِ صندوق‌ها با موجودی. اگر فروشگاه هنوز هیچ صندوقی ندارد، یک
@@ -1860,7 +1913,7 @@ final class BizCash
 
     private static function fetch(int $userId, bool $activeOnly): array
     {
-        $bal = self::BALANCE_SQL;
+        $bal = self::balanceSql();
         $st  = Database::getConnection()->prepare(
             "SELECT a.*, {$bal} AS balance FROM biz_accounts a WHERE a.user_id = :u"
             . ($activeOnly ? ' AND a.is_active = 1' : '')
@@ -1928,7 +1981,7 @@ final class BizCash
         // ⛔ حسابِ **موجودی‌دار** غیرفعال نمی‌شود: جمعِ نقدِ داشبورد فقط حسابِ
         //    فعال را می‌شمارد، پس پولش بی‌صدا ناپدید می‌شد (بازرسیِ مهر ۱۴۰۵).
         if (!$active) {
-            $bl = $pdo->prepare('SELECT ' . self::BALANCE_SQL . ' FROM biz_accounts a WHERE a.id = :id AND a.user_id = :u');
+            $bl = $pdo->prepare('SELECT ' . self::balanceSql() . ' FROM biz_accounts a WHERE a.id = :id AND a.user_id = :u');
             $bl->execute(['id' => $id, 'u' => $userId]);
             $bal = (int)$bl->fetchColumn();
             if ($bal !== 0) {

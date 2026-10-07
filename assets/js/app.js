@@ -114,16 +114,23 @@
    درخواست را پیدا کند. بیرون از DOMContentLoaded است چون خطا می‌تواند
    پیش از آن بیفتد.
    ============================================================ */
+/**
+ * ⛔ تنها خواننده‌ی توکنِ CSRF در این فایل: اول `<meta name="csrf-token">`،
+ *    بعد هر `[name="csrf_token"]` (شیتِ ثبتِ تراکنش در فوترِ **هر** صفحه
+ *    است). پیش از این هر تکه یکی از این دو را تنها می‌خواند؛ `dashboard.php`
+ *    و `search.php` متا نداشتند و «حذف» آنجا بی‌صدا ۴۰۳ می‌گرفت.
+ */
+window.csrfToken = function () {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    if (m && m.content) { return m.content; }
+    var i = document.querySelector('[name="csrf_token"]');
+    return i ? i.value : '';
+};
+
 (function () {
     var sent = 0;
     var base = (typeof window.APP_BASE === 'string') ? window.APP_BASE : '';
-
-    function csrf() {
-        var m = document.querySelector('meta[name="csrf-token"]');
-        if (m && m.content) { return m.content; }
-        var i = document.querySelector('[name="csrf_token"]');
-        return i ? i.value : '';
-    }
+    var csrf = window.csrfToken;
 
     /**
      * ⛔ «Script error.»ِ خالی — تنها خطایی که **خودِ مرورگر** می‌سازد،
@@ -706,6 +713,9 @@ function appMain() {
         return base + '/api/' + name;
     }
 
+    // ⛔ همه‌ی درخواست‌های این بدنه توکن را فقط از اینجا می‌گیرند (`window.csrfToken`).
+    function csrf() { return window.csrfToken(); }
+
     // ---------- ⛔ جفت شدنِ گوشی برای ثبتِ پیامک در پس‌زمینه ----------
     //
     // اپ اندروید وقتی هنوز کلید ندارد، صفحه را با `#smslink=<کد>` باز می‌کند.
@@ -720,10 +730,9 @@ function appMain() {
         try {
             history.replaceState(history.state, '', window.location.pathname + window.location.search);
         } catch (e) { window.location.hash = ''; }
-        var el = document.querySelector('[name="csrf_token"]');
-        if (!el) { return; }
+        if (!csrf()) { return; }
         var fd = new FormData();
-        fd.set('csrf_token', el.value);
+        fd.set('csrf_token', csrf());
         fd.set('nonce', m[1]);
         fetch(apiUrl('sms_link.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
             .then(function (res) { return res.json(); })
@@ -755,17 +764,22 @@ function appMain() {
     }
 
     // ---------- فرمت‌کننده مبلغ (جداکننده سه‌رقمی هنگام تایپ) ----------
+    // ⚠ هم ارقامِ فارسی (۰-۹) و هم عربی (٠-٩) — کیبوردِ عربیِ بعضی گوشی‌ها
+    //   دومی را می‌نویسد؛ همان کاری که `sms-core.js` و `store.js` می‌کنند.
     function toLatinDigitsJs(str) {
-        var persian = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
-        for (var i = 0; i < 10; i++) {
-            str = str.replace(new RegExp(persian[i], 'g'), i);
-        }
-        return str;
+        return String(str).replace(/[۰-۹]/g, function (d) { return d.charCodeAt(0) - 0x06F0; })
+                          .replace(/[٠-٩]/g, function (d) { return d.charCodeAt(0) - 0x0660; });
     }
 
     function toPersianDigitsJs(str) {
         var persian = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
         return String(str).replace(/[0-9]/g, function (d) { return persian[d]; });
+    }
+
+    // ⛔ تنها شکلِ نمایشِ مبلغ در این فایل: «۱٬۲۳۴٬۵۶۷» (ارقامِ فارسی، جداکننده‌ی
+    //    عربیِ ٬). پیش از این ~۲۰ کپیِ همین یک خط بود.
+    function fmtMoneyJs(n) {
+        return toPersianDigitsJs(Number(n).toLocaleString('en-US').replace(/,/g, '\u066C'));
     }
 
     // بازگرداندن یک <select> به گزینه‌ی پیش‌فرضِ خودِ HTML.
@@ -784,13 +798,14 @@ function appMain() {
         var input = document.getElementById(inputId);
         if (!input) return;
         input.addEventListener('input', function () {
-            var raw = this.value.replace(/[^\d۰-۹]/g, '');
-            raw = toLatinDigitsJs(raw);
+            // ⚠ اول تبدیل، بعد پاک‌سازی: `\d` بی‌پرچمِ `u` فقط ۰-۹ِ لاتین است و ارقامِ
+            //   عربیِ ٠-٩ را بی‌صدا حذف می‌کرد.
+            var raw = toLatinDigitsJs(this.value).replace(/[^0-9]/g, '');
             if (raw === '') {
                 this.value = '';
                 return;
             }
-            this.value = toPersianDigitsJs(Number(raw).toLocaleString('en-US').replace(/,/g, '\u066C'));
+            this.value = fmtMoneyJs(raw);
         });
     }
 
@@ -1005,8 +1020,7 @@ function appMain() {
                         queueUndoBar(
                             'از پیامک بانک خودکار ثبت شد: '
                             + (auto.type === 'income' ? 'واریز ' : 'برداشت ')
-                            + toPersianDigitsJs(Number(auto.amount || 0)
-                                  .toLocaleString('en-US').replace(/,/g, '٬'))
+                            + fmtMoneyJs(auto.amount || 0)
                             + ' تومان',
                             { ep: 'delete_transaction.php', field: 'transaction_id', value: data.id }
                         );
@@ -1132,7 +1146,9 @@ function appMain() {
                 if (amodeChips) { amodeChips.hidden = !multi; }
                 if (!multi) { planNote.hidden = true; return; }
 
-                var raw = String(amountIn.value || '').replace(/[^0-9]/g, '');
+                // ⚠ کیبوردِ فارسی «۱۲۰۰۰» می‌نویسد؛ بی‌تبدیل، `[^0-9]` همه را می‌برد و
+                //   خلاصه بی‌صدا پنهان می‌ماند.
+                var raw = toLatinDigitsJs(String(amountIn.value || '')).replace(/[^0-9]/g, '');
                 if (!raw) { planNote.hidden = true; return; }
 
                 var val = parseInt(raw, 10);
@@ -1493,11 +1509,6 @@ function appMain() {
     // ⚠ از همان اندپوینت‌هایی می‌رود که فرم و «تعدیل موجودی» می‌روند
     //   (`add_transaction.php`, `adjust_wallet.php`) — منطقِ پول فقط
     //   سمتِ سرور است (`txCreate()`)، اینجا فقط پاکت ساخته می‌شود.
-    function smsCsrf() {
-        var el = document.querySelector('#quickAddForm [name="csrf_token"]')
-              || document.querySelector('[name="csrf_token"]');
-        return el ? el.value : '';
-    }
     /** عنوان‌های اخیر از `#recentTitles` (همان datalist) برای `smsLearnedCategory()`. */
     function smsCategoryFor(r) {
         var list = document.getElementById('recentTitles');
@@ -1514,7 +1525,7 @@ function appMain() {
 
     function smsPostTx(r, walletId) {
         var fd = new FormData();
-        fd.set('csrf_token', smsCsrf());
+        fd.set('csrf_token', csrf());
         fd.set('type', r.type);
         fd.set('amount', String(r.amount));
         fd.set('title', r.note || ((r.type === 'income' ? 'واریز' : 'برداشت') + ' — از پیامک بانک'));
@@ -1549,7 +1560,7 @@ function appMain() {
     function smsPostBalance(walletId, balance, iso) {
         if (!smsBalanceNewer(walletId, iso)) { return Promise.resolve(false); }
         var fd = new FormData();
-        fd.set('csrf_token', smsCsrf());
+        fd.set('csrf_token', csrf());
         fd.set('wallet_id', String(walletId));
         fd.set('mode', 'set');
         fd.set('amount', String(Math.abs(balance)));
@@ -1579,7 +1590,7 @@ function appMain() {
      */
     function smsLearnWallet(walletId, learn) {
         var fd = new FormData();
-        fd.set('csrf_token', smsCsrf());
+        fd.set('csrf_token', csrf());
         fd.set('wallet_id', String(walletId));
         fd.set('keys', (learn.keys || []).join(','));
         return fetch(apiUrl('sms_learn.php'), {
@@ -1656,12 +1667,12 @@ function appMain() {
         txt.textContent = d.text || 'انجام شد.';
         bar.appendChild(txt);
 
-        // ⚠ توکنِ CSRF از هر فرمی که روی صفحه هست؛ شیتِ ثبت تراکنش در
-        //   فوترِ **هر** صفحه است، پس تقریباً همیشه پیدا می‌شود. اگر
+        // ⚠ توکنِ CSRF از `csrf()` (متا، یا هر فرمی که روی صفحه هست؛ شیتِ ثبت تراکنش در
+        //   فوترِ **هر** صفحه است)، پس تقریباً همیشه پیدا می‌شود. اگر
         //   نبود، دکمه‌ی «لغو» اصلاً رندر نمی‌شود — دکمه‌ی بی‌کار از
         //   نبودنش بدتر است.
-        var tokenEl = document.querySelector('[name="csrf_token"]');
-        if (d.undo && d.undo.ep && tokenEl) {
+        var token = csrf();
+        if (d.undo && d.undo.ep && token) {
             var btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'undo-bar-undo';
@@ -1675,7 +1686,7 @@ function appMain() {
                 var values = Array.isArray(d.undo.value) ? d.undo.value : [d.undo.value];
                 var one = function (v) {
                     var fd = new FormData();
-                    fd.set('csrf_token', tokenEl.value);
+                    fd.set('csrf_token', token);
                     fd.set(d.undo.field, v);
                     return fetch(apiUrl(d.undo.ep), {
                         method: 'POST', body: fd,
@@ -1758,8 +1769,7 @@ function appMain() {
 
         function setAmount(v) {
             if (!amountEl) { return; }
-            amountEl.value = toPersianDigitsJs(
-                Number(v).toLocaleString('en-US').replace(/,/g, '٬'));
+            amountEl.value = fmtMoneyJs(v);
         }
 
         function setDate(iso) {
@@ -1846,8 +1856,7 @@ function appMain() {
         }
 
         var fmtToman = function (n) {
-            return toPersianDigitsJs(Math.abs(Number(n) || 0)
-                .toLocaleString('en-US').replace(/,/g, '٬')) + ' تومان';
+            return fmtMoneyJs(Math.abs(Number(n) || 0)) + ' تومان';
         };
         function smsSummary(r) {
             var s = (r.type === 'income' ? 'واریز ' : 'برداشت ') + fmtToman(r.amount);
@@ -1935,46 +1944,58 @@ function appMain() {
          * مانده‌ی تازه‌ترین پیامک باشد.
          */
         var smsBusy = false;
+        // ⛔ نوبتی که وسطِ نوبتِ قبلی می‌رسد (تپ روی اعلانِ دوم وقتی اولی هنوز
+        //    در حالِ ثبت است → `hashchange`) **گم نمی‌شود**: فرگمنتش همان لحظه
+        //    پاک شده (`takeSmsFragment`)، پس جای دیگری برای برگشتن ندارد. در صف
+        //    می‌ماند و پیش از تازه‌سازی، در همان نوبت ثبت می‌شود.
+        var smsQueued = [];
         function smsProcessBatch(items) {
-            if (smsBusy) { return; }
+            if (smsBusy) { Array.prototype.push.apply(smsQueued, items); return; }
             smsBusy = true;
             var wallets = window.SMS_WALLETS || [];
             var autoOn = smsAutoEnabled();
             var dEl = document.getElementById('transaction_date');
             var today = dEl ? dEl.defaultValue : '';
-            var saved = [], pending = 0, dup = 0, bal = {};
+            var saved = [], pending = 0, dup = 0, seen = 0;
 
-            var seq = Promise.resolve();
-            items.forEach(function (raw) {
-                seq = seq.then(function () {
-                    var fp = window.smsFingerprint(raw);
-                    if (smsAlreadyAuto(fp)) { dup++; return; }
-                    var r = window.parseBankSms(raw);
-                    if (!r.ok) { return; }          // کدِ تأیید و تبلیغ: بی‌صدا
-                    var m = window.smsMatchWallet(raw, r, wallets);
-                    if (!autoOn || !window.smsAutoOk(r, !!m.id).ok) {
-                        if (smsPendingAdd(raw, fp)) { pending++; }
-                        return;
-                    }
-                    return smsPostTx(r, m.id).then(function (id) {
-                        if (!id) { if (smsPendingAdd(raw, fp)) { pending++; } return; }
-                        smsMarkAuto(fp);
-                        saved.push({ id: id, type: r.type, amount: r.amount });
-                        if (r.balance !== null && r.balanceKnown
-                            && window.SMS_BALANCE_HOW.indexOf(m.how) !== -1) {
-                            bal[m.id] = { b: r.balance, d: r.date || today };
+            function round(list) {
+                var bal = {};
+                seen += list.length;
+                var seq = Promise.resolve();
+                list.forEach(function (raw) {
+                    seq = seq.then(function () {
+                        var fp = window.smsFingerprint(raw);
+                        if (smsAlreadyAuto(fp)) { dup++; return; }
+                        var r = window.parseBankSms(raw);
+                        if (!r.ok) { return; }          // کدِ تأیید و تبلیغ: بی‌صدا
+                        var m = window.smsMatchWallet(raw, r, wallets);
+                        if (!autoOn || !window.smsAutoOk(r, !!m.id).ok) {
+                            if (smsPendingAdd(raw, fp)) { pending++; }
+                            return;
                         }
-                    }).catch(function () {
-                        if (smsPendingAdd(raw, fp)) { pending++; }
+                        return smsPostTx(r, m.id).then(function (id) {
+                            if (!id) { if (smsPendingAdd(raw, fp)) { pending++; } return; }
+                            smsMarkAuto(fp);
+                            saved.push({ id: id, type: r.type, amount: r.amount });
+                            if (r.balance !== null && r.balanceKnown
+                                && window.SMS_BALANCE_HOW.indexOf(m.how) !== -1) {
+                                bal[m.id] = { b: r.balance, d: r.date || today };
+                            }
+                        }).catch(function () {
+                            if (smsPendingAdd(raw, fp)) { pending++; }
+                        });
                     });
                 });
-            });
+                return seq.then(function () {
+                    return Promise.all(Object.keys(bal).map(function (w) {
+                        return smsPostBalance(w, bal[w].b, bal[w].d);
+                    }));
+                }).then(function () {
+                    return smsQueued.length ? round(smsQueued.splice(0)) : null;
+                });
+            }
 
-            seq.then(function () {
-                return Promise.all(Object.keys(bal).map(function (w) {
-                    return smsPostBalance(w, bal[w].b, bal[w].d);
-                }));
-            }).then(function () {
+            round(items).then(function () {
                 smsBusy = false;
                 if (saved.length) {
                     var ids = saved.map(function (x) { return x.id; }).filter(function (i) { return i > 0; });
@@ -1992,7 +2013,7 @@ function appMain() {
                     return;
                 }
                 if (pending) { renderSmsPending(true); return; }
-                if (dup && items.length === 1) {
+                if (dup && seen === 1) {
                     queueUndoBar('این پیامک قبلاً ثبت شده بود.', null);
                     window.reloadPage();
                 }
@@ -2276,16 +2297,13 @@ function appMain() {
         if (!btn) return;
         (function () {
             var txId = this.getAttribute('data-id');
-            var csrfToken = document.querySelector('meta[name="csrf-token"]')
-                ? document.querySelector('meta[name="csrf-token"]').content
-                : '';
 
             // ⛔ بدونِ «مطمئنید؟». پیامِ قدیمی می‌گفت «قابل بازگشت
             //    نیست» — حالا هست، و همین جمله بود که تأیید را لازم
             //    می‌کرد.
             deleteWithUndo({
                 ep: 'delete_transaction.php', field: 'transaction_id',
-                value: txId, csrf: csrfToken, text: 'تراکنش حذف شد.'
+                value: txId, csrf: csrf(), text: 'تراکنش حذف شد.'
             });
         }).call(btn);
     });
@@ -2295,9 +2313,8 @@ function appMain() {
     document.addEventListener('click', function (e) {
         var btn = e.target.closest('.js-store-revert');
         if (!btn) return;
-        var meta = document.querySelector('meta[name="csrf-token"]');
         var fd = new FormData();
-        fd.set('csrf_token', meta ? meta.content : '');
+        fd.set('csrf_token', csrf());
         fd.set('transaction_id', btn.getAttribute('data-id'));
         btn.disabled = true;
         fetch(apiUrl('store_share_revert.php'), {
@@ -2330,7 +2347,7 @@ function appMain() {
             var categoryId = this.getAttribute('data-category-id');
 
             document.getElementById('edit_transaction_id').value = id;
-            document.getElementById('edit_amount').value = amount ? toPersianDigitsJs(Number(amount).toLocaleString('en-US').replace(/,/g, '\u066C')) : '';
+            document.getElementById('edit_amount').value = amount ? fmtMoneyJs(amount) : '';
             document.getElementById('edit_title').value = title || '';
             document.getElementById('edit_note').value = note || '';
 
@@ -2410,6 +2427,19 @@ function appMain() {
         document.getElementById(displayId).value =
             window.JalaliDatePicker.toFa(j[0]) + '/' + window.JalaliDatePicker.toFa(pad2(j[1])) + '/' + window.JalaliDatePicker.toFa(pad2(j[2]));
         document.getElementById(hiddenId).value = gDateStr;
+    }
+
+    // ⛔ «جدید» باید تاریخِ پیش‌فرضِ خودِ صفحه را برگرداند، نه تاریخِ آخرین
+    //    ویرایش. `setJdpValue(..., '')` عمداً هیچ کاری نمی‌کند، و
+    //    `defaultValue`ِ ورودیِ پنهان به درد نمی‌خورد (نوشتن در `value`ِ
+    //    `type=hidden` خودِ صفت را عوض می‌کند)؛ پس مقدارِ پنهان همین‌جا،
+    //    هنگامِ بارگذاری، عکس گرفته می‌شود. نمایش `defaultValue`ِ خودش را دارد.
+    var jdpInitial = {};
+    document.querySelectorAll('.jdp-hidden[id]').forEach(function (el) { jdpInitial[el.id] = el.value; });
+    function resetJdpValue(displayId, hiddenId) {
+        var d = document.getElementById(displayId), h = document.getElementById(hiddenId);
+        if (h) { h.value = jdpInitial[hiddenId] || ''; }
+        if (d) { d.value = d.defaultValue; }
     }
 
     // ---------- «بدون سررسید» روی طلب/بدهی ----------
@@ -2511,7 +2541,7 @@ function appMain() {
         btn.addEventListener('click', function () {
             document.getElementById('edit_debt_id').value = this.getAttribute('data-id');
             syncPersonPicker('edit_counterparty', this.getAttribute('data-counterparty'));
-            document.getElementById('edit_debt_amount').value = toPersianDigitsJs(Number(this.getAttribute('data-amount')).toLocaleString('en-US').replace(/,/g, '\u066C'));
+            document.getElementById('edit_debt_amount').value = fmtMoneyJs(this.getAttribute('data-amount'));
             document.getElementById('edit_debt_note').value = this.getAttribute('data-note') || '';
 
             setJdpValue('edit_entry_date_display', 'edit_entry_date', this.getAttribute('data-entry-date'));
@@ -2660,13 +2690,10 @@ function appMain() {
             }
 
             var debtId = this.getAttribute('data-id');
-            var csrfToken = document.querySelector('meta[name="csrf-token"]')
-                ? document.querySelector('meta[name="csrf-token"]').content
-                : '';
 
             var formData = new FormData();
             formData.append('debt_id', debtId);
-            formData.append('csrf_token', csrfToken);
+            formData.append('csrf_token', csrf());
 
             checkboxEl.disabled = true;
 
@@ -2697,14 +2724,11 @@ function appMain() {
     document.querySelectorAll('.js-delete-debt').forEach(function (btn) {
         btn.addEventListener('click', function () {
             var debtId = this.getAttribute('data-id');
-            var csrfToken = document.querySelector('meta[name="csrf-token"]')
-                ? document.querySelector('meta[name="csrf-token"]').content
-                : '';
 
             // ⚠ پرداخت‌های ثبت‌شده با CASCADE می‌روند و «لغو» آن‌ها را
             //   هم برمی‌گرداند.
             deleteWithUndo({ ep: 'delete_debt.php', field: 'debt_id',
-                             value: debtId, csrf: csrfToken,
+                             value: debtId, csrf: csrf(),
                              text: 'طلب/بدهی با پرداخت‌هایش حذف شد.' });
         });
     });
@@ -2811,8 +2835,6 @@ function appMain() {
     setupAmountFormatter('wallet_init');
     setupAmountFormatter('transfer_amount');
     setupAmountFormatter('transfer_fee');
-
-    var walletModal = document.getElementById('walletModal');
 
     function walletKindFields() {
         var kind = document.getElementById('wallet_kind');
@@ -3269,7 +3291,7 @@ function appMain() {
             if (ibanEl) ibanEl.value = groupDigits(this.getAttribute('data-iban') || '');
 
             var init = parseInt(this.getAttribute('data-init') || '0', 10);
-            document.getElementById('wallet_init').value = init ? toPersianDigitsJs(Math.abs(init).toLocaleString('en-US').replace(/,/g,'\u066C')) : '';
+            document.getElementById('wallet_init').value = init ? fmtMoneyJs(Math.abs(init)) : '';
 
             // نوع دلخواه: اگر در فهرست بود انتخابش کن، وگرنه به‌عنوان
             // نوع تازه در جعبه‌ی متن بنشیند تا از دست نرود
@@ -3359,6 +3381,11 @@ function appMain() {
             document.getElementById('transfer_amount').value = '';
             document.getElementById('transfer_fee').value = '';
             document.getElementById('transfer_note').value = '';
+            // ⚠ حساب‌ها و تاریخ هم به پیش‌فرضِ صفحه؛ وگرنه «انتقالِ تازه» بعد از
+            //   یک ویرایش، حساب‌ها و تاریخِ همان انتقالِ قدیمی را بی‌صدا نگه می‌داشت.
+            resetSelect(document.getElementById('transfer_from'));
+            resetSelect(document.getElementById('transfer_to'));
+            resetJdpValue('transfer_date_display', 'transfer_date');
             var m = document.getElementById('transferMessage');
             if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
             openModal('transferModal');
@@ -3372,9 +3399,9 @@ function appMain() {
             document.getElementById('transfer_from').value = this.getAttribute('data-from');
             document.getElementById('transfer_to').value = this.getAttribute('data-to');
             document.getElementById('transfer_amount').value =
-                toPersianDigitsJs(Number(this.getAttribute('data-amount')).toLocaleString('en-US').replace(/,/g,'\u066C'));
+                fmtMoneyJs(this.getAttribute('data-amount'));
             var fee = parseInt(this.getAttribute('data-fee') || '0', 10);
-            document.getElementById('transfer_fee').value = fee ? toPersianDigitsJs(fee.toLocaleString('en-US').replace(/,/g,'\u066C')) : '';
+            document.getElementById('transfer_fee').value = fee ? fmtMoneyJs(fee) : '';
             document.getElementById('transfer_note').value = this.getAttribute('data-note') || '';
             setJdpValue('transfer_date_display', 'transfer_date', this.getAttribute('data-date'));
             var m = document.getElementById('transferMessage');
@@ -3429,6 +3456,8 @@ function appMain() {
             document.getElementById('budget_category').selectedIndex = 0;
             document.getElementById('budget_period').value = 'monthly';
             document.getElementById('budget_amount').value = '';
+            resetJdpValue('budget_start_display', 'budget_start');
+            resetJdpValue('budget_end_display', 'budget_end');
             document.getElementById('budgetExtraActions').hidden = true;
             var m = document.getElementById('budgetMessage');
             if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
@@ -3444,12 +3473,14 @@ function appMain() {
             document.getElementById('budget_category').value = this.getAttribute('data-category');
             document.getElementById('budget_period').value = this.getAttribute('data-period');
             document.getElementById('budget_amount').value =
-                toPersianDigitsJs(Number(this.getAttribute('data-amount')).toLocaleString('en-US').replace(/,/g,'\u066C'));
+                fmtMoneyJs(this.getAttribute('data-amount'));
 
             var start = this.getAttribute('data-start');
             var end = this.getAttribute('data-end');
-            if (start) setJdpValue('budget_start_display', 'budget_start', start);
-            if (end) setJdpValue('budget_end_display', 'budget_end', end);
+            if (start) { setJdpValue('budget_start_display', 'budget_start', start); }
+            else { resetJdpValue('budget_start_display', 'budget_start'); }
+            if (end) { setJdpValue('budget_end_display', 'budget_end', end); }
+            else { resetJdpValue('budget_end_display', 'budget_end'); }
 
             var extra = document.getElementById('budgetExtraActions');
             extra.hidden = false;
@@ -3552,7 +3583,7 @@ function appMain() {
             document.getElementById('goal_id').value = this.getAttribute('data-id');
             document.getElementById('goal_title').value = this.getAttribute('data-title');
             document.getElementById('goal_target').value =
-                toPersianDigitsJs(Number(this.getAttribute('data-target')).toLocaleString('en-US').replace(/,/g,'\u066C'));
+                fmtMoneyJs(this.getAttribute('data-target'));
             document.getElementById('goal_color').value = this.getAttribute('data-color') || '#16794f';
             var gwEdit = document.getElementById('goal_wallet');
             if (gwEdit) {
@@ -3695,8 +3726,8 @@ function appMain() {
                 //   یکی نمی‌شد. پیش‌نمایش باید همان را بگوید.
                 var base = Math.floor(amt / n);
                 var last = amt - base * (n - 1);
-                instPrev.textContent = 'هر قسط ' + toPersianDigitsJs(base.toLocaleString('en-US').replace(/,/g, '\u066C')) +
-                    ' تومان' + (last !== base ? ' (قسط آخر ' + toPersianDigitsJs(last.toLocaleString('en-US').replace(/,/g, '\u066C')) + ')' : '') + '.';
+                instPrev.textContent = 'هر قسط ' + fmtMoneyJs(base) +
+                    ' تومان' + (last !== base ? ' (قسط آخر ' + fmtMoneyJs(last) + ')' : '') + '.';
             } else {
                 instPrev.textContent = 'مبلغ هر قسط خودکار حساب می‌شود و همه‌ی اقساط در «آینده مالی» و «پول قابل خرج» دیده می‌شوند.';
             }
@@ -3721,7 +3752,7 @@ function appMain() {
             document.getElementById('payment_amount').value =
                 nextInst > 0 ? nextInst.toLocaleString('en-US') : '';
             document.getElementById('payment_note').value = '';
-            var hint = 'باقیمانده: ' + toPersianDigitsJs(remaining.toLocaleString('en-US').replace(/,/g,'\u066C')) + ' تومان';
+            var hint = 'باقیمانده: ' + fmtMoneyJs(remaining) + ' تومان';
             if (nextInst > 0) {
                 hint += ' — مبلغ قسط بعدی از پیش پر شده است.';
             }
@@ -3800,8 +3831,8 @@ function appMain() {
             document.getElementById('recurring_frequency').value = 'monthly';
             document.getElementById('recurring_interval').value = '1';
             document.getElementById('recurring_note').value = '';
-            setJdpValue('recurring_end_display', 'recurring_end', '');
-            document.getElementById('recurring_end_display').value = '';
+            resetJdpValue('recurring_start_display', 'recurring_start');
+            resetJdpValue('recurring_end_display', 'recurring_end');
             document.getElementById('recurringExtraActions').hidden = true;
             if (recurringToggle) recurringToggle.setType('income');
             setRecurringMode('remind');
@@ -3817,7 +3848,7 @@ function appMain() {
             document.getElementById('recurring_id').value = this.getAttribute('data-id');
             document.getElementById('recurring_title').value = this.getAttribute('data-title');
             document.getElementById('recurring_amount').value =
-                toPersianDigitsJs(Number(this.getAttribute('data-amount')).toLocaleString('en-US').replace(/,/g,'\u066C'));
+                fmtMoneyJs(this.getAttribute('data-amount'));
             document.getElementById('recurring_wallet').value = this.getAttribute('data-wallet');
             document.getElementById('recurring_frequency').value = this.getAttribute('data-frequency');
             document.getElementById('recurring_interval').value = toPersianDigitsJs(this.getAttribute('data-interval'));
@@ -3893,7 +3924,7 @@ function appMain() {
             document.getElementById('confirmRecurringTitle').textContent = 'تأیید — ' + this.getAttribute('data-title');
             document.getElementById('confirm_recurring_id').value = this.getAttribute('data-id');
             document.getElementById('confirm_amount').value =
-                toPersianDigitsJs(Number(this.getAttribute('data-amount')).toLocaleString('en-US').replace(/,/g,'\u066C'));
+                fmtMoneyJs(this.getAttribute('data-amount'));
             var m = document.getElementById('confirmRecurringMessage');
             if (m) { m.hidden = true; m.classList.remove('show','success','error'); }
             openModal('confirmRecurringModal');
@@ -4066,7 +4097,9 @@ function appMain() {
         var gDate;
         if (y < 1900) {
             if (mo < 1 || mo > 12 || d < 1 || d > 31) { return { ok: false, error: 'تاریخ شمسی نامعتبر' }; }
-            var g = jalaliToGregorianJs(y, mo, d);
+            // ⛔ همان یک الگوریتمِ تقویم (`jalali-datepicker.js`، که در `header.php` پیش از این فایل
+            //    بار می‌شود)؛ نسخه‌ی کپی‌شده‌ی اینجا هم‌خوانیِ PHP و JS را دو جا می‌کرد.
+            var g = window.JalaliDatePicker.jalaliToGregorian(y, mo, d);
             gDate = pad4(g[0]) + '-' + pad2(g[1]) + '-' + pad2(g[2]);
         } else {
             gDate = pad4(y) + '-' + pad2(mo) + '-' + pad2(d);
@@ -4130,35 +4163,6 @@ function appMain() {
     function pad2(n) { return (n < 10 ? '0' : '') + n; }
     function pad4(n) { return ('000' + n).slice(-4); }
 
-    // تبدیل شمسی به میلادی — همان الگوریتم فایل تقویم
-    function jalaliToGregorianJs(jy, jm, jd) {
-        if (window.JalaliDatePicker && typeof window.JalaliDatePicker.toGregorian === 'function') {
-            return window.JalaliDatePicker.toGregorian(jy, jm, jd);
-        }
-        var sal_a, gy, gm, gd, days;
-        jy += 1595;
-        days = -355668 + (365 * jy) + (~~(jy / 33) * 8) + ~~(((jy % 33) + 3) / 4) + jd +
-               ((jm < 7) ? (jm - 1) * 31 : ((jm - 7) * 30) + 186);
-        gy = 400 * ~~(days / 146097);
-        days %= 146097;
-        if (days > 36524) {
-            gy += 100 * ~~(--days / 36524);
-            days %= 36524;
-            if (days >= 365) days++;
-        }
-        gy += 4 * ~~(days / 1461);
-        days %= 1461;
-        if (days > 365) {
-            gy += ~~((days - 1) / 365);
-            days = (days - 1) % 365;
-        }
-        gd = days + 1;
-        sal_a = [0, 31, ((gy % 4 === 0 && gy % 100 !== 0) || (gy % 400 === 0)) ? 29 : 28,
-                 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-        for (gm = 0; gm < 13 && gd > sal_a[gm]; gm++) gd -= sal_a[gm];
-        return [gy, gm, gd];
-    }
-
     function renderPreview(valid, invalid) {
         var summary = document.getElementById('importSummary');
         var table = document.getElementById('previewTable');
@@ -4172,7 +4176,8 @@ function appMain() {
         if (invalid.length) {
             html += '<details class="import-errors"><summary>مشاهده سطرهای نامعتبر</summary>';
             invalid.slice(0, 30).forEach(function (e) {
-                html += '<div class="import-error-row">سطر ' + toPersianDigitsJs(e.line) + ': ' + e.error + '</div>';
+                // ⛔ پیامِ خطا متنِ خامِ خانه‌ی CSV را دارد («تاریخ نامعتبر: …») — فرار داده می‌شود.
+                html += '<div class="import-error-row">سطر ' + toPersianDigitsJs(e.line) + ': ' + escapeHtml(e.error) + '</div>';
             });
             html += '</details>';
         }
@@ -4184,7 +4189,7 @@ function appMain() {
             rows += '<td data-label="تاریخ">' + toPersianDigitsJs(v.transaction_date) + '</td>';
             rows += '<td data-label="عنوان">' + escapeHtml(v.title) + '</td>';
             rows += '<td data-label="نوع">' + (v.type === 'income' ? 'درآمد' : 'هزینه') + '</td>';
-            rows += '<td data-label="مبلغ">' + toPersianDigitsJs(v.amount.toLocaleString('en-US').replace(/,/g, '\u066C')) + '</td>';
+            rows += '<td data-label="مبلغ">' + fmtMoneyJs(v.amount) + '</td>';
             rows += '</tr>';
         });
         rows += '</tbody>';
@@ -5206,7 +5211,6 @@ function appMain() {
         }
 
         function setScale(next, cx, cy) {
-            var s = stageSize().css;
             next = Math.min(minScale * 4, Math.max(minScale, next));
             if (next === scale) return;
             // بزرگ‌نمایی حول نقطه‌ی مرکزِ اشاره، نه گوشه‌ی تصویر
@@ -5397,6 +5401,21 @@ function appMain() {
         } catch (e) {}
     })();
 
+    // کلیدِ VAPID (base64url) ← بایت، و کلیدهای اشتراک ← base64url. یک نسخه
+    // برای هر دو مسیرِ اشتراک (خودکار، و کارتِ پروفایل).
+    function pushKeyBytes(b64) {
+        var pad = '='.repeat((4 - b64.length % 4) % 4);
+        var raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+        var out = new Uint8Array(raw.length);
+        for (var i = 0; i < raw.length; i++) { out[i] = raw.charCodeAt(i); }
+        return out;
+    }
+    function pushB64(buf) {
+        var str = '', a = new Uint8Array(buf);
+        for (var i = 0; i < a.length; i++) { str += String.fromCharCode(a[i]); }
+        return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    }
+
     // ---------- اعلان روی گوشی: اشتراکِ خودکار (پیش‌فرض روشن) ----------
     // ⛔ تصمیم از `window.pushAutoAction()` می‌آید؛ اینجا فقط اجرا می‌شود.
     //    کلیدِ عمومیِ VAPID از `push_subscribe.php` (action=key) گرفته
@@ -5421,18 +5440,6 @@ function appMain() {
             return fetch(apiUrl('push_subscribe.php'), { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
                 .then(function (r) { return r.json(); });
         };
-        var keyBytes = function (b64) {
-            var pad = '='.repeat((4 - b64.length % 4) % 4);
-            var raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
-            var out = new Uint8Array(raw.length);
-            for (var i = 0; i < raw.length; i++) { out[i] = raw.charCodeAt(i); }
-            return out;
-        };
-        var b64 = function (buf) {
-            var str = '', a = new Uint8Array(buf);
-            for (var i = 0; i < a.length; i++) { str += String.fromCharCode(a[i]); }
-            return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-        };
         var subscribe = function () {
             try { sessionStorage.setItem('daftar_push_try', '1'); } catch (e) { /* ناشناس */ }
             var reg;
@@ -5443,9 +5450,9 @@ function appMain() {
                 if (sub) { return null; }   // از قبل روشن است
                 return post({ action: 'key' }).then(function (d) {
                     if (!d || !d.success || !d.key) { return null; }
-                    return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(d.key) })
+                    return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pushKeyBytes(d.key) })
                         .then(function (s) {
-                            return post({ endpoint: s.endpoint, p256dh: b64(s.getKey('p256dh')), auth: b64(s.getKey('auth')) });
+                            return post({ endpoint: s.endpoint, p256dh: pushB64(s.getKey('p256dh')), auth: pushB64(s.getKey('auth')) });
                         });
                 });
             }).catch(function () { /* بی‌صدا: کارتِ پروفایل وضعیتِ واقعی را می‌گوید */ });
@@ -5484,18 +5491,6 @@ function appMain() {
             pMsg.textContent = text;
         };
         var pShow = function (on, off, test) { pOn.hidden = !on; pOff.hidden = !off; pTest.hidden = !test; };
-        var keyBytes = function (b64) {
-            var pad = '='.repeat((4 - b64.length % 4) % 4);
-            var raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
-            var out = new Uint8Array(raw.length);
-            for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-            return out;
-        };
-        var b64 = function (buf) {
-            var s = '', a = new Uint8Array(buf);
-            for (var i = 0; i < a.length; i++) s += String.fromCharCode(a[i]);
-            return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-        };
         var post = function (name, fields) {
             var fd = new FormData();
             fd.append('csrf_token', csrf());
@@ -5544,12 +5539,12 @@ function appMain() {
                 if (perm !== 'granted') { throw new Error('perm'); }
                 return navigator.serviceWorker.ready;
             }).then(function (reg) {
-                return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(pushCard.getAttribute('data-key')) });
+                return reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pushKeyBytes(pushCard.getAttribute('data-key')) });
             }).then(function (sub) {
                 return post('push_subscribe.php', {
                     endpoint: sub.endpoint,
-                    p256dh: b64(sub.getKey('p256dh')),
-                    auth: b64(sub.getKey('auth'))
+                    p256dh: pushB64(sub.getKey('p256dh')),
+                    auth: pushB64(sub.getKey('auth'))
                 });
             }).then(function (d) {
                 pSay(d.message || (d.success ? 'روشن شد.' : 'روشن نشد.'), d.success ? 'success' : 'error');
@@ -5600,10 +5595,6 @@ function appMain() {
     }
 
     // ---------- مدیریت لیست‌های مرجع (بانک‌ها / انواع دارایی) ----------
-    function csrf() {
-        var el = document.querySelector('meta[name="csrf-token"]');
-        return el ? el.content : '';
-    }
 
     // ---------- نرخِ روزِ نوع دارایی ----------
     var assetPriceModal = document.getElementById('assetPrice');
@@ -5948,7 +5939,7 @@ function appMain() {
             document.getElementById('edit_cheque_id').value = this.getAttribute('data-id');
             syncPersonPicker('edit_cheque_counterparty', this.getAttribute('data-counterparty'));
             document.getElementById('edit_cheque_amount').value =
-                toPersianDigitsJs(Number(this.getAttribute('data-amount')).toLocaleString('en-US').replace(/,/g, '\u066C'));
+                fmtMoneyJs(this.getAttribute('data-amount'));
             document.getElementById('edit_sayadi').value = this.getAttribute('data-sayadi') || '';
             document.getElementById('edit_cheque_number').value = this.getAttribute('data-cheque-number') || '';
             document.getElementById('edit_cheque_note').value = this.getAttribute('data-note') || '';
@@ -6114,7 +6105,7 @@ function appMain() {
         var qty  = document.getElementById('add_asset_qty');
         var out  = document.getElementById('addAssetLive');
         if (!type || !qty || !out) return;
-        function fmt(n) { return toPersianDigitsJs(Math.round(n).toLocaleString('en-US').replace(/,/g, '\u066C')); }
+        function fmt(n) { return fmtMoneyJs(Math.round(n)); }
         function live() {
             var opt = type.options[type.selectedIndex];
             var price = opt ? (parseInt(opt.getAttribute('data-price'), 10) || 0) : 0;
@@ -6173,7 +6164,7 @@ function appMain() {
             document.getElementById('edit_asset_qty').value = toPersianDigitsJs(this.getAttribute('data-quantity').replace(/\.?0+$/, '') || '0');
             var price = this.getAttribute('data-unit-price');
             document.getElementById('edit_asset_price').value =
-                (price && price !== '0') ? toPersianDigitsJs(Number(price).toLocaleString('en-US').replace(/,/g, '\u066C')) : '';
+                (price && price !== '0') ? fmtMoneyJs(price) : '';
             document.getElementById('edit_asset_note').value = this.getAttribute('data-note') || '';
             setJdpValue('edit_asset_date_display', 'edit_asset_date', this.getAttribute('data-entry-date'));
 
@@ -6509,7 +6500,7 @@ function appMain() {
 
         function money(n) {
             var neg = n < 0;
-            var t = toPersianDigitsJs(Math.abs(n).toLocaleString('en-US').replace(/,/g, '\u066C'));
+            var t = fmtMoneyJs(Math.abs(n));
             return (neg ? '\u2212' : '') + t;
         }
 
@@ -6774,12 +6765,16 @@ function appMain() {
             });
         });
 
-        tradeForm.addEventListener('submit', function (e) {
-            e.preventDefault();
-            submitJson(tradeForm, apiUrl('save_trade.php'),
-                document.getElementById('tradeMessage'),
-                document.getElementById('tradeSubmitBtn'));
-        });
+        // ⚠ زبانه‌ی «دارایی» فقط فرمِ فروش دارد؛ بی این شرط اینجا خطا می‌داد
+        //   و بقیه‌ی بلوک (فروش و حذف) بی‌صدا اجرا نمی‌شد.
+        if (tradeForm) {
+            tradeForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+                submitJson(tradeForm, apiUrl('save_trade.php'),
+                    document.getElementById('tradeMessage'),
+                    document.getElementById('tradeSubmitBtn'));
+            });
+        }
 
         // ---- فروش ----
         var sellForm = document.getElementById('sellForm');
@@ -6853,25 +6848,6 @@ function appMain() {
                     .catch(function () { alert(netErr()); });
             });
         });
-    /* ── پاسخِ آماده‌ی پشتیبانی ──
-       انتخابگر فقط متن را داخلِ همان `<textarea>` می‌ریزد و چیزی
-       نمی‌فرستد: مدیر باید بتواند قبلِ ارسال ویرایشش کند.
-
-       ⚠ متنِ قبلی **پاک نمی‌شود** بلکه پاسخِ آماده به آن اضافه می‌شود؛
-         وگرنه یک انتخابِ اشتباه، جمله‌ای را که مدیر نوشته بی‌صدا از
-         بین می‌برد و راهِ برگشتی هم ندارد. */
-    (function () {
-        var sel = document.getElementById('supCanned');
-        var box = document.getElementById('supAdminReply');
-        if (!sel || !box || !window.SUPPORT_CANNED) return;
-        sel.addEventListener('change', function () {
-            var body = window.SUPPORT_CANNED[sel.value];
-            if (!body) return;
-            box.value = box.value.trim() === '' ? body : (box.value.replace(/\s+$/, '') + '\n\n' + body);
-            box.focus();
-            sel.selectedIndex = 0;
-        });
-    })();
 
         document.querySelectorAll('.js-del-sale').forEach(function (btn) {
             btn.addEventListener('click', function () {
@@ -6884,6 +6860,30 @@ function appMain() {
                     .then(function (d) { if (d.success) { window.reloadPage(); } else { alert(d.message || 'خطا'); } })
                     .catch(function () { alert(netErr()); });
             });
+        });
+    })();
+
+    /* ── پاسخِ آماده‌ی پشتیبانی ──
+       انتخابگر فقط متن را داخلِ همان `<textarea>` می‌ریزد و چیزی
+       نمی‌فرستد: مدیر باید بتواند قبلِ ارسال ویرایشش کند.
+
+       ⚠ متنِ قبلی **پاک نمی‌شود** بلکه پاسخِ آماده به آن اضافه می‌شود؛
+         وگرنه یک انتخابِ اشتباه، جمله‌ای را که مدیر نوشته بی‌صدا از
+         بین می‌برد و راهِ برگشتی هم ندارد.
+
+       ⛔ بیرون از بلوکِ «معاملات» است: آنجا پشتِ
+         `if (!tradeForm && !assetForm) return;` بود و در `admin/support.php`
+         (که هیچ‌کدام را ندارد) هرگز اجرا نمی‌شد. */
+    (function () {
+        var sel = document.getElementById('supCanned');
+        var box = document.getElementById('supAdminReply');
+        if (!sel || !box || !window.SUPPORT_CANNED) return;
+        sel.addEventListener('change', function () {
+            var body = window.SUPPORT_CANNED[sel.value];
+            if (!body) return;
+            box.value = box.value.trim() === '' ? body : (box.value.replace(/\s+$/, '') + '\n\n' + body);
+            box.focus();
+            sel.selectedIndex = 0;
         });
     })();
 

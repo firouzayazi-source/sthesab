@@ -136,23 +136,6 @@ final class BizReports
         return $gross - $other + $income - $expense;
     }
 
-    /** فروشِ خالصِ هر روز (برای نمودارِ میله‌ای) — روزهای بی‌فروش هم صفر می‌آیند. @return array<string,int> */
-    public static function daily(int $userId, string $from, string $to): array
-    {
-        $st = Database::getConnection()->prepare(
-            // ⛔ فروش بی‌مالیات: مالیات بر ارزش افزوده درآمدِ فروشگاه نیست
-            "SELECT inv_date, SUM(CASE WHEN kind = 'sale' THEN 1 ELSE -1 END * (total" . (Biz::accReady() ? ' - tax_total' : '') . ")) AS v
-             FROM biz_invoices WHERE user_id = :u AND status = 'issued' AND kind IN ('sale','sale_return')
-               AND inv_date BETWEEN :f AND :t GROUP BY inv_date"
-        );
-        $st->execute(['u' => $userId, 'f' => $from, 't' => $to]);
-        $map = [];
-        foreach ($st->fetchAll() as $r) { $map[(string)$r['inv_date']] = (int)$r['v']; }
-        $out = [];
-        for ($d = $from; $d <= $to; $d = date('Y-m-d', strtotime($d . ' +1 day'))) { $out[$d] = $map[$d] ?? 0; }
-        return $out;
-    }
-
     /** پرفروش‌ترین‌ها — خالصِ برگشت، با سودِ هر کدام. */
     public static function topProducts(int $userId, string $from, string $to, int $limit = 10): array
     {
@@ -393,7 +376,7 @@ final class BizReports
 
     /**
      * گردشِ یک صندوق یا حساب در بازه، با مانده‌ی ابتدای بازه و مانده‌ی
-     * جاری. ⛔ اثرِ هر سطر همان منطقِ `BizCash::BALANCE_SQL` است؛ تست ثابت
+     * جاری. ⛔ اثرِ هر سطر همان منطقِ `BizCash::balanceSql()` است؛ تست ثابت
      *    می‌کند مانده‌ی پایانیِ «از ابتدا» با موجودیِ صفحه‌ی صندوق‌ها یکی است.
      *
      * @return array{account:array, opening:int, lines:array, in:int, out:int, closing:int, capped:bool}|null

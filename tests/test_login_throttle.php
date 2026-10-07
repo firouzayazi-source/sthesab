@@ -52,7 +52,9 @@ $IP2  = '203.0.113.78';
 $cleanup = function () use ($pdo, $USER, $IP, $IP2) {
     $pdo->prepare('DELETE FROM login_attempts WHERE username_tried LIKE :m OR request_ip IN (:a, :b)')
         ->execute(['m' => '__test_throttle%', 'a' => $IP, 'b' => $IP2]);
-    $pdo->prepare('DELETE FROM users WHERE username = :u')->execute(['u' => $USER]);
+    $pdo->prepare('DELETE FROM users WHERE username IN (:u, :a)')
+        ->execute(['u' => $USER, 'a' => '__test_throttle_acct']);
+    $pdo->prepare("DELETE FROM login_attempts WHERE request_ip LIKE '203.0.113.1__'")->execute();
 };
 $cleanup();
 
@@ -191,6 +193,75 @@ T::same(2, LoginThrottle::failureCounts()[LoginThrottle::key(mb_strtoupper($USER
 LoginThrottle::clear($USER);
 T::same(0, LoginThrottle::failureCounts()[LoginThrottle::key($USER)] ?? 0,
     '⛔ «باز کردن قفل» شمارنده را واقعاً صفر می‌کند');
+
+// ---------------------------------------------------------------
+T::group('⛔ شکل‌های دیگرِ همان شناسه شمارنده‌ی جدا ندارند');
+
+/*
+ * خرابیِ واقعی (بازبینی): جست‌وجوی کاربر شماره را با
+ * `SmsLogin::normalizePhone()` نرمال می‌کرد ولی شمارنده روی رشته‌ی خامِ
+ * تایپ‌شده بود. پس `0912-999-8877`، `+98912…`، ارقامِ فارسی، نامِ کاربری و
+ * ایمیلِ همان حساب هر کدام ۵ حدسِ جدا داشتند — ۴۰ حدس به‌جای ۵ روی یک
+ * حساب. هر تلاش از IPِ جدا می‌آید تا سقفِ IP چیزی را پنهان نکند.
+ */
+if (!tableHasColumn('users', 'phone') || !tableHasColumn('users', 'email')) {
+    T::skip('شمارنده‌ی مشترکِ شکل‌ها', 'ستون phone یا email هنوز نیست');
+} else {
+    $ACCT  = '__test_throttle_acct';
+    $PHONE = '0912' . random_int(1000000, 9999999);
+    $MAIL  = '__test_throttle_' . random_int(1000, 9999) . '@example.test';
+    $pdo->prepare('DELETE FROM users WHERE username = :u')->execute(['u' => $ACCT]);
+    $pdo->prepare(
+        "INSERT INTO users (username, password_hash, full_name, role, is_active, phone, email)
+         VALUES (:u, :p, 'کاربر تست شکل‌ها', 'user', 1, :ph, :m)"
+    )->execute(['u' => $ACCT, 'p' => password_hash($PASS, PASSWORD_DEFAULT), 'ph' => $PHONE, 'm' => $MAIL]);
+
+    $fa = strtr($PHONE, ['0' => '۰', '1' => '۱', '2' => '۲', '3' => '۳', '4' => '۴',
+                         '5' => '۵', '6' => '۶', '7' => '۷', '8' => '۸', '9' => '۹']);
+    $variants = [
+        '+98' . substr($PHONE, 1),
+        substr($PHONE, 0, 4) . '-' . substr($PHONE, 4, 3) . '-' . substr($PHONE, 7),
+        $fa,
+        mb_strtoupper($MAIL),
+        mb_strtoupper($ACCT),
+    ];
+    $n = 0;
+    foreach ($variants as $v) {
+        Auth::verifyCredentials($v, 'رمزغلط', '203.0.113.' . (100 + $n));
+        $n++;
+    }
+    T::same(LoginThrottle::MAX_PER_USER, $n, 'به اندازه‌ی سقفِ یک حساب، هر بار با شکلی دیگر');
+
+    // تلاشِ بعدی با هر شکلی — حتی با رمزِ درست و از IPِ تازه — قفل است.
+    $after = Auth::verifyCredentials($PHONE, $PASS, '203.0.113.120');
+    T::ok(!empty($after['locked']) && !$after['success'],
+        '⛔ شکل‌های مختلفِ یک حساب یک شمارنده دارند (شماره، +98، خط‌تیره، فارسی، ایمیل، نام)',
+        $after['message'] ?? '');
+
+    // و «باز کردن قفل» در پنل مدیر (با نامِ کاربری) همان شمارنده را صفر می‌کند.
+    LoginThrottle::clear($ACCT);
+    $ok = Auth::verifyCredentials('+98' . substr($PHONE, 1), $PASS, '203.0.113.121');
+    T::ok($ok['success'] ?? false, 'بازکردنِ قفل با نامِ کاربری، شکلِ +98 را هم باز می‌کند',
+        $ok['message'] ?? '');
+
+    // شماره‌ی **ناموجود** هم با شکلِ نرمالش شمرده می‌شود — و پیامش همان است.
+    $ghostPhone = '0912' . random_int(1000000, 9999999);
+    $pdo->prepare('DELETE FROM login_attempts WHERE username_tried = :u')->execute(['u' => $ghostPhone]);
+    $gmsgs = [];
+    for ($i = 0; $i < LoginThrottle::MAX_PER_USER; $i++) {
+        $gv = $i % 2 ? '+98' . substr($ghostPhone, 1) : substr($ghostPhone, 0, 4) . ' ' . substr($ghostPhone, 4);
+        $gmsgs[] = Auth::verifyCredentials($gv, 'رمزغلط', '203.0.113.' . (130 + $i))['message'];
+    }
+    T::ok(!empty(Auth::verifyCredentials($ghostPhone, 'رمزغلط', '203.0.113.140')['locked']),
+        '⛔ شکل‌های یک شماره‌ی ناموجود هم یک شمارنده دارند');
+    T::same(['نام کاربری یا رمز عبور اشتباه است.'], array_values(array_unique($gmsgs)),
+        'پیامِ شناسه‌ی ناموجود همان پیامِ همیشگی است (وجودِ حساب لو نمی‌رود)');
+
+    $pdo->prepare('DELETE FROM login_attempts WHERE username_tried IN (:a, :b)')
+        ->execute(['a' => mb_strtolower($ACCT), 'b' => $ghostPhone]);
+    $pdo->prepare("DELETE FROM login_attempts WHERE request_ip LIKE '203.0.113.1__'")->execute();
+    $pdo->prepare('DELETE FROM users WHERE username = :u')->execute(['u' => $ACCT]);
+}
 
 // ---------------------------------------------------------------
 $cleanup();

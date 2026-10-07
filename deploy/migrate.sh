@@ -199,6 +199,7 @@ if [[ -r "$CONFIG" ]] && command -v php >/dev/null 2>&1; then
     DB_NAME="${DB_NAME:-$(read_const DB_NAME)}"
     DB_USER="${DB_USER:-$(read_const DB_USER)}"
     DB_PASS="$(read_const DB_PASSWORD)"
+    DB_HOST="${DB_HOST:-$(read_const DB_HOST)}"
 fi
 DB_NAME="${DB_NAME:-hesab_db}"
 DB_USER="${DB_USER:-hesab_user}"
@@ -212,7 +213,10 @@ if [[ -z "${DB_PASS:-}" ]]; then
     read -r -s -p "رمز کاربر $DB_USER: " DB_PASS; echo
 fi
 
-mysql_q() { mysql --default-character-set=utf8mb4 -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" "$@"; }
+# ⛔ رمز از فایلِ موقتِ 0600 می‌رود، نه `-p` در خطِ فرمان: هر کاربرِ دیگرِ
+#    این سرور آن را در `ps` می‌دید (config-lib.sh، `db_cnf_make`).
+db_cnf_make "$DB_USER" "$DB_PASS" "${DB_HOST:-}"
+mysql_q() { mysql --defaults-extra-file="$DB_CNF" --default-character-set=utf8mb4 "$DB_NAME" "$@"; }
 
 if ! mysql_q -e "SELECT 1" >/dev/null 2>&1; then
     red "اتصال به دیتابیس برقرار نشد (کاربر: $DB_USER، دیتابیس: $DB_NAME)."
@@ -240,7 +244,11 @@ declare -A SENTINEL=(
     [migration_debts.sql]="debts"
     [migration_settings.sql]="app_settings"
     [migration_cheques_assets.sql]="cheques"
-    [migration_indexes.sql]=""            # ایندکس است نه جدول/ستون — شاهد ساده ندارد
+    # ⛔ شاهدش ایندکسِ **آخرِ** فایل است. پیش از این خالی بود و --verify
+    #    هرگز نمی‌سنجیدش؛ و چون mysql روی اولین خطا می‌ایستد، اجرایی که با
+    #    «ایندکسِ تکراری» روی خطِ اول رد می‌شد سه ایندکسِ بعدی را نمی‌ساخت
+    #    ولی «اجراشده» ثبت می‌شد. حالا هم آن ثبت به همین شاهد بسته است.
+    [migration_indexes.sql]="cheques:idx_user_settled_due"
     [migration_category_icons.sql]="categories.icon"
     [migration_repair.sql]="wallets"
     [migration_p2.sql]="attachments"
@@ -636,15 +644,38 @@ if [[ "$MODE" != "apply" ]]; then
     exit 0
 fi
 
+# ⛔ تنها فایلی که «ایندکسِ تکراری» در آن یعنی «از قبل اعمال شده». هر
+#    فایلِ تازه باید ایدمپوتنت نوشته شود؛ این فهرست بزرگ نمی‌شود.
+DUP_TOLERANT=( migration_indexes.sql )
+dup_tolerant() {
+    local f
+    for f in "${DUP_TOLERANT[@]}"; do [[ "$f" == "$1" ]] && return 0; done
+    return 1
+}
+# همان فایل با --force (هر دستور جدا): ایندکس‌های موجود خطای تکراری
+# می‌دهند و بقیه ساخته می‌شوند. هر خطای **دیگری** یعنی شکست.
+dup_rerun() {
+    local out
+    out=$(mysql_q --force < "$1" 2>&1 || true)
+    ! grep -i "ERROR" <<<"$out" | grep -qvi "Duplicate key name"
+}
+
 info "اجرای ${#pending[@]} migration در انتظار:"
 for f in "${pending[@]}"; do
     printf '  → %-34s' "$f"
     if err=$(mysql_q < "$f" 2>&1); then
         record "$f" "$(sum_of "$f")"
         green "OK"
-    elif grep -qiE "Duplicate key name|Duplicate column name|already exists" <<<"$err"; then
-        # migration_indexes.sql ایدمپوتنت نیست؛ اگر ایندکس از قبل باشد
-        # همین خطا را می‌دهد. یعنی نتیجه‌اش از قبل اعمال شده.
+    elif dup_tolerant "$f" && grep -qi "Duplicate key name" <<<"$err" \
+         && dup_rerun "$f" && { st=0; sentinel_present "$f" || st=$?; (( st == 0 )); }; then
+        # ⛔ فقط migration_indexes.sql (تنها فایلِ غیرِ ایدمپوتنت، CLAUDE.md).
+        #    پیش از این **هر** فایلی با «Duplicate column» یا «already exists»
+        #    «اجراشده» ثبت می‌شد — یعنی migrationی که وسطِ کار مرده بود (ستونِ
+        #    اول ساخته شد، بعد خطا) در اجرای دوباره روی همان ستونِ اول رد
+        #    می‌شد و بقیه‌اش **هرگز** اجرا نمی‌شد، بی‌صدا. و حتی برای همین
+        #    یک فایل هم «ایندکسِ اول تکراری است» یعنی «سه‌تای بعدی اجرا
+        #    نشدند» (mysql روی اولین خطا می‌ایستد) — پس با --force دوباره
+        #    اجرا و فقط وقتی ثبت می‌شود که شاهدش (ایندکسِ آخر) واقعاً باشد.
         record "$f" "$(sum_of "$f")"
         info "از قبل اعمال شده — ثبت شد"
     else

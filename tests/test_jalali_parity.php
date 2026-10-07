@@ -76,4 +76,16 @@ for ($jy = $fromY; $jy <= $toY; $jy++) {
 }
 T::bulk($checked, $mismatch, "PHP و JS برای هر روز نتیجه‌ی یکسان می‌دهند (۱۳۰۰ تا ۱۵۰۰)");
 
+// ⛔ این هم‌خوانی فقط برای `jalali-datepicker.js` سنجیده می‌شود؛ پس هیچ JSِ دیگری
+//    نسخه‌ی خودش از الگوریتم را ندارد. `app.js` (ورود از فایل) یک کپی داشت که
+//    پشتِ شرطِ `JalaliDatePicker.toGregorian` (تابعی که وجود ندارد) **همیشه** اجرا
+//    می‌شد — جای دومی که می‌توانست بی‌صدا از PHP جدا شود.
+$copies = [];
+$jsFiles = array_merge(glob(__DIR__ . '/../assets/js/*.js') ?: [], [__DIR__ . '/../sw.js']);
+foreach ($jsFiles as $f) {
+    if (basename($f) === 'jalali-datepicker.js' || !is_file($f)) { continue; }
+    if (preg_match('/355668|146097|\b1595\b/', (string)file_get_contents($f))) { $copies[] = basename($f); }
+}
+T::same([], $copies, 'الگوریتمِ تقویم فقط در jalali-datepicker.js است (هیچ کپیِ JSِ دیگری نیست)');
+
 exit(T::report());

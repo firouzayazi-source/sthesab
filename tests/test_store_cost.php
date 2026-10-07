@@ -335,7 +335,12 @@ $S9c = $doc($a, 'sale', today(), [$line($a, $P9, 1, 100)], [], ['account_id' => 
 $r = BizInvoices::unissue($a, $S9c);
 T::ok($r['ok'], 'فاکتورِ گذری با فقط دریافتِ همراه برمی‌گردد');
 BizInvoices::issue($a, $S9c, ['account_id' => $A_ACC, 'full' => 1]);
-BizPay::create($a, ['kind' => 'receipt', 'account_id' => $A_ACC, 'amount' => '10', 'invoice_id' => $S9c]);
+// ⚠ پولِ جدا روی فاکتورِ گذری حالا ساخته نمی‌شود (سقفِ «جمع − دریافت‌ها» در
+//   `createTx()`)؛ داده‌ی قدیمی‌ای که پیش از آن سقف ساخته شده هنوز ممکن است
+$x = BizPay::create($a, ['kind' => 'receipt', 'account_id' => $A_ACC, 'amount' => '10', 'invoice_id' => $S9c]);
+T::ok(!$x['ok'], '⛔ فاکتورِ گذریِ تسویه‌شده دریافتِ اضافه نمی‌پذیرد', $x['message']);
+$pdo->prepare("INSERT INTO biz_payments (user_id, kind, number, account_id, invoice_id, amount, pay_date, method)
+               VALUES (:u, 'receipt', 9001, :a, :i, 10, CURDATE(), 'cash')")->execute(['u' => $a, 'a' => $A_ACC, 'i' => $S9c]);
 $r = BizInvoices::unissue($a, $S9c);
 T::ok(!$r['ok'] && str_contains($r['message'], 'گذری'), '⛔ گذری با پولِ جدا برنمی‌گردد (صدورِ دوباره پول را دو بار می‌آورد)', $r['message']);
 // برگشت‌دار: بسته

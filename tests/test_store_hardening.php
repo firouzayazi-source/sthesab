@@ -368,6 +368,126 @@ T::ok(str_contains(BizDocView::luhnBadge(['imei1' => BAD]), 'st-imei-warn') && B
       'نشانِ صفحه‌ی سند فقط برای IMEIِ غلط');
 
 // =================================================================
+T::group('۱۷ — بازبینیِ دوم (مهر ۱۴۰۵): ترتیبِ IMEI، انبارگردانی، گذری، چک، تخفیف، BizOnce');
+$day = fn(int $n): string => date('Y-m-d', strtotime(($n >= 0 ? '+' : '') . $n . ' day'));
+$r7 = $make('r7');
+$PH7 = (int)BizProducts::save($r7, ['type' => 'phone', 'name' => 'گوشی ترتیب', 'unit' => 'دستگاه', 'buy_price' => '400', 'sell_price' => '500'])['id'];
+BizStock::setOpening($r7, $PH7, 1, 400);                       // یک گوشیِ اول دوره، بی‌IMEI
+const X7 = '351111111111111';
+const Y7 = '352222222222222';
+const Z7 = '353333333333333';
+// ⛔ خریدِ تاریخ‌گذشته‌ای که **بعد از** فروشِ همان گوشی ثبت شد: سرگذشت به ترتیبِ
+//    تاریخِ سند (همان ترتیبِ انبار)، نه زمانِ صدور
+T::ok(is_int($doc($r7, 'sale', [$L('گوشی ترتیب', '1', '600', X7)])), 'فروشِ امروزِ X (از موجودیِ بی‌IMEI)');
+T::ok(is_int($doc($r7, 'purchase', [$L('گوشی ترتیب', '1', '400', X7)], ['inv_date' => $day(-3)])), 'خریدِ X با تاریخِ ۳ روز پیش، دیرتر ثبت شد');
+T::same('out', BizSerial::lookup($r7, X7)['dir'] ?? null, '⛔ X بیرون است (فروشِ امروز بعد از خریدِ ۳ روز پیش)');
+T::same([], $inStock($r7, $PH7), '⛔ و در فهرستِ گوشی‌های در انبار نیست');
+T::ok(!is_int($doc($r7, 'sale', [$L('گوشی ترتیب', '1', '600', X7)])), '⛔ X دوباره فروخته نمی‌شود');
+$rep7 = BizSerial::report($r7, '', $PH7);
+T::same([0, 1], [$rep7['in'], $rep7['out']], 'گزارشِ IMEI همان ترتیب را دارد');
+// ⛔ سندِ تاریخ‌گذشته وسطِ سرگذشت می‌نشیند — رخدادِ **بعدی** هم سنجیده می‌شود
+T::ok(is_int($doc($r7, 'purchase', [$L('گوشی ترتیب', '1', '450', Y7)], ['inv_date' => $day(-5)])), 'خریدِ Y پنج روز پیش');
+T::ok(is_int($doc($r7, 'sale', [$L('گوشی ترتیب', '1', '650', Y7)])), 'فروشِ Y امروز');
+$bs7 = $doc($r7, 'sale', [$L('گوشی ترتیب', '1', '650', Y7)], ['inv_date' => $day(-2)]);
+T::ok(is_string($bs7) && str_contains($bs7, Y7), '⛔ فروشِ تاریخ‌گذشته‌ی Y (که بعداً فروخته شده) رد می‌شود — یک گوشی دو بار بیرون نمی‌رود', var_export($bs7, true));
+T::ok(is_int($doc($r7, 'purchase', [$L('گوشی ترتیب', '1', '300', Z7)], ['inv_date' => $day(-1)])), 'خریدِ Z دیروز');
+$bp7 = $doc($r7, 'purchase', [$L('گوشی ترتیب', '1', '300', Z7)], ['inv_date' => $day(-4)]);
+T::ok(is_string($bp7) && str_contains($bp7, Z7), '⛔ خریدِ تاریخ‌گذشته‌ی Z پیش از خریدِ بعدی‌اش رد می‌شود — یک گوشی دو بار وارد نمی‌شود', var_export($bp7, true));
+
+// ⛔ انبارگردانی با موجودیِ «تا امروز» سنجیده می‌شود، نه `stock_qty` (که سندِ آینده را دارد)
+$a7 = $make('adj');
+$G7 = (int)BizProducts::save($a7, ['type' => 'goods', 'name' => 'کالای شمارش', 'unit' => 'عدد', 'buy_price' => '100', 'sell_price' => '150'])['id'];
+$doc($a7, 'purchase', [$L('کالای شمارش', '5', '100')]);
+$doc($a7, 'purchase', [$L('کالای شمارش', '10', '100')], ['inv_date' => $day(3)]);
+T::same(15.0, $stock($a7, $G7), 'موجودی با خریدِ سه روزِ بعد ۱۵');
+$r = BizStock::adjustTo($a7, $G7, 5, 'شمارش');
+T::ok($r['ok'] && str_contains($r['message'], 'همان'), '⛔ شمارشِ درستِ امروز (۵) «تغییری نیست» است، نه «منفی می‌شود»', $r['message']);
+$r = BizStock::adjustTo($a7, $G7, 4, 'یکی گم شد');
+T::ok($r['ok'], 'شمارشِ ۴ ثبت شد', $r['message']);
+T::same(14.0, $stock($a7, $G7), '⛔ کسریِ یکی: ۱۵ → ۱۴ (نه حرکتِ −۱۱)');
+$b7 = $make('adj2');
+$H7 = (int)BizProducts::save($b7, ['type' => 'goods', 'name' => 'کالای پیش‌فروش', 'unit' => 'عدد', 'buy_price' => '100', 'sell_price' => '150'])['id'];
+$doc($b7, 'purchase', [$L('کالای پیش‌فروش', '10', '100')], ['inv_date' => $day(-5)]);
+$doc($b7, 'sale', [$L('کالای پیش‌فروش', '8', '150')], ['inv_date' => $day(3)]);
+$r = BizStock::adjustTo($b7, $H7, 9, 'شمارش');
+T::ok($r['ok'], 'امروز ۹ تا در قفسه است', $r['message']);
+$adj7 = array_values(array_filter(BizStock::ledger($b7, $H7)['rows'], fn($m) => $m['kind'] === 'adjust'));
+T::same([-1.0, 9.0], [(float)($adj7[0]['qty'] ?? 0), (float)($adj7[0]['balance'] ?? 0)], '⛔ حرکتِ کسریِ −۱ (نه اضافه‌ی +۷ به خاطرِ پیش‌فروشِ هفته‌ی بعد)');
+T::same(1.0, $stock($b7, $H7), 'و موجودیِ پایانی ۱');
+
+// ⛔ کاردکس و فهرستِ حرکت‌ها همان ترتیبِ `recalc()`: خریدِ «صدورِ دوباره»شده جلوی فروشِ همان روز
+$k7 = $make('kdx');
+$K7 = (int)BizProducts::save($k7, ['type' => 'goods', 'name' => 'کالای کاردکس', 'unit' => 'عدد', 'buy_price' => '100', 'sell_price' => '150', 'opening_qty' => '3'])['id'];
+$kp = $doc($k7, 'purchase', [$L('کالای کاردکس', '5', '100')]);
+$doc($k7, 'sale', [$L('کالای کاردکس', '3', '150')]);
+BizInvoices::unissue($k7, $kp);
+$r = BizInvoices::issue($k7, $kp, ['full' => true, 'account_id' => $acc($k7)]);
+T::ok($r['ok'], 'خرید برای اصلاح دوباره صادر شد', $r['message']);
+$led7 = BizStock::ledger($k7, $K7)['rows'];
+T::same([['opening', 3.0], ['purchase', 8.0], ['sale', 5.0]], array_map(fn($m) => [$m['kind'], (float)$m['balance']], $led7),
+        '⛔ کاردکس: خرید پیش از فروشِ همان روز (همان زنجیره‌ی بها)');
+T::same(['sale', 'purchase', 'opening'], array_column(BizStock::moves($k7, $K7), 'kind'), '⛔ صفحه‌ی کالا: همان ترتیب، وارونه');
+
+// ⛔ فاکتورِ گذری: دریافتِ اضافه نه، و ابطالش همه‌ی پول‌هایش را باطل می‌کند
+$w7 = $make('walk');
+$W7 = (int)BizProducts::save($w7, ['type' => 'goods', 'name' => 'کالای گذری', 'unit' => 'عدد', 'buy_price' => '100', 'sell_price' => '1000', 'opening_qty' => '5'])['id'];
+$wi = $doc($w7, 'sale', [$L('کالای گذری', '1', '1000')]);
+$x = BizPay::create($w7, ['kind' => 'receipt', 'party_id' => 0, 'invoice_id' => $wi, 'amount' => '5000', 'account_id' => $acc($w7)]);
+T::ok(!$x['ok'], '⛔ دریافتِ اضافه روی فاکتورِ گذریِ تسویه‌شده رد می‌شود', $x['message']);
+// داده‌ی قدیمی (پیش از این سقف): پولِ جدا روی همان فاکتور
+$pdo->prepare("INSERT INTO biz_payments (user_id, kind, number, account_id, invoice_id, amount, pay_date, method)
+               VALUES (:u, 'receipt', 99, :a, :i, 5000, CURDATE(), 'cash')")->execute(['u' => $w7, 'a' => $acc($w7), 'i' => $wi]);
+$r = BizInvoices::void($w7, $wi);
+T::ok($r['ok'], 'فاکتورِ گذری باطل شد', $r['message']);
+$st7 = $pdo->prepare("SELECT COUNT(*) FROM biz_payments WHERE user_id = :u AND invoice_id = :i AND status = 'ok'");
+$st7->execute(['u' => $w7, 'i' => $wi]);
+T::same(0, (int)$st7->fetchColumn(), '⛔ همه‌ی پول‌های فاکتورِ گذری باطل شدند (پولِ جدا مالِ هیچ‌کس نمی‌ماند)');
+T::same(0, (int)BizCash::list($w7)[0]['balance'], 'صندوق صفر');
+
+// ⛔ وصولِ چک پیش از تاریخِ دریافتش رد می‌شود (همان سدِ واگذاری)
+$c7 = $make('chq');
+$CC7 = (int)BizParties::save($c7, ['name' => 'مشتریِ چک', 'kind' => 'customer'])['id'];
+$ch7 = BizPay::create($c7, ['kind' => 'receipt', 'party_id' => $CC7, 'amount' => '1000', 'account_id' => $acc($c7), 'method' => 'cheque',
+                            'cheque_due' => $day(30), 'pay_date' => date('Y-m-d')]);
+T::ok($ch7['ok'], 'چکِ دریافتی', $ch7['message']);
+$r = BizCheques::clear($c7, (int)$ch7['id'], $acc($c7), $day(-60));
+T::ok(!$r['ok'] && str_contains($r['message'], 'پیش از'), '⛔ وصول با تاریخِ پیش از دریافتِ چک رد می‌شود', $r['message']);
+T::same(0, (int)BizCash::list($c7)[0]['balance'], 'و پولی به صندوق نرسید');
+T::ok(BizCheques::clear($c7, (int)$ch7['id'], $acc($c7), date('Y-m-d'))['ok'], 'وصولِ هم‌روز آزاد است');
+
+// ⛔ تخفیفِ فاکتور هیچ ردیفی را منفی نمی‌کند (باقیمانده‌ی گرد کردن)
+$tt = BizInvoices::totals([['line_total' => 2], ['line_total' => 2], ['line_total' => 2], ['line_total' => 1]], 5, 0, 0.0);
+$nets = array_column($tt['lines'], 'net_total');
+T::ok(min($nets) >= 0, '⛔ هیچ ردیفی زیرِ صفر نمی‌رود', json_encode($nets));
+T::same($tt['net'], array_sum($nets), 'جمعِ ردیف‌ها = جمعِ فاکتور');
+$tt = BizInvoices::totals([['line_total' => 300], ['line_total' => 700]], 101, 0, 0.0);
+T::same([270, 629], array_column($tt['lines'], 'net_total'), 'تخفیفِ معمولی: سهم به نسبت، باقیمانده به ردیفِ آخر (مثلِ قبل)');
+
+// ⛔ BizOnce: خطای پیش‌بینی‌نشده بعد از `claim()` نشان را «در کار» نمی‌گذارد
+$onceScript = tempnam(sys_get_temp_dir(), 'bonce');
+file_put_contents($onceScript, '<?php
+require ' . var_export(dirname(__DIR__) . '/includes/db.php', true) . ';
+require ' . var_export(dirname(__DIR__) . '/includes/functions.php', true) . ';
+require ' . var_export(dirname(__DIR__) . '/includes/biz.php', true) . ';
+$_SESSION = [];
+preg_match(\'/value="([0-9a-f]+)"/\', BizOnce::field(), $m);
+$_POST["_once"] = $m[1];
+BizOnce::claim();
+register_shutdown_function(function () use ($m) { echo "STATE=" . ($_SESSION["biz_once"][$m[1]]["s"] ?? "?"); });
+throw new RuntimeException("boom");
+');
+$onceOut = (string)shell_exec(PHP_BINARY . ' ' . escapeshellarg($onceScript) . ' 2>/dev/null');
+@unlink($onceScript);
+T::ok(str_contains($onceOut, 'STATE=new'), '⛔ ۵۰۰ بعد از claim: نشان آزاد شد (ارسالِ دوباره «یک بار ثبت شده بود» نمی‌گوید)', $onceOut);
+
+// سرگذشتِ ابطالِ پیش‌نویسِ شماره‌دار (داخلِ همان تراکنش)
+$d7 = $doc($k7, 'sale', [$L('کالای کاردکس', '1', '150')]);
+BizInvoices::unissue($k7, $d7);
+$r = BizInvoices::deleteDraft($k7, $d7);
+T::ok($r['ok'] && in_array('void', array_column(BizLog::forDoc($k7, 'invoice', $d7), 'action'), true) || !Biz::accReady(),
+      'پیش‌نویسِ شماره‌دار باطل شد و سرگذشتش ردِ «ابطال» دارد', $r['message']);
+
+// =================================================================
 T::group('۶ — دو بار زدنِ «ثبت»: یک سند (HTTP)');
 $root = dirname(__DIR__);
 $port = 0;

@@ -201,7 +201,9 @@ DOMAIN="$(grep -m1 -oP '^\s*server_name\s+\K[^;]+' "$SITE_FILE" | tr ' ' '\n' | 
 # قدیمی می‌آمد.
 probe_once() {
     [[ -z "$DOMAIN" ]] && return 1
-    curl -sk --max-time 10 -L \
+    # ⛔ --noproxy: با پراکسیِ محیط، curl مقدارِ --resolve را نادیده می‌گیرد و
+    #    سنجش درباره‌ی سرورِ دیگری حرف می‌زند (همان درسِ hesabland).
+    curl -sk --noproxy '*' --max-time 10 -L \
          --resolve "${DOMAIN}:443:127.0.0.1" \
          --resolve "${DOMAIN}:80:127.0.0.1" \
          "https://${DOMAIN}/api/v1/ping" 2>/dev/null || true
