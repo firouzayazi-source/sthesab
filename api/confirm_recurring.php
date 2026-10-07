@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/transactions.php';
 
 Auth::initSession();
 header('Content-Type: application/json; charset=utf-8');
@@ -21,7 +22,8 @@ $id = (int)postParam('recurring_id');
 $overrideAmount = postParam('amount');
 
 $pdo = Database::getConnection();
-$stmt = $pdo->prepare('SELECT * FROM recurring_transactions WHERE id = :id AND user_id = :u');
+// ⚠ فقط قانونِ فعال — قانونِ متوقف‌شده تأیید نمی‌شود.
+$stmt = $pdo->prepare('SELECT * FROM recurring_transactions WHERE id = :id AND user_id = :u AND is_active = 1');
 $stmt->execute(['id' => $id, 'u' => $userId]);
 $r = $stmt->fetch();
 if (!$r) { jsonResponse(['success' => false, 'message' => 'یافت نشد.'], 404); }
@@ -30,6 +32,9 @@ if ($r['next_due_date'] > today()) { jsonResponse(['success' => false, 'message'
 $amount = (int)$r['amount'];
 if ($overrideAmount !== '' && $overrideAmount !== null) {
     $sanitized = sanitizeAmount($overrideAmount);
+    if ($sanitized > TX_MAX_AMOUNT) {
+        jsonResponse(['success' => false, 'message' => 'مبلغ بیش از حد بزرگ است.'], 422);
+    }
     if ($sanitized > 0) { $amount = $sanitized; }
 }
 
@@ -41,12 +46,13 @@ try {
         VALUES (:u, :cat, :wal, :rid, :type, :amount, :title, :note, :date)
     ');
     $ins->execute([
-        'u' => $userId, 'cat' => $r['category_id'], 'wal' => $r['wallet_id'], 'rid' => $r['id'],
+        'u' => $userId, 'cat' => $r['category_id'], 'wal' => resolveWalletId($userId, $r['wallet_id']), 'rid' => $r['id'],
         'type' => $r['type'], 'amount' => $amount, 'title' => $r['title'], 'note' => $r['note'],
         'date' => $r['next_due_date'],
     ]);
 
-    $nextDue = advanceRecurringDate($r['next_due_date'], $r['frequency'], (int)$r['interval_count']);
+    $nextDue = advanceRecurringDate($r['next_due_date'], $r['frequency'], (int)$r['interval_count'],
+                               jalaliDayOfDate($r['start_date'] ?? null));
     $stillActive = !($r['end_date'] !== null && $nextDue > $r['end_date']);
 
     $upd = $pdo->prepare('UPDATE recurring_transactions SET next_due_date = :n, is_active = :a WHERE id = :id');

@@ -7883,4 +7883,40 @@ if (!str_contains($css72, '.sheet-overlay > .sheet { max-height: min(90dvh, 100%
 }
 T::bulk(3, $bad72, 'هر تازه‌سازی از reloadPage()؛ شیت با کیبورد در لایه جا می‌شود');
 
+// ---------------------------------------------------------------
+// قاعده ۷۳ — نوشتنِ هم‌زمانِ پول: نسبی یا قفل‌دار، و لنگرِ سری
+// ---------------------------------------------------------------
+// ⛔ بازبینیِ کلِ پروژه (مهر ۱۴۰۵). رفتارشان در `test_money_audit`/`test_schedule`
+//    سنجیده می‌شود؛ مسابقه را اما تست تک‌رشته‌ای نمی‌بیند، پس شکلِ امنِ نوشتن
+//    همین‌جا نگه داشته می‌شود:
+//    - تعدیلِ موجودی نسبی (`+ :d`) — کارگرِ پیامکِ اپ هم‌زمان همان ستون را جابه‌جا می‌کند.
+//    - پرداختِ بدهی ردیفِ بدهی را `FOR UPDATE` می‌خواند — وگرنه یکی از دو پرداختِ
+//      هم‌زمان از `paid_amount` گم می‌شد.
+//    - تراکنشِ دوره‌ایِ خودکار اول سررسید را **شرطی** جلو می‌برد — وگرنه دو دستگاه
+//      هر کدام یک تکراری می‌ساختند.
+//    - هر جلو بردنِ سری با لنگرِ تاریخِ شروع — وگرنه ۳۱ برای همیشه ۳۰ می‌شد.
+T::group('قاعده ۷۳ — نوشتنِ هم‌زمانِ پول و لنگرِ سری');
+$bad73 = [];
+$adj73 = (string)@file_get_contents(__DIR__ . '/../api/adjust_wallet.php');
+if (!str_contains($adj73, 'SET initial_balance = initial_balance + :d')) {
+    $bad73[] = 'adjust_wallet.php — موجودیِ اولیه مطلق نوشته می‌شود (به‌روزرسانیِ هم‌زمانِ پیامک گم می‌شود)';
+}
+$pay73 = (string)@file_get_contents(__DIR__ . '/../api/add_debt_payment.php');
+if (!preg_match('~beginTransaction\(\);.*?FROM debts WHERE id = :id AND user_id = :u FOR UPDATE~s', $pay73)) {
+    $bad73[] = 'add_debt_payment.php — ردیفِ بدهی داخلِ تراکنش قفل نمی‌شود';
+}
+$fn73 = (string)@file_get_contents(__DIR__ . '/../includes/functions.php');
+if (!str_contains($fn73, 'WHERE id = :id AND next_due_date = :old') || !str_contains($fn73, 'if ($upd->rowCount() !== 1) { $pdo->rollBack(); break; }')) {
+    $bad73[] = 'functions.php — تراکنشِ دوره‌ای بی‌سدِ شرطی (دو دستگاه = تکراری)';
+}
+$anchorCalls = 0;
+foreach (['includes/functions.php', 'api/confirm_recurring.php', 'api/skip_recurring.php'] as $f73) {
+    $src = (string)@file_get_contents(__DIR__ . '/../' . $f73);
+    $anchorCalls += preg_match_all("~advanceRecurringDate\([^;]*jalaliDayOfDate\(\\\$r\['start_date'\]~s", $src);
+}
+if ($anchorCalls < 4) {
+    $bad73[] = "سری‌های دوره‌ای بی‌لنگرِ تاریخِ شروع جلو می‌روند ({$anchorCalls} از ۴)";
+}
+T::bulk(4, $bad73, 'تعدیل نسبی، پرداخت قفل‌دار، سررسید شرطی، و لنگرِ سری');
+
 exit(T::report());

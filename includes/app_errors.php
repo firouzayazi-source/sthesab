@@ -151,7 +151,7 @@ final class AppErrors
     public static function record(string $level, string $message, string $file = '', int $line = 0, array $ctx = []): bool
     {
         $msg = self::scrub($message);
-        $rel = self::relative($file);
+        $rel = Log::relative($file);
 
         // ⛔ اول فایل، بعد دیتابیس — و مستقل از هم. خطِ فایل شناسه‌ی
         //    درخواست، کاربر، مرحله و ردِ پشته را دارد (چیزهایی که عمداً در
@@ -498,12 +498,6 @@ final class AppErrors
     }
 
     /** مسیرِ نسبی به ریشه‌ی پروژه — مسیرِ مطلق فقط عرض می‌گیرد. */
-    private static function relative(string $file): string
-    {
-        $root = dirname(__DIR__) . '/';
-        return str_starts_with($file, $root) ? substr($file, strlen($root)) : $file;
-    }
-
     private static function levelName(int $no): string
     {
         switch ($no) {

@@ -76,11 +76,11 @@ if ($delta === 0) {
     jsonResponse(['success' => true, 'balance' => $current, 'message' => 'موجودی از قبل همین بود — چیزی تغییر نکرد.']);
 }
 
-$newInitial = (int)$wallet['initial_balance'] + $delta;
-
 try {
-    $pdo->prepare('UPDATE wallets SET initial_balance = :b WHERE id = :id AND user_id = :u')
-        ->execute(['b' => $newInitial, 'id' => $walletId, 'u' => $userId]);
+    // ⛔ نسبی (`+ :d`)، نه مقدارِ مطلقِ خوانده‌شده: کارگرِ پیامکِ اپ همین ستون
+    //    را هم‌زمان نسبی جابه‌جا می‌کند (`SmsSync`) و نوشتنِ مطلق آن را گم می‌کرد.
+    $pdo->prepare('UPDATE wallets SET initial_balance = initial_balance + :d WHERE id = :id AND user_id = :u')
+        ->execute(['d' => $delta, 'id' => $walletId, 'u' => $userId]);
 } catch (PDOException $e) {
     Log::error('api.adjust_wallet', $e);
     jsonResponse(['success' => false, 'message' => 'خطایی رخ داد.'], 500);

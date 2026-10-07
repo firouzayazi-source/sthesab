@@ -66,8 +66,6 @@ class Schedule
     /** بازه‌های اعلانِ مجاز — تنها مرجع. فهرستِ دوم نسازید. */
     public const NOTIFY_STEPS = [7, 3, 1];
 
-    public const SOURCES = ['custom', 'cheque', 'debt', 'recurring_tx'];
-
     /**
      * دوره‌های آماده‌ی تکرار — **تنها مرجع** (مثل `Auth::SESSION_WINDOWS`).
      *

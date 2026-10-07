@@ -26,7 +26,8 @@ if (!$r) { jsonResponse(['success' => false, 'message' => 'یافت نشد.'], 4
 
 try {
     // بدون ساختن تراکنش، فقط به سررسید بعدی می‌رویم — برای «این دوره را رد کن»
-    $nextDue = advanceRecurringDate($r['next_due_date'], $r['frequency'], (int)$r['interval_count']);
+    $nextDue = advanceRecurringDate($r['next_due_date'], $r['frequency'], (int)$r['interval_count'],
+                               jalaliDayOfDate($r['start_date'] ?? null));
     $stillActive = !($r['end_date'] !== null && $nextDue > $r['end_date']);
 
     $upd = $pdo->prepare('UPDATE recurring_transactions SET next_due_date = :n, is_active = :a WHERE id = :id AND user_id = :u');

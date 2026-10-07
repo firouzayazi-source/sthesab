@@ -19,21 +19,6 @@ require_once __DIR__ . '/../includes/user_import.php';
 
 Auth::initSession();
 
-/** همان الگوی `exportFail()` — و به همان دلیل. */
-function importFail(string $message, int $status = 400): void
-{
-    // ⚠ `Csrf::isJsonRequest()` خصوصی است، پس همان شرط تکرار می‌شود:
-    //   هر دو سرآیند لازم‌اند چون `fetch` های `app.js`
-    //   `X-Requested-With` می‌فرستند ولی `Accept: application/json` نه.
-    $isAjax = strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest'
-           || str_contains((string)($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json');
-
-    if ($isAjax) {
-        header('Content-Type: application/json; charset=utf-8');
-        jsonResponse(['success' => false, 'message' => $message], $status);
-    }
-    redirectWithMessage('../backup.php', 'error', $message);
-}
 
 // ⚠ بدونِ ورود عمداً ۴۰۱ است نه هدایت — قاعده‌ی `api/`، که
 //   `test_api_auth` هر اندپوینت را با آن می‌سنجد. کاربرِ واقعی به اینجا
@@ -43,7 +28,7 @@ if (!Auth::isLoggedIn()) {
     jsonResponse(['success' => false, 'message' => 'ابتدا وارد شوید.'], 401);
 }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    importFail('درخواست نامعتبر است.', 405);
+    failJsonOrRedirect('درخواست نامعتبر است.', 405, '../backup.php');
 }
 Csrf::verifyOrFail(postParam('csrf_token'));
 
@@ -55,7 +40,7 @@ $userId = Auth::userId();
 //      کرده «عبارت را درست وارد کنید» می‌گیرد و نمی‌فهمد چرا.
 $typed = trim(str_replace("\u{200C}", '', (string)postParam('confirm')));
 if ($typed !== IMPORT_CONFIRM_PHRASE) {
-    importFail('برای بازگرداندن باید عبارتِ «' . IMPORT_CONFIRM_PHRASE . '» را دقیقاً تایپ کنید.', 422);
+    failJsonOrRedirect('برای بازگرداندن باید عبارتِ «' . IMPORT_CONFIRM_PHRASE . '» را دقیقاً تایپ کنید.', 422, '../backup.php');
 }
 
 if (!isset($_FILES['backup']) || $_FILES['backup']['error'] !== UPLOAD_ERR_OK) {
@@ -63,29 +48,29 @@ if (!isset($_FILES['backup']) || $_FILES['backup']['error'] !== UPLOAD_ERR_OK) {
     $msg  = ($code === UPLOAD_ERR_INI_SIZE || $code === UPLOAD_ERR_FORM_SIZE)
         ? 'فایل از حدِ مجازِ سرور بزرگ‌تر است.'
         : 'فایلی انتخاب نشد.';
-    importFail($msg, 422);
+    failJsonOrRedirect($msg, 422, '../backup.php');
 }
 
 if ($_FILES['backup']['size'] > IMPORT_MAX_BYTES) {
-    importFail('فایل خیلی بزرگ است.', 422);
+    failJsonOrRedirect('فایل خیلی بزرگ است.', 422, '../backup.php');
 }
 
 $raw = (string)file_get_contents($_FILES['backup']['tmp_name']);
 
 $parsed = parseBackupFile($raw);
 if (!$parsed['ok']) {
-    importFail($parsed['message'], 422);
+    failJsonOrRedirect($parsed['message'], 422, '../backup.php');
 }
 
 try {
     $res = importUserData($userId, $parsed['data']);
 } catch (Throwable $e) {
     Log::error('import.fatal', $e);
-    importFail('بازگرداندن انجام نشد و داده‌ی فعلی دست‌نخورده ماند.', 500);
+    failJsonOrRedirect('بازگرداندن انجام نشد و داده‌ی فعلی دست‌نخورده ماند.', 500, '../backup.php');
 }
 
 if (!$res['ok']) {
-    importFail($res['message'], 422);
+    failJsonOrRedirect($res['message'], 422, '../backup.php');
 }
 
 // ⛔ نتیجه عدد می‌دهد، نه فقط «انجام شد». کاربری که دفترش را برگردانده

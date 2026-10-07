@@ -36,7 +36,7 @@ if ($debtId <= 0) {
 
 $pdo = Database::getConnection();
 
-$checkStmt = $pdo->prepare('SELECT id, user_id FROM debts WHERE id = :id');
+$checkStmt = $pdo->prepare('SELECT id, user_id, amount, paid_amount, is_settled FROM debts WHERE id = :id');
 $checkStmt->execute(['id' => $debtId]);
 $debt = $checkStmt->fetch();
 
@@ -57,6 +57,12 @@ if ($counterpartyName === '' || mb_strlen($counterpartyName) > 150) {
 $amount = sanitizeAmount($rawAmount);
 if ($amount <= 0) {
     $errors[] = 'مبلغ باید بزرگ‌تر از صفر باشد.';
+} elseif ($amount < (int)$debt['paid_amount']) {
+    // ⛔ کمتر از پرداخت‌شده یعنی «مانده‌ی منفی» روی ستون‌های `UNSIGNED`:
+    //    `SUM(amount - paid_amount)`ِ صفحه‌ی طلب و بدهی خطا می‌داد و جمع‌ها
+    //    همه‌ی پرداخت‌ها را نادیده می‌گرفتند (بازبینیِ کلِ پروژه، مهر ۱۴۰۵).
+    //    همان سدِ `tradeCreditUpsert()`.
+    $errors[] = 'مبلغ نمی‌تواند کمتر از مبلغِ پرداخت‌شده (' . formatMoney((int)$debt['paid_amount']) . ' تومان) باشد.';
 }
 if ($amount > 999999999999) {
     $errors[] = 'مبلغ وارد شده بیش از حد بزرگ است.';
@@ -100,11 +106,21 @@ if (!empty($errors)) {
     jsonResponse(['success' => false, 'message' => implode(' ', $errors)], 422);
 }
 
+// ⛔ مبلغِ عوض‌شده وضعیتِ تسویه را از نو می‌سنجد: بالا بردنِ مبلغِ یک بدهیِ
+//    تسویه‌شده آن را «تسویه» نگه می‌داشت — مانده پنهان و پرداخت رد می‌شد.
+//    مبلغِ دست‌نخورده، تسویه‌ی دستیِ کاربر را هم دست نمی‌زند.
+$settled = (int)$debt['is_settled'];
+if ($amount !== (int)$debt['amount']) {
+    $settled = (int)$debt['paid_amount'] >= $amount ? 1 : 0;
+}
+
 try {
     $stmt = $pdo->prepare('
         UPDATE debts
         SET counterparty_name = :counterparty_name, amount = :amount, note = :note,
-            entry_date = :entry_date, due_date = :due_date
+            entry_date = :entry_date, due_date = :due_date,
+            settled_at = CASE WHEN :s1 = 1 THEN COALESCE(settled_at, NOW()) ELSE NULL END,
+            is_settled = :s2
         WHERE id = :id AND user_id = :user_id
     ');
     $stmt->execute([
@@ -113,6 +129,8 @@ try {
         'note'              => $note !== '' ? $note : null,
         'entry_date'        => $entryDate,
         'due_date'          => $dueDate,
+        's1'                => $settled,
+        's2'                => $settled,
         'id'                => $debtId,
         'user_id'           => Auth::userId(),
     ]);

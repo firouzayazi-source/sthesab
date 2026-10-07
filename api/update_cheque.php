@@ -112,6 +112,7 @@ try {
         'id'                => $chequeId,
         'user_id'           => $userId,
     ]);
+    chequeLinkedDebtSync($pdo, $userId, $chequeId, ['amount' => $amount, 'counterparty_name' => $counterpartyName]);
 
     jsonResponse(['success' => true, 'message' => 'چک با موفقیت ویرایش شد.']);
 } catch (PDOException $e) {

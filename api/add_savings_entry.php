@@ -19,6 +19,7 @@ $date = postParam('entry_date');
 $errors = [];
 if (!in_array($direction, ['deposit', 'withdraw'], true)) { $errors[] = 'نوع تراکنش نامعتبر است.'; }
 if ($rawAmount <= 0) { $errors[] = 'مبلغ باید بزرگ‌تر از صفر باشد.'; }
+if ($rawAmount > 999999999999) { $errors[] = 'مبلغ بیش از حد بزرگ است.'; }
 if (!isValidDate($date)) { $errors[] = 'تاریخ نامعتبر است.'; }
 if (mb_strlen($note) > 1000) { $errors[] = 'توضیحات بیش از حد طولانی است.'; }
 

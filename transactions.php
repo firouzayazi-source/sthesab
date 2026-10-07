@@ -47,7 +47,7 @@ $sql = "
     FROM transactions t
     LEFT JOIN categories c ON c.id = t.category_id
     $whereClause
-    ORDER BY t.transaction_date DESC, t.created_at DESC
+    ORDER BY t.transaction_date DESC, t.created_at DESC, t.id DESC
     LIMIT $perPage OFFSET $offset
 ";
 

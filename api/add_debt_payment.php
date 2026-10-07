@@ -44,6 +44,19 @@ if (!empty($errors)) { jsonResponse(['success' => false, 'message' => implode(' 
 try {
     $pdo->beginTransaction();
 
+    // ⛔ دوباره خوانده و **قفل** می‌شود: دو پرداختِ هم‌زمان (وب و اپ) هر
+    //    دو ردیفِ `debt_payments` را می‌نشاندند ولی `paid_amount` فقط یکی را
+    //    داشت — حساب‌ها هر دو را کم می‌کردند و بدهی یکی را (بازبینیِ کلِ
+    //    پروژه، مهر ۱۴۰۵). حالا دومی باقیمانده‌ی تازه را می‌بیند.
+    $lock = $pdo->prepare('SELECT amount, paid_amount, is_settled FROM debts WHERE id = :id AND user_id = :u FOR UPDATE');
+    $lock->execute(['id' => $debtId, 'u' => $userId]);
+    $debt = $lock->fetch();
+    if (!$debt || (int)$debt['is_settled']
+        || $amount > (int)$debt['amount'] - (int)$debt['paid_amount']) {
+        $pdo->rollBack();
+        jsonResponse(['success' => false, 'message' => 'باقیمانده همین حالا عوض شد؛ صفحه را تازه کنید.'], 409);
+    }
+
     // حسابِ پرداخت هم ثبت می‌شود تا موجودی همان حساب واقعاً کم/زیاد شود
     // (walletBalances از همین جدول می‌خواند). ستون با migration_money_links
     // می‌آید؛ بدون آن، پرداخت مثل قبل فقط ثبت می‌شود.

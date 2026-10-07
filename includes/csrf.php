@@ -145,7 +145,7 @@ HTML;
      * صفحه‌ی HTML برمی‌گرداند، `res.json()` می‌شکند، و کاربر فقط
      * «خطا در ارتباط با سرور» می‌بیند — یعنی دلیل واقعی گم می‌شود.
      */
-    private static function isJsonRequest(): bool
+    public static function isJsonRequest(): bool
     {
         if (strcasecmp((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? ''), 'XMLHttpRequest') === 0) {
             return true;

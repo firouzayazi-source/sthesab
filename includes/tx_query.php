@@ -229,3 +229,96 @@ function txWalletList(int $userId): array
         return [];
     }
 }
+
+/**
+ * ⛔ خروجیِ CSVِ تراکنش‌ها — **یک** کوئری و **یک** نویسنده برای هر دو درِ ورود
+ *    (`api/export_transactions.php` با صافی‌های صفحه‌ی تراکنش‌ها، و
+ *    `export_transactions.php`ِ گزارش و «داده‌ها» با بازه‌ی تاریخ). تا مهر ۱۴۰۵
+ *    دومی SQL و ستون‌های خودش را داشت: بی‌حساب، تاریخ با ارقامِ فارسی (اکسل
+ *    متن می‌دید) و `octet-stream` — دو فایلِ متفاوت با یک نام.
+ *
+ * @param array $input همان ورودیِ `buildTransactionFilter()` (صافی‌های صفحه یا
+ *                     `period=custom&from_date&to_date`)
+ */
+function txCsvQuery(int $userId, array $input): PDOStatement
+{
+    $filter = buildTransactionFilter($userId, $input, txWalletList($userId));
+
+    // نامِ حساب فقط اگر جدولش با migration آمده باشد — نصبِ عقب‌مانده
+    // هم باید خروجی بگیرد، نه اینکه خطا ببیند.
+    $hasWallets = tableExists('wallets');
+    $walletSel  = $hasWallets ? ', w.name AS wallet_name' : ", '' AS wallet_name";
+    $walletJoin = $hasWallets ? 'LEFT JOIN wallets w ON w.id = t.wallet_id' : '';
+
+    $stmt = Database::getConnection()->prepare("
+        SELECT t.type, t.amount, t.title, t.note, t.transaction_date,
+               c.name AS category_name {$walletSel}
+        FROM transactions t
+        LEFT JOIN categories c ON c.id = t.category_id
+        {$walletJoin}
+        {$filter['where']}
+        ORDER BY t.transaction_date ASC, t.created_at ASC, t.id ASC
+    ");
+    $stmt->execute($filter['params']);
+    return $stmt;
+}
+
+/**
+ * ⛔ متنِ کاربر با `=`/`+`/`-`/`@` در اکسل **فرمول** می‌شود (عنوانِ
+ *    «=HYPERLINK(…)» یک پیوندِ زنده در فایلِ دانلودشده). همان سدِ
+ *    `BizSheet::writeCsv()`: یک `'` جلویش.
+ */
+function txCsvCell(string $v): string
+{
+    return $v !== '' && strpbrk($v[0], "=+-@\t\r") !== false ? "'" . $v : $v;
+}
+
+/** سرآیندها + BOM + ردیف‌ها، یکی‌یکی (نه `fetchAll()`). */
+function txCsvStream(PDOStatement $stmt): void
+{
+    // ⛔ گزیپی که `db.php` روشن می‌کند باید پیش از فرستادنِ فایل بسته شود،
+    //    وگرنه چیزی که ذخیره می‌شود دوبار فشرده است و باز نمی‌شود. همان
+    //    چیزی که یک بار سرِ خروجیِ JSON افتاد.
+    if (function_exists('ob_get_level')) {
+        while (ob_get_level() > 0) { ob_end_clean(); }
+    }
+    header_remove('Content-Encoding');
+
+    // ⚠ ارقامِ نامِ فایل **لاتین**اند: نامِ حاوی ارقامِ فارسی در سرآیندِ
+    //   `filename=` غیرمجاز است و مرورگر بی‌سروصدا کنارش می‌گذارد.
+    $name = 'transactions-' . str_replace('/', '-', toLatinDigits(toJalali(date('Y-m-d')))) . '.csv';
+
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $name . '"');
+    header('Cache-Control: no-store, private');
+    header('X-Content-Type-Options: nosniff');
+
+    $out = fopen('php://output', 'w');
+
+    // ⛔ BOM اجباری است. بدونِ آن، اکسلِ ویندوز فایلِ UTF-8 را با کدپیجِ
+    //    سیستم می‌خواند و **همه‌ی متنِ فارسی به‌شکلِ علامتِ سؤال و حروفِ
+    //    درهم** درمی‌آید — فایل باز می‌شود، خطایی نیست، و فقط بی‌فایده
+    //    است. همان خرابیِ بی‌صدا.
+    fwrite($out, "\xEF\xBB\xBF");
+
+    fputcsv($out, ['تاریخ', 'تاریخ میلادی', 'نوع', 'دسته‌بندی', 'حساب', 'عنوان', 'یادداشت', 'مبلغ (تومان)']);
+
+    while ($row = $stmt->fetch()) {
+        fputcsv($out, [
+            // تاریخِ شمسی برای خواندن، میلادی برای مرتب‌سازی و فرمولِ اکسل —
+            // ⚠ هر دو با ارقامِ لاتین، وگرنه اکسل ستون را متن می‌بیند.
+            str_replace('/', '-', toLatinDigits(toJalali($row['transaction_date']))),
+            $row['transaction_date'],
+            $row['type'] === 'income' ? 'درآمد' : 'هزینه',
+            txCsvCell((string)($row['category_name'] ?? '')),
+            txCsvCell((string)($row['wallet_name'] ?? '')),
+            txCsvCell((string)$row['title']),
+            txCsvCell((string)($row['note'] ?? '')),
+            // ⛔ عددِ خام، بدونِ `formatMoney()`. با جداکننده و ارقامِ فارسی
+            //    اکسل آن را **متن** می‌گیرد و کاربر نمی‌تواند جمعش بزند —
+            //    یعنی تنها دلیلِ وجودِ این فایل از بین می‌رفت.
+            (int)$row['amount'],
+        ]);
+    }
+    fclose($out);
+}

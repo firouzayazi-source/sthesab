@@ -283,7 +283,9 @@ sudo ./hesabland release     # همان abc1234 — و فقط همان — رو�
 - **تنها مرجع‌ها:** `walletBalances()` (هفت منبعِ پول)، `resolveWalletId()`/`defaultWalletId()` (هیچ پولی بی‌حساب نمی‌ماند)، `categoryScopeSql()`/`categoryScopeParams()` (`NULL` = پیش‌فرضِ برنامه)، `chequeActiveSql()`، `debtInstallments()`، `assetSummaryRows()`، `tradesWithProgress()`، `mergeWallet()`، `privatizeDefaultCategory()`، `mergeCategories()` (فقط از `user-admin.php --merge-categories`)، `includes/trade_credit.php`.
 - وصولِ طلب، چکِ پاس‌شده، تعدیلِ موجودی، انتقال و تسویه‌ی سهامدار **ردیفِ `transactions` نمی‌سازند** (درآمد/هزینه نیستند). سودِ معامله تراکنشِ **بی‌حساب** است.
 - `is_settled = 1 ⇔ status = 'cleared'`؛ چکِ برگشتی/خرج‌شده «در جریان» نیست (وگرنه دوبار شمرده می‌شود). چکِ دریافتیِ برگشتی خودکار طلب می‌شود.
-- قسط ردیفِ ذخیره‌شده ندارد؛ باقیمانده‌ی تقسیم به قسطِ آخر؛ «پرداخت‌شده» از جمعِ پرداخت نه تاریخ؛ بدهیِ قسطی یک بار شمرده شود. `debts.due_date` `NULL` = «بدون سررسید» (نه امروز).
+- قسط ردیفِ ذخیره‌شده ندارد؛ باقیمانده‌ی تقسیم به قسطِ آخر؛ «پرداخت‌شده» از جمعِ پرداخت نه تاریخ، و مانده‌ی هر قسط `remaining` (نه `amount`)؛ بدهیِ قسطی یک بار شمرده شود. `debts.due_date` `NULL` = «بدون سررسید» (نه امروز). مبلغِ بدهی هرگز کمتر از پرداخت‌شده؛ جمعِ مانده با `GREATEST(CAST…)`.
+- **سری‌ها با لنگر:** `advanceRecurringDate(…, jalaliDayOfDate(start_date))` و `jalaliAddMonths()` — هرگز بی‌لنگر (۳۱→۳۰ همیشگی). تولیدِ خودکارِ دوره‌ای اول سررسید را **شرطی** جلو می‌برد؛ حساب از `resolveWalletId()`.
+- **حذفِ حساب** فقط وقتی `walletUsageCount()` (همه‌ی `walletRefColumns()`) صفر است؛ ویرایشِ حساب موجودیِ اولیه‌ی منفی را دست نمی‌زند؛ تعدیل نسبی (`+ :d`)؛ پرداختِ بدهی `FOR UPDATE` (قاعده ۷۳). طلبِ چکِ برگشتی با ویرایش/حذفِ چک همگام: `chequeLinkedDebtSync()`.
 - هر جدولِ ارجاع به دسته/حساب **از دیتابیس کشف** می‌شود (`categoryRefTables()`، `walletRefColumns()`) و عملیات‌های جابه‌جایی سدِ شمارشِ پیش از `commit` دارند.
 - «سرمایه‌گذاری» عمداً دسته‌ی هزینه نیست. ارزش = `COALESCE(current_price, unit_price)`؛ نرخ دستی، یا خودکار از نرخِ روز (`asset_types.rate_code`، `docs/decisions/rates.md`).
 
@@ -294,7 +296,7 @@ sudo ./hesabland release     # همان abc1234 — و فقط همان — رو�
 - دارایی: `applyToAssets()` همان `current_price` (بی‌محاسبه‌ی دوم)، هر کاربر جدا. فروشگاه: `BizRates::apply()` تنها نویسنده‌ی `sell_price`ِ کالای وصل‌شده (با `Rates::listen()`؛ `rates.php` جدولِ فروشگاه را نمی‌شناسد — قاعده ۷۰)؛ فاکتورِ صادرشده عوض نمی‌شود؛ وصل جدا از `save()` (`saveRate()`).
 
 ### `docs/decisions/transactions.md` — فرمِ ثبت، پیامکِ بانک، جست‌وجو، ورود از فایل
-- منطقِ نوشتن فقط `includes/transactions.php` (`txCreate`/`txUpdate`)، خواندن فقط `includes/tx_query.php`؛ خروجیِ CSV همان صافی‌ها (BOM اجباری، مبلغ عددِ خام).
+- منطقِ نوشتن فقط `includes/transactions.php` (`txCreate`/`txUpdate`)، خواندن فقط `includes/tx_query.php`؛ خروجیِ CSV فقط `txCsvQuery()`/`txCsvStream()` برای هر دو درِ ورود (همان صافی‌ها، BOM اجباری، مبلغ عددِ خام، سدِ فرمولِ اکسل). مبلغ با `sanitizeAmount()` («٫» ممیز است)، تعداد فقط `formatQty()`؛ شکستِ اندپوینتِ فرم/fetch فقط `failJsonOrRedirect()`.
 - پیش‌فرضِ نوع «هزینه»؛ عنوان اختیاری (`fallbackTxTitle()` بعد از `txResolveCategory()`)؛ شبکه‌ی دسته از `categoriesForGrid()` با `JSON_HEX_TAG`؛ بودجه‌ی تپ در `test_tap_budget`.
 - پارسرِ پیامک فقط `assets/js/sms-core.js` (خالص، بی‌DOM؛ سایت **و** کارگرِ WebViewِ اپ)؛ متنِ پیامک **هرگز** روی سیم نمی‌رود (فرگمنت `#sms=`/`#smsq=`، و ثبتِ پس‌زمینه فقط `smsWorker().post`). نبودِ واحد = ریال (مبلغ و مانده، به تومان — خواسته‌ی مالکِ نصب) و خودکار؛ ثبتِ بی‌تپ فقط با `smsAutoOk()` و `smsMatchWallet()` قطعی؛ حسابِ نامعلوم یک بار پرسیده (گزینه‌ی خالیِ اجباری) و یاد گرفته می‌شود (`smsSourceKeys()` → `SmsSync::learn()`، فقط نشانه نه متن، `how = learn` با مانده)؛ دسته فقط از پذیرنده (`smsLearnedCategory()`/`smsLearnedCategoryId()`، آخرین انتخابِ کاربر برای همان عنوان)، نه از بانک؛ رمزِ پویا هرگز تراکنش نیست؛ شماره‌ی طرفِ مقابل حسابِ کاربر نیست؛ مانده فقط از پیامکِ تازه‌تر.
 - پیلودِ «ورود از فایل» داده است نه دستور: دسته و حساب در برابرِ مالکیتِ کاربر سنجیده می‌شوند.
@@ -343,6 +345,7 @@ sudo ./hesabland release     # همان abc1234 — و فقط همان — رو�
 
 ### `docs/decisions/backup-data.md` — بکاپ، بازگرداندن، خروجی، حذف
 - بکاپِ بازیابی‌نشده فرضیه است (`restore.sh`، با `--admin`؛ به کاربرِ اپ GRANT اضافه ندهید). بکاپِ بیرونی رمزشده، رفت‌وبرگشت‌سنجیده (`backup-offsite.sh`).
+- بازگرداندن پیوندِ **بی‌کلیدِ خارجی** را هم نگاشت می‌کند: `IMPORT_SOFT_LINKS` و چندریختیِ `IMPORT_POLY_LINKS` — ستونِ تازه‌ای از این جنس یک سطر آنجا می‌خواهد (وگرنه شناسه‌ی قدیمِ فایل می‌نشیند؛ سودِ معامله دو برابر شد).
 - جدول‌های کاربر از دیتابیس کشف می‌شوند (`userDataTables()`)؛ `deleteUserAccount()` سدِ پیش از `commit` دارد. بازگرداندنِ `.sthesab` جایگزینی است، شناسه‌ها از نو نگاشت، `user_id` از نشست، `USER_IMPORT_SKIP` بسته، ستون‌های حساس دوباره رمز.
 
 ### `docs/decisions/admin-ops.md` — آمار، لاگ و خطا، زیرساخت، پشتیبانی

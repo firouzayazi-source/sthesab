@@ -135,13 +135,16 @@ $payables    = array_values(array_filter($allDebts, fn($d) => $d['direction'] ==
 // مجموع باقیمانده همیشه بدون در نظر گرفتن جستجو/فیلتر محاسبه می‌شود
 try {
     $totalsStmt = $pdo->prepare("
-        SELECT direction, COALESCE(SUM(amount - paid_amount), 0) AS total
+        SELECT direction,
+               COALESCE(SUM(GREATEST(CAST(amount AS SIGNED) - CAST(paid_amount AS SIGNED), 0)), 0) AS total
         FROM debts
         WHERE user_id = :user_id AND is_settled = 0
         GROUP BY direction
     ");
     $totalsStmt->execute(['user_id' => $userId]);
 } catch (PDOException $e) {
+    // ⚠ فقط برای نصبی که هنوز ستونِ `paid_amount` ندارد — نه پوششِ خطای
+    //   «مانده‌ی منفی» (`CAST`ِ بالا آن را دیگر نمی‌سازد).
     $totalsStmt = $pdo->prepare("
         SELECT direction, COALESCE(SUM(amount), 0) AS total
         FROM debts
@@ -250,7 +253,7 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
             <div class="debt-inst-line">
                 قسط <strong><?= toPersianDigits((string)$nextInst['seq']) ?></strong>
                 از <?= toPersianDigits((string)count($instalments)) ?> —
-                بعدی <strong><?= formatMoney($nextInst['amount']) ?></strong>
+                بعدی <strong><?= formatMoney($nextInst['remaining']) ?></strong>
                 در <?= h(toJalali($nextInst['date'])) ?>
             </div>
         <?php endif; ?>
@@ -294,7 +297,7 @@ function renderDebtCard(array $d, string $todayStr, array $settleWalletNames = [
                         data-id="<?= (int)$d['id'] ?>"
                         data-name="<?= h($d['counterparty_name']) ?>"
                         data-remaining="<?= debtRemaining($d) ?>"
-                        data-next-inst="<?= $nextInst !== null ? (int)$nextInst['amount'] : 0 ?>">ثبت پرداخت</button>
+                        data-next-inst="<?= $nextInst !== null ? (int)$nextInst['remaining'] : 0 ?>">ثبت پرداخت</button>
                 <?php endif; ?>
                 <button type="button" class="btn btn-secondary btn-sm js-edit-debt"
                     data-id="<?= (int)$d['id'] ?>"

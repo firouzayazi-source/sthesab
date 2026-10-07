@@ -48,6 +48,7 @@ $undo = Undo::capture('cheques', $chequeId, Auth::userId());
 try {
     $stmt = $pdo->prepare('DELETE FROM cheques WHERE id = :id AND user_id = :user_id');
     $stmt->execute(['id' => $chequeId, 'user_id' => Auth::userId()]);
+    chequeLinkedDebtSync($pdo, Auth::userId(), $chequeId, null);
 
     jsonResponse(['success' => true, 'message' => 'چک حذف شد.', 'undo_token' => $undo]);
 } catch (PDOException $e) {

@@ -118,10 +118,20 @@ $pdo = Database::getConnection();
 
 try {
     if ($walletId > 0) {
-        $own = $pdo->prepare('SELECT id FROM wallets WHERE id = :id AND user_id = :u');
+        $own = $pdo->prepare('SELECT id, initial_balance FROM wallets WHERE id = :id AND user_id = :u');
         $own->execute(['id' => $walletId, 'u' => $userId]);
-        if (!$own->fetch()) {
+        $cur = $own->fetch();
+        if (!$cur) {
             jsonResponse(['success' => false, 'message' => 'حساب یافت نشد.'], 404);
+        }
+        // ⛔ موجودیِ اولیه‌ی **منفی** دست نمی‌خورد وقتی کاربر آن فیلد را عوض
+        //    نکرده. منفی بودنش عادی است (تعدیلِ «کم کن»، کارمزدِ ادغام، مانده‌ی
+        //    پیامک همه تفاوت را آنجا می‌نشانند)، ولی فرم قدرِ مطلق را نشان
+        //    می‌دهد و `sanitizeAmount()` منفی نمی‌فهمد — پس صرفِ تغییرِ نامِ حساب
+        //    −۲ میلیون را +۲ میلیون می‌کرد و موجودی ۴ میلیون جهش می‌کرد، بی‌خطا
+        //    (بازبینیِ کلِ پروژه، مهر ۱۴۰۵). تغییرِ واقعیِ مانده از «تعدیل موجودی».
+        if ((int)$cur['initial_balance'] < 0 && $initial === -(int)$cur['initial_balance']) {
+            $initial = (int)$cur['initial_balance'];
         }
 
         $sql = $hasCardCols

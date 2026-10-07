@@ -179,7 +179,9 @@ class PasswordReset
             }
 
             $pdo->commit();
-            Audit::log('auth.password_reset', 'user', (int)$check['user']['id'], [], null, (int)$check['user']['id']);
+            // ⚠ `$check['user']['id']` شناسه‌ی **ردیفِ** password_resets است، نه کاربر —
+            //   ممیزی رخدادِ امنیتی را به کاربرِ دیگری نسبت می‌داد.
+            Audit::log('auth.password_reset', 'user', $uid, [], null, $uid);
         } catch (Throwable $e) {
             $pdo->rollBack();
             Log::error('password_reset.complete_failed', $e);

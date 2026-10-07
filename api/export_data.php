@@ -15,29 +15,6 @@ require_once __DIR__ . '/../includes/user_data.php';
 
 Auth::initSession();
 
-/**
- * ⛔ شکست نباید کاربر را در یک صفحه‌ی JSON خامِ بی‌راهِ‌برگشت رها کند.
- *
- *    این اندپوینت با یک فرمِ معمولی صدا زده می‌شود، نه با fetch؛ پس
- *    خروجیِ `jsonResponse` یعنی مرورگر به یک صفحه‌ی سفید با یک خطِ
- *    JSON می‌رود که نه دکمه‌ای دارد، نه منویی، و در اپِ نصب‌شده حتی
- *    دکمه‌ی بازگشت هم نیست. همان چیزی که کاربر گزارش کرد.
- *    حالا برمی‌گردد به `backup.php` با پیامِ روشن.
- */
-function exportFail(string $message, int $status = 400): void
-{
-    // ⚠ `Csrf::isJsonRequest()` خصوصی است، پس همان شرط اینجا تکرار
-    //   می‌شود: هر دو سرآیند لازم‌اند چون `fetch` های `app.js`
-    //   `X-Requested-With` می‌فرستند ولی `Accept: application/json` نه.
-    $isAjax = strtolower((string)($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '')) === 'xmlhttprequest'
-           || str_contains((string)($_SERVER['HTTP_ACCEPT'] ?? ''), 'application/json');
-
-    if ($isAjax) {
-        header('Content-Type: application/json; charset=utf-8');
-        jsonResponse(['success' => false, 'message' => $message], $status);
-    }
-    redirectWithMessage('../backup.php', 'error', $message);
-}
 
 // ⚠ اینجا عمداً ۴۰۱ است، نه هدایت به صفحه‌ی ورود: قاعده‌ی `api/` این
 //   است که هر اندپوینت بدونِ ورود ۴۰۱ بدهد، و `test_api_auth` هر ۵۹
@@ -48,11 +25,11 @@ if (!Auth::isLoggedIn()) {
     jsonResponse(['success' => false, 'message' => 'ابتدا وارد شوید.'], 401);
 }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    exportFail('درخواست نامعتبر است.', 405);
+    failJsonOrRedirect('درخواست نامعتبر است.', 405, '../backup.php');
 }
 Csrf::verifyOrFail(postParam('csrf_token'));
 
 $userId = Auth::userId();
 // ⛔ منطق در `sendUserExport()` — صفحه‌ی حسابِ فروشگاه هم از همان می‌گذرد
 $err = sendUserExport($userId);
-exportFail($err, $err === 'کاربر یافت نشد.' ? 404 : 500);
+failJsonOrRedirect($err, $err === 'کاربر یافت نشد.' ? 404 : 500, '../backup.php');

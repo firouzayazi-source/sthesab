@@ -166,6 +166,33 @@ function userImportSkipped(string $table): bool
  *
  * @return array<string, array<string, string>>
  */
+/**
+ * ⛔ پیوندهایی که **کلیدِ خارجی ندارند** ولی شناسه‌ی جدولِ دیگری را نگه
+ *    می‌دارند — کشفِ خودکار (`information_schema`) نمی‌بیندشان، پس با شناسه‌ی
+ *    **قدیمِ فایل** می‌نشستند (بازبینیِ کلِ پروژه، مهر ۱۴۰۵):
+ *      • `trade_sales.profit_tx_id` به تراکنشِ سودِ دیگری اشاره می‌کرد و
+ *        همگام‌سازیِ بعدی یک سودِ **دوم** می‌ساخت (درآمد دو برابر).
+ *      • `debts.cheque_id` گم می‌شد؛ برگرداندنِ چکِ برگشتی طلبِ یتیم می‌گذاشت.
+ *      • `reminders.wallet_id` حسابِ دیگری را نشان می‌داد.
+ *    ستونی که این نصب ندارد نادیده گرفته می‌شود.
+ */
+const IMPORT_SOFT_LINKS = [
+    'trade_sales' => ['profit_tx_id' => 'transactions'],
+    'debts'       => ['cheque_id'    => 'cheques'],
+    'reminders'   => ['wallet_id'    => 'wallets'],
+];
+
+/**
+ * ⛔ پیوندِ **چندریختی**: جدولِ پدر از ستونِ نوعِ همان ردیف می‌آید
+ *    (`reminders.source_type` → `source_id`). نوعِ ناشناس یا پدرِ جامانده = `NULL`،
+ *    نه شناسه‌ی قدیم (که به ردیفِ کسِ دیگری اشاره می‌کرد).
+ */
+const IMPORT_POLY_LINKS = [
+    'reminders' => ['source_id' => ['source_type', [
+        'cheque' => 'cheques', 'debt' => 'debts', 'recurring_tx' => 'recurring_transactions',
+    ]]],
+];
+
 function importForeignKeys(): array
 {
     static $out = null;
@@ -188,6 +215,11 @@ function importForeignKeys(): array
 
     foreach ($rows as $r) {
         $out[$r['t']][$r['c']] = $r['p'];
+    }
+    foreach (IMPORT_SOFT_LINKS as $t => $cols) {
+        foreach ($cols as $c => $p) {
+            if (!isset($out[$t][$c]) && tableHasColumn($t, $c)) { $out[$t][$c] = $p; }
+        }
     }
     return $out;
 }
@@ -256,7 +288,11 @@ function importTableOrder(array $tables, array $fk): array
         $moved = [];
         foreach ($left as $t) {
             $ready = true;
-            foreach ($fk[$t] ?? [] as $parent) {
+            $parents = array_values($fk[$t] ?? []);
+            foreach (IMPORT_POLY_LINKS[$t] ?? [] as [, $byType]) {
+                $parents = array_merge($parents, array_values($byType));
+            }
+            foreach ($parents as $parent) {
                 if ($parent === $t) { continue; }
                 if (in_array($parent, $tables, true) && !in_array($parent, $done, true)) {
                     $ready = false;
@@ -607,6 +643,13 @@ function importUserData(int $userId, array $data): array
                 if ($orphan !== null) {
                     $partial[$orphan] = ($partial[$orphan] ?? 0) + 1;
                     continue;
+                }
+
+                foreach (IMPORT_POLY_LINKS[$t] ?? [] as $col => [$typeCol, $byType]) {
+                    if (!array_key_exists($col, $write) || $write[$col] === null || $write[$col] === '') { continue; }
+                    $parent = $byType[(string)($write[$typeCol] ?? '')] ?? null;
+                    $old = (int)$write[$col];
+                    $write[$col] = $parent !== null && isset($map[$parent][$old]) ? $map[$parent][$old] : null;
                 }
 
                 // ⛔ ستون‌های حساس دوباره رمز می‌شوند. خروجی آن‌ها را

@@ -62,6 +62,11 @@ function toLatinDigits($input): string
 
 function sanitizeAmount($input): int
 {
+    // ⛔ «٫» (U+066B) **فقط** ممیزِ فارسی است (جداکننده‌ی هزارگان «٬» است)، پس
+    //    هر چه بعدش آمده کسر است و دور ریخته می‌شود. بی‌این، «۱٫۵» عدد ۱۵ می‌شد
+    //    — ده‌برابر، بی‌هیچ هشداری. «.» و «,» عمداً دست نمی‌خورند: «۱.۲۵۰.۰۰۰»
+    //    و «1,250,000» هر دو هزارگان‌اند.
+    $input = explode('٫', (string)$input, 2)[0];
     $clean = toLatinDigits($input);
     $clean = preg_replace('/[^0-9]/', '', $clean);
     return (int)$clean;
@@ -253,6 +258,23 @@ function redirectWithMessage(string $url, string $type, string $message): void
     $_SESSION['flash'] = ['type' => $type, 'message' => $message];
     header('Location: ' . $url);
     exit;
+}
+
+/**
+ * ⛔ شکستِ اندپوینتی که هم با فرمِ معمولی صدا زده می‌شود هم با fetch.
+ *
+ *    با فرم، `jsonResponse` کاربر را در یک صفحه‌ی سفیدِ یک‌خطیِ JSON رها
+ *    می‌کرد (در اپِ نصب‌شده حتی بی‌دکمه‌ی بازگشت) — پس به `$page` با پیامِ
+ *    روشن برمی‌گردد؛ با fetch همان JSON. تشخیص فقط `Csrf::isJsonRequest()`؛
+ *    سه کپیِ دستیِ همین شرط (`exportFail`/`importFail`/`csvFail`) جایش را دادند.
+ */
+function failJsonOrRedirect(string $message, int $status, string $page): void
+{
+    if (Csrf::isJsonRequest()) {
+        header('Content-Type: application/json; charset=utf-8');
+        jsonResponse(['success' => false, 'message' => $message], $status);
+    }
+    redirectWithMessage($page, 'error', $message);
 }
 
 function getFlash(): ?array
@@ -1254,6 +1276,35 @@ function recentTitlesDatalist(int $userId): string
  *
  * @param string $alias پیشوندِ جدول (خالی یا مثلاً 'c')
  */
+/**
+ * ⛔ طلبی که از چکِ برگشتی ساخته شد (`debts.cheque_id`) با خودِ چک همگام می‌ماند.
+ *
+ *    `toggle_cheque_settled` آن را می‌سازد و پس می‌گیرد، ولی ویرایش و حذفِ چک
+ *    به آن دست نمی‌زدند (بازبینیِ کلِ پروژه، مهر ۱۴۰۵): مبلغِ عوض‌شده‌ی چک
+ *    روی طلب نمی‌رسید، و چکِ حذف‌شده طلبی می‌گذاشت که پیوندش به شناسه‌ای مرده
+ *    بود. این ستون کلیدِ خارجی ندارد، پس پایگاه‌داده خودش کاری نمی‌کند.
+ *
+ *    - ویرایش (`$cheque` داده شد): نام و مبلغ روی طلب، مگر پرداختیِ ثبت‌شده
+ *      بیشتر از مبلغِ تازه باشد (کارِ خودِ کاربر پاک نمی‌شود).
+ *    - حذف (`null`): طلب **می‌ماند** (طرف هنوز بدهکار است و «لغو»ِ حذف هم فقط
+ *      چک را برمی‌گرداند) و فقط پیوندش برداشته می‌شود.
+ */
+function chequeLinkedDebtSync(PDO $pdo, int $userId, int $chequeId, ?array $cheque): void
+{
+    if (!tableHasColumn('debts', 'cheque_id')) { return; }
+    if ($cheque === null) {
+        $pdo->prepare('UPDATE debts SET cheque_id = NULL WHERE cheque_id = :c AND user_id = :u')
+            ->execute(['c' => $chequeId, 'u' => $userId]);
+        return;
+    }
+    $a = (int)$cheque['amount'];
+    $pdo->prepare('
+        UPDATE debts SET counterparty_name = :n, amount = :a, is_settled = (paid_amount >= :a2)
+        WHERE cheque_id = :c AND user_id = :u AND paid_amount <= :a3
+    ')->execute(['n' => (string)$cheque['counterparty_name'], 'a' => $a, 'a2' => $a, 'a3' => $a,
+                 'c' => $chequeId, 'u' => $userId]);
+}
+
 function chequeActiveSql(string $alias = ''): string
 {
     $p = $alias !== '' ? $alias . '.' : '';
@@ -1772,19 +1823,26 @@ function totalBalance(int $userId, ?array $rows = null): int
 
 /**
  * آیا این کیف پول رکورد وابسته دارد؟ (برای جلوگیری از حذفِ داده‌دار)
+ *
+ * ⛔ از **همه‌ی** ستون‌های ارجاع (`walletRefColumns()`)، نه فقط تراکنش و
+ *    انتقال. نسخه‌ی قبلی پرداختِ بدهی، چکِ پاس‌شده، معامله، تسویه‌ی سهامدار و
+ *    تراکنشِ دوره‌ای را نمی‌دید؛ حذفِ حساب با `ON DELETE SET NULL` آن پول را
+ *    **بی‌صدا** از موجودی‌ها برمی‌داشت (بازبینیِ کلِ پروژه، مهر ۱۴۰۵) — و
+ *    تراکنشِ دوره‌ایِ بعدی بی‌حساب ثبت می‌شد.
  */
 function walletUsageCount(int $walletId, int $userId): int
 {
     $pdo = Database::getConnection();
-
-    $t = $pdo->prepare('SELECT COUNT(*) AS c FROM transactions WHERE wallet_id = :w AND user_id = :u');
-    $t->execute(['w' => $walletId, 'u' => $userId]);
-    $count = (int)$t->fetch()['c'];
-
-    $f = $pdo->prepare('SELECT COUNT(*) AS c FROM transfers WHERE (from_wallet_id = :w1 OR to_wallet_id = :w2) AND user_id = :u');
-    $f->execute(['w1' => $walletId, 'w2' => $walletId, 'u' => $userId]);
-
-    return $count + (int)$f->fetch()['c'];
+    $count = 0;
+    foreach (walletRefColumns() as $ref) {
+        // ⚠ نام‌ها از `information_schema`/`schemaMap()` آمده‌اند، نه از ورودی.
+        $sql = "SELECT COUNT(*) FROM `{$ref['table']}` WHERE `{$ref['col']}` = :w"
+             . ($ref['user'] ? ' AND user_id = :u' : '');
+        $st = $pdo->prepare($sql);
+        $st->execute($ref['user'] ? ['w' => $walletId, 'u' => $userId] : ['w' => $walletId]);
+        $count += (int)$st->fetchColumn();
+    }
+    return $count;
 }
 
 /**
@@ -2295,8 +2353,15 @@ function txBackYear($raw): ?int
  * چون کاربر «هر ماه روز فلان» را شمسی می‌فهمد، نه میلادی.
  * برای ماه/سال، اگر روز هدف در ماه مقصد وجود نداشت (مثلاً ۳۱ در مهر)
  * به آخرین روز معتبر همان ماه محدود می‌شود.
+ *
+ * ⛔ `$anchorDay` (روزِ شمسیِ تاریخِ شروعِ سری) — بی‌آن، یک بار افتادن در
+ *    ماهِ کوتاه روزِ ۳۱ را **برای همیشه** ۳۰ می‌کرد: ۳۱ شهریور → ۳۰ مهر →
+ *    ۳۰ آبان → … (همان خرابی‌ای که `jalaliAddMonths()` برای سررسیدها رفع کرد،
+ *    ولی تراکنش‌های دوره‌ای و اقساط هنوز از این تابع می‌رفتند). لنگر فقط وقتی
+ *    به کار می‌رود که تاریخِ فعلی واقعاً روی آن است (یا کوتاه‌شده‌اش در ماهِ
+ *    کوتاه)؛ سری‌ای که کاربر روزش را دستی عوض کرده به روزِ قدیم برنمی‌گردد.
  */
-function advanceRecurringDate(string $gregorianDate, string $frequency, int $intervalCount): string
+function advanceRecurringDate(string $gregorianDate, string $frequency, int $intervalCount, int $anchorDay = 0): string
 {
     if ($frequency === 'daily') {
         return date('Y-m-d', strtotime($gregorianDate . " +{$intervalCount} days"));
@@ -2320,9 +2385,21 @@ function advanceRecurringDate(string $gregorianDate, string $frequency, int $int
         $newJm = $jm;
     }
 
-    $newJd = min($jd, jalaliMonthLength($newJy, $newJm));
+    $day = $jd;
+    if ($anchorDay > $jd && $anchorDay <= 31 && $jd === jalaliMonthLength($jy, $jm)) {
+        $day = $anchorDay;   // ماهِ کوتاه روز را بریده بود؛ لنگر برمی‌گردد
+    }
+    $newJd = min($day, jalaliMonthLength($newJy, $newJm));
     $g = jalaliToGregorian($newJy, $newJm, $newJd);
     return sprintf('%04d-%02d-%02d', $g[0], $g[1], $g[2]);
+}
+
+/** روزِ شمسیِ یک تاریخِ میلادی (لنگرِ سری)؛ تاریخِ خراب ۰ (= بی‌لنگر). */
+function jalaliDayOfDate(?string $gregorian): int
+{
+    if (!is_string($gregorian) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $gregorian)) { return 0; }
+    [$gy, $gm, $gd] = array_map('intval', explode('-', $gregorian));
+    return gregorianToJalali($gy, $gm, $gd)[2];
 }
 
 /**
@@ -2360,8 +2437,9 @@ function debtInstallments(array $debt): array
         // اگر تاریخِ اولین قسط نیامده، از سررسید عقب می‌رویم تا آخرین
         // قسط روی همان سررسید بیفتد — که انتظارِ طبیعیِ کاربر است.
         $start = $debt['due_date'] ?? today();
+        $anchor = jalaliDayOfDate($start);
         for ($i = 1; $i < $count; $i++) {
-            $start = advanceRecurringDate($start, $every, -1);
+            $start = advanceRecurringDate($start, $every, -1, $anchor);
         }
     }
 
@@ -2386,9 +2464,14 @@ function debtInstallments(array $debt): array
             'amount' => $amount,
             // قسط وقتی پرداخت‌شده است که جمعِ پرداختی تا اینجا را پوشش دهد
             'paid'   => ($covered + $amount) <= $paid,
+            // ⛔ آنچه از **همین** قسط مانده — برای آینده‌ی مالی، «قابلِ خرج» و
+            //    «قسطِ بعدی». با `amount`، قسطی که نیمه‌اش پرداخت شده بود کامل
+            //    شمرده می‌شد: ۳ میلیون در ۳ قسط با ۱٫۵ پرداخت، ۲ میلیون «مانده»
+            //    می‌گفت نه ۱٫۵ (بازبینیِ کلِ پروژه، مهر ۱۴۰۵).
+            'remaining' => max(0, min($amount, $covered + $amount - $paid)),
         ];
         $covered += $amount;
-        if ($i < $count) { $date = advanceRecurringDate($date, $every, 1); }
+        if ($i < $count) { $date = advanceRecurringDate($date, $every, 1, jalaliDayOfDate($start)); }
     }
 
     return $out;
@@ -2451,20 +2534,30 @@ function processRecurringTransactions(int $userId, bool $force = false): array
             try {
                 $pdo->beginTransaction();
 
+                $dueNow  = $nextDue;
+                $nextDue = advanceRecurringDate($nextDue, $r['frequency'], (int)$r['interval_count'],
+                                                jalaliDayOfDate($r['start_date'] ?? null));
+
+                // ⛔ اول سررسید **شرطی** جلو می‌رود، بعد تراکنش: دو دستگاه که هم‌زمان
+                //    خانه را باز کنند هر دو همین ردیف را می‌خواندند و هر کدام یک
+                //    تراکنشِ تکراری می‌ساختند (نگهبانِ نشست فقط همان نشست را
+                //    می‌پاید). فقط یکی از این خط رد می‌شود.
+                $upd = $pdo->prepare('UPDATE recurring_transactions SET next_due_date = :n
+                                      WHERE id = :id AND next_due_date = :old');
+                $upd->execute(['n' => $nextDue, 'id' => $r['id'], 'old' => $dueNow]);
+                if ($upd->rowCount() !== 1) { $pdo->rollBack(); break; }
+
+                // ⛔ حساب از `resolveWalletId()` — حسابِ حذف‌شده یعنی پیش‌فرض، نه
+                //    تراکنشی که در گزارش هست و در هیچ موجودی‌ای نیست.
                 $ins = $pdo->prepare('
                     INSERT INTO transactions (user_id, category_id, wallet_id, recurring_id, type, amount, title, note, transaction_date)
                     VALUES (:u, :cat, :wallet, :rid, :type, :amount, :title, :note, :date)
                 ');
                 $ins->execute([
-                    'u' => $userId, 'cat' => $r['category_id'], 'wallet' => $r['wallet_id'],
+                    'u' => $userId, 'cat' => $r['category_id'], 'wallet' => resolveWalletId($userId, $r['wallet_id']),
                     'rid' => $r['id'], 'type' => $r['type'], 'amount' => $r['amount'],
-                    'title' => $r['title'], 'note' => $r['note'], 'date' => $nextDue,
+                    'title' => $r['title'], 'note' => $r['note'], 'date' => $dueNow,
                 ]);
-
-                $nextDue = advanceRecurringDate($nextDue, $r['frequency'], (int)$r['interval_count']);
-
-                $upd = $pdo->prepare('UPDATE recurring_transactions SET next_due_date = :n WHERE id = :id');
-                $upd->execute(['n' => $nextDue, 'id' => $r['id']]);
 
                 $pdo->commit();
             } catch (PDOException $e) {
@@ -2593,7 +2686,7 @@ function financialEvents(int $userId, string $fromDate, string $toDate): array
                              . $d['counterparty_name']
                              . ' — قسط ' . toPersianDigits((string)$inst['seq'])
                              . ' از ' . toPersianDigits((string)$d['installment_count']),
-                    'amount' => $inst['amount'],
+                    'amount' => $inst['remaining'],
                     'url' => 'debts.php',
                     'is_overdue' => $inst['date'] < $today,
                 ];
@@ -2626,7 +2719,7 @@ function financialEvents(int $userId, string $fromDate, string $toDate): array
     // سررسیدهای آینده را تا انتهای بازه شبیه‌سازی می‌کنیم (بدون ثبت چیزی)
     try {
         $stmt = $pdo->prepare('
-            SELECT id, type, title, amount, frequency, interval_count, next_due_date, end_date
+            SELECT id, type, title, amount, frequency, interval_count, next_due_date, end_date, start_date
             FROM recurring_transactions
             WHERE user_id = :u AND is_active = 1 AND next_due_date <= :t
         ');
@@ -2647,7 +2740,8 @@ function financialEvents(int $userId, string $fromDate, string $toDate): array
                         'is_overdue' => $due < $today,
                     ];
                 }
-                $due = advanceRecurringDate($due, $r['frequency'], (int)$r['interval_count']);
+                $due = advanceRecurringDate($due, $r['frequency'], (int)$r['interval_count'],
+                                            jalaliDayOfDate($r['start_date'] ?? null));
                 $guard++;
             }
         }
@@ -4597,13 +4691,16 @@ function referenceInUseCount(string $table, string $column, int $id, int $userId
     return (int)$stmt->fetch()['cnt'];
 }
 
+/**
+ * تعدادِ دارایی/معامله تا ۴ رقمِ اعشار (گرمِ طلا، کسرِ سکه یا رمزارز).
+ *
+ * ⛔ همان `formatQty()` است با دقتِ بیشتر — تا مهر ۱۴۰۵ قالبِ خودش را داشت
+ *    («۱,۲۵۰.۵» با جداکننده‌ی لاتین) در حالی که همان معامله در `trades.php`
+ *    با `formatQty()` «۱۲۵۰٫۵» دیده می‌شد: یک عدد، دو شکل.
+ */
 function formatQuantity($qty): string
 {
-    $qty = (float)$qty;
-    $formatted = ($qty == (int)$qty)
-        ? number_format($qty, 0, '.', ',')
-        : rtrim(rtrim(number_format($qty, 4, '.', ','), '0'), '.');
-    return toPersianDigits($formatted);
+    return formatQty($qty, 4);
 }
 
 /**
@@ -5100,11 +5197,14 @@ function tradesSummary(array $trades): array
     return $sum;
 }
 
-/** نمایش تعداد: ۲٫۵ به‌جای 2.500، و ارقام فارسی */
-function formatQty($qty): string
+/**
+ * نمایش تعداد: ۲٫۵ به‌جای 2.500، با ارقامِ فارسی — ممیزِ «٫» و هزارگانِ «٬»
+ * (همان جداکننده‌ی `formatMoney()`). تنها قالب‌دهنده‌ی تعداد در اپ.
+ */
+function formatQty($qty, int $places = 3): string
 {
-    $s = rtrim(rtrim(number_format((float)$qty, 3, '.', ''), '0'), '.');
-    return toPersianDigits(str_replace('.', '٫', $s));
+    $s = rtrim(rtrim(number_format((float)$qty, $places, '.', ','), '0'), '.');
+    return toPersianDigits(strtr($s, ['.' => '٫', ',' => '٬']));
 }
 
 /**

@@ -40,7 +40,7 @@ if ($name !== '') {
     $p = ['u' => $userId, 'n' => $name];
 
     $cheques = $safeAll(
-        'SELECT id, direction, amount, due_date, is_settled
+        'SELECT id, direction, amount, due_date, is_settled, (' . chequeActiveSql() . ') AS active
          FROM cheques WHERE user_id = :u AND counterparty_name = :n
          ORDER BY due_date DESC, id DESC', $p);
 
@@ -65,8 +65,11 @@ if ($name !== '') {
 
     // خالص‌ها فقط از موارد تسویه‌نشده — همان قاعده‌ی صفحه‌ی دارایی،
     // که پولِ جابه‌جاشده دوبار شمرده نشود.
+    // ⛔ «در جریان» فقط از `chequeActiveSql()`: چکِ برگشتی یا خرج‌شده در جریان
+    //    نیست، و برگشتی خودش طلب ساخته — با `is_settled` تنها، همان پول یک بار
+    //    در خالصِ چک و یک بار در خالصِ طلب شمرده می‌شد (بازبینیِ کلِ پروژه).
     foreach ($cheques as $c) {
-        if ((int)$c['is_settled'] === 1) { continue; }
+        if ((int)$c['active'] !== 1) { continue; }
         $netCheques += ($c['direction'] === 'received' ? 1 : -1) * (int)$c['amount'];
     }
     foreach ($debts as $d) {
