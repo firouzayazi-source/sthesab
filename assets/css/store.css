@@ -1294,6 +1294,11 @@ html.st-locked, html.st-locked body { overflow: hidden; }
 .st-cheque-clear .st-date-in { flex: 0 1 7.5rem; }
 .st-late { color: var(--st-err); }
 
+/* ---------- «+ موجودی» زیرِ ردیفِ کم‌موجودِ فاکتورِ فروش (`BizQuickBuy`) ---------- */
+.st-line-short { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 3px; font-size: 11.5px; color: var(--st-err); }
+.st-line-short .st-sp-open { font-size: 12px; font-weight: 650; padding: 1px 6px; }
+.st-sp .st-seg { align-self: end; }
+
 /* ---------- خطاهای فروشگاه (`store/errors.php`، فقط مدیرِ نصب) ---------- */
 /* ⚠ نشانِ عدد کنارِ قلمِ منو. `<b>` است نه `<span>`: منوی جمع‌شده هر
    `.st-side-item > span` را پنهان می‌کند و عدد باید آنجا هم بماند — روی گوشه‌ی آیکون. */

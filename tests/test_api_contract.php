@@ -8002,4 +8002,33 @@ if (!preg_match('/^\s*migration_error_area\.sql\s*$/m', $mig75) || !str_contains
 }
 T::bulk(6, $bad75, 'صفحه فقط برای مدیر، هر کارش فقط روی فروشگاه، و پنهان از منوی مشترک');
 
+// ---------------------------------------------------------------
+// قاعده ۷۶ — «تأمینِ موجودی» یک فاکتورِ خریدِ واقعی است، نه نسخه‌ی دوم
+// ---------------------------------------------------------------
+// ⛔ خواسته‌ی مالکِ نصب: «همون‌جا توی فاکتور به کالا موجودی بدم — از چه کسی،
+//    به چه قیمتی». خطرِ این قابلیت میان‌بُر است: موجودی با انبارگردانی (بی‌بها،
+//    بی‌طلبکار) یا با INSERTِ مستقیم (منطقِ خریدِ دوم). رفتار در
+//    `tests/test_store_quickbuy.php`؛ اینجا شکلی که شکستنش بی‌صدا حساب را دروغ می‌کند.
+T::group('قاعده ۷۶ — تأمینِ موجودی فقط از راهِ فاکتورِ خرید');
+$bad76 = [];
+$qb76 = (string)preg_replace(['#/\*.*?\*/#s', '#^\s*//.*$#m'], '', (string)@file_get_contents(__DIR__ . '/../includes/biz_quickbuy.php'));
+foreach (['BizInvoices::saveDraft($userId, \'purchase\'', 'BizInvoices::issue(', 'BizInvoices::deleteDraft('] as $need) {
+    if (!str_contains($qb76, $need)) { $bad76[] = "biz_quickbuy.php — «{$need}» نیست"; }
+}
+if (preg_match('/INSERT\s+INTO\s+biz_|BizStock::(adjustTo|setOpening|postDoc)|UPDATE\s+biz_products\s+SET\s+stock/i', $qb76)) {
+    $bad76[] = 'biz_quickbuy.php — موجودی/سند را مستقیم می‌نویسد (انبارگردانی یا INSERT)؛ فقط saveDraft + issue';
+}
+// قیمتِ فروشِ کالای وصل به نرخِ روز فقط با `BizRates::apply()` (قاعده ۷۰)
+if (!preg_match("/rate_code[^;]*\)\s*===\s*''\)\s*\{\s*Database::getConnection\(\)->prepare\('UPDATE biz_products SET sell_price/s", $qb76)) {
+    $bad76[] = 'biz_quickbuy.php — به‌روزرسانیِ قیمتِ فروش پشتِ شرطِ «وصل به نرخ نیست» نیست';
+}
+$ie76 = (string)@file_get_contents(__DIR__ . '/../store/invoice-edit.php');
+if (!str_contains($ie76, "BizOnce::claim() !== null") || !str_contains($ie76, 'BizQuickBuy::run(')) {
+    $bad76[] = 'invoice-edit.php — پنلِ تأمین بی‌`BizOnce` یا بی‌`BizQuickBuy::run()`';
+}
+if (!str_contains($ie76, "' data-sp-ok'") || !str_contains((string)@file_get_contents(__DIR__ . '/../assets/js/store.js'), "b.name = 'sp_open'")) {
+    $bad76[] = 'store.js/invoice-edit.php — «+ موجودی»ِ زنده (بی‌بارگذاری) رفته';
+}
+T::bulk(4, $bad76, 'خرید با saveDraft + issue، بی‌انبارگردانی، قیمتِ نرخ‌دار دست‌نخورده، یک‌بارمصرف');
+
 exit(T::report());

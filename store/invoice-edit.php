@@ -18,6 +18,12 @@
  *   است و ردیف را پر می‌کند؛ پیش‌نویس ذخیره نمی‌شود و چیزی از فاکتورِ
  *   نیمه‌کاره گم نمی‌شود، چون پنل داخلِ همین فرم است.
  * - IMEI در خانه‌ی کالا (تایپ، اسکن یا انتخاب از فهرست) گوشی را پیدا می‌کند.
+ * - ⛔ «+ موجودی» زیرِ ردیفی که بیش از موجودی است (فقط فاکتورِ فروش): پنلِ
+ *   «تأمینِ موجودی» در همین فرم — از چه کسی، چند، به چه قیمتی خریدید و به چه
+ *   قیمتی می‌فروشید. یک **فاکتورِ خریدِ واقعی** صادر می‌شود (`BizQuickBuy`)،
+ *   فروشنده طلبکار می‌شود (یا نقد پرداخت)، و فاکتورِ فروشِ نیمه‌کاره دست‌نخورده
+ *   می‌ماند. خواسته‌ی مالکِ نصب: «همون‌جا توی فاکتور بتونم موجودی بدم و
+ *   تمامِ دیتای قبلی سرِ جاش باشه».
  */
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/csrf.php';
@@ -26,6 +32,7 @@ require_once __DIR__ . '/../includes/functions.php';
 Auth::initSession();
 Biz::requirePage();
 require_once __DIR__ . '/../includes/biz_docview.php';
+require_once __DIR__ . '/../includes/biz_quickbuy.php';
 
 $userId = (int)Auth::userId();
 $id     = (int)getParam('id', '0');
@@ -64,6 +71,12 @@ $error = '';
 $notice = '';
 // پنلِ «کالای تازه» — `row` اندیسِ ردیف در فهرستِ پُرشده، یا -1 = ردیفِ تازه
 $np = ['open' => false, 'row' => -1, 'type' => 'goods', 'name' => '', 'sku' => '', 'buy' => '', 'sell' => '', 'imei1' => '', 'imei2' => '', 'error' => ''];
+// پنلِ «تأمینِ موجودی» (`BizQuickBuy`) — فقط فاکتورِ فروش
+$spEmpty = ['open' => false, 'row' => -1, 'product_id' => 0, 'name' => '', 'unit' => '', 'serial' => false, 'party_id' => 0,
+            'party_name' => '', 'qty' => '', 'buy' => '', 'sell' => '', 'date' => '', 'pay' => 'credit',
+            'account_id' => (int)($accounts[0]['id'] ?? 0), 'imeis' => '', 'error' => ''];
+$sp = $spEmpty;
+$spDone = ''; $spDoneUrl = '';   // پیامِ موفقیت با لینکِ فاکتورِ خرید
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Csrf::verifyOrFail(postParam('csrf_token'));
@@ -144,6 +157,84 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $np = ['open' => false, 'row' => -1, 'type' => 'goods', 'name' => '', 'sku' => '', 'buy' => '', 'sell' => '', 'imei1' => '', 'imei2' => '', 'error' => ''];
             }
         }
+    } elseif ($kind === 'sale' && isset($_POST['sp_open'])) {
+        // «+ موجودی» زیرِ ردیف: پنل با پیش‌فرض‌ها — کسریِ همین کالا، آخرین
+        // فروشنده‌اش، قیمت‌های خودِ کالا، و برای گوشی IMEIِ همان ردیف.
+        $ri   = (int)postParam('sp_open');
+        $metaAll = BizInvoices::parseLines($userId, $rawLines, 'sell_price')['meta'];
+        $pm   = $metaAll[$ri] ?? null;
+        $prod = ($pm['product_id'] ?? null) !== null ? BizProducts::get($userId, (int)$pm['product_id']) : null;
+        if (!$prod || (int)$prod['track_stock'] !== 1) {
+            $error = 'این ردیف کالای انبارداری نیست؛ «+ موجودی» فقط برای کالای ثبت‌شده است.';
+        } else {
+            $need = 0.0;
+            foreach ($rawLines as $k => $l) {
+                if (($metaAll[$k]['product_id'] ?? null) !== (int)$prod['id']) { continue; }
+                $need += trim((string)($l['qty'] ?? '')) === '' ? 1.0 : sanitizeQty((string)$l['qty']);
+            }
+            $serial = (int)$prod['has_serial'] === 1;
+            $row    = $rawLines[$ri] ?? [];
+            $sp = array_merge($spEmpty, [
+                'open' => true, 'row' => $rowAt($ri), 'product_id' => (int)$prod['id'], 'name' => (string)$prod['name'],
+                'unit' => (string)$prod['unit'], 'serial' => $serial,
+                'party_id' => BizQuickBuy::lastSupplier($userId, (int)$prod['id']),
+                'qty' => formatQty(max(1.0, $need - (float)$prod['stock_qty'])),
+                'buy' => (int)$prod['buy_price'] > 0 ? (string)(int)$prod['buy_price'] : '',
+                'sell' => trim((string)($row['price'] ?? '')) !== '' ? (string)$row['price'] : (string)(int)$prod['sell_price'],
+                'date' => (string)$form['inv_date'],
+                'imeis' => $serial ? trim(($pm['imei1'] ?? '') . (($pm['imei2'] ?? '') !== '' ? ' / ' . $pm['imei2'] : '')) : '',
+            ]);
+        }
+    } elseif ($kind === 'sale' && $action === 'sp_save') {
+        $raw  = is_array($_POST['sp'] ?? null) ? $_POST['sp'] : [];
+        $prod = BizProducts::get($userId, (int)($raw['product_id'] ?? 0));
+        $sp = array_merge($spEmpty, [
+            'open' => true, 'row' => (int)($raw['row'] ?? -1), 'product_id' => (int)($prod['id'] ?? 0),
+            'name' => (string)($prod['name'] ?? ''), 'unit' => (string)($prod['unit'] ?? ''),
+            'serial' => $prod && (int)$prod['has_serial'] === 1,
+            'party_id' => (int)($raw['party_id'] ?? 0), 'party_name' => (string)($raw['party_name'] ?? ''),
+            'qty' => (string)($raw['qty'] ?? ''), 'buy' => (string)($raw['buy'] ?? ''), 'sell' => (string)($raw['sell'] ?? ''),
+            'date' => (string)($raw['date'] ?? ''), 'pay' => ($raw['pay'] ?? '') === 'cash' ? 'cash' : 'credit',
+            'account_id' => (int)($raw['account_id'] ?? 0), 'imeis' => (string)($raw['imeis'] ?? ''),
+        ]);
+        $dd = BizDocView::docDate($sp['date'], 'تاریخِ خرید');
+        if (!$dd['ok']) {
+            $sp['error'] = $dd['message'];
+        } elseif (BizOnce::claim() !== null) {
+            // ⛔ دو بار زدنِ «ثبتِ خرید» دو فاکتورِ خرید نمی‌سازد — ولی فاکتورِ
+            //    فروشِ نیمه‌کاره را هم دور نمی‌ریزد (ریدایرکت نه؛ همین صفحه با همان داده).
+            $sp = $spEmpty;
+            $notice = 'این خرید یک بار ثبت شده بود؛ دوباره ثبت نشد.';
+        } else {
+            $r = BizQuickBuy::run($userId, ['product_id' => $sp['product_id'], 'party_id' => $sp['party_id'],
+                'party_name' => $sp['party_id'] > 0 ? '' : $sp['party_name'], 'qty' => $sp['qty'], 'buy' => $sp['buy'],
+                'sell' => $sp['sell'], 'date' => $dd['date'], 'pay' => $sp['pay'], 'account_id' => $sp['account_id'],
+                'imeis' => $sp['imeis']]);
+            if (!$r['ok']) {
+                BizOnce::release();
+                $sp['error'] = $r['message'];
+            } else {
+                BizOnce::done($self);
+                // ردیفِ فروش (اندیس در فهرستِ پُرشده): قیمتِ تازه‌ی فروش اگر خانه خالی یا
+                // همان قیمتِ قبلیِ کالا بود، و برای گوشیِ تک‌دستگاه IMEIِ همان گوشی.
+                $ri = $sp['row'];
+                if ($ri >= 0 && isset($form['lines'][$ri])) {
+                    $cur = trim((string)($form['lines'][$ri]['price'] ?? ''));
+                    if ($cur === '' || sanitizeAmount($cur) === (int)$prod['sell_price']) {
+                        $form['lines'][$ri]['price'] = (string)$r['sell'];
+                    }
+                    $units = $sp['serial'] ? BizQuickBuy::parseImeis($sp['imeis']) : [];
+                    if (count($units) === 1 && trim((string)($form['lines'][$ri]['imei1'] ?? '')) === '') {
+                        [$form['lines'][$ri]['imei1'], $form['lines'][$ri]['imei2']] = $units[0];
+                    }
+                }
+                $spDone    = $r['message'];
+                $spDoneUrl = Biz::url('invoice.php?id=' . (int)$r['invoice_id']);
+                $sp = $spEmpty;
+            }
+        }
+    } elseif ($action === 'sp_cancel') {
+        // فقط بستنِ پنلِ تأمین — فرم همان‌طور که بود
     } elseif ($action === 'np_cancel') {
         // فقط بستنِ پنل — فرم همان‌طور که بود دوباره نشان داده می‌شود
     } elseif ($action === 'addrows') {
@@ -209,15 +300,36 @@ $parties  = BizDocView::parties($userId);
 $partyLbl = BizDocView::SIDES[$side]['party'];
 $isSale   = $kind === 'sale';
 
-// ⚠ هشدارِ موجودیِ پیش‌نویس — فقط نمایش؛ سدِ واقعی هنگامِ صدور در BizStock است
+// ⚠ کسریِ موجودی — فقط نمایش؛ سدِ واقعی هنگامِ صدور در BizStock است. حالا برای
+//   فاکتورِ **تازه** هم (پیش از این فقط پیش‌نویسِ ذخیره‌شده هشدار داشت، یعنی کسری
+//   را تازه بعد از زدنِ «صدور» می‌فهمیدید)، و زیرِ هر ردیف دکمه‌ی «+ موجودی».
 $stockWarn = [];
-if ($isSale && $inv) {
-    foreach ($inv['lines'] as $l) {
-        if ($l['product_id'] !== null && (int)$l['track_stock'] === 1 && (float)$l['qty'] > (float)$l['stock_qty'] + 0.0005) {
-            $stockWarn[] = '«' . $l['description'] . '»: موجودی ' . formatQty($l['stock_qty']) . ' ' . $l['unit'];
+$short = [];   // اندیسِ ردیف → ['stock' => …, 'unit' => …]
+if ($isSale) {
+    $need = []; $rowsOf = [];
+    foreach ($form['lines'] as $k => $l) {
+        $pid = (int)($l['product_id'] ?? 0);
+        if ($pid <= 0) { continue; }
+        $need[$pid] = ($need[$pid] ?? 0.0) + (trim((string)($l['qty'] ?? '')) === '' ? 1.0 : sanitizeQty((string)$l['qty']));
+        $rowsOf[$pid][] = $k;
+    }
+    if ($need) {
+        $ids  = array_keys($need);
+        $ph   = implode(',', array_map(fn($i) => ':p' . $i, array_keys($ids)));
+        $st   = Database::getConnection()->prepare("SELECT id, name, unit, stock_qty FROM biz_products
+                                                    WHERE user_id = :u AND track_stock = 1 AND id IN ({$ph})");
+        $bind = ['u' => $userId];
+        foreach ($ids as $i => $pid) { $bind['p' . $i] = $pid; }
+        $st->execute($bind);
+        foreach ($st->fetchAll() as $p) {
+            $pid = (int)$p['id'];
+            if ($need[$pid] <= (float)$p['stock_qty'] + 0.0005) { continue; }
+            $stockWarn[] = '«' . $p['name'] . '»: موجودی ' . formatQty($p['stock_qty']) . ' ' . $p['unit'];
+            foreach ($rowsOf[$pid] as $k) { $short[$k] = ['stock' => (float)$p['stock_qty'], 'unit' => (string)$p['unit']]; }
         }
     }
 }
+$suppliers = $sp['open'] ? BizQuickBuy::suppliers($userId) : [];
 
 // ⛔ گزینه‌ی «هشدار زیرِ بهای خرید» — فقط هشدار؛ صدور را نمی‌بندد
 $invPrefs = Biz::invoicePrefs($userId);
@@ -236,8 +348,11 @@ require __DIR__ . '/../includes/biz_head.php';
 
 <?php if ($error !== ''): ?><div class="st-flash st-flash-err" role="alert"><?= h($error) ?></div><?php endif; ?>
 <?php if ($notice !== ''): ?><div class="st-flash st-flash-ok" role="status"><?= h($notice) ?></div><?php endif; ?>
+<?php if ($spDone !== ''): ?>
+<div class="st-flash st-flash-ok" role="status" data-sp-done><?= h($spDone) ?> <a href="<?= h($spDoneUrl) ?>" target="_blank" rel="noopener">دیدنِ فاکتورِ خرید ›</a></div>
+<?php endif; ?>
 <?php if ($stockWarn): ?>
-<div class="st-flash st-flash-warn" role="status">بیش از موجودی — صدور انجام نمی‌شود تا موجودی برسد: <?= h(implode('، ', $stockWarn)) ?></div>
+<div class="st-flash st-flash-warn" role="status" data-stock-warn>بیش از موجودی — صدور انجام نمی‌شود تا موجودی برسد: <?= h(implode('، ', $stockWarn)) ?>. با «+ موجودی» زیرِ همان ردیف خریدش را همین‌جا ثبت کنید.</div>
 <?php endif; ?>
 <?php if (($lw = BizSerial::luhnMessage(BizSerial::luhnWarnings($parsed['lines']))) !== ''): /* فقط هشدار — صدور بسته نیست */ ?>
 <div class="st-flash st-flash-warn" role="status" data-imei-luhn><?= h($lw) ?></div>
@@ -246,7 +361,7 @@ require __DIR__ . '/../includes/biz_head.php';
 <div class="st-flash st-flash-warn" role="status">زیرِ بهای خرید: <?= h(implode('، ', array_map(fn($w) => '«' . $w['desc'] . '» ' . formatMoney($w['per']) . ' (بها ' . formatMoney($w['cost']) . ')', $costWarn))) ?></div>
 <?php endif; ?>
 
-<form method="post" class="st-docform" action="<?= h($self) ?>" data-invoice data-price="<?= $isSale ? 'sell' : 'buy' ?>">
+<form method="post" class="st-docform" action="<?= h($self) ?>" data-invoice data-price="<?= $isSale ? 'sell' : 'buy' ?>"<?= $isSale ? ' data-sp-ok' : '' ?>>
     <?= Csrf::field() ?><?= BizOnce::field() ?>
     <section class="st-card st-doc-head">
         <div class="st-row2">
@@ -271,7 +386,7 @@ require __DIR__ . '/../includes/biz_head.php';
         <div class="st-table-wrap st-lines-wrap">
             <table class="st-table st-lines">
                 <?= BizDocView::lineHead() ?>
-                <tbody data-lines><?= BizDocView::lineRows($form['lines'], $blank, true) ?></tbody>
+                <tbody data-lines><?= BizDocView::lineRows($form['lines'], $blank, true, $short) ?></tbody>
             </table>
         </div>
         <div class="st-lines-tools">
@@ -307,6 +422,57 @@ require __DIR__ . '/../includes/biz_head.php';
         <p class="st-muted">کالا در فهرستِ کالاها ثبت می‌شود و همین‌جا در ردیفِ فاکتور می‌نشیند (قیمتِ <?= $isSale ? 'فروش' : 'خرید' ?>، تعدادِ ۱). موجودی فقط با صدورِ فاکتور عوض می‌شود.</p>
         <button type="submit" name="action" value="np_save" class="st-btn" formnovalidate>ثبتِ کالا و افزودن به فاکتور</button>
     </section>
+
+    <?php if ($sp['open']): ?>
+    <section class="st-card st-np st-sp" id="sp" data-sp aria-labelledby="spTitle">
+        <div class="st-np-head">
+            <h2 class="st-h3" id="spTitle">تأمینِ موجودیِ «<?= h($sp['name']) ?>»</h2>
+            <button type="submit" name="action" value="sp_cancel" class="st-link-btn" formnovalidate>بستن</button>
+        </div>
+        <?php if ($sp['error'] !== ''): ?><div class="st-flash st-flash-err" role="alert"><?= h($sp['error']) ?></div><?php endif; ?>
+        <input type="hidden" name="sp[row]" value="<?= (int)$sp['row'] ?>">
+        <input type="hidden" name="sp[product_id]" value="<?= (int)$sp['product_id'] ?>">
+        <div class="st-row2">
+            <label class="st-field"><span>از چه کسی خریدید؟</span>
+                <select name="sp[party_id]" autofocus>
+                    <option value="0">— فروشنده‌ی تازه یا گذری —</option>
+                    <?php foreach ($suppliers as $p): ?>
+                    <option value="<?= (int)$p['id'] ?>"<?= (int)$p['id'] === (int)$sp['party_id'] ? ' selected' : '' ?>><?= h($p['name']) ?><?= $p['supplier'] ? '' : ' (مشتری)' ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+            <label class="st-field"><span>یا نامِ فروشنده‌ی تازه <small class="st-muted">(تأمین‌کننده ساخته می‌شود)</small></span>
+                <input type="text" name="sp[party_name]" value="<?= h($sp['party_name']) ?>" maxlength="150" autocomplete="off">
+            </label>
+        </div>
+        <?php if ($sp['serial']): ?>
+        <label class="st-field"><span>IMEIِ گوشی‌های خریده‌شده <small class="st-muted">(هر خط یک گوشی؛ دوسیم‌کارت: «IMEI۱ / IMEI۲»)</small></span>
+            <textarea name="sp[imeis]" rows="3" dir="ltr" inputmode="numeric" autocomplete="off"><?= h($sp['imeis']) ?></textarea>
+        </label>
+        <?php endif; ?>
+        <div class="st-row2">
+            <?php if (!$sp['serial']): ?>
+            <label class="st-field"><span>تعداد (<?= h($sp['unit']) ?>)</span><input type="text" name="sp[qty]" value="<?= h($sp['qty']) ?>" inputmode="decimal" dir="ltr"></label>
+            <?php endif; ?>
+            <label class="st-field"><span>قیمتِ خریدِ هر <?= h($sp['unit'] !== '' ? $sp['unit'] : 'واحد') ?></span><input type="text" name="sp[buy]" value="<?= h($sp['buy']) ?>" inputmode="numeric" dir="ltr"></label>
+        </div>
+        <div class="st-row2">
+            <label class="st-field"><span>قیمتِ فروش</span><input type="text" name="sp[sell]" value="<?= h($sp['sell']) ?>" inputmode="numeric" dir="ltr"></label>
+            <label class="st-field"><span>تاریخِ خرید</span><input type="text" name="sp[date]" value="<?= h($sp['date']) ?>" inputmode="numeric" dir="ltr"></label>
+        </div>
+        <div class="st-row2">
+            <div class="st-seg st-seg-sm" role="radiogroup" aria-label="پرداخت">
+                <label class="st-seg-opt"><input type="radio" name="sp[pay]" value="credit"<?= $sp['pay'] === 'credit' ? ' checked' : '' ?>><span>نسیه — طلبِ فروشنده</span></label>
+                <label class="st-seg-opt"><input type="radio" name="sp[pay]" value="cash"<?= $sp['pay'] === 'cash' ? ' checked' : '' ?>><span>نقد — پرداخت شد</span></label>
+            </div>
+            <label class="st-field"><span>صندوق <small class="st-muted">(برای نقد)</small></span>
+                <select name="sp[account_id]"><?php foreach ($accounts as $a): ?><option value="<?= (int)$a['id'] ?>"<?= (int)$a['id'] === (int)$sp['account_id'] ? ' selected' : '' ?>><?= h($a['name']) ?></option><?php endforeach; ?></select>
+            </label>
+        </div>
+        <p class="st-muted">یک <b>فاکتورِ خریدِ صادرشده</b> ساخته می‌شود: موجودی و بهای خرید درست می‌شود و نسیه به حسابِ فروشنده می‌رود. این فاکتورِ فروش دست نمی‌خورد؛ بعد از خرید، صدورش را بزنید.</p>
+        <button type="submit" name="action" value="sp_save" class="st-btn" formnovalidate>ثبتِ خرید و افزودنِ موجودی</button>
+    </section>
+    <?php endif; ?>
 
     <div class="st-doc-foot">
         <section class="st-card st-sumbox">

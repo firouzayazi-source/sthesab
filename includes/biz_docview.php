@@ -157,8 +157,10 @@ final class BizDocView
      * پنلِ «کالای تازه» برمی‌گرداند — بی‌جاوااسکریپت هم کار می‌کند و هیچ
      * چیزی از فاکتورِ نیمه‌کاره گم نمی‌شود (کلِ فرم با آن فرستاده می‌شود).
      * @param array<int,array> $lines ردیف‌های موجود (از سند یا فرمِ ردشده)
+     * @param array<int,array{stock:float,unit:string}> $short ردیف‌هایی که بیش از موجودی‌اند — زیرشان
+     *        «+ موجودی» (دکمه‌ی فرم؛ پنلِ «تأمینِ موجودی» در `invoice-edit.php`، `BizQuickBuy`)
      */
-    public static function lineRows(array $lines, int $blank = 3, bool $plus = false): string
+    public static function lineRows(array $lines, int $blank = 3, bool $plus = false, array $short = []): string
     {
         $rows = array_values($lines);
         for ($i = 0; $i < $blank; $i++) { $rows[] = []; }
@@ -185,7 +187,10 @@ final class BizDocView
                   . ($plus ? '<button type="submit" name="np_open" value="' . $i . '" class="st-plus" formnovalidate data-np-open title="تعریفِ کالای تازه" aria-label="تعریفِ کالای تازه">+</button>' : '')
                   . '</div>'
                   . '<input type="hidden" name="lines[' . $i . '][product_id]" value="' . ($pid ?: '') . '" data-pid>'
-                  . ($free ? '<span class="st-line-note">شرحِ آزاد — بی‌اثر بر موجودی</span>' : '') . '</td>'
+                  . ($free ? '<span class="st-line-note">شرحِ آزاد — بی‌اثر بر موجودی</span>' : '')
+                  . (isset($short[$i]) ? '<span class="st-line-short">موجودی ' . toPersianDigits(formatQty($short[$i]['stock'])) . ' ' . h($short[$i]['unit'])
+                        . ' <button type="submit" name="sp_open" value="' . $i . '" class="st-link-btn st-sp-open" formnovalidate data-sp-open>+ موجودی</button></span>' : '')
+                  . '</td>'
                   . '<td class="st-line-desc">'
                   . '<div class="st-line-imei" data-imei-box' . ($showImei ? '' : ' hidden') . '>'
                   . '<input type="text" name="lines[' . $i . '][imei1]" value="' . h($im1) . '" inputmode="numeric" dir="ltr" autocomplete="off" placeholder="IMEI ۱" aria-label="IMEI ۱" data-imei1>'

@@ -165,7 +165,7 @@
     function imeiNorm(s) { return latin(s).replace(/[\s\u200c\-\/.]+/g, ''); }
     // ⛔ همان `BizCommon::fold()` — یک پیاده‌سازی، بالای همین فایل (`stCmd.fold`)
     var fold = window.stCmd.fold;
-    var byName = {}, bySku = {}, byImei = {}, byFold = {}, index = [];
+    var byName = {}, bySku = {}, byImei = {}, byFold = {}, byId = {}, index = [];
     var dl = document.getElementById('bizProducts');
     if (dl) {
         Array.prototype.forEach.call(dl.options, function (o) {
@@ -183,6 +183,7 @@
                 return;
             }
             byName[p.name] = p;
+            byId[p.id] = p;
             (byFold[p.fname] = byFold[p.fname] || []).push(p);
             if (p.sku) { bySku[latin(p.sku).toLowerCase()] = p; }
         });
@@ -438,14 +439,44 @@
                 imeiBox(row, p.serial);
                 if (p.serial && !p.imei1 && field(row, 'imei1').value.trim() === '') { field(row, 'imei1').focus(); }
                 if (price.value.trim() === '' && p[priceKey] && p[priceKey] !== '0') { price.value = p[priceKey]; }
-                row.classList.toggle('is-over', priceKey === 'sell' && p.track && (qty(field(row, 'qty').value) || 1) > p.stock + 0.0005);
+                row.__p = p;
+                overMark(row);
                 item.title = p.track ? ('موجودی: ' + fmt(p.stock) + ' ' + (p.unit || '')) : '';
             } else {
                 pid.value = '';                                 // ⛔ شناسه‌ی کهنه هرگز روی ردیفِ عوض‌شده نمی‌ماند
                 delete row.dataset.vex;
-                row.classList.remove('is-over');
+                row.__p = null;
+                overMark(row);
                 imeiBox(row, false);
             }
+        }
+        /**
+         * بیش از موجودی؟ — خانه‌ی تعداد قرمز، و در فاکتورِ فروش (`data-sp-ok`) زیرِ
+         * کالا «+ موجودی»: همان دکمه‌ی فرمی که سرور می‌سازد (`BizDocView::lineRows`،
+         * `name="sp_open"`)، تا بی‌بارگذاریِ صفحه همان لحظه دیده شود. خودِ تصمیمِ
+         * صدور همیشه با سرور است.
+         */
+        var spOk = form.hasAttribute('data-sp-ok');
+        function overMark(row) {
+            var p = row.__p || null;
+            var over = !!(p && priceKey === 'sell' && p.track && !p.imei1 && (qty(field(row, 'qty').value) || 1) > p.stock + 0.0005);
+            row.classList.toggle('is-over', over);
+            if (!spOk) { return; }
+            var cell = row.querySelector('.st-line-item'), mark = cell && cell.querySelector('.st-line-short');
+            if (!over) { if (mark) { mark.remove(); } return; }
+            if (!mark) {
+                mark = document.createElement('span');
+                mark.className = 'st-line-short';
+                var b = document.createElement('button');
+                b.type = 'submit'; b.name = 'sp_open'; b.className = 'st-link-btn st-sp-open';
+                b.setAttribute('formnovalidate', ''); b.setAttribute('data-sp-open', '');
+                b.textContent = '+ موجودی';
+                mark.appendChild(document.createTextNode(''));
+                mark.appendChild(b);
+                cell.appendChild(mark);
+            }
+            mark.firstChild.textContent = 'موجودی ' + fmt(p.stock) + ' ' + (p.unit || '') + ' ';
+            mark.querySelector('[data-sp-open]').value = String(rows().indexOf(row));
         }
 
         function renumber(row, i) {
@@ -454,6 +485,8 @@
             });
             var plus = row.querySelector('[data-np-open]');
             if (plus) { plus.value = String(i); }
+            var spb = row.querySelector('[data-sp-open]');
+            if (spb) { spb.value = String(i); }
             var no = row.querySelector('.st-line-no');
             if (no) { no.textContent = fmt(i + 1); }
         }
@@ -462,6 +495,8 @@
             var copy = last.cloneNode(true);
             copy.querySelectorAll('input').forEach(function (inp) { inp.value = ''; inp.removeAttribute('title'); });
             var note = copy.querySelector('.st-line-note'); if (note) { note.remove(); }
+            var sh = copy.querySelector('.st-line-short'); if (sh) { sh.remove(); }
+            copy.__p = null;
             var box = copy.querySelector('[data-imei-box]'); if (box) { box.hidden = true; }
             var nt = field(copy, 'note'); if (nt) { nt.hidden = false; }
             var lt = field(copy, 'lt'); if (lt) { lt.textContent = ''; }
@@ -495,6 +530,7 @@
                 if (p && (p.name === e.target.value || p.imei1)) { apply(row, p); } else { field(row, 'pid').value = ''; }
                 acOpen(e.target, pickRow);
             }
+            if (row && e.target.matches('[data-qty]') && row.__p) { overMark(row); }
             recalc();
         });
         form.addEventListener('input', function (e) { if (e.target.matches('[data-discount],[data-extra],[data-payamount],[data-vat-rate]')) { recalc(); } });
@@ -590,6 +626,9 @@
             if (close) { close.addEventListener('click', function (e) { e.preventDefault(); np.hidden = true; }); }
             npSync();
         }
+        // ردیف‌های رندرشده‌ی سرور: کالایشان را بشناس تا تغییرِ تعداد «بیش از موجودی» را
+        // همان لحظه نشان دهد. ⚠ نشانِ سرور دست نمی‌خورد — آن جمعِ همه‌ی ردیف‌های همان کالاست.
+        rows().forEach(function (r) { var id = field(r, 'pid').value; if (id && byId[id]) { r.__p = byId[id]; } });
         recalc();
     });
 })();

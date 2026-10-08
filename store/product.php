@@ -58,6 +58,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $cost = trim(postParam('opening_cost')) === '' ? (int)$product['buy_price'] : sanitizeAmount(postParam('opening_cost'));
         $res  = BizStock::setOpening($userId, $id, sanitizeQty(postParam('opening_qty')), $cost);
         redirectWithMessage($self, $res['ok'] ? 'success' : 'error', $res['message']);
+    } elseif ($product && $action === 'quickbuy') {
+        // ⛔ خرید با فروشنده و بها — فاکتورِ خریدِ واقعی (`BizQuickBuy`)، نه انبارگردانی
+        require_once __DIR__ . '/../includes/biz_quickbuy.php';
+        $dd = BizDocView::docDate(postParam('qb_date'), 'تاریخِ خرید');
+        if (!$dd['ok']) { redirectWithMessage($self, 'error', $dd['message']); }
+        if (($dup = BizOnce::claim()) !== null) { BizOnce::redirectDuplicate($dup, $self); }
+        $r = BizQuickBuy::run($userId, ['product_id' => $id, 'party_id' => (int)postParam('qb_party'),
+            'party_name' => (int)postParam('qb_party') > 0 ? '' : postParam('qb_party_name'),
+            'qty' => postParam('qb_qty'), 'buy' => postParam('qb_buy'), 'sell' => postParam('qb_sell'),
+            'date' => $dd['date'], 'pay' => postParam('qb_pay'), 'account_id' => (int)postParam('qb_account'),
+            'imeis' => postParam('qb_imeis')]);
+        if ($r['ok']) { BizOnce::done($self); } else { BizOnce::release(); }
+        redirectWithMessage($self, $r['ok'] ? 'success' : 'error', $r['message']);
     } elseif ($product && $action === 'adjust') {
         if (trim(postParam('actual_qty')) === '') {
             redirectWithMessage($self, 'error', 'موجودیِ شمارش‌شده را بنویسید.');
@@ -258,8 +271,57 @@ require __DIR__ . '/../includes/biz_head.php';
     <button type="submit" class="st-btn"><?= $product ? 'ذخیره‌ی تغییرات' : 'ثبتِ کالا' ?></button>
 </form>
 
-<?php if ($tracked): ?>
+<?php if ($tracked):
+    require_once __DIR__ . '/../includes/biz_quickbuy.php';
+    $qbSerial = BizProducts::typeOf($product) === 'phone';
+    $qbLast   = BizQuickBuy::lastSupplier($userId, $id);
+    $qbAccts  = BizDocView::accounts($userId); ?>
 <div>
+    <?php /* ⛔ خرید با فروشنده و بها — فاکتورِ خریدِ صادرشده (`BizQuickBuy`): فروشنده
+             طلبکار می‌شود و بهای میانگین درست. انبارگردانیِ پایین فقط برای شمارش است. */ ?>
+    <form method="post" class="st-card st-form" action="<?= h($self) ?>" id="quickbuy">
+        <?= Csrf::field() ?><?= BizOnce::field() ?>
+        <input type="hidden" name="action" value="quickbuy">
+        <h2 class="st-h2">خرید و افزودنِ موجودی</h2>
+        <p class="st-muted">از چه کسی، چند و به چه قیمتی خریدید. یک فاکتورِ خریدِ صادرشده ساخته می‌شود؛ نسیه به حسابِ فروشنده می‌رود.</p>
+        <div class="st-row2">
+            <label class="st-field"><span>فروشنده</span>
+                <select name="qb_party">
+                    <option value="0">— فروشنده‌ی تازه یا گذری —</option>
+                    <?php foreach (BizQuickBuy::suppliers($userId) as $p): ?>
+                    <option value="<?= (int)$p['id'] ?>"<?= (int)$p['id'] === $qbLast ? ' selected' : '' ?>><?= h($p['name']) ?><?= $p['supplier'] ? '' : ' (مشتری)' ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </label>
+            <label class="st-field"><span>یا نامِ فروشنده‌ی تازه</span><input type="text" name="qb_party_name" maxlength="150" autocomplete="off"></label>
+        </div>
+        <?php if ($qbSerial): ?>
+        <label class="st-field"><span>IMEIِ گوشی‌ها <small class="st-muted">(هر خط یک گوشی؛ دوسیم‌کارت: «IMEI۱ / IMEI۲»)</small></span>
+            <textarea name="qb_imeis" rows="3" dir="ltr" inputmode="numeric" autocomplete="off"></textarea>
+        </label>
+        <?php endif; ?>
+        <div class="st-row2">
+            <?php if (!$qbSerial): ?>
+            <label class="st-field"><span>تعداد (<?= h($unit) ?>)</span><input type="text" name="qb_qty" inputmode="decimal" dir="ltr"></label>
+            <?php endif; ?>
+            <label class="st-field"><span>قیمتِ خریدِ هر <?= h($unit) ?></span><input type="text" name="qb_buy" inputmode="numeric" dir="ltr" value="<?= (int)$product['buy_price'] > 0 ? h((string)(int)$product['buy_price']) : '' ?>"></label>
+        </div>
+        <div class="st-row2">
+            <label class="st-field"><span>قیمتِ فروش</span><input type="text" name="qb_sell" inputmode="numeric" dir="ltr" value="<?= h((string)(int)$product['sell_price']) ?>"></label>
+            <label class="st-field"><span>تاریخِ خرید</span><input type="text" name="qb_date" inputmode="numeric" dir="ltr" value="<?= h(BizDocView::jDate(date('Y-m-d'))) ?>"></label>
+        </div>
+        <div class="st-row2">
+            <div class="st-seg st-seg-sm" role="radiogroup" aria-label="پرداخت">
+                <label class="st-seg-opt"><input type="radio" name="qb_pay" value="credit" checked><span>نسیه</span></label>
+                <label class="st-seg-opt"><input type="radio" name="qb_pay" value="cash"><span>نقد — پرداخت شد</span></label>
+            </div>
+            <label class="st-field"><span>صندوق <small class="st-muted">(برای نقد)</small></span>
+                <select name="qb_account"><?php foreach ($qbAccts as $a): ?><option value="<?= (int)$a['id'] ?>"><?= h($a['name']) ?></option><?php endforeach; ?></select>
+            </label>
+        </div>
+        <button type="submit" class="st-btn">ثبتِ خرید</button>
+    </form>
+
     <form method="post" class="st-card st-form" action="<?= h($self) ?>">
         <?= Csrf::field() ?>
         <input type="hidden" name="action" value="adjust">
