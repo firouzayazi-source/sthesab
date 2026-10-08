@@ -221,6 +221,7 @@ $userId = Auth::userId();   // همیشه از اینجا، هرگز از ورو
 - **بررسیِ اتصال به حسابداریِ فروشگاه: `php deploy/store-check.php`** (فقط خواندنی؛ `docs/decisions/store-shareholders.md`)
 - **خواندنِ لاگ و پیدا کردنِ یک خطا: `php deploy/log-report.php`** (`--req کدِپیگیری` برای یک درخواستِ خاص، `--tail 30` برای آخرین خطاها، `--json` برای cron؛ `./hesabland logs` همان را خلاصه می‌کند) (`docs/decisions/admin-ops.md`)
 - **رسیدگی به خطاهای برنامه از پنل مدیر: `admin/errors.php`** — «برطرف شد» به‌ازای هر خطا، با نشانِ تعداد روی نوارِ مدیر (`docs/decisions/admin-ops.md`)
+- **خطاهای فروشگاه، فقط برای مدیرِ نصب: `store/errors.php`** — همان `app_errors` با ستونِ محیط (`AppErrors::AREAS`)، لینک فقط برای مدیر در منوی کناریِ فروشگاه (`docs/decisions/admin-ops.md`)
 - **سنجشِ سلامت از بیرون: `health.php`** (`{"ok":true}`؛ جزئیات فقط از لوکال یا برای مدیر)
 
 `config/config.php` و `uploads/` هرگز وارد گیت نمی‌شوند و در استقرار دست‌نخورده می‌مانند.
@@ -354,6 +355,7 @@ sudo ./hesabland release     # همان abc1234 — و فقط همان — رو�
 
 ### `docs/decisions/admin-ops.md` — آمار، لاگ و خطا، زیرساخت، پشتیبانی
 - آمار فقط شمارش، نه محتوا؛ **هیچ ردیابیِ تازه‌ای**؛ `ACTIVITY_TABLES`/`NON_ACTIVITY_TABLES` بسته و گزینشی؛ فاصله‌ی روز با `DATEDIFF`.
+- محیطِ خطا (`app`/`store`) فقط `AppErrors::AREAS`، از مسیرِ درخواست یا `data-area`ِ مرورگر؛ هر کارِ `store/errors.php` فقط با محیط (`handleAction()`)، صفحه برای غیرِ مدیر ۴۰۴ و بیرونِ `Biz::NAV` (قاعده ۷۵)؛ گزارش‌گرِ مرورگر فقط `client-errors.js` (هر دو پوسته).
 - لاگ فقط `Log` (JSONL در `var/log`، شسته پیش از نوشتن)؛ `error_log()` فقط در `log.php`/`app_errors.php`؛ ممیزی فقط رویدادهای امنیتی (`Audit::ACTIONS`)، ستونِ `actor_id`؛ «برطرف شد» با رخدادِ دوباره پس گرفته می‌شود؛ «Script error.» کور و `@` ثبت نمی‌شوند.
 - منطقه‌ی زمانی در `db.php` (`applyAppTimezone()` + افستِ عددی برای MySQL)؛ `die()` در تست یعنی `T::blocked` نه موفق؛ cron نشانه فقط بعد از موفقیت.
 - پشتیبانی: دروازه‌ی مقاله گامِ واقعیِ آدرس؛ سقفِ پیام روی سرور؛ `Support::ticketFor()` تنها خواننده؛ `addMessage()` تنها جلوبرنده‌ی وضعیت.

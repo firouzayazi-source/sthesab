@@ -146,6 +146,7 @@ MIGRATIONS=(
     migration_sms_sync.sql
     migration_biz_import.sql
     migration_sms_learn.sql
+    migration_error_area.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -370,6 +371,8 @@ declare -A SENTINEL=(
     [migration_sms_sync.sql]="sms_posted"
     [migration_biz_import.sql]="biz_payments.opening_import"
     [migration_sms_learn.sql]="wallets.sms_keys"
+    # ⚠ شاهد ایندکسِ **آخر** است: `ALTER`ِ دوم آخرین کارِ فایل است.
+    [migration_error_area.sql]="app_errors:idx_area_open"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

@@ -243,7 +243,7 @@ $csrfOf = fn(string $html): string => preg_match('/name="csrf_token"[^>]*value="
 T::ok($c === 302, 'ورود به فروشگاه');
 
 [$c, $home] = $req('store/index.php');
-T::ok($c === 200 && str_contains($home, '<html lang="fa" dir="rtl">'), 'پیش‌فرض هیچ ویژگی‌ای روی <html> ندارد');
+T::ok($c === 200 && str_contains($home, '<html lang="fa" dir="rtl" data-area="store">'), 'پیش‌فرض هیچ ویژگیِ رنگی روی <html> ندارد (فقط محیطِ خطا، `data-area`)');
 T::ok(str_contains($home, '<meta name="theme-color" content="' . Biz::PALETTES[$def]['theme'] . '">'), 'نوارِ وضعیتِ گوشی رنگِ پیش‌فرض را دارد');
 
 [$c, $set] = $req('store/settings.php');
@@ -254,7 +254,7 @@ T::ok($c !== 302 && $raw($a) === null, '⛔ بی‌CSRF هیچ چیزی ذخیر
 [$c, $loc] = $req('store/settings.php', ['csrf_token' => $csrfOf($set), 'action' => 'palette', 'palette' => 'lilac']);
 T::ok($c === 302, 'ذخیره با CSRF → ریدایرکت');
 [$c, $home] = $req('store/index.php');
-T::ok(str_contains($home, '<html lang="fa" dir="rtl" data-st-palette="lilac">'), 'همان صفحه‌ی بعد <html> رنگِ «یاس» را دارد (سمتِ سرور، بی‌اسکریپت)');
+T::ok(str_contains($home, '<html lang="fa" dir="rtl" data-area="store" data-st-palette="lilac">'), 'همان صفحه‌ی بعد <html> رنگِ «یاس» را دارد (سمتِ سرور، بی‌اسکریپت)');
 T::ok(str_contains($home, '<meta name="theme-color" content="' . Biz::PALETTES['lilac']['theme'] . '">'), 'نوارِ وضعیتِ گوشی هم «یاس» شد');
 [$c, $set] = $req('store/settings.php');
 T::ok(str_contains($set, 'value="lilac" checked'), 'انتخابگر رنگِ ذخیره‌شده را نشان می‌دهد');

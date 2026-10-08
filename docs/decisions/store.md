@@ -1583,3 +1583,13 @@ bootScript پیش از CSS، `JSON_HEX_TAG` روی `stCmdData`، پوسته بی
   (تعریفِ دومِ «فروشِ خالص»؛ تست حالا `BizDash::salesDaily()` را می‌سنجد)،
   `Biz::columnProbe()` (در `hasColumn()`)، `StoreShare::settledFor()` (فقط تست).
   `deleteDraft()` ابطال و سرگذشتش را در یک تراکنش می‌نویسد.
+
+### ⛔ خطاهای فروشگاه (فقط مدیرِ نصب) — `store/errors.php`
+
+شرحِ کامل در `docs/decisions/admin-ops.md` (همان `app_errors` با ستونِ محیط).
+آنچه به پوسته‌ی فروشگاه مربوط است: صفحه بیرونِ `Biz::NAV` است و لینکش را
+`biz_head.php` فقط برای مدیر رندر می‌کند (قاعده‌ی ۷۰ این یک صفحه را از «هر
+صفحه در منو» معاف کرده)؛ پوسته `data-area="store"`، متای `csrf-token` و
+`client-errors.js` را پیش از `store.js` دارد؛ و `api/log_client_error.php`
+تنها اندپوینتِ `api/` در `Biz::SHARED` است.
+

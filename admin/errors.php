@@ -44,15 +44,9 @@ if (!isset(AppErrors::FILTERS[$filter])) { $filter = 'open'; }
 $flash = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Csrf::verifyOrFail(postParam('csrf_token'));
-    $act = postParam('action');
-    $id  = (int)postParam('id', '0');
-
-    if ($act === 'resolve' && AppErrors::resolve($id))       { $flash = 'resolved'; }
-    elseif ($act === 'reopen' && AppErrors::reopen($id))     { $flash = 'reopened'; }
-    elseif ($act === 'purge_resolved')                        {
-        $n = AppErrors::purgeResolved();
-        $flash = 'purged:' . $n;
-    } elseif ($act === 'clear_all' && AppErrors::clear())     { $flash = 'cleared'; }
+    // ⛔ منطقِ دکمه‌ها فقط `AppErrors::handleAction()` — همان که
+    //    `store/errors.php` با محیطِ «فروشگاه» صدا می‌زند.
+    $flash = AppErrors::handleAction(postParam('action'), (int)postParam('id', '0'));
 
     header('Location: ' . APP_BASE_PATH . '/admin/errors.php?f=' . urlencode($filter)
         . ($flash !== '' ? '&done=' . urlencode($flash) : ''));
@@ -66,22 +60,15 @@ $triage = AppErrors::triageAvailable();
 $done   = (string)getParam('done');
 
 /**
- * سطحِ خطا → برچسب و رنگ.
+ * سطحِ خطا → برچسب و رنگ. برچسب‌ها فقط `AppErrors::levelInfo()`.
  *
  * ⚠ رنگِ میانی `--warn-ink` است نه `--gold`: پالتِ دومِ `style.css` آن
  *   یکی را به **آبی** بازتعریف می‌کند و آن‌وقت «هشدار» دقیقاً شبیهِ
  *   «اطلاع» دیده می‌شد (همان باگی که در `funnelVerdict()` گرفته شد).
  */
 $levelMeta = static function (string $lv): array {
-    switch ($lv) {
-        case 'fatal':
-        case 'exception':   return ['status-badge-out',  'کشنده'];
-        case 'error':
-        case 'recoverable': return ['status-badge-out',  'خطا'];
-        case 'client':      return ['status-badge-warn', 'مرورگر'];
-        case 'warning':     return ['status-badge-warn', 'هشدار'];
-        default:            return ['status-badge-warn', 'نکته'];
-    }
+    [$tone, $label] = AppErrors::levelInfo($lv);
+    return [$tone === 'bad' ? 'status-badge-out' : 'status-badge-warn', $label];
 };
 
 $stamp = static function (?string $ts): string {
@@ -165,6 +152,10 @@ include __DIR__ . '/../includes/header.php';
                         <div class="err-main">
                             <div class="err-head">
                                 <span class="status-badge <?= $badgeClass ?>"><?= h($badgeLabel) ?></span>
+                                <?php /* ⛔ محیطِ غیرِ پیش‌فرض نشان می‌گیرد — این صفحه همه را می‌بیند. */ ?>
+                                <?php if (($e['area'] ?? 'app') !== array_key_first(AppErrors::AREAS) && isset(AppErrors::AREAS[$e['area']])): ?>
+                                    <span class="status-badge status-badge-muted"><?= h(AppErrors::AREAS[$e['area']]) ?></span>
+                                <?php endif; ?>
                                 <span class="err-where ltr-num"><?= h((string)$e['file']) ?>:<?= h(toPersianDigits((string)$e['line'])) ?></span>
                             </div>
                             <div class="err-msg"><?= h((string)$e['message']) ?></div>

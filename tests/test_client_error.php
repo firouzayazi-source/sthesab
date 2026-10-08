@@ -114,5 +114,23 @@ T::group('مسیرِ واقعی: چه چیزی به سرور می‌رود');
 
 T::same(['REAL_BOOM'], $got['sent'],
     '⛔ فقط خطای واقعی فرستاده می‌شود؛ دو خطای کور نه فرستاده می‌شوند نه سهمیه می‌خورند');
+T::same([''], $got['areas'] ?? null, 'بی‌`data-area` (پوسته‌ی حساب‌لند) محیطِ خالی می‌رود — یعنی «از مسیر»');
+
+// ⛔ پوسته‌ی فروشگاه: همان گزارش‌گر با `<html data-area="store">`. بی‌این، خطای
+//    جاوااسکریپتِ فروشگاه «حساب‌لند» ثبت می‌شد و در `store/errors.php` نبود.
+T::group('محیطِ فروشگاه: `data-area` همراهِ گزارش می‌رود');
+$run = static function (string $area) use ($dump, $payload): ?array {
+    $p = proc_open('node ' . escapeshellarg($dump), [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+        $pp, null, array_merge(getenv(), ['CE_AREA' => $area]));
+    if (!is_resource($p)) { return null; }
+    fwrite($pp[0], $payload); fclose($pp[0]);
+    $o = stream_get_contents($pp[1]); fclose($pp[1]); fclose($pp[2]);
+    proc_close($p);
+    $j = json_decode((string)$o, true);
+    return is_array($j) ? $j : null;
+};
+$st = $run('store');
+T::same(['store'], $st['areas'] ?? null, '⛔ صفحه‌ی فروشگاه `area=store` می‌فرستد');
+T::same(['REAL_BOOM'], $st['sent'] ?? null, 'و صافیِ خطای کور همان است (یک گزارش‌گر برای هر دو پوسته)');
 
 exit(T::report());

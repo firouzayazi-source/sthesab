@@ -80,7 +80,9 @@ const STORE_BUDGET = [
     'store/cash-count.php'     => 6,   // صندوق‌ها + شمارش‌های اخیر
     'store/payroll.php'        => 7,   // کارکنان با مانده + صندوق‌ها + گردش
 ];
-const STORE_NO_BUDGET = ['store/login.php', 'store/logout.php'];
+// ⚠ `errors.php` فقط برای مدیرِ نصب است؛ حسابِ فروشگاهیِ این تست فقط ۴۰۴ِ خنثی
+//   می‌گیرد (`test_store_errors`، قاعده ۷۵).
+const STORE_NO_BUDGET = ['store/login.php', 'store/logout.php', 'store/errors.php'];
 
 try {
     $pdo = Database::getConnection();

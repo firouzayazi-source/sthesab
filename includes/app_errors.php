@@ -46,10 +46,32 @@ final class AppErrors
         'all'      => 'همه',
     ];
 
+    /**
+     * ⛔ محیط‌ها — فهرستِ بسته و تنها مرجع (`migration_error_area.sql`).
+     *
+     * کلیدِ اول پیش‌فرض است. محیطِ خطای PHP از **مسیرِ درخواست** می‌آید
+     * (`currentArea()`)، و خطای مرورگر محیطش را خودش می‌فرستد — ولی فقط
+     * یکی از همین کلیدها پذیرفته می‌شود؛ هر چیزِ دیگری یعنی «از مسیر».
+     */
+    public const AREAS = [
+        'app'   => 'حساب‌لند',
+        'store' => 'فروشگاه',
+    ];
+
+    /**
+     * پیشوندِ مسیرِ درخواست‌های فروشگاه — همان `Biz::DIR`.
+     *
+     * ⚠ رشته است نه `Biz::DIR`: این فایل پیش از `biz.php` لود می‌شود و
+     *   خطای کشنده‌ی پیش از آن دقیقاً همانی است که باید ثبت شود. یکی
+     *   بودنِ این دو را قاعده‌ی ۷۵ در `test_api_contract.php` می‌سنجد.
+     */
+    public const STORE_PREFIX = 'store/';
+
     private static bool $installed = false;
     private static int  $recorded  = 0;
     private static ?bool $tableOk  = null;
     private static ?bool $triageOk = null;
+    private static ?bool $areaOk   = null;
     private static bool  $pruned   = false;
 
     /**
@@ -167,7 +189,14 @@ final class AppErrors
         try {
             if (!self::available()) { return false; }
 
-            $fp   = sha1($level . '|' . $rel . '|' . $line . '|' . $msg);
+            // ⛔ محیط جزءِ اثرِ انگشت است: خطای کدِ مشترک (`includes/`) روی
+            //    صفحه‌ی فروشگاه یک ردیفِ جدا می‌شود، تا «برطرف شد» در یک
+            //    محیط خطای بازِ محیطِ دیگر را نبندد. ولی فقط برای غیرِ
+            //    پیش‌فرض — اثرِ انگشتِ ردیف‌های موجود عوض نمی‌شود و «برطرف
+            //    شد»های قبلی سرِ جایشان می‌مانند.
+            $area = self::areaAvailable() ? self::areaOf($ctx) : null;
+            $fp   = sha1($level . '|' . $rel . '|' . $line . '|' . $msg
+                . ($area !== null && $area !== array_key_first(self::AREAS) ? '|' . $area : ''));
 
             // ⛔ رخدادِ دوباره «برطرف شد» را پس می‌گیرد، و این کلِ معنای
             //    آن دکمه است: اگر خطا برگردد یعنی رفع نشده. بدونِ این
@@ -178,13 +207,17 @@ final class AppErrors
             //   خطا بی‌صدا از کار می‌افتاد. پس شرطی است.
             $reopen = self::triageAvailable() ? ', resolved_at = NULL' : '';
 
+            // ⚠ ستونِ محیط هم شرطی است، به همان دلیلِ `resolved_at`.
+            $params = ['f' => $fp, 'lv' => mb_substr($level, 0, 20), 'm' => $msg,
+                       'fl' => mb_substr($rel, 0, 255), 'ln' => max(0, $line)];
+            if ($area !== null) { $params['ar'] = $area; }
+
             $pdo = Database::getConnection();
             $pdo->prepare(
-                'INSERT INTO app_errors (fingerprint, level, message, file, line)
-                 VALUES (:f, :lv, :m, :fl, :ln)
+                'INSERT INTO app_errors (fingerprint, level, message, file, line' . ($area !== null ? ', area' : '') . ')
+                 VALUES (:f, :lv, :m, :fl, :ln' . ($area !== null ? ', :ar' : '') . ')
                  ON DUPLICATE KEY UPDATE hits = hits + 1, last_seen = NOW()' . $reopen
-            )->execute(['f' => $fp, 'lv' => mb_substr($level, 0, 20), 'm' => $msg,
-                        'fl' => mb_substr($rel, 0, 255), 'ln' => max(0, $line)]);
+            )->execute($params);
 
             self::$recorded++;
             return true;
@@ -220,27 +253,29 @@ final class AppErrors
      * ⛔ ترتیب روی `last_seen` است نه `first_seen`: چیزی که **همین حالا**
      *    می‌افتد مهم‌تر از چیزی است که ماه پیش یک بار افتاد.
      *
-     * @param string $filter یکی از کلیدهای `FILTERS`
+     * @param string      $filter یکی از کلیدهای `FILTERS`
+     * @param string|null $area   یکی از کلیدهای `AREAS`؛ `null` = همه‌ی محیط‌ها
      */
-    public static function browse(string $filter = 'open', int $limit = 200): array
+    public static function browse(string $filter = 'open', int $limit = 200, ?string $area = null): array
     {
         if (!isset(self::FILTERS[$filter])) { $filter = 'open'; }
         try {
             if (!self::available()) { return []; }
-            $where = '';
+            [$where, $params] = self::areaWhere($area);
+            if ($where === null) { return []; }
             if (self::triageAvailable()) {
-                if ($filter === 'open')     { $where = 'WHERE resolved_at IS NULL'; }
-                if ($filter === 'resolved') { $where = 'WHERE resolved_at IS NOT NULL'; }
+                if ($filter === 'open')     { $where[] = 'resolved_at IS NULL'; }
+                if ($filter === 'resolved') { $where[] = 'resolved_at IS NOT NULL'; }
             } elseif ($filter === 'resolved') {
                 // بدونِ ستون، هیچ خطایی «رسیدگی‌شده» نیست — و فهرستِ
                 // خالی از یک فهرستِ **کاملِ** برچسب‌خورده‌ی غلط بهتر است.
                 return [];
             }
             $st = Database::getConnection()->prepare(
-                'SELECT * FROM app_errors ' . $where
+                'SELECT * FROM app_errors' . ($where ? ' WHERE ' . implode(' AND ', $where) : '')
                 . ' ORDER BY last_seen DESC LIMIT ' . max(1, min(500, $limit))
             );
-            $st->execute();
+            $st->execute($params);
             return $st->fetchAll();
         } catch (Throwable $e) {
             return [];
@@ -268,7 +303,7 @@ final class AppErrors
      * روی نصبِ migration‌نخورده هر خطا «باز» است، پس `COUNT(*)` جوابِ
      * درست است: صفر گفتن در آن حالت یعنی نشان **بی‌صدا** خاموش می‌ماند.
      */
-    public static function openCount(): int
+    public static function openCount(?string $area = null): int
     {
         // ⛔ عمداً کش نمی‌شود — همان درسِ `walletBalances()` (قاعده ۲۹):
         //    عددی که در همان درخواست عوض می‌شود نباید از حافظه بیاید.
@@ -278,8 +313,14 @@ final class AppErrors
         //     عددِ باز روی نشانِ نوارِ همان صفحه هست.)
         try {
             if (!self::available()) { return 0; }
-            $sql = 'SELECT COUNT(*) FROM app_errors' . (self::triageAvailable() ? ' WHERE resolved_at IS NULL' : '');
-            $n = (int)Database::getConnection()->query($sql)->fetchColumn();
+            [$where, $params] = self::areaWhere($area);
+            if ($where === null) { return 0; }
+            if (self::triageAvailable()) { $where[] = 'resolved_at IS NULL'; }
+            $st = Database::getConnection()->prepare(
+                'SELECT COUNT(*) FROM app_errors' . ($where ? ' WHERE ' . implode(' AND ', $where) : '')
+            );
+            $st->execute($params);
+            $n = (int)$st->fetchColumn();
             self::pruneOncePerDay();
             return $n;
         } catch (Throwable $e) {
@@ -318,14 +359,17 @@ final class AppErrors
      *    را پس می‌گیرد. پس این دکمه یک **ادعا** است که خودِ برنامه
      *    می‌سنجدش، نه یک دکمه‌ی خاموش‌کردن.
      */
-    public static function resolve(int $id): bool
+    public static function resolve(int $id, ?string $area = null): bool
     {
         if ($id <= 0 || !self::triageAvailable()) { return false; }
         try {
+            [$where, $params] = self::areaWhere($area);
+            if ($where === null) { return false; }
             $st = Database::getConnection()->prepare(
                 'UPDATE app_errors SET resolved_at = NOW() WHERE id = :i AND resolved_at IS NULL'
+                . ($where ? ' AND ' . implode(' AND ', $where) : '')
             );
-            $st->execute(['i' => $id]);
+            $st->execute(['i' => $id] + $params);
             return $st->rowCount() > 0;
         } catch (Throwable $e) {
             return false;
@@ -333,14 +377,17 @@ final class AppErrors
     }
 
     /** برگرداندن به «باز» — برای وقتی که اشتباهی رسیدگی‌شده علامت خورده. */
-    public static function reopen(int $id): bool
+    public static function reopen(int $id, ?string $area = null): bool
     {
         if ($id <= 0 || !self::triageAvailable()) { return false; }
         try {
+            [$where, $params] = self::areaWhere($area);
+            if ($where === null) { return false; }
             $st = Database::getConnection()->prepare(
                 'UPDATE app_errors SET resolved_at = NULL WHERE id = :i AND resolved_at IS NOT NULL'
+                . ($where ? ' AND ' . implode(' AND ', $where) : '')
             );
-            $st->execute(['i' => $id]);
+            $st->execute(['i' => $id] + $params);
             return $st->rowCount() > 0;
         } catch (Throwable $e) {
             return false;
@@ -355,24 +402,37 @@ final class AppErrors
      *    خطاهایی را هم که هنوز ندیده پاک کند. این فقط چیزی را می‌برد که
      *    خودِ مالکِ نصب یک بار دیده و بسته است.
      */
-    public static function purgeResolved(): int
+    public static function purgeResolved(?string $area = null): int
     {
         if (!self::triageAvailable()) { return 0; }
         try {
-            $st = Database::getConnection()->prepare('DELETE FROM app_errors WHERE resolved_at IS NOT NULL');
-            $st->execute();
+            [$where, $params] = self::areaWhere($area);
+            if ($where === null) { return 0; }
+            $where[] = 'resolved_at IS NOT NULL';
+            $st = Database::getConnection()->prepare('DELETE FROM app_errors WHERE ' . implode(' AND ', $where));
+            $st->execute($params);
             return $st->rowCount();
         } catch (Throwable $e) {
             return 0;
         }
     }
 
-    /** پاک کردنِ کلِ فهرست — همچنان هست، ولی دیگر تنها اقدامِ ممکن نیست. */
-    public static function clear(): bool
+    /**
+     * پاک کردنِ کلِ فهرست — همچنان هست، ولی دیگر تنها اقدامِ ممکن نیست.
+     *
+     * ⛔ با محیط، فقط همان محیط: «پاک کردن همه» در `store/errors.php`
+     *    نباید خطاهای حساب‌لند را هم ببرد.
+     */
+    public static function clear(?string $area = null): bool
     {
         try {
             if (!self::available()) { return false; }
-            Database::getConnection()->exec('DELETE FROM app_errors');
+            [$where, $params] = self::areaWhere($area);
+            if ($where === null) { return false; }
+            $st = Database::getConnection()->prepare(
+                'DELETE FROM app_errors' . ($where ? ' WHERE ' . implode(' AND ', $where) : '')
+            );
+            $st->execute($params);
             return true;
         } catch (Throwable $e) {
             return false;
@@ -392,6 +452,43 @@ final class AppErrors
             return $st->rowCount();
         } catch (Throwable $e) {
             return 0;
+        }
+    }
+
+    /**
+     * ⛔ تنها اجراکننده‌ی دکمه‌های صفحه‌ی خطا — `admin/errors.php` (همه‌ی
+     *    محیط‌ها) و `store/errors.php` (فقط فروشگاه). دو صفحه، یک منطق: با
+     *    نسخه‌ی دوم، «پاک کردن همه»ی فروشگاه روزی بی‌شرطِ محیط می‌شد.
+     *
+     * @return string نشانه‌ی پیام (`resolved`/`reopened`/`purged:N`/`cleared`)، یا خالی
+     */
+    public static function handleAction(string $action, int $id, ?string $area = null): string
+    {
+        switch ($action) {
+            case 'resolve':        return self::resolve($id, $area) ? 'resolved' : '';
+            case 'reopen':         return self::reopen($id, $area) ? 'reopened' : '';
+            case 'purge_resolved': return 'purged:' . self::purgeResolved($area);
+            case 'clear_all':      return self::clear($area) ? 'cleared' : '';
+        }
+        return '';
+    }
+
+    /**
+     * سطحِ خطا → [لحن، برچسب]. لحن `bad` یا `warn` است و هر پوسته کلاسِ
+     * خودش را رویش می‌گذارد — برچسب‌ها یک جا.
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function levelInfo(string $level): array
+    {
+        switch ($level) {
+            case 'fatal':
+            case 'exception':   return ['bad',  'کشنده'];
+            case 'error':
+            case 'recoverable': return ['bad',  'خطا'];
+            case 'client':      return ['warn', 'مرورگر'];
+            case 'warning':     return ['warn', 'هشدار'];
+            default:            return ['warn', 'نکته'];
         }
     }
 
@@ -456,6 +553,69 @@ final class AppErrors
             }
         }
         return self::$triageOk;
+    }
+
+    /**
+     * ستونِ `area` آمده است؟ (`migration_error_area`) — همان الگوی
+     * `triageAvailable()` و به همان دلیل.
+     */
+    public static function areaAvailable(): bool
+    {
+        if (self::$areaOk === null) {
+            if (!self::available()) { return false; }
+            if (function_exists('tableHasColumn')) {
+                self::$areaOk = tableHasColumn('app_errors', 'area');
+            } else {
+                try {
+                    Database::getConnection()->query('SELECT area FROM app_errors LIMIT 0');
+                    self::$areaOk = true;
+                } catch (Throwable $e) {
+                    self::$areaOk = false;
+                }
+            }
+        }
+        return self::$areaOk;
+    }
+
+    /** محیطِ همین درخواست — از مسیر (`store/…` = فروشگاه). */
+    public static function currentArea(): string
+    {
+        return str_starts_with(Log::route(), self::STORE_PREFIX) ? 'store' : array_key_first(self::AREAS);
+    }
+
+    /**
+     * محیطِ یک ثبت: `ctx['area']` (خطای مرورگر) اگر یکی از `AREAS` باشد،
+     * وگرنه از مسیر.
+     *
+     * ⚠ خطای مرورگر همیشه از `api/log_client_error.php` می‌رسد، پس مسیرش
+     *   هرگز `store/` نیست — بی‌این کلید، هر خطای جاوااسکریپتِ فروشگاه
+     *   «حساب‌لند» ثبت می‌شد.
+     */
+    private static function areaOf(array $ctx): string
+    {
+        $a = $ctx['area'] ?? null;
+        return is_string($a) && isset(self::AREAS[$a]) ? $a : self::currentArea();
+    }
+
+    /**
+     * شرطِ محیط برای کوئری‌های فهرست و رسیدگی.
+     *
+     * ⛔ `[null, []]` یعنی «هیچ ردیفی» — وقتی محیطِ خواسته‌شده نامعتبر است، یا
+     *    غیرِ پیش‌فرض است و ستون هنوز نیامده. **همه** برگرداندن در آن حالت
+     *    یعنی `store/errors.php` خطاهای حساب‌لند را نشان دهد و «پاک کردن
+     *    همه»اش آن‌ها را هم ببرد. روی نصبِ migration‌نخورده همه‌ی ردیف‌ها
+     *    مالِ محیطِ پیش‌فرض‌اند، پس آنجا بی‌شرط درست است.
+     *
+     * @return array{0: ?list<string>, 1: array<string,string>}
+     */
+    private static function areaWhere(?string $area): array
+    {
+        if ($area === null) { return [[], []]; }
+        if (!isset(self::AREAS[$area])) { return [null, []]; }
+        if (!self::areaAvailable()) {
+            return $area === array_key_first(self::AREAS) ? [[], []] : [null, []];
+        }
+        return [['area = :area'], ['area' => $area]];
     }
 
     /**

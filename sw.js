@@ -38,6 +38,7 @@ const rel = (p) => new URL(p, self.location).toString();
 const PRECACHE = [
     rel('offline.html'),
     rel('assets/css/style.css'),
+    rel('assets/js/client-errors.js'),
     rel('assets/js/app.js'),
     rel('assets/js/sms-core.js'),
     rel('assets/js/jalali-datepicker.js'),

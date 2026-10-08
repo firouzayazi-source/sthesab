@@ -63,8 +63,12 @@ final class Biz
      *
      * - `logout.php` — خروج هرگز نباید بن‌بست شود، از هر دری که باشد.
      * - `health.php` — سنجشِ سلامت؛ هیچ داده‌ای از کاربر نمی‌دهد.
+     * - `api/log_client_error.php` — گزارشِ خطای مرورگرِ صفحه‌های فروشگاه
+     *   (`client-errors.js`، `store/errors.php`). فقط **می‌نویسد**، آن هم در
+     *   `app_errors` که مالِ هیچ کاربری نیست؛ هیچ داده‌ای برنمی‌گرداند. بی‌آن،
+     *   خطای جاوااسکریپتِ حسابِ «فقط فروشگاه» با ۴۰۳ گم می‌شد.
      */
-    public const SHARED = ['logout.php', 'health.php'];
+    public const SHARED = ['logout.php', 'health.php', 'api/log_client_error.php'];
 
     /**
      * ⛔ منوی محیطِ فروشگاهی — تنها مرجع، گروه‌بندی‌شده (نوارِ کناریِ

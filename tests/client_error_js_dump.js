@@ -1,5 +1,5 @@
 /**
- * اجرای گزارش‌گرِ خطای مرورگرِ `assets/js/app.js` در node، برای تستِ PHP.
+ * اجرای گزارش‌گرِ خطای مرورگرِ `assets/js/client-errors.js` در node، برای تستِ PHP.
  *
  * عمداً خودِ فایلِ واقعی را بارگذاری می‌کند و نه یک کپی — وگرنه تست چیزی
  * را می‌آزماید که کاربر اجرا نمی‌کند. همان الگوی `tests/kb_js_dump.js`.
@@ -15,7 +15,8 @@
  *   { "predicate": [[message, file, line, stack], …],
  *     "events":    [{ "message":…, "filename":…, "lineno":…, "stack":… }, …] }
  * خروجی (stdout، JSON):
- *   { "predicate": [true|false, …], "sent": ["<پیامِ فرستاده‌شده>", …] }
+ *   { "predicate": [true|false, …], "sent": ["<پیامِ فرستاده‌شده>", …],
+ *     "areas": ["<محیطِ فرستاده‌شده>", …] }   — محیط از `CE_AREA`
  */
 'use strict';
 const fs = require('fs');
@@ -51,7 +52,11 @@ const sandbox = {
         getElementById: () => null,
         querySelector: () => null,
         querySelectorAll: () => [],
-        documentElement: Object.assign({}, fakeEl),
+        // ⛔ `data-area` از متغیرِ محیطیِ `CE_AREA` — گزارش‌گر آن را **هنگامِ
+        //    لود** می‌خواند (پیش از stdin)، مثل `<html data-area>`ِ پوسته‌ی فروشگاه.
+        documentElement: Object.assign({}, fakeEl, {
+            getAttribute: (k) => (k === 'data-area' && process.env.CE_AREA ? process.env.CE_AREA : null),
+        }),
         body: Object.assign({}, fakeEl),
         readyState: 'loading',
     },
@@ -81,10 +86,10 @@ sandbox.window.addEventListener = (type, fn) => {
 
 vm.createContext(sandbox);
 try {
-    vm.runInContext(fs.readFileSync(path.join(assets, 'app.js'), 'utf8'), sandbox,
-        { filename: 'app.js' });
+    vm.runInContext(fs.readFileSync(path.join(assets, 'client-errors.js'), 'utf8'), sandbox,
+        { filename: 'client-errors.js' });
 } catch (e) {
-    console.error('ERR_LOAD:app.js: ' + e.message);
+    console.error('ERR_LOAD:client-errors.js: ' + e.message);
     process.exit(2);
 }
 
@@ -124,5 +129,6 @@ process.stdin.on('end', () => {
     process.stdout.write(JSON.stringify({
         predicate,
         sent: posted.map((p) => (p.body && p.body.get ? p.body.get('message') : '')),
+        areas: posted.map((p) => (p.body && p.body.get ? p.body.get('area') : null)),
     }));
 });

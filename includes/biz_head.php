@@ -24,6 +24,7 @@
  * پیشوندِ `__` دارد (قاعده ۵۰).
  */
 if (!defined('APP_BASE_PATH')) { http_response_code(404); exit; }
+require_once __DIR__ . '/csrf.php';
 
 $__bizUid   = (int)Auth::userId();
 $__bizSet   = Biz::settings($__bizUid);
@@ -46,6 +47,10 @@ $__bizFlash = getFlash();
 $__bizPal   = Biz::palette($__bizUid);
 $__bizPalA  = $__bizPal === array_key_first(Biz::PALETTES) ? '' : ' data-st-palette="' . h($__bizPal) . '"';
 $__bizIcons = Biz::navIcons();
+// ⛔ «خطاهای فروشگاه» فقط برای مدیرِ نصب (`store/errors.php`) — در `Biz::NAV`
+//    نیست تا مالکِ فروشگاه نه منو، نه فرمانِ سریع، نه منوی پایینش را ببیند.
+//    کوئریِ شمارش هم فقط برای مدیر اجرا می‌شود؛ صفحه‌ی فروشنده صفر کوئریِ اضافه.
+$__bizErrs  = Auth::isAdmin() ? AppErrors::openCount('store') : null;
 
 // مسیر: گروه ← قلمِ منو ← (اگر صفحه‌ی جزئیات است) عنوانِ خودِ صفحه
 $__bizCrumbs = [];
@@ -72,12 +77,17 @@ foreach (Biz::NAV as $__g => $__items) {
 foreach (Biz::NEW_MENU as $__h => $__l) { $__bizCmd['new'][] = ['t' => $__l, 'u' => Biz::url($__h), 'k' => $__h]; }
 ?>
 <!DOCTYPE html>
-<html lang="fa" dir="rtl"<?= $__bizPalA ?>>
+<html lang="fa" dir="rtl" data-area="store"<?= $__bizPalA ?>>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title><?= h(($pageTitle ?? '') !== '' ? $pageTitle . ' · ' . $__bizShop : $__bizShop) ?></title>
     <script><?= Biz::bootScript() ?></script>
+    <?php /* ⛔ گزارش‌گرِ خطای مرورگر (`client-errors.js`) — مشترک با حساب‌لند. `data-area`
+             محیط را می‌گوید (`AppErrors::AREAS`) و توکن از همین متا خوانده می‌شود؛
+             بی‌این دو، خطای جاوااسکریپتِ فروشگاه یا ۴۰۳ می‌گرفت یا «حساب‌لند» ثبت می‌شد. */ ?>
+    <meta name="csrf-token" content="<?= h(Csrf::token()) ?>">
+    <script>window.APP_BASE = <?= json_encode(APP_BASE_PATH, JSON_UNESCAPED_SLASHES | JSON_HEX_TAG) ?>;</script>
     <?php /* ⛔ فونت داخلِ CSS تعریف شده و مرورگر تا تجزیه‌ی آن خبر ندارد لازمش
              دارد؛ preload هر دو را با هم می‌گیرد (همان آدرسِ `@font-face`، بی‌`?v=`
              — آدرسِ متفاوت یعنی دو دانلود). */ ?>
@@ -89,7 +99,7 @@ foreach (Biz::NEW_MENU as $__h => $__l) { $__bizCmd['new'][] = ['t' => $__l, 'u'
              ردیفِ فاکتور، خواندنِ بارکد، Toast، حالتِ شب). هر فرم بی‌آن هم کار
              می‌کند و جمع را همیشه سرور حساب می‌کند؛ کشوی منو، «+ ثبت» و
              جست‌وجو اصلاً به آن بند نیستند. */ ?>
-    <?php foreach (assetUrls(['js/store.js']) as $__u): ?>
+    <?php foreach (assetUrls(['js/client-errors.js', 'js/store.js']) as $__u): ?>
     <script defer src="<?= h($__u) ?>"></script>
     <?php endforeach; ?>
     <meta name="theme-color" content="<?= h(Biz::PALETTES[$__bizPal]['theme']) ?>">
@@ -125,6 +135,18 @@ foreach (Biz::NEW_MENU as $__h => $__l) { $__bizCmd['new'][] = ['t' => $__l, 'u'
             <?php endforeach; ?>
         </div>
         <?php endforeach; ?>
+        <?php if ($__bizErrs !== null): ?>
+        <div class="st-side-group">
+            <p class="st-side-title">مدیرِ نصب</p>
+            <a href="<?= h(Biz::url('errors.php')) ?>" title="خطاهای فروشگاه"
+               class="st-side-item<?= $__bizScript === 'errors.php' ? ' is-active' : '' ?>"
+               <?= $__bizScript === 'errors.php' ? 'aria-current="page"' : '' ?>>
+                <svg class="st-side-ico" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9.5 16.5h-19z"/><path d="M12 10v4M12 17.5v.01"/></svg>
+                <span>خطاهای فروشگاه</span>
+                <?php if ($__bizErrs > 0): ?><b class="st-side-count" aria-label="<?= h(toPersianDigits((string)$__bizErrs)) ?> خطای باز"><?= h(toPersianDigits((string)$__bizErrs)) ?></b><?php endif; ?>
+            </a>
+        </div>
+        <?php endif; ?>
     </nav>
     <div class="st-side-foot">
         <div class="st-me" title="<?= h($__bizName) ?>">

@@ -1294,6 +1294,33 @@ html.st-locked, html.st-locked body { overflow: hidden; }
 .st-cheque-clear .st-date-in { flex: 0 1 7.5rem; }
 .st-late { color: var(--st-err); }
 
+/* ---------- خطاهای فروشگاه (`store/errors.php`، فقط مدیرِ نصب) ---------- */
+/* ⚠ نشانِ عدد کنارِ قلمِ منو. `<b>` است نه `<span>`: منوی جمع‌شده هر
+   `.st-side-item > span` را پنهان می‌کند و عدد باید آنجا هم بماند — روی گوشه‌ی آیکون. */
+.st-side-count {
+    margin-inline-start: auto; flex: 0 0 auto; min-width: 20px; padding: 0 6px; border-radius: 999px;
+    background: var(--st-err); color: #fff; font-size: 11px; font-weight: 700; line-height: 20px; text-align: center;
+}
+@media (min-width: 900px) {
+    html[data-st-mini="1"] .st-side .st-side-count { position: absolute; top: 1px; inset-inline-end: 4px; min-width: 16px; padding: 0 4px; font-size: 10px; line-height: 16px; }
+}
+@media (min-width: 900px) and (max-width: 1199px) {
+    .st-side .st-side-count { position: absolute; top: 1px; inset-inline-end: 4px; min-width: 16px; padding: 0 4px; font-size: 10px; line-height: 16px; }
+}
+.st-errs { display: grid; gap: 10px; }
+.st-err { padding: 14px 16px; margin: 0; display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+.st-err.is-resolved { opacity: .7; }
+.st-err-main { min-width: 0; display: grid; gap: 6px; }
+.st-err-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.st-err-where { font-size: 12px; color: var(--st-ink-2); overflow-wrap: anywhere; }
+.st-err-msg { margin: 0; font-size: 13.5px; overflow-wrap: anywhere; }
+.st-err-meta { margin: 0; font-size: 12px; }
+.st-err-act { flex: 0 0 auto; margin: 0; }
+.st-err-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin: 14px 0; }
+.st-err-tools form { margin: 0; }
+.st-err-howto { font-size: 12.5px; }
+@media (max-width: 640px) { .st-err { flex-direction: column; } }
+
 /* ---------- پاک‌سازیِ کالاهای استفاده‌نشده ---------- */
 .st-cleanup-all { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; }
 .st-cleanup-all p { margin: 0; }

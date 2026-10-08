@@ -5,7 +5,7 @@
  *
  * ⛔ خرابیِ سمتِ مرورگر در این اپ بی‌صداترین خرابی است: صفحه کامل و
  *    خوش‌ظاهر بالا می‌آید و فقط هیچ دکمه‌ای کار نمی‌کند (همان چیزی که
- *    `js-loading` برایش ساخته شد). `app.js` هر `error` و
+ *    `js-loading` برایش ساخته شد). `client-errors.js` (هر دو پوسته) هر `error` و
  *    `unhandledrejection` را یک بار (حداکثر دو تا در هر صفحه) اینجا
  *    می‌فرستد: پیام، فایل، خط، و مرورگر. **هیچ محتوایی از صفحه نه.**
  *
@@ -28,13 +28,18 @@ $file = mb_substr(postParam('file'), 0, 200);
 $line = (int)postParam('line');
 $page = mb_substr(postParam('page'), 0, 120);     // فقط مسیر، نه query string
 $ua   = mb_substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 200);
+// ⛔ محیط فقط از فهرستِ بسته‌ی `AppErrors::AREAS` — هر چیزِ دیگری یعنی
+//    «از مسیر»، که برای این اندپوینت همیشه حساب‌لند است. بی‌این کلید هر
+//    خطای جاوااسکریپتِ فروشگاه «حساب‌لند» ثبت می‌شد (درخواست از `api/` است،
+//    نه `store/`) و در `store/errors.php` دیده نمی‌شد.
+$area = postParam('area');
 
 if ($msg === '') { jsonResponse(['success' => false, 'message' => 'پیام خالی است.'], 422); }
 
 // همان مسیرِ خطاهای PHP: خطِ کامل در فایل + ردیفِ یکتا در app_errors تا
 // در پنل مدیر کنارِ خطاهای سرور دیده شود.
 AppErrors::record('client', $msg, $file, $line, [
-    'event' => 'client.error', 'page' => $page, 'ua' => $ua, 'stack' => mb_substr(postParam('stack'), 0, 800),
+    'event' => 'client.error', 'area' => isset(AppErrors::AREAS[$area]) ? $area : null, 'page' => $page, 'ua' => $ua, 'stack' => mb_substr(postParam('stack'), 0, 800),
 ]);
 
 jsonResponse(['success' => true]);

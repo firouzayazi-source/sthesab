@@ -3938,8 +3938,16 @@ foreach (['Log::KEEP_DAYS', 'Audit::KEEP_DAYS'] as $need) {
 
 // ۸) مرورگر: گزارشِ خطا و پیامِ خطای شناسه‌دار — و alertِ خامِ قدیمی برنگردد.
 $jsSrcL = (string)preg_replace('#/\*.*?\*/|(?<![:\'"])//[^\n]*#s', '', (string)file_get_contents($root . '/assets/js/app.js'));
-foreach (['log_client_error.php', 'window.netErr', 'X-Request-Id'] as $need) {
+foreach (['window.netErr', 'X-Request-Id'] as $need) {
     if (strpos($jsSrcL, $need) === false) { $badLog[] = "app.js — «{$need}» نیست"; }
+}
+// ⛔ گزارش‌گر در `client-errors.js` است، مشترکِ دو پوسته — و هر دو پوسته لودش می‌کنند.
+$ceSrcL = (string)preg_replace('#/\*.*?\*/|(?<![:\'"])//[^\n]*#s', '', (string)@file_get_contents($root . '/assets/js/client-errors.js'));
+if (strpos($ceSrcL, 'log_client_error.php') === false) { $badLog[] = 'client-errors.js — «log_client_error.php» نیست'; }
+foreach (['includes/header.php', 'includes/biz_head.php'] as $ceShell) {
+    if (!preg_match("/assetUrls\(\[\s*'js\/client-errors\.js'/", (string)file_get_contents($root . '/' . $ceShell))) {
+        $badLog[] = "{$ceShell} — `client-errors.js` اولین اسکریپتِ لودشده نیست (خطای پیش از آن گزارش نمی‌شود)";
+    }
 }
 if (preg_match("/alert\\(\\s*['\"]خطا در ارتباط با سرور/u", $jsSrcL)) {
     $badLog[] = 'app.js — alert خامِ «خطا در ارتباط با سرور» برگشته؛ باید netErr() باشد تا کدِ پیگیری برود';
@@ -4027,7 +4035,8 @@ if (!is_file($erPath)) {
 } else {
     $erSrc = $stripComments($erPath);
     foreach (['Auth::requireAdmin()', 'Csrf::verifyOrFail(', 'AppErrors::FILTERS',
-              'AppErrors::resolve(', 'AppErrors::reopen(', 'pagedSlice('] as $need) {
+              // ⛔ دکمه‌ها فقط از `handleAction()` — مشترک با `store/errors.php` (قاعده ۷۵)
+              'AppErrors::handleAction(', 'pagedSlice('] as $need) {
         if (strpos($erSrc, $need) === false) { $badTri[] = "admin/errors.php — «{$need}» نیست"; }
     }
     // ⛔ پس از POST ریدایرکت، نه رندرِ مستقیم: با رندر، تازه‌سازیِ صفحه
@@ -5609,16 +5618,17 @@ T::bulk(count($hexFiles) + 1, $badHex, '⛔ هر json_encode داخلِ <script>
 // ⚠ خطرِ خودِ رفع، گشاد شدنش است. صافی باید **هر چهار** نشانه را با هم
 //   بخواهد و پیش از `sent++` بنشیند (وگرنه یک افزونه سهمیه‌ی دوتاییِ
 //   صفحه را می‌خورد و خطای واقعی گزارش نمی‌شود). رفتارش در
-//   `tests/test_client_error.php` با node روی خودِ `app.js` سنجیده
+//   `tests/test_client_error.php` با node روی خودِ `client-errors.js` سنجیده
 //   می‌شود؛ اینجا فقط *شکل* است، چون آن تست به node نیاز دارد
 //   (`T::skip`) و روی ماشینِ بی‌node فقط همین قاعده می‌ماند — همان
 //   استدلالِ قاعده ۴۳ و ۴۷.
 T::group('قاعده ۵۵ — صافیِ خطای کورِ مرورگر');
 
 $badOpq = [];
-$opqSrc = @file_get_contents(__DIR__ . '/../assets/js/app.js');
+// ⛔ گزارش‌گر در `client-errors.js` است (مشترکِ حساب‌لند و فروشگاه).
+$opqSrc = @file_get_contents(__DIR__ . '/../assets/js/client-errors.js');
 if ($opqSrc === false || $opqSrc === '') {
-    $badOpq[] = '⛔ assets/js/app.js خوانده نشد — قاعده ۵۵ کور شده';
+    $badOpq[] = '⛔ assets/js/client-errors.js خوانده نشد — قاعده ۵۵ کور شده';
     $opqSrc = '';
 }
 // کامنت‌های C-مانند حذف می‌شوند: همین توضیح نامِ همان رشته را دارد و
@@ -5630,7 +5640,7 @@ $opqCode = preg_replace('#^\s*//.*$#m', '', (string)$opqCode);
 $opqBody = '';
 $opqAt = strpos((string)$opqCode, 'function isOpaque(');
 if ($opqAt === false) {
-    $badOpq[] = '⛔ `function isOpaque(` در app.js نیست — صافی برداشته شده';
+    $badOpq[] = '⛔ `function isOpaque(` در client-errors.js نیست — صافی برداشته شده';
 } else {
     $opqEnd = strpos((string)$opqCode, 'function report(', $opqAt);
     $opqBody = substr((string)$opqCode, $opqAt, ($opqEnd === false ? 1200 : $opqEnd - $opqAt));
@@ -6898,7 +6908,7 @@ if (!preg_match('/function isStoreOnly\(\): bool\s*\{(.*?)\n    \}/s', $biz70, $
 if (!preg_match("/function gate\(\): void\s*\{\s*if \(PHP_SAPI === 'cli' \|\| !self::isStoreOnly\(\)\) \{ return; \}/", $biz70)) {
     $bBad[] = 'biz.php — اولین خطِ gate() برگشتِ فوری برای حسابِ شخصی نیست';
 }
-if (!preg_match("/public const SHARED = \['logout\.php', 'health\.php'\];/", $biz70)) {
+if (!preg_match("/public const SHARED = \['logout\.php', 'health\.php', 'api\/log_client_error\.php'\];/", $biz70)) {
     $bBad[] = 'biz.php — فهرستِ بسته‌ی SHARED عوض شده؛ هر درِ تازه باید عمدی و با تست باشد';
 }
 if (!preg_match("~strncmp\(\\\$script, 'api/', 4\) === 0\).*?http_response_code\(403\)~s", $biz70)) {
@@ -7076,7 +7086,8 @@ foreach (array_keys($flat70) as $nf) {
 // ⛔ هر صفحه‌ی store/ یا در منوست یا عمداً بیرون (جزئیات، ورود، برگه‌ی چاپ) — وگرنه بی‌راه می‌ماند
 foreach ($storeFiles70 as $f) {
     $bn = basename($f);
-    if (!isset($flat70[$bn]) && !isset(Biz::NAV_PARENT[$bn]) && !in_array($bn, ['login.php', 'logout.php', 'print.php'], true)) {
+    // ⚠ `errors.php` عمداً بیرونِ منوی مشترک است: فقط مدیرِ نصب، با لینکِ خودش در `biz_head.php` (قاعده ۷۵)
+    if (!isset($flat70[$bn]) && !isset(Biz::NAV_PARENT[$bn]) && !in_array($bn, ['login.php', 'logout.php', 'print.php', 'errors.php'], true)) {
         $bBad[] = "store/{$bn} در Biz::NAV نیست و هیچ راهی از منو ندارد";
     }
 }
@@ -7936,5 +7947,59 @@ foreach (array_merge(glob(__DIR__ . '/../includes/biz*.php') ?: [], glob(__DIR__
     if ($n > $allowed) { $bad74[] = basename($f74) . " — فهرستِ دستیِ نوع‌ها ({$n})"; }
 }
 T::bulk(1, $bad74, 'نوع‌های دریافت/پرداخت فقط از BizPay::IN_KINDS/OUT_KINDS');
+
+// ---------------------------------------------------------------
+// قاعده ۷۵ — «خطاهای فروشگاه» فقط برای مدیرِ نصب، و فقط محیطِ فروشگاه
+// ---------------------------------------------------------------
+// ⛔ خواسته‌ی مالکِ نصب: «سیستم لاگ برای باگ در فروشگاه — فقط برای سوپر ادمین».
+//    رفتار در `tests/test_store_errors.php` سنجیده می‌شود؛ اینجا *شکل*ی است که
+//    شکستنش بی‌صدا نشت می‌دهد: صفحه‌ای که مالکِ فروشگاه هم ببیند، منویی که نامش
+//    را لو بدهد، یا «پاک کردن همه»ای که خطاهای حساب‌لند را هم ببرد.
+T::group('قاعده ۷۵ — خطاهای فروشگاه: فقط مدیر، فقط محیطِ فروشگاه');
+$bad75 = [];
+$strip75 = static fn(string $f): string => (string)preg_replace(['#/\*.*?\*/#s', '#^\s*//.*$#m'], '', (string)@file_get_contents(__DIR__ . '/../' . $f));
+$se75 = $strip75('store/errors.php');
+// ۱) مدیر، پیش از هر نوشتن و رندر — و ۴۰۴ِ خنثی، نه ۴۰۳
+$gateAt = strpos($se75, "if (!Auth::isAdmin()) { Biz::notFound(); }");
+$postAt = strpos($se75, "REQUEST_METHOD");
+if ($gateAt === false || strpos($se75, 'Biz::requirePage();') === false) {
+    $bad75[] = 'store/errors.php — نگهبانِ `requirePage()` + «غیرِ مدیر ← Biz::notFound()» نیست';
+} elseif ($postAt === false || $gateAt > $postAt) {
+    $bad75[] = 'store/errors.php — نگهبانِ مدیر بعد از پردازشِ POST است';
+}
+// ۲) هر فراخوانیِ AppErrors در صفحه‌ی فروشگاه محیط دارد
+if (!preg_match("/\\\$area\s*=\s*'store';/", $se75)) { $bad75[] = "store/errors.php — `\$area = 'store'` نیست"; }
+foreach (['handleAction' => 3, 'browse' => 3, 'openCount' => 1] as $fn => $argc) {
+    if (!preg_match_all('/AppErrors::' . $fn . '\(([^;]*)\)/', $se75, $mm)) { $bad75[] = "store/errors.php — AppErrors::{$fn} صدا زده نمی‌شود"; continue; }
+    foreach ($mm[1] as $args) {
+        if (!str_contains($args, '$area')) { $bad75[] = "store/errors.php — AppErrors::{$fn}() بی‌محیط (همه‌ی محیط‌ها را می‌بیند/می‌برد)"; }
+    }
+}
+foreach (['resolve(', 'reopen(', 'purgeResolved(', 'clear('] as $raw) {
+    if (str_contains($se75, 'AppErrors::' . $raw)) { $bad75[] = "store/errors.php — AppErrors::{$raw}) مستقیم؛ فقط handleAction با محیط"; }
+}
+// ۳) نه در منوی مشترک: NAV/NAV_PARENT/NEW_MENU/TABBAR از آن خبر ندارند
+foreach (['NAV', 'NAV_PARENT', 'NEW_MENU'] as $c75) {
+    $v = constant('Biz::' . $c75);
+    $flat = $c75 === 'NAV' ? array_merge(...array_values(array_map('array_keys', $v))) : array_merge(array_keys($v), array_values($v));
+    if (in_array('errors.php', $flat, true)) { $bad75[] = "Biz::{$c75} — errors.php در منوی مشترک است (مالکِ فروشگاه می‌بیندش)"; }
+}
+if (in_array('errors.php', Biz::TABBAR, true)) { $bad75[] = 'Biz::TABBAR — errors.php'; }
+// ۴) شمارشِ نوارِ کناری فقط برای مدیر و فقط فروشگاه
+$bh75 = $strip75('includes/biz_head.php');
+if (!preg_match("/Auth::isAdmin\(\)\s*\?\s*AppErrors::openCount\('store'\)\s*:\s*null/", $bh75)) {
+    $bad75[] = "biz_head.php — شمارشِ خطا مشروط به `Auth::isAdmin()` و محیطِ 'store' نیست";
+}
+// ۵) پیشوندِ مسیر = Biz::DIR، و محیطِ مرورگر از فهرستِ بسته
+if (AppErrors::STORE_PREFIX !== Biz::DIR . '/') { $bad75[] = 'AppErrors::STORE_PREFIX با Biz::DIR یکی نیست'; }
+if (!preg_match("/'area'\s*=>\s*isset\(AppErrors::AREAS\[\\\$area\]\)/", $strip75('api/log_client_error.php'))) {
+    $bad75[] = 'api/log_client_error.php — محیطِ مرورگر با AppErrors::AREAS سنجیده نمی‌شود';
+}
+// ۶) migration در هر دو فهرستِ migrate.sh
+$mig75 = (string)file_get_contents(__DIR__ . '/../deploy/migrate.sh');
+if (!preg_match('/^\s*migration_error_area\.sql\s*$/m', $mig75) || !str_contains($mig75, '[migration_error_area.sql]=')) {
+    $bad75[] = 'migrate.sh — migration_error_area.sql در MIGRATIONS یا SENTINEL نیست';
+}
+T::bulk(6, $bad75, 'صفحه فقط برای مدیر، هر کارش فقط روی فروشگاه، و پنهان از منوی مشترک');
 
 exit(T::report());
