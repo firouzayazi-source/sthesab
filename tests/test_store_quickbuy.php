@@ -174,6 +174,84 @@ if (Biz::accReady() || tableHasColumn('biz_settings', 'lock_date')) {
 }
 
 // =====================================================================
+T::group('⛔ خرید خورده، موجودی نخورده — فقط موجودی، بی‌خریدِ دوم');
+// فاکتورِ خریدِ صادرشده با ردیفِ «شرحِ آزاد» (به کالا وصل نیست): پول و طلبِ فروشنده هست، انبار نه
+$cover = (int)BizProducts::save($u, ['type' => 'goods', 'name' => 'کاورِ کتابی', 'unit' => 'عدد', 'buy_price' => '25000', 'sell_price' => '60000'])['id'];
+$stockDiff = fn(): ?int => Biz::accReady() && class_exists('BizLedger') ? (int)BizLedger::reconcile($u)['stock']['diff'] : null;
+$d0 = $stockDiff();
+$fr = BizInvoices::saveDraft($u, 'purchase', ['party_id' => $sup, 'inv_date' => $today,
+    'lines' => [['item' => 'کاور کتابی مشکی', 'qty' => '4', 'price' => '25000']]]);
+T::ok($fr['ok'], 'خریدِ «کاور کتابی مشکی» با شرحِ آزاد ثبت شد (نامش با کالا یکی نیست، پس وصل نشد)', $fr['message']);
+$freeInv = (int)$fr['id'];
+T::ok(BizInvoices::issue($u, $freeInv, ['amount' => '0'])['ok'], 'و صادر شد (نسیه)');
+T::same(0.0, $stock($cover), 'پیش‌شرط: پول و طلب ثبت شده ولی موجودی نیامده');
+$freeLine = (int)(BizInvoices::get($u, $freeInv)['lines'][0]['id'] ?? 0);
+T::same(null, BizInvoices::get($u, $freeInv)['lines'][0]['product_id'], 'ردیف به هیچ کالایی وصل نیست');
+
+$pend = BizQuickBuy::pending($u, $cover);
+T::same($freeLine, (int)($pend['loose'][0]['line_id'] ?? 0), '⛔ همان ردیف اولِ فهرستِ «خرید خورده، موجودی نخورده» است');
+T::same(false, $pend['loose'][0]['same'] ?? null, 'هم‌نام نیست، پس وصل کردن تصمیمِ کاربر است (خودکار نه)');
+T::same([], BizQuickBuy::pending($u, $phone)['loose'], 'گوشی ردیفِ آزاد نمی‌گیرد (بی‌IMEI به انبار نمی‌رود)');
+
+$p0 = $purchases(); $b0 = $balance($sup);
+$lk = BizQuickBuy::linkLine($u, $freeLine, $cover);
+T::ok($lk['ok'], 'فقط موجودی: ردیف به کالا وصل شد', $lk['message']);
+T::same(4.0, $stock($cover), '⛔ موجودیِ کاور ۴ شد');
+T::same(25000, (int)BizProducts::get($u, $cover)['avg_cost'], '⛔ با بهای همان خرید');
+T::same($p0, $purchases(), '⛔ هیچ فاکتورِ خریدِ دومی ساخته نشد');
+T::same($b0, $balance($sup), '⛔ و طلبِ فروشنده دو برابر نشد');
+T::same($cover, (int)(BizInvoices::get($u, $freeInv)['lines'][0]['product_id'] ?? 0), 'ردیفِ سند حالا به کالا اشاره می‌کند');
+T::same(1, $count("SELECT COUNT(*) FROM biz_stock_moves WHERE user_id = :u AND product_id = :p AND ref_id = :i AND kind = 'purchase'",
+    ['u' => $u, 'p' => $cover, 'i' => $freeInv]), 'یک حرکتِ انبارِ «خرید» برای همان سند');
+if ($d0 !== null) {
+    T::same($d0, $stockDiff(), '⛔ دفترِ دوطرفه با انبار همچنان می‌خواند (ردیف از «خریدِ بی‌انبار» به موجودی رفت)');
+    T::ok($count("SELECT COUNT(*) FROM biz_doc_log WHERE user_id = :u AND invoice_id = :i AND action = 'stock_link'", ['u' => $u, 'i' => $freeInv]) === 1,
+        'در سرگذشتِ سند «وصلِ ردیف به کالا» ثبت شد');
+}
+$again = BizQuickBuy::linkLine($u, $freeLine, $glass);
+T::ok(!$again['ok'], '⛔ ردیفِ وصل‌شده دوباره به کالای دیگری وصل نمی‌شود', $again['message']);
+T::same(4.0, $stock($cover), 'و موجودی دست نخورد');
+T::ok(!BizQuickBuy::linkLine($u, $freeLine + 999999, $cover)['ok'], 'ردیفِ ناموجود رد شد');
+
+// خدمت و گوشی به ردیفِ آزاد وصل نمی‌شوند
+$fr2 = BizInvoices::saveDraft($u, 'purchase', ['party_id' => $sup, 'inv_date' => $today, 'lines' => [['item' => 'چیزِ دیگر', 'qty' => '1', 'price' => '1000']]]);
+BizInvoices::issue($u, (int)$fr2['id'], ['amount' => '0']);
+$l2 = (int)BizInvoices::get($u, (int)$fr2['id'])['lines'][0]['id'];
+$rs = BizQuickBuy::linkLine($u, $l2, $svc);
+T::ok(!$rs['ok'] && str_contains($rs['message'], 'خدمت'), 'خدمت رد شد — با دلیلِ خودش', $rs['message']);
+T::ok(!BizQuickBuy::linkLine($u, $l2, $phone)['ok'], '⛔ گوشی بی‌IMEI رد شد');
+
+// ⛔ ردیفِ آزادِ **پیش‌نویس** خرید خورده نیست — در فهرستِ «فقط موجودی» نمی‌آید
+$fd = BizInvoices::saveDraft($u, 'purchase', ['party_id' => $sup, 'inv_date' => $today, 'lines' => [['item' => 'پیش‌نویسِ آزاد', 'qty' => '1', 'price' => '1000']]]);
+$draftLine = (int)BizInvoices::get($u, (int)$fd['id'])['lines'][0]['id'];
+T::ok(!in_array($draftLine, array_column(BizQuickBuy::pending($u, $cover)['loose'], 'line_id'), true), '⛔ ردیفِ پیش‌نویس (صادرنشده) پیشنهاد نمی‌شود');
+T::ok(!BizQuickBuy::linkLine($u, $draftLine, $cover)['ok'], 'و وصل هم نمی‌شود');
+BizInvoices::deleteDraft($u, (int)$fd['id']);
+// ⛔ «صدورِ پیش‌نویس» فقط پیش‌نویسِ **خرید** — فاکتورِ فروش از این راه صادر نمی‌شود
+$sd = BizInvoices::saveDraft($u, 'sale', ['party_id' => $sup, 'inv_date' => $today, 'lines' => [['item' => 'گلاس آیفون ۱۵', 'product_id' => (string)$glass, 'qty' => '1', 'price' => '95000']]]);
+T::ok(!BizQuickBuy::issueDraft($u, (int)$sd['id'])['ok'], '⛔ پیش‌نویسِ فروش با «صدورِ پیش‌نویسِ خرید» صادر نمی‌شود');
+T::same('draft', BizInvoices::get($u, (int)$sd['id'])['status'] ?? null, 'و پیش‌نویس ماند');
+BizInvoices::deleteDraft($u, (int)$sd['id']);
+
+// پیش‌نویسِ خرید: صدورش موجودی را می‌آورد، نه خریدِ دوم
+$dr = BizInvoices::saveDraft($u, 'purchase', ['party_id' => $sup, 'inv_date' => $today,
+    'lines' => [['item' => 'کاورِ کتابی', 'product_id' => (string)$cover, 'qty' => '2', 'price' => '26000']]]);
+$pend = BizQuickBuy::pending($u, $cover);
+T::same((int)$dr['id'], (int)($pend['drafts'][0]['invoice_id'] ?? 0), '⛔ پیش‌نویسِ خریدِ همین کالا پیدا شد');
+$p0 = $purchases();
+$is = BizQuickBuy::issueDraft($u, (int)$dr['id']);
+T::ok($is['ok'], 'پیش‌نویس صادر شد', $is['message']);
+T::same(6.0, $stock($cover), 'موجودی ۶ شد');
+T::same($p0, $purchases(), '⛔ فاکتورِ تازه‌ای ساخته نشد — همان پیش‌نویس');
+T::ok(!BizQuickBuy::issueDraft($u, (int)$dr['id'])['ok'], 'صدورِ دوباره رد شد');
+
+$hd = BizInvoices::saveDraft($u, 'purchase', ['party_id' => $sup, 'inv_date' => $today, 'lines' => [['item' => 'کاورِ کتابی', 'product_id' => (string)$cover, 'qty' => '1', 'price' => '1']]]);
+$hist = BizQuickBuy::history($u, $cover);
+BizInvoices::deleteDraft($u, (int)$hd['id']);
+T::same(2, count($hist), '«از چه کسی خریده شد»: دو خرید (ردیفِ وصل‌شده هم) — پیش‌نویسِ باز نه');
+T::same('پخشِ نمونه', $hist[0]['party'] ?? null, 'با نامِ فروشنده');
+
+// =====================================================================
 T::group('از دلِ فاکتورِ فروش (HTTP) — داده‌ی فاکتور سرِ جایش');
 $port = 0;
 for ($p = 9240; $p <= 9290; $p++) {
@@ -266,6 +344,35 @@ $issue['lines'][0]['price'] = '75000';
 [$c, , $loc] = $req('store/invoice-edit.php?k=sale', $issue);
 T::ok($c === 302 && str_contains($loc, 'invoice.php?id='), '⛔ بعد از تأمین، فاکتورِ فروش صادر شد', "{$c} {$loc}");
 T::same(0.0, $stock($case), 'و موجودیِ قاب به صفر برگشت (۲ خریده، ۲ فروخته)');
+
+// ---- «فقط موجودی» از دلِ فاکتورِ فروش ----
+$strap = (int)BizProducts::save($u, ['type' => 'goods', 'name' => 'بندِ ساعت', 'unit' => 'عدد', 'buy_price' => '50000', 'sell_price' => '120000'])['id'];
+$fr3 = BizInvoices::saveDraft($u, 'purchase', ['party_id' => $sup, 'inv_date' => $today, 'lines' => [['item' => 'بند ساعت چرمی', 'qty' => '3', 'price' => '50000']]]);
+BizInvoices::issue($u, (int)$fr3['id'], ['amount' => '0']);
+$l3 = (int)BizInvoices::get($u, (int)$fr3['id'])['lines'][0]['id'];
+[, $fresh] = $req('store/invoice-edit.php?k=sale');
+$b3 = array_merge($base, ['csrf_token' => $field($fresh, 'csrf_token'), '_once' => $field($fresh, '_once'),
+    'lines' => [['item' => 'بندِ ساعت', 'product_id' => (string)$strap, 'qty' => '2', 'price' => '120000', 'note' => 'مشکی']]]);
+[$c, $page] = $req('store/invoice-edit.php?k=sale', $b3 + ['sp_open' => '0']);
+T::ok($c === 200 && str_contains($page, 'name="sp_link" value="' . $l3 . '"'), '⛔ پنل خریدِ ثبت‌شده‌ی بی‌موجودی را پیشنهاد می‌دهد («فقط موجودی بده»)', "کد: {$c}");
+T::ok(str_contains($page, 'product.php?id=' . $strap) && str_contains($page, 'target="_blank"'), 'و «ویرایشِ مشخصاتِ کالا» در برگه‌ی تازه (فاکتور دست نمی‌خورد)');
+$p0 = $purchases(); $b0 = $balance($sup);
+[$c, $page] = $req('store/invoice-edit.php?k=sale', array_merge($b3, ['_once' => $field($page, '_once'), 'csrf_token' => $field($page, 'csrf_token'),
+    'sp_link' => (string)$l3, 'sp' => ['row' => '0', 'product_id' => (string)$strap]]));
+T::ok($c === 200 && str_contains($page, 'data-sp-done') && str_contains($page, 'value="مشکی"'), '⛔ وصل شد و فاکتورِ فروش با داده‌اش برگشت', "کد: {$c}");
+T::same(3.0, $stock($strap), '⛔ موجودی ۳ — از همان خرید');
+T::same([$p0, $b0], [$purchases(), $balance($sup)], '⛔ بی‌خرید و بی‌طلبِ تازه');
+
+// ---- صفحه‌ی کالا: انبارگردانیِ افزاینده دلیل می‌خواهد ----
+[, $pp] = $req('store/product.php?id=' . $strap);
+T::ok(str_contains($pp, 'id="bought"') && str_contains($pp, 'پخشِ نمونه'), '«از چه کسی خریده شد» روی صفحه‌ی کالا، با نامِ فروشنده');
+$adj = ['csrf_token' => $field($pp, 'csrf_token'), 'action' => 'adjust', 'actual_qty' => '10', 'note' => ''];
+$req('store/product.php?id=' . $strap, $adj);
+T::same(3.0, $stock($strap), '⛔ افزایش با انبارگردانی بی‌دلیل رد شد («موجودیِ الکی» نه)');
+$req('store/product.php?id=' . $strap, ['note' => 'اضافه‌ی شمارشِ پایانِ ماه'] + $adj);
+T::same(10.0, $stock($strap), 'با دلیلِ نوشته‌شده پذیرفته شد');
+$req('store/product.php?id=' . $strap, ['actual_qty' => '9'] + $adj);
+T::same(9.0, $stock($strap), 'کاهش (کسریِ شمارش) دلیل لازم ندارد');
 
 // ---- صفحه‌ی کالا: همان خرید، بی‌فاکتور ----
 T::group('صفحه‌ی کالا: «خرید و افزودنِ موجودی»');

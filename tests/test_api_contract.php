@@ -8015,7 +8015,9 @@ $qb76 = (string)preg_replace(['#/\*.*?\*/#s', '#^\s*//.*$#m'], '', (string)@file
 foreach (['BizInvoices::saveDraft($userId, \'purchase\'', 'BizInvoices::issue(', 'BizInvoices::deleteDraft('] as $need) {
     if (!str_contains($qb76, $need)) { $bad76[] = "biz_quickbuy.php — «{$need}» نیست"; }
 }
-if (preg_match('/INSERT\s+INTO\s+biz_|BizStock::(adjustTo|setOpening|postDoc)|UPDATE\s+biz_products\s+SET\s+stock/i', $qb76)) {
+// ⚠ `postDoc()` مجاز است ولی فقط یک بار و داخلِ `linkLine()` (پایین‌تر سنجیده می‌شود)
+if (preg_match('/INSERT\s+INTO\s+biz_|BizStock::(adjustTo|setOpening)|UPDATE\s+biz_products\s+SET\s+stock/i', $qb76)
+    || substr_count($qb76, 'BizStock::postDoc(') !== 1) {
     $bad76[] = 'biz_quickbuy.php — موجودی/سند را مستقیم می‌نویسد (انبارگردانی یا INSERT)؛ فقط saveDraft + issue';
 }
 // قیمتِ فروشِ کالای وصل به نرخِ روز فقط با `BizRates::apply()` (قاعده ۷۰)
@@ -8029,6 +8031,19 @@ if (!str_contains($ie76, "BizOnce::claim() !== null") || !str_contains($ie76, 'B
 if (!str_contains($ie76, "' data-sp-ok'") || !str_contains((string)@file_get_contents(__DIR__ . '/../assets/js/store.js'), "b.name = 'sp_open'")) {
     $bad76[] = 'store.js/invoice-edit.php — «+ موجودی»ِ زنده (بی‌بارگذاری) رفته';
 }
-T::bulk(4, $bad76, 'خرید با saveDraft + issue، بی‌انبارگردانی، قیمتِ نرخ‌دار دست‌نخورده، یک‌بارمصرف');
+// ⛔ «فقط موجودی بده»: وصلِ ردیف از راهِ `postDoc()` و در سرگذشت، و هیچ پرداخت/سندِ تازه‌ای
+$lkAt = strpos($qb76, 'public static function linkLine(');
+$lkBody = $lkAt === false ? '' : substr($qb76, $lkAt, (int)strpos($qb76, 'public static function issueDraft(', $lkAt) - $lkAt);
+if ($lkBody === '' || !str_contains($lkBody, 'BizStock::postDoc(') || !str_contains($lkBody, "'stock_link'") || !str_contains($lkBody, 'Biz::lockShop(')) {
+    $bad76[] = 'linkLine() — بی‌postDoc، بی‌lockShop یا بی‌سرگذشت';
+}
+if (preg_match('/BizPay::|saveDraft\(|issue\(|INSERT\s+INTO/i', $lkBody)) {
+    $bad76[] = 'linkLine() — پول یا سندِ تازه می‌سازد؛ «فقط موجودی» یعنی هیچ‌کدام';
+}
+$pp76 = (string)@file_get_contents(__DIR__ . '/../store/product.php');
+if (!str_contains($pp76, "sanitizeQty(postParam('actual_qty')) > (float)\$product['stock_qty'] + 0.0005 && trim(postParam('note')) === ''")) {
+    $bad76[] = 'product.php — افزایشِ موجودی با انبارگردانی بی‌دلیل پذیرفته می‌شود';
+}
+T::bulk(7, $bad76, 'خرید با saveDraft + issue، «فقط موجودی» بی‌پول، بی‌انبارگردانیِ بی‌دلیل، قیمتِ نرخ‌دار دست‌نخورده، یک‌بارمصرف');
 
 exit(T::report());

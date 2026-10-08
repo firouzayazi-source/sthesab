@@ -85,6 +85,168 @@ final class BizQuickBuy
     }
 
     /**
+     * «از چه کسی خریدم» — خریدهای صادرشده‌ی همین کالا، تازه‌ترین اول.
+     * @return list<array{invoice_id:int, title:string, party:string, date:string, qty:float, price:int}>
+     */
+    public static function history(int $userId, int $productId, int $limit = 10): array
+    {
+        $st = Database::getConnection()->prepare(
+            "SELECT i.id, i.kind, i.number, i.inv_date, p.name AS party, l.qty, l.unit_price
+               FROM biz_invoice_lines l
+               JOIN biz_invoices i ON i.id = l.invoice_id AND i.user_id = l.user_id
+               LEFT JOIN biz_parties p ON p.id = i.party_id AND p.user_id = i.user_id
+              WHERE l.user_id = :u AND l.product_id = :p AND i.kind = 'purchase' AND i.status = 'issued'
+              ORDER BY i.inv_date DESC, i.id DESC, l.line_no LIMIT " . max(1, min(50, $limit))
+        );
+        $st->execute(['u' => $userId, 'p' => $productId]);
+        return array_map(fn($r) => ['invoice_id' => (int)$r['id'], 'title' => BizInvoices::title($r),
+            'party' => $r['party'] !== null ? (string)$r['party'] : 'فروشنده‌ی گذری', 'date' => (string)$r['inv_date'],
+            'qty' => (float)$r['qty'], 'price' => (int)$r['unit_price']], $st->fetchAll());
+    }
+
+    /**
+     * ⛔ «خرید خورده، موجودی نخورده» — دو جای واقعی که پول/طلبِ فروشنده ثبت شده ولی
+     *    انبار نه، تا به‌جای خریدِ **دوم** فقط موجودی برسد:
+     *
+     *    - `drafts`: پیش‌نویسِ خریدی که همین کالا را دارد و هنوز صادر نشده.
+     *    - `loose`: ردیفِ **شرحِ آزادِ** فاکتورِ خریدِ صادرشده (به هیچ کالایی وصل نیست —
+     *      مبلغش در سود «خریدِ بی‌انبار» و طلبِ فروشنده هست، ولی موجودی هرگز نیامد).
+     *      نامِ هم‌ارز (`fold()`) اول، بعد تازه‌ترین‌ها؛ وصل کردن تصمیمِ کاربر است.
+     *
+     * ⚠ گوشی (`has_serial`) اینجا ردیفِ آزاد نمی‌گیرد: بی‌IMEI نمی‌شود به انبار برد.
+     * @return array{drafts:list<array>, loose:list<array>}
+     */
+    public static function pending(int $userId, int $productId, ?array $prod = null): array
+    {
+        // ⚠ ردیفِ کالا اگر صفحه از قبل دارد (صفحه‌ی کالا) — یک کوئری کمتر
+        $prod = $prod !== null && (int)($prod['id'] ?? 0) === $productId ? $prod : BizProducts::get($userId, $productId);
+        if (!$prod) { return ['drafts' => [], 'loose' => []]; }
+        $pdo = Database::getConnection();
+        $st = $pdo->prepare(
+            "SELECT i.id, i.kind, i.number, i.inv_date, p.name AS party, SUM(l.qty) AS qty
+               FROM biz_invoices i
+               JOIN biz_invoice_lines l ON l.invoice_id = i.id AND l.user_id = i.user_id AND l.product_id = :p
+               LEFT JOIN biz_parties p ON p.id = i.party_id AND p.user_id = i.user_id
+              WHERE i.user_id = :u AND i.kind = 'purchase' AND i.status = 'draft'
+              GROUP BY i.id, i.kind, i.number, i.inv_date, p.name ORDER BY i.id DESC LIMIT 5"
+        );
+        $st->execute(['u' => $userId, 'p' => $productId]);
+        $drafts = array_map(fn($r) => ['invoice_id' => (int)$r['id'], 'title' => BizInvoices::title($r),
+            'party' => $r['party'] !== null ? (string)$r['party'] : 'فروشنده‌ی گذری', 'date' => (string)$r['inv_date'],
+            'qty' => (float)$r['qty']], $st->fetchAll());
+
+        $loose = [];
+        if ((int)$prod['has_serial'] !== 1) {
+            $st = $pdo->prepare(
+                "SELECT l.id, l.description, l.qty, l.unit_price, i.id AS invoice_id, i.kind, i.number, i.inv_date, p.name AS party
+                   FROM biz_invoice_lines l
+                   JOIN biz_invoices i ON i.id = l.invoice_id AND i.user_id = l.user_id
+                   LEFT JOIN biz_parties p ON p.id = i.party_id AND p.user_id = i.user_id
+                  WHERE l.user_id = :u AND l.product_id IS NULL AND i.kind = 'purchase' AND i.status = 'issued'
+                  ORDER BY i.inv_date DESC, l.id DESC LIMIT 200"
+            );
+            $st->execute(['u' => $userId]);
+            $want = BizCommon::fold((string)$prod['name']);
+            foreach ($st->fetchAll() as $r) {
+                $loose[] = ['line_id' => (int)$r['id'], 'invoice_id' => (int)$r['invoice_id'], 'title' => BizInvoices::title($r),
+                    'party' => $r['party'] !== null ? (string)$r['party'] : 'فروشنده‌ی گذری', 'date' => (string)$r['inv_date'],
+                    'desc' => (string)$r['description'], 'qty' => (float)$r['qty'], 'price' => (int)$r['unit_price'],
+                    'same' => BizCommon::fold((string)$r['description']) === $want];
+            }
+            usort($loose, fn($a, $b) => [$b['same'], $b['date'], $b['line_id']] <=> [$a['same'], $a['date'], $a['line_id']]);
+            $loose = array_slice($loose, 0, 8);
+        }
+        return ['drafts' => $drafts, 'loose' => $loose];
+    }
+
+    /**
+     * ⛔ «فقط موجودی بده»: ردیفِ آزادِ یک فاکتورِ خریدِ صادرشده به کالا وصل می‌شود.
+     *
+     * هیچ پول، طلب یا سندِ تازه‌ای ساخته نمی‌شود — مبلغ و فروشنده از قبل ثبت‌اند؛ فقط
+     * همان ردیف از «خریدِ بی‌انبار» به انبار می‌رود: حرکتِ انبار با بهای همان ردیف
+     * (`net_total / qty`، همان قاعده‌ی `issueTx()`) از راهِ `BizStock::postDoc()`، و
+     * `recalc()` بهای فروش‌های بعد از آن را درست می‌کند.
+     *
+     * رد می‌شود اگر: دوره‌ی بسته، ردیف وصل است، سند صادرشده‌ی خرید نیست، کالا خدمت یا
+     * گوشی است، تعداد با واحد نمی‌خواند، یا برگشتی به این ردیف اشاره دارد.
+     */
+    public static function linkLine(int $userId, int $lineId, int $productId): array
+    {
+        $pdo = Database::getConnection();
+        $pdo->beginTransaction();
+        Biz::lockShop($pdo, $userId);
+        try {
+            $st = $pdo->prepare(
+                "SELECT l.*, i.kind, i.status, i.inv_date, i.number FROM biz_invoice_lines l
+                   JOIN biz_invoices i ON i.id = l.invoice_id AND i.user_id = l.user_id
+                  WHERE l.id = :id AND l.user_id = :u FOR UPDATE"
+            );
+            $st->execute(['id' => $lineId, 'u' => $userId]);
+            $l = $st->fetch();
+            $prod = BizProducts::get($userId, $productId);
+            $err = null;
+            if (!$l || $l['kind'] !== 'purchase' || $l['status'] !== 'issued') { $err = 'ردیفِ فاکتورِ خرید پیدا نشد.'; }
+            elseif ($l['product_id'] !== null) { $err = 'این ردیف از قبل به کالایی وصل است.'; }
+            elseif (!$prod) { $err = 'کالا پیدا نشد.'; }
+            elseif ((int)$prod['track_stock'] !== 1) { $err = '«' . $prod['name'] . '» خدمت است و موجودی ندارد.'; }
+            elseif ((int)$prod['has_serial'] === 1) { $err = 'گوشی بی‌IMEI به انبار نمی‌رود؛ فاکتورِ خرید را اصلاح کنید و IMEI را بنویسید.'; }
+            elseif ((float)$l['qty'] <= 0 || !BizProducts::qtyFits((string)$prod['unit'], (float)$l['qty'])) {
+                $err = 'تعدادِ این ردیف برای واحدِ «' . $prod['unit'] . '» نمی‌خواند.';
+            }
+            elseif (($e = Biz::lockError($userId, (string)$l['inv_date'], 'فاکتورِ خرید')) !== null) { $err = $e; }
+            if ($err === null) {
+                $rf = $pdo->prepare("SELECT COUNT(*) FROM biz_invoice_lines r JOIN biz_invoices ri ON ri.id = r.invoice_id AND ri.user_id = r.user_id
+                                      WHERE r.user_id = :u AND r.ref_line_id = :l AND ri.status <> 'void'");
+                $rf->execute(['u' => $userId, 'l' => $lineId]);
+                if ((int)$rf->fetchColumn() > 0) { $err = 'برای این ردیف برگشت از خرید ثبت شده؛ اول آن را باطل کنید.'; }
+            }
+            if ($err !== null) { $pdo->rollBack(); return ['ok' => false, 'message' => $err]; }
+
+            $q    = (float)$l['qty'];
+            $cost = (int)round((int)$l['net_total'] / $q);   // سهمِ تخفیف/حملِ کلِ فاکتور هم در آن است
+            $pdo->prepare('UPDATE biz_invoice_lines SET product_id = :p, unit = :un, unit_cost = :c WHERE id = :id AND user_id = :u')
+                ->execute(['p' => $productId, 'un' => (string)$prod['unit'], 'c' => $cost, 'id' => $lineId, 'u' => $userId]);
+
+            // حرکت‌های همین سند برای این کالا — همه‌ی ردیف‌هایش، نه فقط این یکی (`postDoc()` آن‌ها را جایگزین می‌کند)
+            $all = $pdo->prepare('SELECT qty, net_total FROM biz_invoice_lines WHERE invoice_id = :i AND user_id = :u AND product_id = :p');
+            $all->execute(['i' => (int)$l['invoice_id'], 'u' => $userId, 'p' => $productId]);
+            $moves = [];
+            foreach ($all->fetchAll() as $m) {
+                $mq = (float)$m['qty'];
+                $moves[$productId][] = ['qty' => $mq, 'unit_cost' => $mq > 0 ? (int)round((int)$m['net_total'] / $mq) : 0,
+                                        'date' => (string)$l['inv_date']];
+            }
+            $post = BizStock::postDoc($userId, 'purchase', (int)$l['invoice_id'], $moves);
+            if (!$post['ok']) { $pdo->rollBack(); return ['ok' => false, 'message' => $post['message']]; }
+            BizLog::add($pdo, $userId, 'invoice', (int)$l['invoice_id'], 'stock_link', null);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) { $pdo->rollBack(); }
+            throw $e;
+        }
+        $after = BizProducts::get($userId, $productId);
+        return ['ok' => true, 'invoice_id' => (int)$l['invoice_id'], 'stock' => (float)$after['stock_qty'],
+            'message' => 'ردیفِ «' . $l['description'] . '» از ' . BizInvoices::title($l) . ' به «' . $prod['name'] . '» وصل شد — '
+                . formatQty($q) . ' ' . $prod['unit'] . ' به انبار آمد، بی‌خرید و بی‌طلبِ تازه. موجودیِ تازه: '
+                . formatQty((float)$after['stock_qty']) . ' ' . $prod['unit'] . '.'];
+    }
+
+    /**
+     * پیش‌نویسِ خریدی که همین کالا را دارد: صدورش موجودی را می‌آورد (نسیه — همان
+     * `issue()`؛ فروشنده‌ی گذری را `issue()` خودش رد می‌کند).
+     */
+    public static function issueDraft(int $userId, int $invoiceId): array
+    {
+        $inv = BizInvoices::get($userId, $invoiceId);
+        if (!$inv || $inv['kind'] !== 'purchase' || $inv['status'] !== 'draft') {
+            return ['ok' => false, 'message' => 'پیش‌نویسِ خرید پیدا نشد.'];
+        }
+        $r = BizInvoices::issue($userId, $invoiceId, ['amount' => '0', 'full' => false, 'part' => false]);
+        if (!$r['ok']) { return $r; }
+        return ['ok' => true, 'invoice_id' => $invoiceId, 'message' => 'پیش‌نویسِ خرید صادر شد و موجودی‌اش به انبار آمد (نسیه — به حسابِ فروشنده).'];
+    }
+
+    /**
      * خرید و صدور.
      *
      * @param array{product_id?:int, party_id?:int, party_name?:string, qty?:string, buy?:string, sell?:string,

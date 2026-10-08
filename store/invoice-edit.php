@@ -185,6 +185,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'imeis' => $serial ? trim(($pm['imei1'] ?? '') . (($pm['imei2'] ?? '') !== '' ? ' / ' . $pm['imei2'] : '')) : '',
             ]);
         }
+    } elseif ($kind === 'sale' && (isset($_POST['sp_link']) || isset($_POST['sp_issue']))) {
+        // ⛔ «خریدش قبلاً ثبت شده — فقط موجودی بده»: وصلِ ردیفِ آزادِ خرید یا صدورِ
+        //    پیش‌نویسِ خرید. هیچ خریدِ دومی ساخته نمی‌شود (`BizQuickBuy::linkLine()`).
+        $raw  = is_array($_POST['sp'] ?? null) ? $_POST['sp'] : [];
+        $pid  = (int)($raw['product_id'] ?? 0);
+        $prod = BizProducts::get($userId, $pid);
+        if (BizOnce::claim() !== null) {
+            $notice = 'این کار یک بار انجام شده بود؛ دوباره انجام نشد.';
+        } else {
+            $r = isset($_POST['sp_link']) ? BizQuickBuy::linkLine($userId, (int)postParam('sp_link'), $pid)
+                                          : BizQuickBuy::issueDraft($userId, (int)postParam('sp_issue'));
+            if ($r['ok']) {
+                BizOnce::done($self);
+                $spDone = $r['message'];
+                $spDoneUrl = Biz::url('invoice.php?id=' . (int)$r['invoice_id']);
+            } else {
+                BizOnce::release();
+                // پنل با همان پیش‌فرض‌ها باز می‌ماند تا خطا کنارِ همان دکمه دیده شود
+                $sp = array_merge($spEmpty, ['open' => true, 'row' => (int)($raw['row'] ?? -1), 'product_id' => $pid,
+                    'name' => (string)($prod['name'] ?? ''), 'unit' => (string)($prod['unit'] ?? ''),
+                    'serial' => $prod && (int)$prod['has_serial'] === 1, 'qty' => (string)($raw['qty'] ?? ''),
+                    'buy' => (string)($raw['buy'] ?? ''), 'sell' => (string)($raw['sell'] ?? ''), 'date' => (string)($raw['date'] ?? ''),
+                    'party_id' => (int)($raw['party_id'] ?? 0), 'error' => $r['message']]);
+            }
+        }
     } elseif ($kind === 'sale' && $action === 'sp_save') {
         $raw  = is_array($_POST['sp'] ?? null) ? $_POST['sp'] : [];
         $prod = BizProducts::get($userId, (int)($raw['product_id'] ?? 0));
@@ -330,6 +355,9 @@ if ($isSale) {
     }
 }
 $suppliers = $sp['open'] ? BizQuickBuy::suppliers($userId) : [];
+// «خرید خورده، موجودی نخورده» و «از چه کسی خریدم» — فقط وقتی پنل باز است
+$spPending = $sp['open'] && $sp['product_id'] > 0 ? BizQuickBuy::pending($userId, $sp['product_id']) : ['drafts' => [], 'loose' => []];
+$spLast    = $sp['open'] && $sp['product_id'] > 0 ? (BizQuickBuy::history($userId, $sp['product_id'], 1)[0] ?? null) : null;
 
 // ⛔ گزینه‌ی «هشدار زیرِ بهای خرید» — فقط هشدار؛ صدور را نمی‌بندد
 $invPrefs = Biz::invoicePrefs($userId);
@@ -432,6 +460,34 @@ require __DIR__ . '/../includes/biz_head.php';
         <?php if ($sp['error'] !== ''): ?><div class="st-flash st-flash-err" role="alert"><?= h($sp['error']) ?></div><?php endif; ?>
         <input type="hidden" name="sp[row]" value="<?= (int)$sp['row'] ?>">
         <input type="hidden" name="sp[product_id]" value="<?= (int)$sp['product_id'] ?>">
+        <p class="st-muted st-sp-meta">
+            <?php if ($spLast): ?>آخرین خرید: <?= h(toPersianDigits(formatQty($spLast['qty']))) ?> <?= h($sp['unit']) ?> از <b><?= h($spLast['party']) ?></b>
+                به <?= h(formatMoney($spLast['price'])) ?> در <?= h(toPersianDigits(toJalali($spLast['date']))) ?> ·
+            <?php else: ?>این کالا هنوز هیچ خریدِ ثبت‌شده‌ای ندارد ·
+            <?php endif; ?>
+            <?php /* ⛔ برگه‌ی تازه: فاکتورِ نیمه‌کاره‌ی این برگه دست نمی‌خورد */ ?>
+            <a href="<?= h(Biz::url('product.php?id=' . (int)$sp['product_id'])) ?>" target="_blank" rel="noopener">ویرایشِ مشخصاتِ کالا ↗</a>
+        </p>
+        <?php if ($spPending['drafts'] || $spPending['loose']): ?>
+        <div class="st-sp-pending">
+            <p class="st-sp-pending-title"><b>خریدش قبلاً ثبت شده؟</b> فقط موجودی بدهید — خریدِ دوم ساخته نمی‌شود:</p>
+            <?php foreach ($spPending['drafts'] as $d): ?>
+            <div class="st-sp-pending-row">
+                <span><?= h($d['title']) ?> از <?= h($d['party']) ?> · <?= h(toPersianDigits(formatQty($d['qty']))) ?> <?= h($sp['unit']) ?> · <span class="st-muted-i">هنوز صادر نشده</span></span>
+                <button type="submit" name="sp_issue" value="<?= (int)$d['invoice_id'] ?>" class="st-btn st-btn-ghost st-btn-sm" formnovalidate>صدورِ همین پیش‌نویس</button>
+            </div>
+            <?php endforeach; ?>
+            <?php foreach ($spPending['loose'] as $l): ?>
+            <div class="st-sp-pending-row<?= $l['same'] ? ' is-same' : '' ?>">
+                <span>«<?= h($l['desc']) ?>» در <?= h($l['title']) ?> از <?= h($l['party']) ?> · <?= h(toPersianDigits(formatQty($l['qty']))) ?> × <?= h(formatMoney($l['price'])) ?> · <?= h(toPersianDigits(toJalali($l['date']))) ?>
+                    <span class="st-muted-i">— شرحِ آزاد، به انبار نرفته</span></span>
+                <button type="submit" name="sp_link" value="<?= (int)$l['line_id'] ?>" class="st-btn st-btn-ghost st-btn-sm" formnovalidate
+                        onclick="return confirm('این ردیف به همین کالا وصل شود؟ موجودی‌اش به انبار می‌آید؛ مبلغ و فروشنده همان می‌ماند.');">فقط موجودی بده</button>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <p class="st-muted st-sp-or">خریدِ تازه است؟</p>
+        <?php endif; ?>
         <div class="st-row2">
             <label class="st-field"><span>از چه کسی خریدید؟</span>
                 <select name="sp[party_id]" autofocus>

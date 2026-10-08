@@ -71,9 +71,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'imeis' => postParam('qb_imeis')]);
         if ($r['ok']) { BizOnce::done($self); } else { BizOnce::release(); }
         redirectWithMessage($self, $r['ok'] ? 'success' : 'error', $r['message']);
+    } elseif ($product && in_array($action, ['qb_link', 'qb_issue'], true)) {
+        // ⛔ «خرید خورده، موجودی نخورده» — فقط موجودی، بی‌خریدِ دوم (`BizQuickBuy`)
+        require_once __DIR__ . '/../includes/biz_quickbuy.php';
+        if (($dup = BizOnce::claim()) !== null) { BizOnce::redirectDuplicate($dup, $self); }
+        $r = $action === 'qb_link' ? BizQuickBuy::linkLine($userId, (int)postParam('line_id'), $id)
+                                   : BizQuickBuy::issueDraft($userId, (int)postParam('invoice_id'));
+        if ($r['ok']) { BizOnce::done($self); } else { BizOnce::release(); }
+        redirectWithMessage($self, $r['ok'] ? 'success' : 'error', $r['message']);
     } elseif ($product && $action === 'adjust') {
         if (trim(postParam('actual_qty')) === '') {
             redirectWithMessage($self, 'error', 'موجودیِ شمارش‌شده را بنویسید.');
+        }
+        // ⛔ «موجودیِ الکی» نه: افزایش با انبارگردانی بهای خرید و فروشنده ندارد. فقط با
+        //    دلیلِ نوشته‌شده (اضافه‌ی شمارش، پیدا شدن) — خرید از «خرید و افزودنِ موجودی».
+        if (sanitizeQty(postParam('actual_qty')) > (float)$product['stock_qty'] + 0.0005 && trim(postParam('note')) === '') {
+            redirectWithMessage($self, 'error', 'افزایشِ موجودی با انبارگردانی دلیل می‌خواهد (مثلاً «اضافه‌ی شمارش»). اگر خریده‌اید، از «خرید و افزودنِ موجودی» ثبت کنید تا فروشنده و بهای خرید معلوم باشد.');
         }
         $res = BizStock::adjustTo($userId, $id, sanitizeQty(postParam('actual_qty')), postParam('note'));
         redirectWithMessage($self, $res['ok'] ? 'success' : 'error', $res['message']);
@@ -275,8 +288,48 @@ require __DIR__ . '/../includes/biz_head.php';
     require_once __DIR__ . '/../includes/biz_quickbuy.php';
     $qbSerial = BizProducts::typeOf($product) === 'phone';
     $qbLast   = BizQuickBuy::lastSupplier($userId, $id);
-    $qbAccts  = BizDocView::accounts($userId); ?>
+    $qbAccts  = BizDocView::accounts($userId);
+    $qbHist   = BizQuickBuy::history($userId, $id, 10);
+    $qbPend   = BizQuickBuy::pending($userId, $id, $product); ?>
 <div>
+    <?php /* ⛔ «کالا باید معلوم باشد از کی خریدم» — خریدهای صادرشده‌ی همین کالا */ ?>
+    <section class="st-card" id="bought">
+        <h2 class="st-h2">از چه کسی خریده شد</h2>
+        <?php if (!$qbHist): ?>
+            <p class="st-muted">هنوز هیچ فاکتورِ خریدی برای این کالا صادر نشده<?= (float)$product['stock_qty'] > 0 ? ' — موجودیِ فعلی از «اول دوره» یا انبارگردانی است' : '' ?>.</p>
+        <?php else: ?>
+        <div class="st-table-wrap"><table class="st-table st-table-compact">
+            <thead><tr><th>تاریخ</th><th>فروشنده</th><th class="st-td-num">تعداد × فی</th><th>سند</th></tr></thead>
+            <tbody>
+            <?php foreach ($qbHist as $hh): ?>
+                <tr><td class="st-num"><?= h(toJalali($hh['date'])) ?></td><td><?= h($hh['party']) ?></td>
+                    <td class="st-td-num"><span class="st-num"><?= h(formatQty($hh['qty'])) ?> <?= h($unit) ?> ×</span> <?= BizDocView::money($hh['price']) ?></td>
+                    <td><a href="<?= h(Biz::url('invoice.php?id=' . $hh['invoice_id'])) ?>"><?= h($hh['title']) ?></a></td></tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table></div>
+        <?php endif; ?>
+        <?php if ($qbPend['drafts'] || $qbPend['loose']): ?>
+        <div class="st-sp-pending">
+            <p class="st-sp-pending-title"><b>خریدش ثبت شده ولی موجودی نیامده؟</b> فقط موجودی بدهید — خریدِ دوم ساخته نمی‌شود:</p>
+            <?php foreach ($qbPend['drafts'] as $d): ?>
+            <form method="post" action="<?= h($self) ?>" class="st-sp-pending-row">
+                <?= Csrf::field() ?><?= BizOnce::field() ?><input type="hidden" name="action" value="qb_issue"><input type="hidden" name="invoice_id" value="<?= (int)$d['invoice_id'] ?>">
+                <span><?= h($d['title']) ?> از <?= h($d['party']) ?> · <?= h(toPersianDigits(formatQty($d['qty']))) ?> <?= h($unit) ?> · <span class="st-muted-i">هنوز صادر نشده</span></span>
+                <button type="submit" class="st-btn st-btn-ghost st-btn-sm">صدورِ همین پیش‌نویس</button>
+            </form>
+            <?php endforeach; ?>
+            <?php foreach ($qbPend['loose'] as $l): ?>
+            <form method="post" action="<?= h($self) ?>" class="st-sp-pending-row<?= $l['same'] ? ' is-same' : '' ?>" onsubmit="return confirm('این ردیف به همین کالا وصل شود؟ موجودی‌اش به انبار می‌آید؛ مبلغ و فروشنده همان می‌ماند.');">
+                <?= Csrf::field() ?><?= BizOnce::field() ?><input type="hidden" name="action" value="qb_link"><input type="hidden" name="line_id" value="<?= (int)$l['line_id'] ?>">
+                <span>«<?= h($l['desc']) ?>» در <?= h($l['title']) ?> از <?= h($l['party']) ?> · <?= h(toPersianDigits(formatQty($l['qty']))) ?> × <?= h(formatMoney($l['price'])) ?> · <?= h(toPersianDigits(toJalali($l['date']))) ?> <span class="st-muted-i">— شرحِ آزاد، به انبار نرفته</span></span>
+                <button type="submit" class="st-btn st-btn-ghost st-btn-sm">فقط موجودی بده</button>
+            </form>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+    </section>
+
     <?php /* ⛔ خرید با فروشنده و بها — فاکتورِ خریدِ صادرشده (`BizQuickBuy`): فروشنده
              طلبکار می‌شود و بهای میانگین درست. انبارگردانیِ پایین فقط برای شمارش است. */ ?>
     <form method="post" class="st-card st-form" action="<?= h($self) ?>" id="quickbuy">
@@ -326,7 +379,7 @@ require __DIR__ . '/../includes/biz_head.php';
         <?= Csrf::field() ?>
         <input type="hidden" name="action" value="adjust">
         <h2 class="st-h2">انبارگردانی</h2>
-        <p class="st-muted">موجودیِ واقعیِ شمارش‌شده را بنویسید؛ تفاوتش با موجودیِ فعلی ثبت می‌شود.</p>
+        <p class="st-muted">فقط برای <b>شمارش</b>: موجودیِ واقعیِ شمارش‌شده را بنویسید؛ تفاوتش ثبت می‌شود. افزایش دلیل می‌خواهد و فروشنده و بهای خرید ندارد — خرید را از «خرید و افزودنِ موجودی» ثبت کنید.</p>
         <div class="st-row2">
             <label class="st-field">
                 <span>موجودیِ واقعی (<?= h($unit) ?>)</span>

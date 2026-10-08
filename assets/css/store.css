@@ -1298,6 +1298,12 @@ html.st-locked, html.st-locked body { overflow: hidden; }
 .st-line-short { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 3px; font-size: 11.5px; color: var(--st-err); }
 .st-line-short .st-sp-open { font-size: 12px; font-weight: 650; padding: 1px 6px; }
 .st-sp .st-seg { align-self: end; }
+.st-sp-meta { margin: 0 0 8px; font-size: 12.5px; }
+.st-sp-pending { border: 1px dashed var(--st-line-2); border-radius: var(--st-radius-sm); padding: 10px 12px; margin-bottom: 8px; display: grid; gap: 8px; background: var(--st-sunken); }
+.st-sp-pending-title { margin: 0; font-size: 13px; }
+.st-sp-pending-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: 12.5px; }
+.st-sp-pending-row.is-same { font-weight: 600; }
+.st-sp-or { margin: 4px 0 6px; font-size: 12.5px; }
 
 /* ---------- خطاهای فروشگاه (`store/errors.php`، فقط مدیرِ نصب) ---------- */
 /* ⚠ نشانِ عدد کنارِ قلمِ منو. `<b>` است نه `<span>`: منوی جمع‌شده هر
