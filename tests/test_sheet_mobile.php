@@ -180,6 +180,21 @@ try {
         T::same(true, $v('saveReloaded'), 'ثبت صفحه را تازه کرد');
         T::same(true, $v('afterSaveNotOurs'), '⛔ بعد از تازه‌سازی خانه‌ی شیت در تاریخچه نمانده');
         T::same(true, $v('afterSaveBackLeaves'), '⛔ یک «برگشت» صفحه را می‌برد (نه همان صفحه دوباره)');
+
+        // ⛔ گزارشِ مالکِ نصب: «تعدیل حساب نمی‌شه کرد» — لایه‌ی دوم یک لحظه باز و بسته می‌شد.
+        T::group('⛔ لایه به لایه: دکمه‌های کارتِ حساب لایه‌ی بعد را باز نگه می‌دارند');
+        $labels = ['bcAdjustBtn' => 'تعدیل موجودی', 'bcMergeBtn' => 'انتقال تراکنش‌ها', 'bcEditBtn' => 'ویرایش حساب'];
+        foreach ($labels as $btn => $label) {
+            $sw = $out['swap'][$btn] ?? [];
+            T::same(true, $sw['open'] ?? 'MISSING', "⛔ «{$label}» باز شد و باز ماند");
+            T::same(true, $sw['cardGone'] ?? 'MISSING', "«{$label}»: کارتِ حساب بسته شد");
+            T::same(true, $sw['oneEntry'] ?? 'MISSING', "«{$label}»: فقط یک خانه در تاریخچه (نه دو، نه صفر)");
+            T::same(true, $sw['backClosed'] ?? 'MISSING', "«{$label}»: «برگشت» همان لایه را می‌بندد و صفحه می‌ماند");
+        }
+        T::same(true, $v('adjustReloaded'), '⛔ تعدیل از همان راهِ کاربر ثبت شد و صفحه تازه شد');
+        $wb = $pdo->prepare('SELECT COALESCE(SUM(initial_balance), 0) FROM wallets WHERE user_id = :u');
+        $wb->execute(['u' => $uid]);
+        T::same(7000, (int)$wb->fetchColumn(), '⛔ و ۷٬۰۰۰ تومان واقعاً روی موجودیِ اولیه‌ی حساب نشست');
     }
 } catch (Throwable $e) {
     T::ok(false, 'اجرای تستِ شیت', $e->getMessage());

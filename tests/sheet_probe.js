@@ -187,5 +187,43 @@ const W = 412, H = 839, KB = 330;
     await evalJs('history.back(); return 1;'); await sleep(300); await ready();
     out.afterSaveBackLeaves = (await evalJs(path)) === 'transactions.php';
 
+    // ---------- ۶. ⛔ لایه به لایه: دکمه‌های کارتِ حساب ----------
+    // گزارشِ مالکِ نصب: «تعدیل حساب نمی‌شه کرد». `closeModal(کارت)` و بلافاصله
+    // `openModal(بعدی)`: ناظرِ لایه‌ی بسته `history.back()` می‌زد و `popstate`ِ
+    // دیررس لایه‌ی **تازه** را می‌بست. هر دکمه یک بار، با مکث تا رسیدنِ آن popstate.
+    const isShown = (id) => `var e = document.getElementById(${JSON.stringify(id)}); return !!(e && e.classList.contains("show"));`;
+    const swap = {};
+    for (const [btn, modal] of [['bcAdjustBtn', 'adjustWalletModal'], ['bcMergeBtn', 'mergeWalletModal'], ['bcEditBtn', 'walletModal']]) {
+        if (!(await go('wallets.php'))) { done({ ok: false, why: 'wallets_not_ready' }); }
+        await evalJs('var c = Array.prototype.find.call(document.querySelectorAll(".js-show-card"), function (e) { return e.offsetParent !== null; }); c.click(); return 1;');
+        await sleep(400);
+        await evalJs(`document.getElementById(${JSON.stringify(btn)}).click(); return 1;`);
+        await sleep(600);
+        const open = await evalJs(isShown(modal)), cardGone = !(await evalJs(isShown('bankCardModal')));
+        // ⚠ نه با `history.length`: کروم آن را روی ۵۰ می‌بندد و این probe تا اینجا
+        //   بیش از آن رفته است. «یک خانه» یعنی: الان خانه‌ی لایه هست، و بعد از یک
+        //   «برگشت» دیگر نیست (دو خانه‌ی لایه یعنی برگشتِ دوم هم روی همین صفحه).
+        const marked = await evalJs(ours);
+        await evalJs('history.back(); return 1;'); await sleep(500);
+        const backClosed = !(await evalJs(isShown(modal))) && (await evalJs(path)) === 'wallets.php';
+        const oneEntry = marked && !(await evalJs(ours));
+        swap[btn] = { open, cardGone, oneEntry, backClosed };
+    }
+    out.swap = swap;
+
+    // ---------- ۷. تعدیلِ واقعی از همان راه: مبلغ به سرور می‌رسد ----------
+    if (!(await go('wallets.php'))) { done({ ok: false, why: 'wallets_not_ready_2' }); }
+    await evalJs('window.__before = 1; var c = Array.prototype.find.call(document.querySelectorAll(".js-show-card"), function (e) { return e.offsetParent !== null; }); c.click(); return 1;');
+    await sleep(400);
+    await evalJs('document.getElementById("bcAdjustBtn").click(); return 1;'); await sleep(600);
+    await evalJs('var a = document.getElementById("adjust_amount"); a.value = "7000"; a.dispatchEvent(new Event("input", { bubbles: true }));'
+        + ' document.getElementById("adjustWalletSubmitBtn").click(); return 1;');
+    let adjReloaded = false;
+    for (let i = 0; i < 40 && !adjReloaded; i++) {
+        await sleep(250);
+        adjReloaded = await evalJs('return typeof window.__before === "undefined" && document.readyState === "complete";').catch(() => false);
+    }
+    out.adjustReloaded = adjReloaded;
+
     done(out);
 })().catch((e) => fail('probe_error: ' + e.message));

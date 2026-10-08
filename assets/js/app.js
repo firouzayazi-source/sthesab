@@ -4748,10 +4748,20 @@ function appMain() {
             if (stack.indexOf(el) === -1) { stack.push(el); }
             if (!ours(history.state)) { mark(); }
         }
+        // ⛔ «همه بسته شد؟» **بعد از** همه‌ی جابه‌جاییِ همان لحظه سنجیده می‌شود، نه
+        //    در لحظه‌ی بستن. گزارشِ مالکِ نصب: «تعدیل حساب نمی‌شه کرد» — دکمه‌های
+        //    کارتِ حساب (`closeModal('bankCardModal')` و بلافاصله `openModal(…)`)
+        //    لایه را عوض می‌کنند؛ ناظرِ لایه‌ی بسته اول اجرا می‌شد، پشته را خالی
+        //    می‌دید و `history.back()` می‌زد، و `popstate`ِ دیررسِ آن **لایه‌ی تازه**
+        //    را می‌بست. مودال یک لحظه باز و بسته می‌شد، یعنی هیچ‌وقت دیده نمی‌شد.
+        var settle = 0;
         function closed(el) {
             var i = stack.indexOf(el);
             if (i !== -1) { stack.splice(i, 1); }
-            if (!stack.length && ours(history.state) && !window.__hlReloading) { history.back(); }
+            clearTimeout(settle);
+            settle = setTimeout(function () {
+                if (!stack.length && ours(history.state) && !window.__hlReloading) { history.back(); }
+            }, 0);
         }
         window.addEventListener('popstate', function (e) {
             if (window.__hlReloading) return;
