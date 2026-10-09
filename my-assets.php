@@ -48,6 +48,18 @@ $listStmt = $pdo->prepare('
 $listStmt->execute(['user_id' => $userId]);
 $assetRecords = $listStmt->fetchAll();
 
+// ⛔ «جزئیاتِ دارایی دقیقاً همانی که وارد شده» — خواسته‌ی مالکِ نصب: «گردن‌بندِ طلا»،
+//    «رمز ارز TON». تا امروز ردیف فقط نامِ **نوع** و مقدار را نشان می‌داد و توضیحِ
+//    نوشته‌شده پشتِ «▾» پنهان بود؛ سه گردن‌بند و یک سکه همه «طلا» دیده می‌شدند.
+//    عنوانِ هر ثبت = خطِ اولِ توضیحِ خودش (`assetEntryLabel()`)، وگرنه نامِ نوع. و
+//    کارتِ «ارزش به نرخِ روز» هم می‌گوید هر نوع **شاملِ** چه چیزهایی است — از همین
+//    فهرست، بی‌کوئریِ دوم.
+$labelsByType = [];
+foreach ($assetRecords as $__a) {
+    $__l = assetEntryLabel($__a['note'] ?? null);
+    if ($__l !== '') { $labelsByType[(int)$__a['asset_type_id']][] = $__l; }
+}
+
 // نمای کلی دارایی‌ها: هم دارایی‌های ثبت‌شده‌ی خود کاربر، هم کالایی که
 // در بخش معاملات خریده و هنوز نفروخته، چک و طلب/بدهیِ باز، حساب‌ها، و
 // سهمِ فروشگاه — چون همه‌ی این‌ها دارایی‌اند.
@@ -364,6 +376,9 @@ $shSold    = $storeShare !== null ? (int)($storeShare['sold_count'] ?? 0) : 0;
                     موجودی <span class="ltr-num"><?= h(formatQuantity($__s['total_qty'])) ?></span> <?= h($__s['unit']) ?>
                     <?php if ($__cp > 0): ?> × <span class="ltr-num"><?= formatMoney($__cp) ?></span><?php endif; ?>
                 </small>
+                <?php if (!empty($labelsByType[(int)$__s['id']])): $__ls = $labelsByType[(int)$__s['id']]; ?>
+                <small class="asset-rate-items">شامل: <?= h(implode('، ', array_slice($__ls, 0, 4))) ?><?= count($__ls) > 4 ? ' و ' . toPersianDigits((string)(count($__ls) - 4)) . ' موردِ دیگر' : '' ?></small>
+                <?php endif; ?>
                 <small class="asset-rate-src<?= $__auto && $__r && Rates::isStale($__r) ? ' is-stale' : '' ?>">
                     <?php if ($__auto && $__r): ?>
                         خودکار از نرخِ «<?= h(Rates::label($__rc)) ?>»، <?= h(Rates::ago($__r['fetched_at'])) ?><?= Rates::isStale($__r) ? ' (کهنه)' : '' ?>
@@ -410,10 +425,20 @@ $shSold    = $storeShare !== null ? (int)($storeShare['sold_count'] ?? 0) : 0;
         <p class="empty-row">هنوز دارایی‌ای ثبت نشده است.</p>
     <?php else: ?>
         <?php foreach ($assetRecords as $a): ?>
-            <div class="tx-row">
+            <?php
+            $__label = assetEntryLabel($a['note'] ?? null);
+            // ارزشِ همین ثبت: نرخِ روز، وگرنه بهای خرید — همان قاعده‌ی `assetSummaryRows()`
+            $__per   = (int)($a['current_price'] ?? 0) > 0 ? (int)$a['current_price'] : (int)($a['unit_price'] ?? 0);
+            ?>
+            <div class="tx-row asset-entry">
                 <div class="tx-row-summary">
-                    <span class="tx-row-title"><?= h($a['type_name']) ?></span>
-                    <span class="tx-row-amount"><?= formatQuantity($a['quantity']) ?> <small style="font-weight:400; color:var(--color-gray-500);"><?= h($a['unit']) ?></small></span>
+                    <span class="tx-row-texts">
+                        <span class="tx-row-title"><?= h($__label !== '' ? $__label : $a['type_name']) ?></span>
+                        <span class="tx-row-cat"><?php /* ⚠ با کلمه شروع می‌شود، نه عدد (قاعده‌ی ترازِ عددها، `test_number_align`) */ ?><?= $__label !== '' ? h($a['type_name']) . ' · ' : 'مقدار ' ?><span class="ltr-num"><?= formatQuantity($a['quantity']) ?></span> <?= h($a['unit']) ?> · <?= toJalali($a['entry_date']) ?></span>
+                    </span>
+                    <?php if ($__per > 0): ?>
+                    <span class="tx-row-amount ltr-num"><?= formatMoney((int)round((float)$a['quantity'] * $__per)) ?></span>
+                    <?php endif; ?>
                     <span class="tx-row-chevron">▾</span>
                 </div>
                 <div class="tx-row-details">
@@ -495,8 +520,8 @@ $shSold    = $storeShare !== null ? (int)($storeShare['sold_count'] ?? 0) : 0;
             </div>
 
             <div class="form-group">
-                <label for="add_asset_note">توضیح (اختیاری)</label>
-                <textarea id="add_asset_note" name="note" rows="2" maxlength="1000"></textarea>
+                <label for="add_asset_note">نام یا توضیح <small class="hint">(خطِ اول عنوانِ ثبت می‌شود — مثلاً «گردن‌بندِ طلا»، «TON»)</small></label>
+                <textarea id="add_asset_note" name="note" rows="2" maxlength="1000" placeholder="مثلاً گردن‌بندِ طلا ۱۸ عیار"></textarea>
             </div>
 
             <div id="addAssetMessage" class="form-message" hidden></div>
@@ -541,7 +566,7 @@ $shSold    = $storeShare !== null ? (int)($storeShare['sold_count'] ?? 0) : 0;
             </div>
 
             <div class="form-group">
-                <label for="edit_asset_note">توضیح (اختیاری)</label>
+                <label for="edit_asset_note">نام یا توضیح <small class="hint">(خطِ اول عنوانِ ثبت می‌شود)</small></label>
                 <textarea id="edit_asset_note" name="note" rows="2" maxlength="1000"></textarea>
             </div>
 

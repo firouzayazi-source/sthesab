@@ -723,6 +723,18 @@ function debtDueOptional(): bool
  * خروجی هر ردیف: id, name, unit, total_qty, total_value (به نرخِ روز),
  * total_cost (بهای تمام‌شده), current_price, price_updated_at, cnt
  */
+/**
+ * عنوانِ یک ثبتِ دارایی — خطِ اولِ توضیحی که کاربر نوشته («گردن‌بندِ طلا»، «TON»).
+ *
+ * ⛔ خالی یعنی «عنوان ندارد» و صفحه نامِ نوع را نشان می‌دهد؛ کوتاه می‌شود تا ردیف
+ *    نشکند، ولی متنِ کامل در جزئیاتِ همان ردیف می‌ماند.
+ */
+function assetEntryLabel(?string $note): string
+{
+    $first = trim((string)strtok(str_replace("\r", '', (string)$note), "\n"));
+    return mb_strlen($first) > 60 ? rtrim(mb_substr($first, 0, 59)) . '…' : $first;
+}
+
 function assetSummaryRows(int $userId): array
 {
     $pdo = Database::getConnection();
