@@ -44,7 +44,14 @@ if ((int)$cheque['user_id'] !== Auth::userId()) {
 }
 
 // ⛔ عکس **پیش از** حذف، وگرنه چیزی برای برگرداندن نمی‌ماند.
-$undo = Undo::capture('cheques', $chequeId, Auth::userId());
+// طلبِ پیوندیِ چکِ برگشتی می‌ماند و فقط پیوندش برداشته می‌شود؛ «لغو» دوباره وصلش می‌کند.
+$linked = [];
+if (tableHasColumn('debts', 'cheque_id')) {
+    $ld = $pdo->prepare('SELECT id FROM debts WHERE cheque_id = :c AND user_id = :u');
+    $ld->execute(['c' => $chequeId, 'u' => Auth::userId()]);
+    $linked = array_map('intval', $ld->fetchAll(PDO::FETCH_COLUMN));
+}
+$undo = Undo::capture('cheques', $chequeId, Auth::userId(), $linked ? [['debts', 'cheque_id', $linked]] : []);
 try {
     $stmt = $pdo->prepare('DELETE FROM cheques WHERE id = :id AND user_id = :user_id');
     $stmt->execute(['id' => $chequeId, 'user_id' => Auth::userId()]);

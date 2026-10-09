@@ -564,6 +564,14 @@ final class BizProducts
         if ((int)$st->fetchColumn() > 0) {
             return ['ok' => false, 'message' => 'این کالا در فاکتور یا انبارگردانی آمده و حذف نمی‌شود؛ غیرفعالش کنید.'];
         }
+        // ⛔ موجودیِ اول دوره‌ای که در دوره‌ی بسته نشسته با حذف (CASCADE) پاک می‌شد — همان
+        //    سدِ `setOpening()` (بازرسیِ مهر ۱۴۰۵: ارزشِ انبار در ترازِ روزِ قفل ۱۰٬۰۰۰ → ۰).
+        $om = $pdo->prepare('SELECT MIN(move_date) FROM biz_stock_moves WHERE product_id = :id AND user_id = :u');
+        $om->execute(['id' => $id, 'u' => $userId]);
+        $first = (string)$om->fetchColumn();
+        if ($first !== '' && ($e = Biz::lockError($userId, $first, 'موجودیِ اول دوره‌ی این کالا')) !== null) {
+            return ['ok' => false, 'message' => $e];
+        }
         $st = $pdo->prepare('DELETE FROM biz_products WHERE id = :id AND user_id = :u');
         $st->execute(['id' => $id, 'u' => $userId]);
         return $st->rowCount() > 0
@@ -604,6 +612,12 @@ final class BizProducts
     {
         $where  = ['p.user_id = :u', self::UNUSED_SQL];
         $params = ['u' => $userId, 'uu1' => $userId, 'uu2' => $userId];
+        // ⛔ کالایی که حرکتِ اول دوره‌اش در دوره‌ی بسته است پاک نمی‌شود (همان سدِ `delete()`)
+        if (($lock = Biz::lockDate($userId)) !== null) {
+            $where[] = 'NOT EXISTS (SELECT 1 FROM biz_stock_moves lm WHERE lm.product_id = p.id AND lm.user_id = :uu3 AND lm.move_date <= :lk)';
+            $params['uu3'] = $userId;
+            $params['lk']  = $lock;
+        }
         if (($scope === '' ? 'empty' : $scope) !== 'all') {
             // ⚠ خدمت موجودی ندارد، پس همیشه «بی‌موجودی» است
             $where[] = '(p.track_stock = 0 OR p.stock_qty = 0)';
@@ -1786,6 +1800,12 @@ final class BizParties
         if ((int)$chk->fetchColumn() > 0) {
             return ['ok' => false, 'message' => 'این طرف‌حساب سند دارد و حذف نمی‌شود؛ غیرفعالش کنید.'];
         }
+        // ⛔ مانده‌ی اول دوره هم «سند» است — بازرسیِ مهر ۱۴۰۵: طلبِ ۵ میلیونیِ اول دوره که
+        //    غیرفعال کردنش رد می‌شد، با حذف بی‌صدا صفر می‌شد.
+        $ob = self::get($userId, $id);
+        if ($ob && (int)$ob['opening_balance'] !== 0) {
+            return ['ok' => false, 'message' => 'این طرف‌حساب مانده‌ی اول دوره دارد و حذف نمی‌شود؛ اول مانده را صفر کنید.'];
+        }
         $st = Database::getConnection()->prepare('DELETE FROM biz_parties WHERE id = :id AND user_id = :u');
         $st->execute(['id' => $id, 'u' => $userId]);
         return $st->rowCount() > 0
@@ -1804,12 +1824,16 @@ final class BizParties
         //    فهرستِ طرف‌حساب‌ها هر دو. اندازه‌گیری شد (صفحه‌ی داشبورد را کُند
         //    کرده بود)؛ حالا ~۴ ms.
         $st = Database::getConnection()->prepare(
-            'SELECT ' . self::BALANCE_SQL . ' AS b FROM biz_parties p WHERE p.user_id = :u AND p.is_active = 1'
+            'SELECT p.is_active AS a, ' . self::BALANCE_SQL . ' AS b FROM biz_parties p WHERE p.user_id = :u'
         );
         $st->execute(['u' => $userId]);
         $out = ['count' => 0, 'receivable' => 0, 'payable' => 0, 'debtors' => 0, 'creditors' => 0];
-        foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $b) {
-            $b = (int)$b;
+        // ⛔ طرف‌حسابِ غیرفعالی که مانده دارد هم شمرده می‌شود: غیرفعال کردن فقط برای مانده‌ی
+        //    صفر مجاز است، ولی چکِ برگشتی، ابطالِ پرداخت یا فرمِ تبِ قدیمی بعد از آن مانده
+        //    می‌سازند — بازرسیِ مهر ۱۴۰۵: طلبِ ۱۰۰۰ واقعی بود و «طلب» صفر نشان داده می‌شد.
+        foreach ($st->fetchAll() as $r) {
+            $b = (int)$r['b'];
+            if ((int)$r['a'] !== 1 && $b === 0) { continue; }
             $out['count']++;
             if ($b > 0) { $out['receivable'] += $b; $out['debtors']++; }
             elseif ($b < 0) { $out['payable'] -= $b; $out['creditors']++; }
@@ -2015,7 +2039,10 @@ final class BizCash
     {
         $t = 0;
         foreach ($rows as $r) {
-            if ((int)$r['is_active'] === 1 && !self::isCheque($r)) { $t += (int)$r['balance']; }
+            // ⛔ حسابِ غیرفعالی که مانده دارد هم پولِ واقعی است (برگشتِ وصول یا ابطالِ پرداخت
+            //    بعد از غیرفعال شدن) — بازرسیِ مهر ۱۴۰۵: بانکِ غیرفعالِ −۵۰۰ از جمعِ نقد بیرون بود.
+            if ((int)$r['is_active'] !== 1 && (int)$r['balance'] === 0) { continue; }
+            if (!self::isCheque($r)) { $t += (int)$r['balance']; }
         }
         return $t;
     }

@@ -44,6 +44,17 @@ if ((int)$debt['user_id'] !== Auth::userId()) {
     jsonResponse(['success' => false, 'message' => 'شما اجازه حذف این مورد را ندارید.'], 403);
 }
 
+// ⛔ طلب/بدهیِ ساخته‌شده از معامله (خرید یا فروشِ امانی) مالِ همان معامله است
+//    (`tradeCreditUpsert()`): حذفش اینجا با ویرایشِ بعدیِ معامله برمی‌گشت و «لغو»
+//    دو برابرش می‌کرد (بازرسیِ مهر ۱۴۰۵). از صفحه‌ی معاملات «امانی» را بردارید.
+if (tableHasColumn('debts', 'trade_id') && tableHasColumn('debts', 'trade_sale_id')) {
+    $tl = $pdo->prepare('SELECT trade_id IS NOT NULL OR trade_sale_id IS NOT NULL FROM debts WHERE id = :id AND user_id = :u');
+    $tl->execute(['id' => $debtId, 'u' => Auth::userId()]);
+    if ((int)$tl->fetchColumn() === 1) {
+        jsonResponse(['success' => false, 'message' => 'این مورد از یک معامله ساخته شده؛ از صفحه‌ی «معاملات» آن را ویرایش کنید.'], 409);
+    }
+}
+
 // ⛔ عکس **پیش از** حذف، وگرنه چیزی برای برگرداندن نمی‌ماند.
 $undo = Undo::capture('debts', $debtId, Auth::userId());
 try {

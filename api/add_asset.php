@@ -56,6 +56,9 @@ if (!$typeStmt->fetch()) {
 }
 
 $unitPrice = sanitizeAmount($rawPrice);
+// ⛔ همان سقفِ مبلغِ بقیه‌ی فرم‌ها — بی‌آن عددِ بلند بی‌صدا به سقفِ BIGINT بریده می‌شد
+//    و فروشِ همان دارایی خطای ۵۰۰ می‌داد (بازرسیِ مهر ۱۴۰۵).
+if ($unitPrice > 999999999999) { jsonResponse(['success' => false, 'message' => 'بهای واحد بیش از حد بزرگ است.'], 422); }
 $unitPriceValue = $unitPrice > 0 ? $unitPrice : null;
 
 try {

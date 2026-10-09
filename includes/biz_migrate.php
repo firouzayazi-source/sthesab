@@ -308,7 +308,7 @@ final class BizMigrate
         if (preg_match('/^\((.*)\)$/u', $t, $m)) { $t = $m[1]; $neg = true; }
         if (preg_match('/^(.*\d)\s*[-−]$/u', $t, $m)) { $t = $m[1]; $neg = true; }
         $t = str_replace('−', '-', $t);
-        $n = BizImport::num($t);
+        $n = BizImport::num($t, true);
         if ($n === null) { return null; }
         return $neg ? -abs($n) : $n;
     }

@@ -107,6 +107,13 @@ try {
         $sum->execute(['d' => $debtId, 'u' => $userId]);
         $paid = (int)$sum->fetchColumn();
 
+        // ⛔ پرداخت‌های معمولی کلِ مبلغ را پوشانده‌اند: برداشتنِ تیک «باز با مانده‌ی صفر»
+        //    می‌ساخت (پرداختِ بعدی رد می‌شد) و پیامِ «اثرش پس گرفته شد» دروغ بود — چیزی
+        //    برنگشت (بازرسیِ مهر ۱۴۰۵). باز کردنش یعنی حذفِ یکی از همان پرداخت‌ها.
+        if ($paid >= (int)$debt['amount']) {
+            $pdo->rollBack();
+            jsonResponse(['success' => false, 'message' => 'این مورد با پرداخت‌های ثبت‌شده کامل پرداخت شده؛ برای باز کردنش یکی از پرداخت‌ها را حذف کنید.'], 422);
+        }
         $pdo->prepare('UPDATE debts SET paid_amount = :p, is_settled = 0, settled_at = NULL WHERE id = :id AND user_id = :u')
             ->execute(['p' => $paid, 'id' => $debtId, 'u' => $userId]);
     }

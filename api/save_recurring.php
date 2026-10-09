@@ -73,8 +73,15 @@ try {
         $existing = $own->fetch();
         if (!$existing) { jsonResponse(['success' => false, 'message' => 'یافت نشد.'], 404); }
 
-        // اگر تاریخ شروع تغییر کرده و هنوز هیچ تراکنشی از این قانون تولید نشده، سررسید بعدی هم به‌روز شود
-        $nextDue = $startDate > $existing['next_due_date'] || $startDate !== $existing['start_date']
+        // اگر تاریخ شروع تغییر کرده و هنوز هیچ تراکنشی از این قانون تولید نشده، سررسید بعدی هم به‌روز شود.
+        // ⛔ «هنوز تولید نشده» واقعاً سنجیده می‌شود — بازرسیِ مهر ۱۴۰۵: این شرط فقط در همین
+        //    توضیح بود، پس جابه‌جاییِ یک‌روزه‌ی تاریخِ شروع سررسید را به اول برمی‌گرداند و
+        //    چهار تراکنشِ خودکارِ گذشته دوباره ساخته می‌شدند (موجودی دو برابر کم شد). بعد از
+        //    تولید فقط جلو بردن مجاز است (شروعِ تازه بعد از سررسیدِ فعلی) — هرگز عقب.
+        $gen = $pdo->prepare('SELECT COUNT(*) FROM transactions WHERE recurring_id = :r AND user_id = :u');
+        $gen->execute(['r' => $id, 'u' => $userId]);
+        $generated = (int)$gen->fetchColumn() > 0;
+        $nextDue = $startDate > $existing['next_due_date'] || (!$generated && $startDate !== $existing['start_date'])
             ? $startDate : $existing['next_due_date'];
 
         $stmt = $pdo->prepare('

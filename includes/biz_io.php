@@ -465,14 +465,22 @@ final class BizImport
     }
 
     /** عدد از متنِ فایل: ارقامِ فارسی، جداکننده‌ی هزارگان، ممیزِ فارسی. */
-    public static function num(?string $v): ?float
+    /**
+     * @param bool $money مبلغ (تومان، بی‌اعشار): «۱۲.۵۰۰» هزارگان است. بی‌آن (تعداد) «۲/۵» و
+     *        «۱۲.۵» اعشارند — همان قاعده‌ی `sanitizeQty()`ِ فرم. ⛔ بازرسیِ مهر ۱۴۰۵: قیمتِ
+     *        «۱۲.۵۰۰» در فایل ۱۳ تومان و تعدادِ «۲/۵» ۲۵ می‌شد، و «1.25E+06» (اکسل) ۱٫۲۵۰۶.
+     */
+    public static function num(?string $v, bool $money = false): ?float
     {
         if ($v === null) { return null; }
         $s = str_replace([' ', "\u{00A0}", '٬', "'"], '', toLatinDigits(trim($v)));
         $s = str_replace('٫', '.', $s);
         if ($s === '') { return null; }
+        if (preg_match('/^-?\d+(\.\d+)?[eE][+\-]?\d+$/', $s)) { return (float)$s; }   // نمادِ علمیِ اکسل
+        if (!$money) { $s = str_replace('/', '.', $s); }
         if (preg_match('/^-?\d{1,3}(,\d{3})+(\.\d+)?$/', $s)) { $s = str_replace(',', '', $s); }
         if (preg_match('/^-?\d{1,3}(\.\d{3}){2,}$/', $s)) { $s = str_replace('.', '', $s); }   // ۱.۲۵۰.۰۰۰
+        if ($money && preg_match('/^-?\d{1,3}\.\d{3}$/', $s)) { $s = str_replace('.', '', $s); }   // ۱۲.۵۰۰ تومان
         $s = str_replace(',', '.', $s);
         $s = (string)preg_replace('/[^\d.\-]/', '', $s);
         return is_numeric($s) ? (float)$s : null;
@@ -511,7 +519,7 @@ final class BizImport
             $p = ['line' => (int)$r['line'], 'name' => $name, 'sku' => $sku, 'id' => 0, 'notes' => []];
             foreach (['category', 'unit'] as $k) { $p[$k] = $r[$k] ?? null; }
             foreach (['buy_price', 'sell_price'] as $k) {
-                $n = self::num($r[$k] ?? null);
+                $n = self::num($r[$k] ?? null, true);
                 $p[$k] = $n === null ? null : (int)round(!empty($opts['rial']) ? $n / 10 : $n);
             }
             foreach (['qty', 'min_stock'] as $k) {

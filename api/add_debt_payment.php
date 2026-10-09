@@ -22,7 +22,8 @@ $note   = postParam('note');
 $date   = postParam('payment_date');
 
 $errors = [];
-if ($amount <= 0) { $errors[] = 'مبلغ باید بزرگ‌تر از صفر باشد.'; }
+if (($ae = amountInputError(postParam('amount'))) !== null) { $errors[] = $ae; }
+elseif ($amount <= 0) { $errors[] = 'مبلغ باید بزرگ‌تر از صفر باشد.'; }
 if (!isValidDate($date)) { $errors[] = 'تاریخ نامعتبر است.'; }
 if (mb_strlen($note) > 1000) { $errors[] = 'توضیحات بیش از حد طولانی است.'; }
 

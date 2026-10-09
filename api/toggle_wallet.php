@@ -27,6 +27,16 @@ if (!$w) {
 }
 
 $new = (int)$w['is_active'] === 1 ? 0 : 1;
+// ⛔ آخرین حسابِ فعال غیرفعال نمی‌شود — همان سدِ «حداقل یک حساب»ِ `delete_wallet`.
+//    بازرسیِ مهر ۱۴۰۵: `defaultWalletId()` فقط حسابِ فعال می‌بیند، پس بعد از آن هر
+//    تراکنش و پرداختِ بدهی بی‌حساب ثبت می‌شد و در هیچ موجودی‌ای نمی‌آمد.
+if ($new === 0) {
+    $act = $pdo->prepare('SELECT COUNT(*) FROM wallets WHERE user_id = :u AND is_active = 1 AND id <> :id');
+    $act->execute(['u' => $userId, 'id' => $id]);
+    if ((int)$act->fetchColumn() === 0) {
+        jsonResponse(['success' => false, 'message' => 'این تنها حسابِ فعالِ شماست؛ اول حسابِ دیگری بسازید یا فعال کنید.'], 422);
+    }
+}
 $upd = $pdo->prepare('UPDATE wallets SET is_active = :s WHERE id = :id AND user_id = :u');
 $upd->execute(['s' => $new, 'id' => $id, 'u' => $userId]);
 

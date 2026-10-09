@@ -67,6 +67,14 @@ try {
             jsonResponse(['success' => false, 'message' => 'بودجه یافت نشد.'], 404);
         }
 
+        // ⛔ همان سدِ تکرارِ مسیرِ ساخت — بی‌این، کلیدِ یکتا (کاربر، دسته، دوره) خطای ۵۰۰
+        //    می‌داد و در `app_errors` هم می‌نشست (بازرسیِ مهر ۱۴۰۵).
+        $dup = $pdo->prepare('SELECT id FROM budgets WHERE user_id = :u AND category_id = :c AND period_type = :p AND id <> :id');
+        $dup->execute(['u' => $userId, 'c' => $categoryId, 'p' => $periodType, 'id' => $budgetId]);
+        if ($dup->fetch()) {
+            jsonResponse(['success' => false, 'message' => 'برای این دسته‌بندی و همین دوره از قبل بودجه تعریف شده است.'], 422);
+        }
+
         $stmt = $pdo->prepare('
             UPDATE budgets SET category_id = :c, period_type = :p, amount = :a, start_date = :s, end_date = :e
             WHERE id = :id AND user_id = :u

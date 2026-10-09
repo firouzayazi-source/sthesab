@@ -97,7 +97,10 @@ const BUDGET = [
     'admin/users.php'       => 17,
     'admin/access.php'      => 16,
     'admin/billing.php'     => 18,
-    'admin/categories.php'  => 16,
+    // ⚠ ۱۶ → ۱۷: `categoryRefTables()` یک کوئریِ `information_schema` گرفت تا `category_id`ِ
+    //   جدول‌های فروشگاه (کلیدِ خارجی به جدولِ دیگر) جزوِ ارجاعِ دسته‌ی شخصی شمرده نشود —
+    //   بی‌آن ادغامِ دسته، دسته‌ی کالای فروشگاه را عوض می‌کرد (بازرسیِ مهر ۱۴۰۵).
+    'admin/categories.php'  => 17,
 ];
 
 /**
@@ -514,6 +517,11 @@ try {
             'd' => date('Y-m-d', strtotime('-' . ($i % 700) . ' day')), 'c' => $catOut, 'w' => $w1]);
     }
     $pdo->commit();
+    // ⚠ آمارِ InnoDB همین حالا و همگام، نه در پس‌زمینه: بعد از ۱۲۰۰ درجِ تازه بازمحاسبه‌ی
+    //   خودکارِ آمار ناهمگام اجرا می‌شود و ردیف‌هایش در شمارنده‌های **سراسری**ِ `Handler_read_*`
+    //   وسطِ اندازه‌گیری می‌نشست — همان کدِ بی‌تغییر یک بار ۳۶۷۸ و بار دیگر ۳۸۴۲ می‌داد
+    //   (مهر ۱۴۰۵). نوسانِ «یک بار ۳۵۷۶»ِ یادداشتِ پایین هم احتمالاً همین بود.
+    $pdo->query('ANALYZE TABLE transactions')->fetchAll();
 
     $handlerReads = function () use ($pdo): int {
         $n = 0;

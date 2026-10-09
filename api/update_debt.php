@@ -55,7 +55,9 @@ if ($counterpartyName === '' || mb_strlen($counterpartyName) > 150) {
 }
 
 $amount = sanitizeAmount($rawAmount);
-if ($amount <= 0) {
+if (($ae = amountInputError($rawAmount)) !== null) {
+    $errors[] = $ae;
+} elseif ($amount <= 0) {
     $errors[] = 'مبلغ باید بزرگ‌تر از صفر باشد.';
 } elseif ($amount < (int)$debt['paid_amount']) {
     // ⛔ کمتر از پرداخت‌شده یعنی «مانده‌ی منفی» روی ستون‌های `UNSIGNED`:

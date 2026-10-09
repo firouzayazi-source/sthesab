@@ -100,6 +100,12 @@ final class BizExpCats
     public static function sysId(PDO $pdo, int $userId, string $key): int
     {
         [$kind, $name] = self::SYSTEM[$key];
+        // ⛔ اول پیش‌فرض‌ها (اگر جدول خالی است) — وگرنه ردیفِ سیستمیِ تنها جدول را «پر»
+        //    نشان می‌داد و `list()` دیگر اجاره و قبوض و بقیه را نمی‌ساخت (بازرسیِ مهر ۱۴۰۵:
+        //    اولین کار «پرداختِ حقوق» بود و فهرستِ هزینه فقط «حقوق و دستمزد» داشت).
+        $any = $pdo->prepare('SELECT 1 FROM biz_expense_cats WHERE user_id = :u LIMIT 1');
+        $any->execute(['u' => $userId]);
+        if (!$any->fetchColumn()) { self::seed($pdo, $userId); }
         $st = $pdo->prepare('SELECT id FROM biz_expense_cats WHERE user_id = :u AND sys_key = :k LIMIT 1');
         $st->execute(['u' => $userId, 'k' => $key]);
         $id = $st->fetchColumn();

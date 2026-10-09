@@ -334,6 +334,18 @@ if ($action === 'delete') {
                     'message' => 'روی این دسته‌بندی ' . toPersianDigits($inUse) . ' تراکنش ثبت شده و قابل حذف نیست.',
                 ], 409);
             }
+            // ⛔ بودجه و تراکنشِ دوره‌ای هم ارجاع‌اند (`categoryRefTables()`، جز سنجاق که
+            //    فقط ترجیحِ نمایش است). بازرسیِ مهر ۱۴۰۵: فقط تراکنش شمرده می‌شد، پس بودجه
+            //    با `CASCADE` بی‌صدا پاک می‌شد و دسته‌ی تراکنشِ دوره‌ای خالی می‌ماند.
+            $labels = ['budgets' => 'بودجه', 'recurring_transactions' => 'تراکنشِ دوره‌ای'];
+            foreach (categoryUsage($id)['per'] as $tbl => $n) {
+                if ($tbl === 'transactions' || $tbl === 'category_pins') { continue; }
+                jsonResponse([
+                    'success' => false,
+                    'message' => 'این دسته‌بندی در ' . toPersianDigits($n) . ' ' . ($labels[$tbl] ?? $tbl)
+                        . ' استفاده شده؛ اول آن را به دسته‌ی دیگری ببرید.',
+                ], 409);
+            }
 
             $del = $pdo->prepare('DELETE FROM categories WHERE id = :id AND user_id = :u');
             $del->execute(['id' => $id, 'u' => $userId]);

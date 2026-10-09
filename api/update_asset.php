@@ -65,6 +65,7 @@ if (!empty($errors)) {
 }
 
 $unitPrice = sanitizeAmount($rawPrice);
+if ($unitPrice > 999999999999) { jsonResponse(['success' => false, 'message' => 'بهای واحد بیش از حد بزرگ است.'], 422); }
 $unitPriceValue = $unitPrice > 0 ? $unitPrice : null;
 
 try {

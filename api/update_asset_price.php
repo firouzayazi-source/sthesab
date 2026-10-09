@@ -39,6 +39,9 @@ $price = $raw === '' ? null : sanitizeAmount($raw);
 if ($price !== null && $price < 0) {
     jsonResponse(['success' => false, 'message' => 'نرخ نمی‌تواند منفی باشد.'], 422);
 }
+if ($price !== null && $price > 999999999999) {
+    jsonResponse(['success' => false, 'message' => 'نرخ بیش از حد بزرگ است.'], 422);
+}
 if ($price === 0) { $price = null; }   // صفر یعنی پاک کردن، نه نرخِ صفر
 
 $pdo = Database::getConnection();

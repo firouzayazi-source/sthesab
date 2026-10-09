@@ -72,10 +72,26 @@ function sanitizeAmount($input): int
     return (int)$clean;
 }
 
+/**
+ * ⛔ ورودیِ مبلغی که `sanitizeAmount()` بی‌صدا عوضش می‌کند: علامتِ منفی («-250000»
+ *    هزینه‌ی مثبت می‌شد، پرداختِ «-400» پرداختِ ۴۰۰) یا نمادِ علمی («1e6» ⇒ ۱۶). فرم‌ها
+ *    مبلغ را بی‌علامت می‌خواهند؛ جهت را نوع (درآمد/هزینه، طلب/بدهی) می‌گوید — بازرسیِ مهر ۱۴۰۵.
+ */
+function amountInputError($raw): ?string
+{
+    $t = trim(toLatinDigits((string)$raw));
+    if (preg_match('/^[\-\x{2212}\x{2013}]/u', $t)) { return 'مبلغ را بی‌علامتِ منفی بنویسید؛ جهت را نوعِ ثبت مشخص می‌کند.'; }
+    if (preg_match('/\d\s*[eE]\s*[+\-]?\d/', $t)) { return 'مبلغ را به شکلِ عددِ کامل بنویسید.'; }
+    return null;
+}
+
 function isValidDate(string $date): bool
 {
     $d = DateTime::createFromFormat('Y-m-d', $date);
-    return $d && $d->format('Y-m-d') === $date;
+    // ⛔ سالِ معقول: «1403-12-30» تاریخِ **شمسی**ای است که میلادی خوانده شده (۶۰۰ سال عقب)
+    //    و `0001-01-01`/`9999-12-31` هم پذیرفته می‌شدند — تراکنشی که در هیچ گزارشی پیدا
+    //    نمی‌شد ولی در موجودی بود (بازرسیِ مهر ۱۴۰۵).
+    return $d && $d->format('Y-m-d') === $date && (int)$d->format('Y') >= 1900 && (int)$d->format('Y') <= 2200;
 }
 
 /**
@@ -3407,9 +3423,28 @@ function categoryScopeParams(int $userId): array
  */
 function categoryRefTables(): array
 {
+    // ⛔ `category_id`ی که کلیدِ خارجی‌اش به **جدولِ دیگری** است مالِ دسته‌بندیِ شخصی
+    //    نیست: `biz_products.category_id` → `biz_categories` و `biz_payments.category_id`
+    //    → `biz_expense_cats`. بازرسیِ مهر ۱۴۰۵: ادغام و شخصی‌سازیِ دسته‌بندی آن‌ها را هم
+    //    `UPDATE` می‌کرد — دسته‌ی کالا و سرفصلِ هزینه‌ی فروشگاهی که شناسه‌اش هم‌عدد بود
+    //    بی‌صدا عوض می‌شد، و حذفِ دسته با «در حال استفاده» بی‌دلیل رد می‌شد.
+    $foreign = [];
+    try {
+        $st = Database::getConnection()->query(
+            "SELECT TABLE_NAME AS t FROM information_schema.KEY_COLUMN_USAGE
+             WHERE TABLE_SCHEMA = DATABASE() AND COLUMN_NAME = 'category_id'
+               AND REFERENCED_TABLE_NAME IS NOT NULL AND REFERENCED_TABLE_NAME <> 'categories'"
+        );
+        foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $t) { $foreign[$t] = true; }
+    } catch (PDOException $e) {
+        Log::error('category.ref_discovery', $e);
+    }
     $out = [];
     foreach (schemaMap() as $table => $cols) {
         if ($table === 'categories' || !isset($cols['category_id'])) { continue; }
+        // ⚠ و جدول‌های فروشگاه هرگز به دسته‌ی شخصی اشاره نمی‌کنند (قاعده ۷۰) — حتی اگر
+        //   روی نصبی کلیدِ خارجی‌شان هنوز ساخته نشده باشد.
+        if (isset($foreign[$table]) || str_starts_with($table, 'biz_')) { continue; }
         $out[$table] = isset($cols['user_id']);
     }
     ksort($out);

@@ -360,9 +360,12 @@ final class BizReports
             $act[$pid][(string)$r['kind']] = (int)$r['s'];
         }
         $all  = BizParties::all($userId);
+        // ⛔ طرف‌حسابِ غیرفعال هم: فروشِ دوره‌ای که بعد غیرفعال شد هنوز فروشِ همان دوره است.
+        //    بازرسیِ مهر ۱۴۰۵: جمعِ این گزارش صفر بود و `sales()`/`byInvoice()` ۱۰۰۰ می‌گفتند.
+        $off  = BizParties::all($userId, 'inactive');
         $sums = $cols + ['balance' => 0];
         $rows = [];
-        foreach ($all['rows'] as $p) {
+        foreach (array_merge($all['rows'], $off['rows']) as $p) {
             $pid = (int)$p['id'];
             $bal = (int)$p['balance'];
             if (!isset($act[$pid]) && $bal === 0) { continue; }
@@ -371,7 +374,7 @@ final class BizReports
             $sums['balance'] += $bal;
             $rows[] = $row;
         }
-        return ['rows' => $rows, 'sums' => $sums, 'capped' => $all['capped']];
+        return ['rows' => $rows, 'sums' => $sums, 'capped' => $all['capped'] || $off['capped']];
     }
 
     /**

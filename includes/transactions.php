@@ -40,7 +40,9 @@ function txValidate(array $in): array
     }
 
     $amount = sanitizeAmount($in['amount'] ?? '');
-    if ($amount <= 0) {
+    if (($ae = amountInputError($in['amount'] ?? '')) !== null) {
+        $errors[] = $ae;
+    } elseif ($amount <= 0) {
         $errors[] = 'مبلغ باید بزرگ‌تر از صفر باشد.';
     }
     if ($amount > TX_MAX_AMOUNT) {
@@ -175,6 +177,7 @@ function txUpdate(int $userId, int $id, array $in): array
 
     $owned = txAssertOwned($userId, $id, 'ویرایش');
     if ($owned !== null) { return $owned; }
+    if (($tb = txTradeBlock($userId, $id)) !== null) { return $tb; }
 
     $v = txValidate($in);
     if ($v['errors']) {
@@ -235,6 +238,7 @@ function txDelete(int $userId, int $id): array
 
     $owned = txAssertOwned($userId, $id, 'حذف');
     if ($owned !== null) { return $owned; }
+    if (($tb = txTradeBlock($userId, $id)) !== null) { return $tb; }
 
     // ⛔ سودی که فروشگاه هنوز دارد با همگام‌سازیِ بعدی برمی‌گشت — `deleteBlock()`.
     $blocked = StoreShare::deleteBlock($userId, $id);
@@ -253,6 +257,22 @@ function txDelete(int $userId, int $id): array
         return ['ok' => false, 'status' => 500, 'code' => 'server_error',
                 'message' => 'خطایی در حذف تراکنش رخ داد.'];
     }
+}
+
+/**
+ * ⛔ سودِ معامله (`trade_sales.profit_tx_id`) مالِ صفحه‌ی معاملات است، نه فرمِ تراکنش —
+ *    همان قاعده‌ی `StoreShare::deleteBlock()`. بازرسیِ مهر ۱۴۰۵: حذفش را فروشِ بعدی
+ *    از نو می‌ساخت و «لغو»ِ حذف یکی دیگر برمی‌گرداند (سود دو برابر در دفتر)، و ویرایشش
+ *    به «هزینه‌ی ۹٬۹۹۹٬۹۹۹» پذیرفته و بعد بی‌صدا بازنویسی می‌شد.
+ */
+function txTradeBlock(int $userId, int $id): ?array
+{
+    if (!tableHasColumn('trade_sales', 'profit_tx_id')) { return null; }
+    $st = Database::getConnection()->prepare('SELECT 1 FROM trade_sales WHERE profit_tx_id = :t AND user_id = :u LIMIT 1');
+    $st->execute(['t' => $id, 'u' => $userId]);
+    if (!$st->fetchColumn()) { return null; }
+    return ['ok' => false, 'status' => 409, 'code' => 'trade_profit',
+            'message' => 'این سودِ یک معامله است و از خودِ معامله حساب می‌شود؛ از صفحه‌ی «معاملات» فروش را ویرایش یا حذف کنید.'];
 }
 
 /**

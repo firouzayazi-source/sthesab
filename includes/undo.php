@@ -47,7 +47,13 @@ final class Undo
      *
      * @return string|null توکن، یا `null` اگر عکس گرفتن ممکن نبود.
      */
-    public static function capture(string $table, int $id, int $userId): ?string
+    /**
+     * @param list<array{0:string,1:string,2:list<int>}> $relink پیوندهای **بی‌کلیدِ خارجی** که
+     *        خودِ حذف برمی‌دارد ([جدول، ستون، شناسه‌ها]) — «لغو» بعد از برگرداندنِ ردیف آن‌ها را
+     *        دوباره به همان شناسه وصل می‌کند. بازرسیِ مهر ۱۴۰۵: «لغو»ِ حذفِ چکِ برگشتی چک
+     *        را برمی‌گرداند ولی طلبش بی‌پیوند می‌ماند؛ «برگشتی» زدنِ دوباره طلبِ دوم می‌ساخت.
+     */
+    public static function capture(string $table, int $id, int $userId, array $relink = []): ?string
     {
         if ($id <= 0 || $userId <= 0 || !self::safeName($table)) { return null; }
 
@@ -63,7 +69,8 @@ final class Undo
 
         $token = bin2hex(random_bytes(16));
         $box   = $_SESSION[self::SESSION_KEY] ?? [];
-        $box[$token] = ['at' => time(), 'uid' => $userId, 'groups' => $groups];
+        $box[$token] = ['at' => time(), 'uid' => $userId, 'groups' => $groups, 'id' => $id,
+                        'relink' => array_values(array_filter($relink, fn($r) => self::safeName($r[0]) && self::safeName($r[1]) && $r[2]))];
 
         // کهنه‌ها و اضافه‌ها بیرون
         $now = time();
@@ -103,6 +110,16 @@ final class Undo
                     self::insertRow($pdo, $g['table'], $row, $userId);
                 }
             }
+            foreach ($snap['relink'] ?? [] as [$t, $c, $ids]) {
+                $ids = array_map('intval', $ids);
+                $pdo->prepare("UPDATE `{$t}` SET `{$c}` = ? WHERE user_id = ? AND `{$c}` IS NULL AND id IN ("
+                              . implode(',', array_fill(0, count($ids), '?')) . ')')
+                    ->execute(array_merge([(int)$snap['id'], $userId], $ids));
+            }
+            if (($bad = self::invariantError($pdo, $snap['groups'], $userId)) !== null) {
+                $pdo->rollBack();
+                return ['ok' => false, 'message' => $bad];
+            }
             $pdo->commit();
         } catch (PDOException $e) {
             if ($pdo->inTransaction()) { $pdo->rollBack(); }
@@ -113,6 +130,28 @@ final class Undo
 
         unset($_SESSION[self::SESSION_KEY][$token]);
         return ['ok' => true, 'message' => 'برگردانده شد.'];
+    }
+
+    /**
+     * ⛔ «لغو» همان سدهایی را دارد که خودِ ثبت دارد. بازرسیِ مهر ۱۴۰۵: واریز و برداشتِ
+     *    پس‌انداز جداجدا حذف می‌شدند و «لغو»ِ حذفِ برداشت موجودیِ هدف را −۵ میلیون می‌کرد
+     *    (سدِ `delete_savings_entry` در برگرداندن سنجیده نمی‌شد).
+     */
+    private static function invariantError(PDO $pdo, array $groups, int $userId): ?string
+    {
+        $goals = [];
+        foreach ($groups as $g) {
+            if ($g['table'] !== 'savings_entries') { continue; }
+            foreach ($g['rows'] as $r) { $goals[(int)$r['goal_id']] = true; }
+        }
+        foreach (array_keys($goals) as $gid) {
+            $st = $pdo->prepare('SELECT COALESCE(SUM(amount), 0) FROM savings_entries WHERE goal_id = :g AND user_id = :u');
+            $st->execute(['g' => $gid, 'u' => $userId]);
+            if ((int)$st->fetchColumn() < 0) {
+                return 'برگرداندنِ این برداشت موجودیِ هدف را منفی می‌کند — واریزِ پیش از آن حذف شده است.';
+            }
+        }
+        return null;
     }
 
     // ---------------------------------------------------------------
