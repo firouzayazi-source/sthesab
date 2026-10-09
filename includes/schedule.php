@@ -219,6 +219,14 @@ class Schedule
         $st->execute(['r' => $rid]);
         $last = $st->fetchColumn();
 
+        // ⛔ قانونِ یک‌باره‌ای که تاریخش **جلوتر** از آخرین سررسیدش رفته (طلبی که
+        //    بی‌تاریخ شده بود و دوباره تاریخ گرفت، یا سررسیدش عقب افتاد) سررسیدِ
+        //    تازه می‌خواهد؛ بی‌این `nextDue()`ِ یک‌باره null می‌داد و هیچ‌وقت نمی‌آمد.
+        //    فقط «جلوتر»: «بعداً یادم بنداز» سررسید را جلوتر از `remind_date` می‌برد.
+        if (($rule['recurrence_type'] ?? 'once') === 'once' && $last !== null && $last !== false
+            && (string)$rule['remind_date'] > (string)$last) {
+            $last = null;
+        }
         $due = $last === null || $last === false ? (string)$rule['remind_date'] : (string)$last;
 
         // ⚠ سقفِ حلقه: قانونِ خرابی که هرگز جلو نرود نباید صفحه را قفل کند.
@@ -523,14 +531,53 @@ function syncScheduleRules(int $userId): int
         }
     } catch (Throwable $e) { /* جدول نیست */ }
 
+    // ⛔ تاریخِ منبع که عوض شده، سررسیدِ **باز**ِ قبلی را هم با خودش می‌برد.
+    //    خرابیِ گزارش‌شده‌ی مالکِ نصب (مهر ۱۴۰۵): `ON DUPLICATE KEY` فقط
+    //    `remind_date` را عوض می‌کرد و سررسیدِ ساخته‌شده برای تاریخِ قبلی باز
+    //    می‌ماند — و چون قانون سررسیدِ باز داشت، تاریخِ تازه هرگز ساخته نمی‌شد.
+    //    یعنی «سرِ تاریخِ قبلی هنوز می‌آمد». فقط چک و طلب/بدهی (یک‌باره‌اند؛
+    //    دوره‌ای تاریخش را موتورِ خودش جلو می‌برد) و فقط وقتی **منبع** جابه‌جا
+    //    شده، نه هر بار — وگرنه «بعداً یادم بنداز»ِ کاربر پس گرفته می‌شد.
+    $moved = [];
+    try {
+        $was = $pdo->prepare("SELECT id, source_type, source_id, remind_date FROM reminders
+                               WHERE user_id = :u AND source_type IN ('cheque','debt') AND status <> 'finished'");
+        $was->execute(['u' => $userId]);
+        $old = [];
+        foreach ($was->fetchAll() as $w) { $old[$w['source_type'] . ':' . $w['source_id']] = [(int)$w['id'], (string)$w['remind_date']]; }
+        foreach ($buf as $b) {
+            $k = $b[1] . ':' . $b[2];
+            if (isset($old[$k]) && $old[$k][1] !== (string)$b[4]) { $moved[$old[$k][0]] = (string)$b[4]; }
+        }
+    } catch (Throwable $e) { /* جدول نیست */ }
+
     // ⛔ **پیش از** سوییپِ پایین: آن یکی وضعیتِ همین ردیف‌ها را می‌سنجد.
     $flush();
 
+    foreach ($moved as $rid => $date) {
+        // اعلان‌های فرستاده‌شده برای تاریخِ قبلی پاک — پله‌های تاریخِ تازه از نو
+        $pdo->prepare("DELETE n FROM reminder_notifications n
+                         JOIN reminder_occurrences o ON o.id = n.occurrence_id
+                        WHERE o.reminder_id = :r AND o.user_id = :u AND o.status IN ('pending','overdue')")
+            ->execute(['r' => $rid, 'u' => $userId]);
+        // ⚠ `IGNORE`: اگر سررسیدِ بسته‌ای همین حالا روی تاریخِ تازه هست، کلیدِ یکتا
+        //   جابه‌جایی را رد می‌کند و ردیفِ باز پایین‌تر پاک می‌شود.
+        $pdo->prepare("UPDATE IGNORE reminder_occurrences SET due_date = :d, status = 'pending'
+                        WHERE reminder_id = :r AND user_id = :u AND status IN ('pending','overdue')")
+            ->execute(['d' => $date, 'r' => $rid, 'u' => $userId]);
+        $pdo->prepare("DELETE FROM reminder_occurrences
+                        WHERE reminder_id = :r AND user_id = :u AND status IN ('pending','overdue') AND due_date <> :d")
+            ->execute(['d' => $date, 'r' => $rid, 'u' => $userId]);
+    }
+
     // ⛔ قانونی که منبعش دیگر در جریان نیست باید بسته شود، وگرنه چکِ
     //    پاس‌شده تا ابد در فهرستِ سررسیدها می‌ماند.
+    // ⛔ «زنده» یعنی **تاریخ هم دارد**: طلب/بدهی یا چکی که سررسیدش برداشته شد
+    //    («بدون سررسید») یادآوری ندارد. بی‌این شرط `$upsert` ردیفِ بی‌تاریخ را رد
+    //    می‌کرد ولی سوییپ هم آن را زنده می‌دید، پس قانون با تاریخِ قبلی فعال می‌ماند.
     foreach ([
-        'cheque'       => 'SELECT id FROM cheques WHERE user_id = :u AND ' . chequeActiveSql(),
-        'debt'         => 'SELECT id FROM debts WHERE user_id = :u AND is_settled = 0',
+        'cheque'       => 'SELECT id FROM cheques WHERE user_id = :u AND due_date IS NOT NULL AND ' . chequeActiveSql(),
+        'debt'         => 'SELECT id FROM debts WHERE user_id = :u AND is_settled = 0 AND due_date IS NOT NULL',
         'recurring_tx' => 'SELECT id FROM recurring_transactions WHERE user_id = :u AND is_active = 1',
     ] as $type => $sql) {
         try {
@@ -543,6 +590,17 @@ function syncScheduleRules(int $userId): int
             $q->execute(['u' => $userId, 't' => $type]);
         } catch (Throwable $e) { /* جدول نیست */ }
     }
+    // ⛔ و سررسیدِ **باز**ِ قانونِ بسته‌شده هم بسته می‌شود: فهرستِ سررسیدها و
+    //    اعلانِ روزانه فقط `o.status` را می‌خوانند، پس چکِ پاس‌شده یا بدهیِ
+    //    بی‌تاریخ‌شده با سررسیدِ قبلی‌اش هنوز در فهرست بود و اعلان می‌داد.
+    try {
+        $pdo->prepare("UPDATE reminder_occurrences o
+                         JOIN reminders r ON r.id = o.reminder_id AND r.user_id = o.user_id
+                          SET o.status = 'skipped', o.done_at = NOW()
+                        WHERE r.user_id = :u AND r.status = 'finished' AND r.source_type IN ('cheque','debt','recurring_tx')
+                          AND o.status IN ('pending','overdue')")
+            ->execute(['u' => $userId]);
+    } catch (Throwable $e) { /* جدول نیست */ }
 
     return $n;
 }
