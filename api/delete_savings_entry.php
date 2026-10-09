@@ -14,9 +14,21 @@ $userId = Auth::userId();
 $id = (int)postParam('entry_id');
 
 $pdo = Database::getConnection();
-$stmt = $pdo->prepare('SELECT id FROM savings_entries WHERE id = :id AND user_id = :u');
+$stmt = $pdo->prepare('SELECT id, goal_id, amount FROM savings_entries WHERE id = :id AND user_id = :u');
 $stmt->execute(['id' => $id, 'u' => $userId]);
-if (!$stmt->fetch()) { jsonResponse(['success' => false, 'message' => 'رکورد یافت نشد.'], 404); }
+$entry = $stmt->fetch();
+if (!$entry) { jsonResponse(['success' => false, 'message' => 'رکورد یافت نشد.'], 404); }
+
+// ⛔ حذفِ واریز نباید موجودیِ هدف را زیرِ صفر ببرد — همان سدی که برداشت دارد.
+//    بازرسیِ محاسباتی (مهر ۱۴۰۵): واریزِ ۴٬۰۰۰، برداشتِ ۴٬۰۰۰، حذفِ واریز ⇒ موجودیِ
+//    «−۴٬۰۰۰» و پیشرفتِ «−۴۰٪». اول برداشت حذف شود.
+if ((int)$entry['amount'] > 0) {
+    $cur = $pdo->prepare('SELECT COALESCE(SUM(amount),0) FROM savings_entries WHERE goal_id = :g AND user_id = :u');
+    $cur->execute(['g' => (int)$entry['goal_id'], 'u' => $userId]);
+    if ((int)$cur->fetchColumn() - (int)$entry['amount'] < 0) {
+        jsonResponse(['success' => false, 'message' => 'با حذفِ این واریز موجودیِ هدف منفی می‌شود — اول برداشتِ بعد از آن را حذف کنید.'], 422);
+    }
+}
 
 // ⛔ عکس **پیش از** حذف، وگرنه چیزی برای برگرداندن نمی‌ماند.
 $undo = Undo::capture('savings_entries', $id, $userId);

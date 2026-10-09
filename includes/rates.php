@@ -181,10 +181,11 @@ final class Rates
         $isGram = in_array($u, ['گرم', 'gr', 'g', 'gram'], true);
         $isCount = in_array($u, ['عدد', 'سکه', 'قطعه', ''], true);
         $has = fn(string ...$w): bool => (bool)array_filter($w, fn($x) => str_contains($n, $x));
-        if ($has('دلار', 'usd') && !$has('کانادا', 'استرالیا') && in_array($u, ['دلار', 'usd', '$', 'عدد', ''], true)) { return 'usd'; }
+        // ⛔ تتر پیش از دلار: «usd» زیررشته‌ی «usdt» است و تتر دلار خوانده می‌شد.
+        if ($has('تتر', 'usdt') && in_array($u, ['تتر', 'usdt', 'عدد', ''], true)) { return 'usdt'; }
+        if ($has('دلار', 'usd') && !$has('usdt', 'تتر', 'کانادا', 'استرالیا') && in_array($u, ['دلار', 'usd', '$', 'عدد', ''], true)) { return 'usd'; }
         if ($has('یورو', 'eur') && in_array($u, ['یورو', 'eur', '€', 'عدد', ''], true)) { return 'eur'; }
         if ($has('درهم', 'aed') && in_array($u, ['درهم', 'aed', 'عدد', ''], true)) { return 'aed'; }
-        if ($has('تتر', 'usdt') && in_array($u, ['تتر', 'usdt', 'عدد', ''], true)) { return 'usdt'; }
         if ($has('سکه')) {
             if (!$isCount) { return null; }
             if ($has('ربع')) { return 'coin_quarter'; }
@@ -198,6 +199,9 @@ final class Rates
             if ($has('آبشده', 'ابشده') || $u === 'مثقال') { return $u === 'مثقال' ? 'mesghal' : null; }
             if (!$isGram) { return null; }
             if ($has('24')) { return 'gold24'; }
+            // ⛔ عیارِ صریحِ دیگر (۲۱، ۱۴، ۷۵۰…) گرمِ ۱۸ نیست — ارزش ۱۴٪ کم یا ۲۹٪ زیاد
+            //    درمی‌آمد. هر عددی جز ۱۸ در نام ⇒ نامطمئن ⇒ کاربر دستی وصل می‌کند.
+            if (preg_match_all('/\d+/', $n, $nums) && array_diff($nums[0], ['18'])) { return null; }
             return 'gold18';   // طلای گرمیِ بی‌عیار در بازارِ ایران یعنی ۱۸
         }
         return null;

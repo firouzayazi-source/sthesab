@@ -1466,7 +1466,15 @@ final class BizParties
         }
         $pdo->prepare('UPDATE biz_parties SET opening_balance = opening_balance + :d WHERE id = :id AND user_id = :u')
             ->execute(['d' => $delta, 'id' => $partyId, 'u' => $userId]);
+        self::reallocate($pdo, $userId, $partyId);
         return null;
+    }
+
+    /** مانده‌ی اول دوره در تسویه‌ی فاکتورها هست (`BizPay::reallocateTx()`) — با تغییرش از نو. */
+    private static function reallocate(PDO $pdo, int $userId, int $partyId): void
+    {
+        if (!class_exists('BizPay', false)) { require_once __DIR__ . '/biz_docs.php'; }
+        BizPay::reallocateTx($pdo, $userId, $partyId);
     }
 
     /**
@@ -1727,6 +1735,7 @@ final class BizParties
                 'UPDATE biz_parties SET name = :n, kind = :k, phone = :ph, address = :a, note = :no, opening_balance = :ob
                  WHERE id = :id AND user_id = :u'
             )->execute($row + ['id' => $id]);
+            if ((int)$cur['opening_balance'] !== $opening) { self::reallocate($pdo, $userId, $id); }
         } else {
             $pdo->prepare(
                 'INSERT INTO biz_parties (user_id, name, kind, phone, address, note, opening_balance)
@@ -1899,27 +1908,32 @@ final class BizCash
      * ⚠ این هرگز چیزی را که کاربر حذف کرده زنده نمی‌کند: آخرین صندوقِ فعال
      *   غیرفعال‌شدنی نیست (`setActive()`)، پس «صفر ردیف» فقط بارِ اول است.
      */
-    public static function list(int $userId, bool $activeOnly = false): array
+    /**
+     * `$asOf` = موجودیِ تا پایانِ آن روز. ⛔ داشبورد با امروز می‌خواند: «نقدِ امروز» و
+     * «نقدِ اولِ ماه» از همین عدد منهای گردشِ تا امروز ساخته می‌شوند، و پرداختِ تاریخ‌آینده
+     * (تا یک سال جلوتر پذیرفته است) آن را از قبل می‌شمرد — بازرسیِ محاسباتی (مهر ۱۴۰۵).
+     */
+    public static function list(int $userId, bool $activeOnly = false, ?string $asOf = null): array
     {
-        $rows = self::fetch($userId, $activeOnly);
+        $rows = self::fetch($userId, $activeOnly, $asOf);
         if (!$rows && !$activeOnly) {
             Database::getConnection()->prepare(
                 "INSERT INTO biz_accounts (user_id, name, kind) VALUES (:u, 'صندوق', 'cash')"
             )->execute(['u' => $userId]);
-            $rows = self::fetch($userId, false);
+            $rows = self::fetch($userId, false, $asOf);
         }
         return $rows;
     }
 
-    private static function fetch(int $userId, bool $activeOnly): array
+    private static function fetch(int $userId, bool $activeOnly, ?string $asOf = null): array
     {
-        $bal = self::balanceSql();
+        $bal = self::balanceSql($asOf !== null);
         $st  = Database::getConnection()->prepare(
             "SELECT a.*, {$bal} AS balance FROM biz_accounts a WHERE a.user_id = :u"
             . ($activeOnly ? ' AND a.is_active = 1' : '')
             . ' ORDER BY a.is_active DESC, a.sort_order, a.id'
         );
-        $st->execute(['u' => $userId]);
+        $st->execute(['u' => $userId] + ($asOf !== null ? ['bal_d1' => $asOf, 'bal_d2' => $asOf] : []));
         return $st->fetchAll();
     }
 

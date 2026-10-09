@@ -60,36 +60,26 @@ if ($preset !== 'custom' && isset($presets[$preset])) {
 }
 
 // ---------- تفکیک بر اساس دسته‌بندی ----------
+// ⛔ از **تراکنش‌ها** شروع می‌شود، نه از دسته‌ها. بازرسیِ محاسباتی (مهر ۱۴۰۵): با
+//    `FROM categories … WHERE c.is_active = 1`، هزینه‌ی دسته‌ای که بعداً غیرفعال شده
+//    نه در فهرست می‌آمد نه در «بدون دسته‌بندی» (`category_id` خالی نیست) — جمعِ این
+//    گزارش ۲۰۰٬۰۰۰ و کارتِ ماه ۷۰۰٬۰۰۰. حالا هر تراکنشِ بازه دقیقاً یک بار شمرده
+//    می‌شود: دسته‌ی غیرفعال با نامِ خودش، دسته‌ی ناموجود در «بدون دسته‌بندی».
 $stmt = $pdo->prepare('
-    SELECT c.id, c.name, COALESCE(SUM(t.amount), 0) AS total, COUNT(t.id) AS cnt
-    FROM categories c
-    LEFT JOIN transactions t
-        ON t.category_id = c.id AND t.user_id = :user_id AND t.type = :type
-        AND t.transaction_date BETWEEN :from_date AND :to_date
-    WHERE c.type = :type2 AND c.is_active = 1 AND ' . categoryScopeSql('c.') . '
-    GROUP BY c.id, c.name
+    SELECT COALESCE(c.id, 0) AS id, MAX(c.name) AS name, SUM(t.amount) AS total, COUNT(t.id) AS cnt
+    FROM transactions t
+    LEFT JOIN categories c ON c.id = t.category_id
+    WHERE t.user_id = :user_id AND t.type = :type
+      AND t.transaction_date BETWEEN :from_date AND :to_date
+    GROUP BY COALESCE(c.id, 0)
     HAVING total > 0
     ORDER BY total DESC
 ');
-$stmt->execute([
-    'user_id' => $userId, 'type' => $type, 'type2' => $type,
-    'from_date' => $fromDate, 'to_date' => $toDate,
-] + categoryScopeParams($userId));
-$categoryBreakdown = $stmt->fetchAll();
-
-// تراکنش‌های بدون دسته‌بندی
-$uncatStmt = $pdo->prepare('
-    SELECT COALESCE(SUM(amount), 0) AS total, COUNT(*) AS cnt
-    FROM transactions
-    WHERE user_id = :user_id AND type = :type AND category_id IS NULL
-      AND transaction_date BETWEEN :from_date AND :to_date
-');
-$uncatStmt->execute(['user_id' => $userId, 'type' => $type, 'from_date' => $fromDate, 'to_date' => $toDate]);
-$uncatRow = $uncatStmt->fetch();
-if ((int)$uncatRow['total'] > 0) {
-    $categoryBreakdown[] = ['id' => 0, 'name' => 'بدون دسته‌بندی', 'total' => $uncatRow['total'], 'cnt' => $uncatRow['cnt']];
-    usort($categoryBreakdown, fn($a, $b) => $b['total'] <=> $a['total']);
-}
+$stmt->execute(['user_id' => $userId, 'type' => $type, 'from_date' => $fromDate, 'to_date' => $toDate]);
+$categoryBreakdown = array_map(function (array $r): array {
+    if ((int)$r['id'] === 0 || $r['name'] === null) { $r['id'] = 0; $r['name'] = 'بدون دسته‌بندی'; }
+    return $r;
+}, $stmt->fetchAll());
 
 $grandTotal = array_sum(array_column($categoryBreakdown, 'total'));
 

@@ -31,7 +31,7 @@ if (!tradesTablesExist($pdo)) {
 }
 
 $assetId   = (int)postParam('asset_id');
-$qty       = sanitizeQty(postParam('qty', '1'));
+$qty       = sanitizeQty(postParam('qty', '1'), 4);
 $saleTotal = sanitizeAmount(postParam('sale_total'));
 $saleDate  = postParam('sale_date');
 $walletId  = (int)postParam('wallet_id');
@@ -71,7 +71,9 @@ try {
         jsonResponse(['success' => false, 'message' => 'دارایی یافت نشد.'], 404);
     }
 
-    $available = round((float)$asset['quantity'], 3);
+    // ⛔ ۴ رقم = ستونِ `assets.quantity`. بازرسیِ محاسباتی (مهر ۱۴۰۵): با گردِ ۳ رقمی
+    //    ۱٫۲۳۴۵ گرم منهای ۱ گرم، «۰٫۲۳۵» ذخیره می‌شد — مقدار بعد از فروش بیشتر شد.
+    $available = round((float)$asset['quantity'], 4);
     if ($qty > $available + 0.0005) {
         $pdo->rollBack();
         jsonResponse(['success' => false,
@@ -106,7 +108,7 @@ try {
     ]);
 
     // مقدار از دارایی کم می‌شود؛ اگر چیزی نماند، ردیف برداشته می‌شود
-    $left = round($available - $qty, 3);
+    $left = round($available - $qty, 4);
     if ($left <= 0.0005) {
         $pdo->prepare('DELETE FROM assets WHERE id = :id AND user_id = :u')
             ->execute(['id' => $assetId, 'u' => $userId]);

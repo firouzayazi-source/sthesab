@@ -721,7 +721,8 @@ function debtDueOptional(): bool
  *    (رفتارِ قبلی، نه صفر).
  *
  * خروجی هر ردیف: id, name, unit, total_qty, total_value (به نرخِ روز),
- * total_cost (بهای تمام‌شده), current_price, price_updated_at, cnt
+ * total_cost (بهای تمام‌شده), priced_value (ارزشِ فقط ثبت‌های بهادار — برای سودِ
+ * محقق‌نشده), current_price, price_updated_at, cnt
  */
 /**
  * عنوانِ یک ثبتِ دارایی — خطِ اولِ توضیحی که کاربر نوشته («گردن‌بندِ طلا»، «TON»).
@@ -747,6 +748,7 @@ function assetSummaryRows(int $userId): array
                        COALESCE(SUM(a.quantity), 0) AS total_qty,
                        COALESCE(SUM(a.quantity * COALESCE(at.current_price, a.unit_price, 0)), 0) AS total_value,
                        COALESCE(SUM(a.quantity * COALESCE(a.unit_price, 0)), 0) AS total_cost,
+                       COALESCE(SUM(CASE WHEN a.unit_price IS NOT NULL THEN a.quantity * COALESCE(at.current_price, a.unit_price) END), 0) AS priced_value,
                        COUNT(a.id) AS cnt
                 FROM asset_types at
                 LEFT JOIN assets a ON a.asset_type_id = at.id AND a.user_id = :user_id
@@ -760,6 +762,7 @@ function assetSummaryRows(int $userId): array
                        COALESCE(SUM(a.quantity), 0) AS total_qty,
                        COALESCE(SUM(a.quantity * COALESCE(a.unit_price, 0)), 0) AS total_value,
                        COALESCE(SUM(a.quantity * COALESCE(a.unit_price, 0)), 0) AS total_cost,
+                       COALESCE(SUM(a.quantity * COALESCE(a.unit_price, 0)), 0) AS priced_value,
                        COUNT(a.id) AS cnt
                 FROM asset_types at
                 LEFT JOIN assets a ON a.asset_type_id = at.id AND a.user_id = :user_id
@@ -2122,8 +2125,11 @@ function budgetStatuses(int $userId): array
         $spent = $spentMap["{$from}|{$to}"][(int)$b['category_id']] ?? 0;
 
         $amount = (int)$b['amount'];
-        $pct = $amount > 0 ? round(($spent / $amount) * 100) : 0;
-        $status = $pct >= 100 ? 'over' : ($pct >= 80 ? 'warn' : 'good');
+        // ⛔ وضعیت از خودِ مبلغ‌ها، نه از درصدِ گردشده — بازرسیِ محاسباتی (مهر ۱۴۰۵):
+        //    ۴٬۹۸۰٬۰۰۰ از ۵٬۰۰۰٬۰۰۰ با `round()` «۱۰۰٪ — بیشتر از بودجه» می‌شد در حالی که
+        //    ۲۰٬۰۰۰ مانده بود. درصد هم `floor` (مثلِ `debtPaidRing()`): ۱۰۰ فقط وقتی تمام شده.
+        $pct = $amount > 0 ? (int)floor(($spent / $amount) * 100) : 0;
+        $status = $amount > 0 && $spent > $amount ? 'over' : ($pct >= 80 ? 'warn' : 'good');
 
         $b['spent'] = $spent;
         $b['remaining'] = $amount - $spent;
@@ -2445,6 +2451,7 @@ function debtInstallments(array $debt): array
     $every = ($debt['installment_every'] ?? 'monthly') === 'weekly' ? 'weekly' : 'monthly';
 
     $start = $debt['first_installment_date'] ?? null;
+    $anchor = null;
     if (!$start || !isValidDate($start)) {
         // اگر تاریخِ اولین قسط نیامده، از سررسید عقب می‌رویم تا آخرین
         // قسط روی همان سررسید بیفتد — که انتظارِ طبیعیِ کاربر است.
@@ -2483,7 +2490,10 @@ function debtInstallments(array $debt): array
             'remaining' => max(0, min($amount, $covered + $amount - $paid)),
         ];
         $covered += $amount;
-        if ($i < $count) { $date = advanceRecurringDate($date, $every, 1, jalaliDayOfDate($start)); }
+        // ⛔ لنگرِ رو به جلو همان روزِ سررسید است، نه روزِ شروعِ عقب‌رفته — بازرسیِ
+        //    محاسباتی (مهر ۱۴۰۵): سررسیدِ ۳۱ اردیبهشت از اسفندِ ۲۹روزه رد می‌شد، شروع ۲۹
+        //    می‌شد و همه‌ی اقساط (حتی آخری) روی ۲۹ می‌ماندند؛ قسطِ آخر روی سررسید نمی‌افتاد.
+        if ($i < $count) { $date = advanceRecurringDate($date, $every, 1, $anchor ?? jalaliDayOfDate($start)); }
     }
 
     return $out;
@@ -2738,8 +2748,20 @@ function financialEvents(int $userId, string $fromDate, string $toDate): array
         $stmt->execute(['u' => $userId, 't' => $toDate]);
         foreach ($stmt->fetchAll() as $r) {
             $due = $r['next_due_date'];
+            // ⛔ روزانه/هفتگی پیش از بازه یک‌جا تا شروعِ بازه جلو می‌رود، و سقفِ حلقه
+            //    فقط ترمز است (۴۰۰۰ دور)، نه «۴۰ سررسید». بازرسیِ محاسباتی (مهر ۱۴۰۵):
+            //    با سقفِ ۴۰ دور از `next_due_date`، تکرارِ روزانه در تقویمِ ماهِ بعد ۲۶
+            //    روز (به‌جای ۳۰) و ماهِ پس از آن **صفر** روز داشت، و تعهدهای «پول قابل
+            //    خرج» کم شمرده می‌شد. ماهانه/سالانه با لنگرِ روز (`jalaliDayOfDate`)
+            //    نمی‌شود پرید و لازم هم نیست: ۴۰۰۰ ماه ۳۰۰ سال است.
+            $step = $r['frequency'] === 'daily' ? max(1, (int)$r['interval_count'])
+                  : ($r['frequency'] === 'weekly' ? 7 * max(1, (int)$r['interval_count']) : 0);
+            if ($step > 0 && $due < $fromDate) {
+                $gap  = intdiv((int)((strtotime($fromDate . ' 12:00') - strtotime($due . ' 12:00')) / 86400), $step) * $step;
+                $due  = date('Y-m-d', strtotime($due . " +{$gap} days"));
+            }
             $guard = 0;
-            while ($due <= $toDate && $guard < 40) {
+            while ($due <= $toDate && $guard < 4000) {
                 if ($r['end_date'] !== null && $due > $r['end_date']) { break; }
                 if ($due >= $fromDate) {
                     $events[] = [
@@ -5118,7 +5140,7 @@ function tradesEnabled(PDO $pdo, int $userId): bool
  * مقدار اعشاری (تعداد/گرم) از ورودی کاربر — با ارقام فارسی و ممیز فارسی.
  * sanitizeAmount اینجا به کار نمی‌آید چون نقطه‌ی اعشار را هم می‌اندازد.
  */
-function sanitizeQty($input): float
+function sanitizeQty($input, int $decimals = 3): float
 {
     $clean = trim(toLatinDigits((string)$input));
     // ⛔ «1,000» یعنی هزار، نه یک: الگوی جداکننده‌ی هزارگان (۱ تا ۳ رقم، بعد
@@ -5127,9 +5149,12 @@ function sanitizeQty($input): float
     if (preg_match('/^\d{1,3}(?:[,،]\d{3})+(?:[.٫]\d+)?$/u', $clean)) {
         $clean = str_replace([',', '،'], '', $clean);
     }
-    $clean = str_replace(['٫', '،', ','], '.', $clean);
+    // ⛔ «۲/۵» (نوشتنِ رایجِ اعشار در فارسی) دو و نیم است — همان که `qty()`ِ store.js
+    //    و پیش‌نمایشِ زنده می‌خوانند. بازرسیِ محاسباتی (مهر ۱۴۰۵): سرور «/» را دور
+    //    می‌انداخت و «۲/۵ گرم» **۲۵ گرم** ذخیره می‌شد، در حالی که صفحه ۲٫۵ نشان داده بود.
+    $clean = str_replace(['٫', '،', ',', '/'], '.', $clean);
     $clean = preg_replace('/[^0-9.]/', '', $clean);
-    return round((float)$clean, 3);
+    return round((float)$clean, $decimals);
 }
 
 /**
@@ -5287,11 +5312,19 @@ function syncTradeProfitTransactions(int $userId, int $tradeId): void
     $qty = (float)$trade['qty'];
     $unitCost = $qty > 0 ? ((int)$trade['buy_total'] + (int)$trade['side_costs']) / $qty : 0;
 
-    $sales = $pdo->prepare('SELECT id, qty, sale_total, sale_date, profit_tx_id FROM trade_sales WHERE trade_id = :t AND user_id = :u');
+    $sales = $pdo->prepare('SELECT id, qty, sale_total, sale_date, profit_tx_id FROM trade_sales WHERE trade_id = :t AND user_id = :u ORDER BY sale_date, id');
     $sales->execute(['t' => $tradeId, 'u' => $userId]);
 
+    // ⛔ گردِ تجمعی، نه گردِ هر فروش جدا: جمعِ سودهای ثبت‌شده باید همان «سود قطعی»
+    //    ِ `tradesWithProgress()` باشد که یک‌جا گرد می‌شود. بازرسیِ محاسباتی (مهر ۱۴۰۵):
+    //    ۳ واحد به ۱۰۰۰، سه فروشِ ۵۰۰ ⇒ صفحه «۵۰۰ سود» و دفتر ۵۰۱ درآمد.
+    $cumSale = 0; $cumQty = 0.0; $booked = 0;
     foreach ($sales->fetchAll() as $s) {
-        $profit = (int)round((int)$s['sale_total'] - $unitCost * (float)$s['qty']);
+        $cumSale += (int)$s['sale_total'];
+        $cumQty  += (float)$s['qty'];
+        $upTo     = (int)round($cumSale - $unitCost * $cumQty);
+        $profit   = $upTo - $booked;
+        $booked   = $upTo;
         $txId   = $s['profit_tx_id'] ? (int)$s['profit_tx_id'] : null;
 
         if ($profit === 0) {

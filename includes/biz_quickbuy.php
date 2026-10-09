@@ -285,6 +285,10 @@ final class BizQuickBuy
         } else {
             $qty = sanitizeQty((string)($in['qty'] ?? ''));
             if ($qty <= 0) { return ['ok' => false, 'message' => 'تعدادِ خریدشده را بنویسید.']; }
+            // ⛔ سقف پیش از `(string)$qty`: عددِ ≥۱e15 شکلِ نمایی می‌گرفت («1.0E+19») و
+            //    `parseLines` آن را ۱٫۰۱۹ می‌خواند — پیام «ده میلیارد میلیارد خریده شد»،
+            //    موجودی ۱٫۰۱۹ (بازرسیِ محاسباتی، مهر ۱۴۰۵).
+            if ($err = BizCommon::qtyError($qty, 'تعداد')) { return ['ok' => false, 'message' => $err]; }
             $lines[] = ['item' => $name, 'product_id' => (int)$prod['id'], 'qty' => (string)$qty, 'price' => (string)$buy];
         }
 

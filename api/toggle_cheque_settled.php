@@ -104,6 +104,20 @@ if ($hasWalletCol && $newState === 'cleared') {
 $endorsedTo = $newState === 'endorsed' ? trim((string)postParam('endorsed_to')) : '';
 if (mb_strlen($endorsedTo) > 150) { $endorsedTo = mb_substr($endorsedTo, 0, 150); }
 
+// ⛔ چکِ برگشتی‌ای که روی طلبِ پیوندی‌اش پرداخت ثبت شده، از «برگشتی» بیرون نمی‌رود.
+//    طلبِ پرداخت‌دار عمداً پاک نمی‌شود (کارِ خودِ کاربر)، پس «پاس شد» هم مبلغِ کاملِ چک
+//    را به حساب می‌نشاند و هم ماندهِ طلب را باز نگه می‌داشت — بازرسیِ محاسباتی (مهر
+//    ۱۴۰۵): چکِ ۱٬۰۰۰٬۰۰۰، ۳۰۰٬۰۰۰ وصول روی طلب، بعد «پاس شد» ⇒ ۱٬۳۰۰٬۰۰۰ به حساب و
+//    ۷۰۰٬۰۰۰ هنوز طلب؛ خالص دارایی یک میلیون بیشتر. باقیِ پول از راهِ همان طلب می‌آید.
+if ($hasStatusCol && $current === 'bounced' && $newState !== 'bounced' && tableHasColumn('debts', 'cheque_id')) {
+    $paidLinked = $pdo->prepare('SELECT COUNT(*) FROM debt_payments p JOIN debts d ON d.id = p.debt_id
+                                  WHERE d.cheque_id = :c AND d.user_id = :u');
+    $paidLinked->execute(['c' => $chequeId, 'u' => $userId]);
+    if ((int)$paidLinked->fetchColumn() > 0) {
+        jsonResponse(['success' => false, 'message' => 'روی طلبِ این چکِ برگشتی پرداخت ثبت شده — باقیِ مبلغ را از همان طلب «پرداخت» بزنید، نه پاس کردنِ چک.'], 422);
+    }
+}
+
 try {
     $pdo->beginTransaction();
 

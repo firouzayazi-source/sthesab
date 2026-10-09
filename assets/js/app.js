@@ -6027,6 +6027,16 @@ function appMain() {
         });
     });
 
+    // مقدارِ دارایی — همان قاعده‌ی `sanitizeQty()` در سرور (و `qty()`ِ store.js): «1,000»
+    // هزار است و «۲/۵»، «۲٫۵» و «2,5» دو و نیم. خامِ تایپ‌شده فرستاده می‌شود و سرور
+    // همین را می‌خواند؛ پیش از این ویرگول حذف و «/» نادیده گرفته می‌شد (۲/۵ ⇒ ۲۵).
+    function assetQtyJs(s) {
+        var t = toLatinDigitsJs(String(s || '')).replace(/\s/g, '');
+        if (/^\d{1,3}(?:[,،]\d{3})+(?:[.٫]\d+)?$/.test(t)) { t = t.replace(/[,،]/g, ''); }
+        t = t.replace(/[٫\/,،]/g, '.').replace(/[^0-9.]/g, '');
+        return parseFloat(t) || 0;
+    }
+
     // ارزشِ امروزِ داراییِ در حالِ ثبت، هم‌زمان با تایپِ مقدار
     (function () {
         var type = document.getElementById('add_asset_type');
@@ -6038,7 +6048,7 @@ function appMain() {
             var opt = type.options[type.selectedIndex];
             var price = opt ? (parseInt(opt.getAttribute('data-price'), 10) || 0) : 0;
             var unit = opt ? (opt.getAttribute('data-unit') || 'واحد') : 'واحد';
-            var q = parseFloat(toLatinDigitsJs(qty.value).replace(/[,\u066C\s]/g, '').replace('٫', '.')) || 0;
+            var q = assetQtyJs(qty.value);
             if (price <= 0) { out.hidden = true; return; }
             var src = opt.getAttribute('data-auto') === '1' ? 'نرخِ روزِ بازار' : 'نرخِ دستی';
             out.hidden = false;
@@ -6057,7 +6067,7 @@ function appMain() {
             e.preventDefault();
             var fd = new FormData(addAssetForm);
             fd.set('unit_price', toLatinDigitsJs(document.getElementById('add_asset_price').value).replace(/[,\u066C]/g, ''));
-            fd.set('quantity', toLatinDigitsJs(document.getElementById('add_asset_qty').value).replace(/[,\u066C]/g, '').replace('٫', '.'));
+            fd.set('quantity', toLatinDigitsJs(document.getElementById('add_asset_qty').value).trim());
 
             var msgEl = document.getElementById('addAssetMessage');
             var btnEl = document.getElementById('addAssetSubmitBtn');
@@ -6109,7 +6119,7 @@ function appMain() {
             e.preventDefault();
             var fd = new FormData(editAssetForm);
             fd.set('unit_price', toLatinDigitsJs(document.getElementById('edit_asset_price').value).replace(/[,\u066C]/g, ''));
-            fd.set('quantity', toLatinDigitsJs(document.getElementById('edit_asset_qty').value).replace(/[,\u066C]/g, '').replace('٫', '.'));
+            fd.set('quantity', toLatinDigitsJs(document.getElementById('edit_asset_qty').value).trim());
 
             var msgEl = document.getElementById('editAssetMessage');
             var btnEl = document.getElementById('editAssetSubmitBtn');

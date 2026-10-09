@@ -73,7 +73,7 @@ $rangeDailyRows = array_values(array_filter(
 
 // ---------- یادآوری طلب/بدهی نزدیک به سررسید یا سررسیدگذشته ----------
 $reminderStmt = $pdo->prepare('
-    SELECT id, direction, counterparty_name, amount, due_date
+    SELECT id, direction, counterparty_name, amount, paid_amount, due_date
     FROM debts
     WHERE user_id = :user_id AND is_settled = 0 AND due_date <= :soon
     ORDER BY due_date ASC
@@ -132,7 +132,8 @@ include __DIR__ . '/includes/header.php';
                 <?= $r['direction'] === 'receivable' ? 'طلب از' : 'بدهی به' ?> <?= h($r['counterparty_name']) ?>
                 — <?= $overdue ? '<span style="color:var(--color-expense); font-weight:700;">سررسید گذشته</span>' : 'سررسید ' . toJalali($r['due_date']) ?>
             </span>
-            <span class="stats-value" style="direction:ltr;"><?= formatMoney($r['amount']) ?> <small>تومان</small></span>
+            <?php /* ⛔ مانده، نه کلِ مبلغ (`debtRemaining()`) — بدهیِ ۱٬۰۰۰٬۰۰۰ که ۹۰۰٬۰۰۰اش پرداخت شده ۱۰۰٬۰۰۰ است، همان عددِ «سررسیدها» */ ?>
+            <span class="stats-value" style="direction:ltr;"><?= formatMoney(debtRemaining($r)) ?> <small>تومان</small></span>
         </div>
     <?php endforeach; ?>
     <a href="debts.php" class="link-more" style="display:inline-block; margin-top:10px;">مدیریت طلب و بدهی ←</a>

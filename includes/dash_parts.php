@@ -52,7 +52,9 @@ function dashYearState(array $dailyRows, string $today, $yParam): array
     $year = (int)toLatinDigits((string)$yParam);
     if ($year < $min || $year > $ty) { $year = $ty; }
     return [
-        'report' => seasonalYearReport($dailyRows, $year, $today),
+        // تراکنشِ آینده‌دار (قسط/تکرارِ ثبت‌شده‌ی جلوتر) در کارتِ «این ماه» شمرده نمی‌شود
+        // (`getPeriodStats` تا امروز)؛ کارتِ سال هم نباید — وگرنه دو کارت دو عدد می‌گفتند.
+        'report' => seasonalYearReport(array_values(array_filter($dailyRows, static fn($r) => (string)$r['transaction_date'] <= $today)), $year, $today),
         'year'   => $year,
         'prev'   => $year > $min ? $year - 1 : null,
         'next'   => $year < $ty ? $year + 1 : null,

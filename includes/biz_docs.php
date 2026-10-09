@@ -912,6 +912,16 @@ final class BizInvoices
         // ⛔ ابطال و ردِ سرگذشتش در **یک** تراکنش (قاعده‌ی `BizLog`): کارِ موفق بی‌رد نمی‌ماند
         $pdo->beginTransaction();
         try {
+            Biz::lockShop($pdo, $userId);
+            // ⛔ پیش‌نویسِ شماره‌دار هنوز جایی در سرگذشتِ گوشی دارد (`first_issued_at`)؛
+            //    باطل کردنش همان سدِ `void()` را می‌خواهد. بازرسیِ محاسباتی (مهر ۱۴۰۵):
+            //    خریدِ X ← فروشِ X ← خریدِ دوباره‌ی X؛ ابطالِ فروش رد می‌شد ولی «برگشت
+            //    به پیش‌نویس» + «حذف» می‌گذشت ⇒ دو ورود بی‌خروج، موجودیِ ۲ برای یک گوشی.
+            if (($moved = BizSerial::movedLater($pdo, $userId, $id)) !== null) {
+                $pdo->rollBack();
+                return ['ok' => false, 'message' => 'گوشی با IMEI ' . $moved
+                    . ' بعد از این سند جابه‌جا شده است؛ اول سندِ بعدی‌اش را باطل کنید، یا همین را دوباره صادر کنید.'];
+            }
             $up = $pdo->prepare("UPDATE biz_invoices SET status = 'void', voided_at = NOW()
                                  WHERE id = :id AND user_id = :u AND status = 'draft' AND number IS NOT NULL");
             $up->execute(['id' => $id, 'u' => $userId]);
@@ -1019,14 +1029,19 @@ final class BizInvoices
             //    برگشتِ تک‌تایی از ردیفِ ۳تاییِ ۱۰۰ تومانی ۳۳+۳۳+۳۳ می‌شد و یک
             //    تومان برای همیشه روی فاکتور «تسویه‌نشده» می‌ماند.
             $last = abs($q - $left[$lineId]['left']) < 0.0005;
+            // ⛔ گردِ **تجمعی**: سهمِ (برگشته تا حالا + این) منهای آنچه واقعاً برگشته. با
+            //    گردِ هر برگشت جدا خطا جمع می‌شد و آخرین برگشت منفی درمی‌آمد — بازرسیِ
+            //    محاسباتی (مهر ۱۴۰۵): ۴ عدد با مالیاتِ ۲، چهار برگشتِ تکی ⇒ ۱، ۱، ۱، **−۱**.
+            $done = max(0.0, (float)$o['qty'] - $left[$lineId]['left']);
+            $share = static fn(int $whole): int => (int)round(($done + $q) * $whole / max((float)$o['qty'], 0.0005));
             $lt = $last
                 ? (int)$o['net_total'] - $left[$lineId]['amount']
-                : (int)round($q * $unitNet);
+                : max(0, $share((int)$o['net_total']) - $left[$lineId]['amount']);
             // ⛔ مالیاتِ برگشت = سهمِ همان مقدار از مالیاتِ ردیفِ اصلی (نه نرخِ امروز)؛
             //    آخرین برگشت باقیمانده‌ی دقیق — همان قاعده‌ی مبلغ.
             $oTax = (int)($o['tax_amount'] ?? 0);
             $tx = $oTax === 0 ? 0 : ($last ? $oTax - $left[$lineId]['tax']
-                                           : (int)round($q * $oTax / max((float)$o['qty'], 0.0005)));
+                                           : max(0, $share($oTax) - $left[$lineId]['tax']));
             $lines[] = ['product_id' => $o['product_id'] !== null ? (int)$o['product_id'] : null, 'ref_line_id' => $lineId,
                         'description' => (string)$o['description'], 'unit' => (string)$o['unit'], 'qty' => round($q, 3),
                         'unit_price' => (int)round($unitNet), 'line_discount' => 0, 'line_total' => $lt, 'net_total' => $lt,
@@ -1396,6 +1411,22 @@ final class BizPay
         //    هر صدور و دریافت دوباره می‌نوشت: مشتریِ ثابت با ۱۵۰۰ فاکتور = ۱۱۲ ms
         //    و ۱۵۰۰ UPDATE برای ثبتِ **یک** فاکتورِ نسیه.
         $invoices = []; $paidWas = [];
+        // ⛔ مانده‌ی اول دوره یک «سندِ مجازیِ قدیمی‌تر از همه» است (کلیدِ ۰، هرگز نوشته
+        //    نمی‌شود): بدهیِ قدیمیِ مشتری اول با دریافت تسویه می‌شود و اعتبارِ قدیمی‌اش
+        //    فاکتورِ تازه را می‌بندد. بازرسیِ محاسباتی (مهر ۱۴۰۵): بی‌این، دریافتِ بدهیِ
+        //    قدیمی به فاکتورِ تازه می‌خورد ⇒ فاکتور «تسویه» با مانده‌ی ۵۰۰ (`BALANCE_SQL`)،
+        //    و مشتریِ بستانکار فاکتورِ «معوق» داشت — دو عدد برای یک حقیقت.
+        $ob = 0;
+        if ($partyId !== null) {
+            $o = $pdo->prepare('SELECT opening_balance FROM biz_parties WHERE id = :p AND user_id = :u');
+            $o->execute(['p' => $partyId, 'u' => $userId]);
+            $ob = (int)$o->fetchColumn();
+        }
+        if ($ob !== 0) {
+            $invoices[0] = ['id' => 0, 'kind' => $ob > 0 ? 'sale' : 'purchase', 'total' => abs($ob), 'paid' => 0,
+                            'status' => 'issued', 'ref_invoice_id' => null, 'open' => abs($ob)];
+            $paidWas[0] = 0;
+        }
         foreach ($inv->fetchAll() as $r) {
             $paidWas[(int)$r['id']] = (int)$r['paid'];
             $invoices[(int)$r['id']] = $r + ['open' => $r['status'] === 'issued' ? (int)$r['total'] : 0];
@@ -1425,7 +1456,7 @@ final class BizPay
                 $iv = $invoices[$iid];
                 if (!in_array($iv['kind'], $kinds, true) || $iv['open'] <= 0) { continue; }
                 $x = min($left, $iv['open']);
-                $allocNew[] = [(int)$p['id'], $iid, $x];
+                if ($iid !== 0) { $allocNew[] = [(int)$p['id'], $iid, $x]; }
                 $invoices[$iid]['open'] -= $x;
                 $invoices[$iid]['paid'] += $x;
                 $left -= $x; $alloc += $x;
@@ -1461,6 +1492,19 @@ final class BizPay
                 $invoices[$rid]['open'] -= $x; $invoices[$rid]['paid'] += $x;
             }
         }
+        // اعتبارِ اول دوره (فروشگاه بدهکار، یا طلبِ قدیمی از فروشنده) مثلِ برگشتِ نسیه
+        // فاکتورهای بازِ سوی دیگر را می‌بندد — همان که `BALANCE_SQL` جمع می‌زند.
+        if (isset($invoices[0]) && $invoices[0]['open'] > 0) {
+            $other = $invoices[0]['kind'] === 'purchase' ? 'sale' : 'purchase';
+            foreach ($invoices as $iid => $iv) {
+                if ($invoices[0]['open'] <= 0) { break; }
+                if ($iid === 0 || $iv['kind'] !== $other || $iv['open'] <= 0) { continue; }
+                $x = min($invoices[0]['open'], $iv['open']);
+                $invoices[$iid]['open'] -= $x; $invoices[$iid]['paid'] += $x;
+                $invoices[0]['open'] -= $x;
+            }
+        }
+        unset($invoices[0], $paidWas[0]);
         $upI = $pdo->prepare('UPDATE biz_invoices SET paid = :p WHERE id = :id AND user_id = :u');
         foreach ($invoices as $iid => $iv) {
             if ($paidWas[$iid] !== $iv['paid']) { $upI->execute(['p' => $iv['paid'], 'id' => $iid, 'u' => $userId]); }
@@ -1935,6 +1979,25 @@ final class BizSerial
         foreach (self::states($pdo, $userId, $nums, 0, true) as $imei => $s) {
             if ($s['invoice_id'] !== $invoiceId) { return (string)$imei; }
         }
+        return null;
+    }
+
+    /**
+     * IMEIای از ردیف‌های این سند که **بعد از جایگاهِ آن** (`docKey()`) در سندِ صادرشده‌ی
+     * دیگری آمده، یا null. برخلافِ `movedAfter()` (که آخرین رخداد را می‌سنجد و برای سندِ
+     * صادرشده است)، برای پیش‌نویسِ شماره‌داری که حرکتش برداشته شده هم درست است.
+     */
+    public static function movedLater(PDO $pdo, int $userId, int $invoiceId): ?string
+    {
+        $st = $pdo->prepare('SELECT imei1, imei2 FROM biz_invoice_lines WHERE invoice_id = :i AND user_id = :u');
+        $st->execute(['i' => $invoiceId, 'u' => $userId]);
+        $nums = [];
+        foreach ($st->fetchAll() as $l) {
+            foreach (['imei1', 'imei2'] as $c) { if (!empty($l[$c])) { $nums[] = (string)$l[$c]; } }
+        }
+        $key = $nums ? self::docKey($pdo, $userId, $invoiceId) : null;
+        if ($key === null) { return null; }
+        foreach (self::states($pdo, $userId, $nums, $invoiceId, true, $key, true) as $imei => $_) { return (string)$imei; }
         return null;
     }
 

@@ -26,7 +26,8 @@ $entryDate   = postParam('entry_date');
 
 $errors = [];
 
-$quantity = (float)preg_replace('/[^0-9.]/', '', $rawQuantity);
+// ⛔ همان `sanitizeQty()` (۴ رقم = ستونِ `DECIMAL(18,4)`) — «۲/۵» و «2,5» دو و نیم‌اند، نه ۲۵.
+$quantity = sanitizeQty($rawQuantity, 4);
 if ($quantity <= 0) {
     $errors[] = 'مقدار باید بزرگ‌تر از صفر باشد.';
 }

@@ -126,7 +126,10 @@ $nwDelta = $nwPrev !== null ? $portfolioTotal - $nwPrev : null;
 
 // سود/زیانِ محقق‌نشده‌ی دارایی‌های ثبت‌شده — فقط وقتی نرخِ روز وارد
 // شده باشد، وگرنه ارزش و بها یکی‌اند و خطِ «۰» بی‌معناست.
-$unrealized = $totalPortfolioValue - $totalPortfolioCost;
+// ⛔ فقط ثبت‌هایی که بهای خرید دارند، در هر دو طرف (`priced_value`): ثبتِ بی‌بها هزینه‌ی
+//    صفر دارد و کلِ ارزشش «سود» خوانده می‌شد. و عددِ صحیح (`round`): جمعِ DECIMAL شناور
+//    است و `0.0 !== 0` جمله‌ی «۰ زیانِ محقق‌نشده» می‌ساخت — بازرسیِ محاسباتی (مهر ۱۴۰۵).
+$unrealized = (int)round(array_sum(array_column($assetSummary, 'priced_value')) - $totalPortfolioCost);
 
 $pageTitle = 'دارایی‌ها';
 include __DIR__ . '/includes/header.php';

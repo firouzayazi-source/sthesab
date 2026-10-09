@@ -186,7 +186,8 @@ $r2 = BizInvoices::createReturn($u, $S3, [$lineId => '1']);
 $ret2 = $inv($u, (int)$r2['id']);
 $r2b = BizInvoices::createReturn($u, $S3, [$lineId => '1']);
 $ret2b = $inv($u, (int)$r2b['id']);
-T::same([100, 100, 101], [(int)$ret1['tax_total'], (int)$ret2['tax_total'], (int)$ret2b['tax_total']], '⛔ برگشتِ آخر «باقیمانده‌ی دقیق»ِ مالیات است (۱۰۱، نه ۱۰۰)');
+// گردِ تجمعی: round(۱×۳۰۱/۳)=۱۰۰، round(۲×۳۰۱/۳)=۲۰۱ ⇒ ۱۰۱، و آخری باقیمانده‌ی دقیق ۱۰۰ — جمع ۳۰۱
+T::same([100, 101, 100], [(int)$ret1['tax_total'], (int)$ret2['tax_total'], (int)$ret2b['tax_total']], '⛔ برگشت‌ها با گردِ تجمعی؛ جمعشان دقیقاً مالیاتِ اصل (۳۰۱)');
 T::same((int)$o3['total'], (int)$ret1['total'] + (int)$ret2['total'] + (int)$ret2b['total'], 'جمعِ برگشت‌ها = کلِ فاکتور');
 T::same(10.0, (float)$ret2['vat_rate'], 'برگشت نرخِ سندِ اصلی را دارد');
 

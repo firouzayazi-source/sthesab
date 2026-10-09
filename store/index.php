@@ -40,7 +40,7 @@ $ie = (string)getParam('ie', 'm');
 if (!isset(BizDash::IE_GRAINS[$ie])) { $ie = 'm'; }
 
 // ---------- داده (هر خط یک کوئری) ----------
-$accounts = BizCash::list($userId);
+$accounts = BizCash::list($userId, false, $today);   // ⛔ تا امروز — همان مرزِ `cashDaily()`
 $cashSum  = BizCash::total($accounts);
 $todayAcc = BizDash::todayByAccount($userId, $today);
 $serFrom  = $ie === 'y' ? date('Y-m-d', strtotime($today . ' -4 years')) : date('Y-m-d', strtotime(min($pmFrom, $today) . ' -370 days'));
