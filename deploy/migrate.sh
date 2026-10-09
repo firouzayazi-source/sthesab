@@ -147,6 +147,7 @@ MIGRATIONS=(
     migration_biz_import.sql
     migration_sms_learn.sql
     migration_error_area.sql
+    migration_biz_pair.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -373,6 +374,8 @@ declare -A SENTINEL=(
     [migration_sms_learn.sql]="wallets.sms_keys"
     # ⚠ شاهد ایندکسِ **آخر** است: `ALTER`ِ دوم آخرین کارِ فایل است.
     [migration_error_area.sql]="app_errors:idx_area_open"
+    # ⚠ شاهد داده است: آن `INSERT` آخرین کارِ فایل است (بعد از ستون، کلید و پرکردنِ جفت‌ها)
+    [migration_biz_pair.sql]="app_settings~setting_key=biz_pair_seeded"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

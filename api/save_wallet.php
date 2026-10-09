@@ -87,6 +87,10 @@ $initial = sanitizeAmount($rawInit);
 if ($initial > 999999999999) {
     $errors[] = 'موجودی اولیه بیش از حد بزرگ است.';
 }
+// ⛔ کلیدِ «منفی» در فرم (`wallets.php`): علامتِ صریحِ کاربر، هم برای ساخت هم ویرایش
+if (postParam('initial_sign') === '1' && postParam('initial_negative') === '1') {
+    $initial = -$initial;
+}
 
 if (!empty($errors)) {
     jsonResponse(['success' => false, 'message' => implode(' ', $errors)], 422);
@@ -130,7 +134,7 @@ try {
         //    می‌دهد و `sanitizeAmount()` منفی نمی‌فهمد — پس صرفِ تغییرِ نامِ حساب
         //    −۲ میلیون را +۲ میلیون می‌کرد و موجودی ۴ میلیون جهش می‌کرد، بی‌خطا
         //    (بازبینیِ کلِ پروژه، مهر ۱۴۰۵). تغییرِ واقعیِ مانده از «تعدیل موجودی».
-        if ((int)$cur['initial_balance'] < 0 && $initial === -(int)$cur['initial_balance']) {
+        if (postParam('initial_sign') !== '1' && (int)$cur['initial_balance'] < 0 && $initial === -(int)$cur['initial_balance']) {
             $initial = (int)$cur['initial_balance'];
         }
 

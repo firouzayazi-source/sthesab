@@ -7754,12 +7754,22 @@ $flagUse = 0;
 foreach (array_merge(glob(__DIR__ . '/../*.php') ?: [], glob(__DIR__ . '/../{api,store,includes,admin,deploy}/*.php', GLOB_BRACE) ?: []) as $f) {
     $src = $strip70e((string)file_get_contents($f));
     $flagUse += substr_count($src, "'_cheque_endorse' => 1");
+    $revUse   = ($revUse ?? 0) + substr_count($src, "'_cheque_reverse' => 1");
     if (str_starts_with(basename(dirname($f)), 'store') && preg_match('/BizPay::create\(\$userId,\s*\$_POST/', $src)) {
         $gBad[] = basename($f) . ' — $_POST خام به BizPay::create (پرچم‌های داخلی از فرم می‌رسیدند)';
     }
 }
 if ($flagUse !== 1 || !str_contains($bodyOf($docs70f, 'BizCheques', 'endorse'), "'_cheque_endorse' => 1")) {
     $gBad[] = "پرچمِ _cheque_endorse فقط در BizCheques::endorse() ({$flagUse} بار)";
+}
+// ⛔ پرچمِ سندِ معکوسِ برگشتی (`migration_biz_pair`) — همان قاعده: فقط از `bounce()`
+if (($revUse ?? 0) !== 1 || !str_contains($bodyOf($docs70f, 'BizCheques', 'bounce'), "'_cheque_reverse' => 1")) {
+    $gBad[] = 'پرچمِ _cheque_reverse فقط در BizCheques::bounce() (' . ($revUse ?? 0) . ' بار)';
+}
+// ⛔ و سندِ جفت با هم باطل می‌شود؛ چکِ برگشتیِ معکوس‌دار خودش نه
+if (!str_contains($bodyOf($docs70f, 'BizPay', 'void'), "WHERE pair_id = :id AND user_id = :u AND status = 'ok'")
+    || !str_contains($bodyOf($docs70f, 'BizPay', 'void'), "if ((\$p['cheque_status'] ?? null) === 'bounced') {")) {
+    $gBad[] = 'BizPay::void — سندِ جفت (حقوق/کسرِ مساعده) با هم، و چکِ برگشتیِ معکوس‌دار نه';
 }
 if (!str_contains($docs70f, "if (\$p['kind'] === 'payment' && \$refSt === 'endorsed') {") || !str_contains($docs70f, "if ((\$p['cheque_status'] ?? null) === 'endorsed') {")) {
     $gBad[] = 'BizPay::void — نه دریافتِ چکِ واگذارشده نه پرداختِ واگذاری جدا باطل نمی‌شوند';

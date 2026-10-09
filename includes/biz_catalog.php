@@ -1589,12 +1589,28 @@ final class BizParties
                         'debit' => $plus ? (int)$r['total'] : 0, 'credit' => $plus ? 0 : (int)$r['total'],
                         'sort' => $r['inv_date'] . ' 1 ' . $r['created_at'], 'invoice_id' => (int)$r['id']];
         }
-        $st = $pdo->prepare("SELECT id, kind, number, pay_date, amount, method, created_at, invoice_id, origin_invoice FROM biz_payments
-                             WHERE party_id = :p AND user_id = :u AND status = 'ok' AND kind IN ('receipt','payment') ORDER BY pay_date, id");
-        $st->execute(['p' => $id, 'u' => $userId]);
+        // ⛔ چکِ برگشتیِ دوره‌ی بسته و سندِ معکوسش هر دو «زنده»اند (`migration_biz_pair`)؛ بی‌برچسب
+        //    صورت‌حساب «دریافت ۱ … پرداخت ۱» می‌گفت و مشتری نمی‌فهمید آن پرداخت چیست.
+        //    ⚠ بی‌`tableHasColumn()`: آن کلِ `information_schema` را می‌خواند و بودجه‌ی کوئریِ صفحه‌ی
+        //      طرف‌حساب و فاکتور یکی بالا می‌رفت. نصبِ migration‌نخورده (42S22) همان کوئریِ قبلی.
+        $sql = "SELECT id, kind, number, pay_date, amount, method, created_at, invoice_id, origin_invoice%s FROM biz_payments
+                WHERE party_id = :p AND user_id = :u AND status = 'ok' AND kind IN ('receipt','payment') ORDER BY pay_date, id";
+        try {
+            $st = $pdo->prepare(sprintf($sql, ', cheque_no, cheque_status, pair_id, title'));
+            $st->execute(['p' => $id, 'u' => $userId]);
+        } catch (PDOException $e) {
+            $st = $pdo->prepare(sprintf($sql, ''));
+            $st->execute(['p' => $id, 'u' => $userId]);
+        }
         foreach ($st->fetchAll() as $r) {
             $rec = $r['kind'] === 'receipt';
-            $lines[] = ['date' => (string)$r['pay_date'], 'desc' => ($rec ? 'دریافت' : 'پرداخت') . ' شماره‌ی ' . toPersianDigits((string)$r['number']),
+            $tag = '';
+            if (($r['cheque_status'] ?? null) === 'bounced') {
+                $tag = ' — چک' . (!empty($r['cheque_no']) ? ' ' . toPersianDigits((string)$r['cheque_no']) : '') . ' (برگشتی)';
+            } elseif (($r['pair_id'] ?? null) !== null && (string)($r['title'] ?? '') !== '') {
+                $tag = ' — ' . $r['title'];
+            }
+            $lines[] = ['date' => (string)$r['pay_date'], 'desc' => ($rec ? 'دریافت' : 'پرداخت') . ' شماره‌ی ' . toPersianDigits((string)$r['number']) . $tag,
                         'debit' => $rec ? 0 : (int)$r['amount'], 'credit' => $rec ? (int)$r['amount'] : 0,
                         'sort' => $r['pay_date'] . ' 2 ' . $r['created_at'], 'payment_id' => (int)$r['id'],
                         'origin_of' => (int)$r['origin_invoice'] === 1 ? (int)$r['invoice_id'] : 0];

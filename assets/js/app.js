@@ -2794,6 +2794,8 @@ function appMain() {
         });
         var smsRow = document.getElementById('walletSmsForgetRow');
         if (smsRow) { smsRow.hidden = true; document.getElementById('wallet_sms_forget').checked = false; }
+        var negEl = document.getElementById('wallet_init_neg');
+        if (negEl) negEl.checked = false;
         var kind = document.getElementById('wallet_kind');
         if (kind) kind.value = 'cash';
         var bcode = document.getElementById('wallet_bank_code');
@@ -3210,6 +3212,8 @@ function appMain() {
 
             var init = parseInt(this.getAttribute('data-init') || '0', 10);
             document.getElementById('wallet_init').value = init ? fmtMoneyJs(Math.abs(init)) : '';
+            var negBox = document.getElementById('wallet_init_neg');
+            if (negBox) negBox.checked = init < 0;
 
             // نوع دلخواه: اگر در فهرست بود انتخابش کن، وگرنه به‌عنوان
             // نوع تازه در جعبه‌ی متن بنشیند تا از دست نرود

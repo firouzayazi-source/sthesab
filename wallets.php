@@ -308,6 +308,15 @@ include __DIR__ . '/includes/header.php';
                 <div class="form-group">
                     <label for="wallet_init">موجودی اولیه</label>
                     <input type="text" inputmode="numeric" id="wallet_init" name="initial_balance" placeholder="۰">
+                    <?php /* ⛔ علامت صریح است، نه حدسی: فیلدِ عدد قدرِ مطلق را نشان می‌دهد و بی‌این
+                            کلید، اصلاحِ «−۲ میلیون» به «۲٫۱ میلیون» مثبت ذخیره می‌شد (بازرسیِ مهر ۱۴۰۵).
+                            `initial_sign` می‌گوید فرم کلید را دارد؛ نسخه‌ی قدیمیِ اپ بی‌آن همان رفتارِ قبلی. */ ?>
+                    <input type="hidden" name="initial_sign" value="1">
+                    <label class="switch switch-sm wallet-neg-switch">
+                        <input type="checkbox" name="initial_negative" value="1" id="wallet_init_neg">
+                        <span class="switch-track"><span class="switch-knob"></span></span>
+                        <span class="switch-text">منفی (بدهکار)</span>
+                    </label>
                     <p class="hint">اگر بعداً با پول واقعی نخواند، از «تعدیل موجودی» درستش کنید.</p>
                 </div>
                 <div class="form-group">

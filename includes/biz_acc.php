@@ -267,8 +267,6 @@ final class BizLedger
     public const TYPES = ['asset' => 'دارایی', 'liability' => 'بدهی', 'equity' => 'سرمایه', 'income' => 'درآمد', 'expense' => 'هزینه'];
 
     /** تاریخِ سندِ «افتتاحیه» (مانده‌ی اول دوره‌ی صندوق و طرف‌حساب، که تاریخ ندارد). */
-    public const OPENING_DATE = BizReports::ALL_FROM;
-
     /** سقفِ سطرهای روزنامه‌ی نمایشی. */
     public const JOURNAL_CAP = 3000;
 
@@ -292,24 +290,41 @@ final class BizLedger
         $f = $from !== '' ? $from : '0000-01-01';
         $acc = Biz::accReady();
 
-        // ۱) افتتاحیه — صندوق‌ها و طرف‌حساب‌ها (تاریخ ندارند ← OPENING_DATE)
-        if (self::OPENING_DATE >= $f && self::OPENING_DATE <= $to) {
-            $lines = [];
-            $st = $pdo->prepare('SELECT id, name, kind, opening_balance FROM biz_accounts WHERE user_id = :u AND opening_balance <> 0');
-            $st->execute(['u' => $userId]);
-            foreach ($st->fetchAll() as $a) {
-                $v = (int)$a['opening_balance'];
-                $lines[] = [self::cashCode((string)$a['kind']), 'a' . $a['id'], (string)$a['name'], max($v, 0), max(-$v, 0)];
-                $lines[] = ['3101', '', '', max(-$v, 0), max($v, 0)];
-            }
-            $st = $pdo->prepare('SELECT id, name, opening_balance FROM biz_parties WHERE user_id = :u AND opening_balance <> 0');
-            $st->execute(['u' => $userId]);
-            foreach ($st->fetchAll() as $p) {
-                $v = (int)$p['opening_balance'];
-                $lines[] = ['1103', 'p' . $p['id'], (string)$p['name'], max($v, 0), max(-$v, 0)];
-                $lines[] = ['3101', '', '', max(-$v, 0), max($v, 0)];
-            }
-            if ($lines) { $out[] = ['date' => self::OPENING_DATE, 'ref' => '', 'desc' => 'افتتاحیه — مانده‌ی اول دوره‌ی صندوق‌ها و طرف‌حساب‌ها', 'lines' => $lines]; }
+        // ۱) افتتاحیه — صندوق‌ها و طرف‌حساب‌ها، هر کدام **با تاریخِ خودش**: روزِ ساختنش یا
+        //    قدیمی‌ترین سندش، هر کدام زودتر — همان قاعده‌ی موجودیِ اول دوره‌ی کالا و همان
+        //    تاریخی که سدِ قفلِ فرمش (`lockError`) می‌سنجد. ⛔ بازرسیِ مهر ۱۴۰۵: همه با
+        //    تاریخِ ثابتِ ۲۰۰۰-۰۱-۰۱ می‌نشستند، پس ساختنِ یک طرف‌حساب یا صندوقِ تازه با مانده
+        //    ترازِ دوره‌ای را که بسته و گزارش شده بود عوض می‌کرد (۱۱۰۱: ۱۰۰۰ → ۸۰۰۰).
+        $byDate = [];
+        $st = $pdo->prepare(
+            "SELECT a.id, a.name, a.kind, a.opening_balance,
+                    LEAST(DATE(a.created_at), COALESCE((SELECT MIN(y.pay_date) FROM biz_payments y
+                          WHERE y.user_id = a.user_id AND (y.account_id = a.id OR y.to_account_id = a.id)), '9999-12-31')) AS d
+             FROM biz_accounts a WHERE a.user_id = :u AND a.opening_balance <> 0"
+        );
+        $st->execute(['u' => $userId]);
+        foreach ($st->fetchAll() as $a) {
+            $v = (int)$a['opening_balance'];
+            $byDate[(string)$a['d']][] = [self::cashCode((string)$a['kind']), 'a' . $a['id'], (string)$a['name'], max($v, 0), max(-$v, 0)];
+            $byDate[(string)$a['d']][] = ['3101', '', '', max(-$v, 0), max($v, 0)];
+        }
+        $st = $pdo->prepare(
+            "SELECT p.id, p.name, p.opening_balance,
+                    LEAST(DATE(p.created_at),
+                          COALESCE((SELECT MIN(i.inv_date) FROM biz_invoices i WHERE i.user_id = p.user_id AND i.party_id = p.id), '9999-12-31'),
+                          COALESCE((SELECT MIN(y.pay_date) FROM biz_payments y WHERE y.user_id = p.user_id AND y.party_id = p.id), '9999-12-31')) AS d
+             FROM biz_parties p WHERE p.user_id = :u AND p.opening_balance <> 0"
+        );
+        $st->execute(['u' => $userId]);
+        foreach ($st->fetchAll() as $p) {
+            $v = (int)$p['opening_balance'];
+            $byDate[(string)$p['d']][] = ['1103', 'p' . $p['id'], (string)$p['name'], max($v, 0), max(-$v, 0)];
+            $byDate[(string)$p['d']][] = ['3101', '', '', max(-$v, 0), max($v, 0)];
+        }
+        ksort($byDate);
+        foreach ($byDate as $d => $lines) {
+            if ($d < $f || $d > $to) { continue; }
+            $out[] = ['date' => $d, 'ref' => '', 'desc' => 'افتتاحیه — مانده‌ی اول دوره‌ی صندوق‌ها و طرف‌حساب‌ها', 'lines' => $lines];
         }
 
         // ۲) انبار — اول دوره و انبارگردانی (همان ارزشِ `BizReports::OTHER_SQL`)
@@ -797,6 +812,11 @@ final class BizPayroll
                                                        'account_id' => $accountId, 'pay_date' => $date, 'method' => 'cash',
                                                        'title' => 'کسرِ مساعده از حقوق', 'note' => $note]);
                 if (!$r2['ok']) { $pdo->rollBack(); return $r2; }
+                // ⛔ کسر به حقوقش اشاره می‌کند تا با هم باطل شوند (`BizPay::void()`)
+                if (BizPay::pairReady()) {
+                    $pdo->prepare('UPDATE biz_payments SET pair_id = :e WHERE id = :r AND user_id = :u')
+                        ->execute(['e' => (int)$r['id'], 'r' => (int)$r2['id'], 'u' => $userId]);
+                }
             }
             $pdo->commit();
         } catch (Throwable $e) {

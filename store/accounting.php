@@ -195,7 +195,7 @@ if (in_array($t, ['trial', 'journal', 'moadian'], true)): ?>
 <section class="st-card st-journal">
     <div class="st-card-head">
         <h2 class="st-h3"><span class="st-num"><?= h(toPersianDigits((string)($n + 1))) ?>.</span> <?= $e['ref'] !== '' ? '<a href="' . h(Biz::url($e['ref'])) . '">' . h($e['desc']) . '</a>' : h($e['desc']) ?></h2>
-        <span class="st-muted-i st-num"><?= h($e['date'] === BizLedger::OPENING_DATE ? 'افتتاحیه' : toJalali($e['date'])) ?></span>
+        <span class="st-muted-i st-num"><?= h(toJalali($e['date'])) ?></span>
     </div>
     <div class="st-table-wrap st-flat"><table class="st-table st-table-compact">
         <tbody>

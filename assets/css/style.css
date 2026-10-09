@@ -2536,6 +2536,12 @@ html[data-theme="dark"] .seg-item.active { background: #2b3037; color: var(--ink
    قبلاً هر صفحه چک‌باکس خام مرورگر را نشان می‌داد و هر مرورگر
    شکل خودش را می‌کشید؛ حالا همه‌جا همین است.
    ============================================================ */
+/* کلیدِ «منفی»ِ موجودیِ اولیه زیرِ همان فیلد (`wallets.php`).
+   ⚠ `.form-group label` (block، با کلاس + عنصر) از `.switch` قوی‌تر است و کلید را
+   زیرِ متن می‌شکست — پس داخلِ فرم دوباره flex. */
+.form-group .switch { display: flex; margin-bottom: 0; font-weight: 400; }
+.wallet-neg-switch { margin-top: 8px; font-size: 12.5px; }
+
 .switch {
     display: flex; align-items: center; gap: 10px;
     cursor: pointer; font-size: 13.5px; line-height: 1.5;

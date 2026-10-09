@@ -177,8 +177,14 @@ BizCheques::clear($a, $chClr, $BANK, $D1);
 Biz::saveLock($a, $LOCK);
 T::ok($locked(BizCheques::clear($a, $chOld, $BANK, $D1)), '⛔ وصول با تاریخِ بسته');
 T::ok($locked(BizCheques::unclear($a, $chClr)), '⛔ برگرداندنِ وصولی که در دوره‌ی بسته ثبت شده');
+// ⛔ برگشتیِ چکی که دریافتش در دوره‌ی بسته است دیگر رد نمی‌شود (مالکِ نصب، مهر ۱۴۰۵): دریافتِ
+//    بسته دست نمی‌خورد و سندِ معکوسِ امروز ثبت می‌شود (`migration_biz_pair`، `test_store_pair`).
+//    گروهِ ۵ پایین‌تر ثابت می‌کند عددهای دوره‌ی بسته تکان نخوردند.
 $r = BizCheques::bounce($a, $chOld);
-T::ok($locked($r), '⛔ برگشتیِ چکی که دریافتش در دوره‌ی بسته است (دریافت را باطل می‌کرد)', $r['message']);
+T::ok($r['ok'], '⛔ برگشتیِ چکِ دوره‌ی بسته با سندِ معکوسِ امروز', $r['message']);
+T::same('ok', (string)$pdo->query("SELECT status FROM biz_payments WHERE id = {$chOld}")->fetchColumn(), 'دریافتِ دوره‌ی بسته باطل نشد');
+$rev = (int)$pdo->query("SELECT id FROM biz_payments WHERE pair_id = {$chOld}")->fetchColumn();
+T::ok(BizPay::void($a, $rev)['ok'], 'ابطالِ سندِ معکوس برگشتی را پس گرفت');
 T::ok(BizCheques::clear($a, $chOld, $BANK, $OPEN)['ok'], 'وصولِ همان چک با تاریخِ امروز مجاز است');
 
 /* ---------------------------------------------------------------- */

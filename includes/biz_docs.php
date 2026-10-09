@@ -1201,7 +1201,10 @@ final class BizPay
         // ⛔ واگذاریِ چک (`BizCheques::endorse()`) چکِ تازه‌ای نیست: از همان صندوقِ
         //    چک‌های دریافتی پرداخت می‌شود و فقط از آن مسیر (پرچمِ داخلی)
         $endorse = !empty($in['_cheque_endorse']) && $kind === 'payment';
-        if ($method === 'cheque' && in_array($kind, ['receipt', 'payment'], true) && BizCheques::ready() && !$endorse) {
+        // ⛔ سندِ معکوسِ برگشتیِ چک (`BizCheques::bounce()` در دوره‌ی بسته) هم چکِ تازه نیست:
+        //    از همان صندوقِ چک برمی‌گردد — پرچمِ داخلی، فقط از همان مسیر
+        $reverse = !empty($in['_cheque_reverse']) && in_array($kind, ['receipt', 'payment'], true);
+        if ($method === 'cheque' && in_array($kind, ['receipt', 'payment'], true) && BizCheques::ready() && !$endorse && !$reverse) {
             $due  = (string)($in['cheque_due'] ?? '');
             $cno  = BizCommon::line(toLatinDigits((string)($in['cheque_no'] ?? '')));
             $cbnk = BizCommon::line((string)($in['cheque_bank'] ?? ''));
@@ -1219,7 +1222,7 @@ final class BizPay
         if ($a === false) { return ['ok' => false, 'message' => 'صندوق یا حساب را انتخاب کنید.']; }
         if ((int)$a['is_active'] !== 1) { return ['ok' => false, 'message' => 'این صندوق غیرفعال است.']; }
         // ⛔ صندوقِ چک فقط از دو راه پول می‌گیرد یا می‌دهد: ثبتِ چک و وصولش
-        if (BizCash::isCheque($a) && $chq === null && !$settle && !($endorse && $a['kind'] === BizCash::CHEQUE_KINDS['in'])) {
+        if (BizCash::isCheque($a) && $chq === null && !$settle && !$reverse && !($endorse && $a['kind'] === BizCash::CHEQUE_KINDS['in'])) {
             return ['ok' => false, 'message' => 'صندوقِ چک را خودِ برنامه پر و خالی می‌کند — از صفحه‌ی «چک‌ها» وصول کنید.'];
         }
 
@@ -1320,6 +1323,12 @@ final class BizPay
      * فاکتوری صادرشده می‌ماند که بدهکاری ندارد.
      * @return array{ok:bool, message:string}
      */
+    /** ستونِ سندِ جفت (`migration_biz_pair`) آمده؟ */
+    public static function pairReady(): bool
+    {
+        return tableHasColumn('biz_payments', 'pair_id');
+    }
+
     public static function void(int $userId, int $id): array
     {
         $pdo = Database::getConnection();
@@ -1365,19 +1374,65 @@ final class BizPay
                 $pdo->rollBack();
                 return ['ok' => false, 'message' => $e];
             }
-            $pdo->prepare("UPDATE biz_payments SET status = 'void', voided_at = NOW() WHERE id = :id AND user_id = :u")
-                ->execute(['id' => $id, 'u' => $userId]);
-            BizLog::add($pdo, $userId, 'payment', $id, 'void', (int)$p['amount']);
-            if (in_array($p['kind'], ['receipt', 'payment'], true)) {
-                self::reallocateTx($pdo, $userId, $p['party_id'] !== null ? (int)$p['party_id'] : null,
-                                   $p['invoice_id'] !== null ? (int)$p['invoice_id'] : null);
+
+            // ⛔ سندِ جفت (`pair_id`، `migration_biz_pair`):
+            //    - معکوسِ برگشتیِ چک: ابطالش یعنی «برگشتی را پس بگیر» — چک دوباره در جریان.
+            //    - چکی که برگشتیِ معکوس‌دار دارد خودش باطل نمی‌شود (اول معکوس را باطل کنید).
+            //    - حقوق و کسرِ مساعده‌اش با هم باطل می‌شوند — بازرسیِ مهر ۱۴۰۵: ابطالِ یکی
+            //      صندوق را ۲٬۰۰۰ بیشتر و مساعده‌ی باز را «تسویه» نشان می‌داد.
+            $also = [];
+            $unbounce = null;
+            if (self::pairReady()) {
+                if (($p['cheque_status'] ?? null) === 'bounced') {
+                    $pdo->rollBack();
+                    return ['ok' => false, 'message' => 'این چک برگشتی ثبت شده؛ برای پس گرفتنِ برگشتی، سندِ «برگشتِ چک» را باطل کنید.'];
+                }
+                $pair = null;
+                if ($p['pair_id'] !== null) {
+                    $q = $pdo->prepare('SELECT * FROM biz_payments WHERE id = :id AND user_id = :u FOR UPDATE');
+                    $q->execute(['id' => (int)$p['pair_id'], 'u' => $userId]);
+                    $pair = $q->fetch() ?: null;
+                }
+                if ($pair && ($pair['cheque_status'] ?? null) === 'bounced') {
+                    $unbounce = $pair;
+                } else {
+                    if ($pair && $pair['status'] === 'ok') { $also[] = $pair; }
+                    $q = $pdo->prepare("SELECT * FROM biz_payments WHERE pair_id = :id AND user_id = :u AND status = 'ok' FOR UPDATE");
+                    $q->execute(['id' => $id, 'u' => $userId]);
+                    foreach ($q->fetchAll() as $c) { $also[] = $c; }
+                }
+                foreach ($also as $a) {
+                    if (($e = Biz::lockError($userId, (string)$a['pay_date'], 'سندِ همراهِ آن')) !== null) {
+                        $pdo->rollBack();
+                        return ['ok' => false, 'message' => $e];
+                    }
+                }
+            }
+
+            $parties = [];
+            foreach (array_merge([$p], $also) as $v) {
+                $pdo->prepare("UPDATE biz_payments SET status = 'void', voided_at = NOW() WHERE id = :id AND user_id = :u")
+                    ->execute(['id' => (int)$v['id'], 'u' => $userId]);
+                BizLog::add($pdo, $userId, 'payment', (int)$v['id'], 'void', (int)$v['amount']);
+                if (in_array($v['kind'], ['receipt', 'payment'], true)) {
+                    $parties[($v['party_id'] ?? '') . ':' . ($v['invoice_id'] ?? '')] = [$v['party_id'], $v['invoice_id']];
+                }
+            }
+            if ($unbounce !== null) {
+                $pdo->prepare("UPDATE biz_payments SET cheque_status = 'pending' WHERE id = :id AND user_id = :u")
+                    ->execute(['id' => (int)$unbounce['id'], 'u' => $userId]);
+                BizLog::add($pdo, $userId, 'payment', (int)$unbounce['id'], 'cheque_unbounce', (int)$unbounce['amount']);
+            }
+            foreach ($parties as [$pid, $iid]) {
+                self::reallocateTx($pdo, $userId, $pid !== null ? (int)$pid : null, $iid !== null ? (int)$iid : null);
             }
             $pdo->commit();
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) { $pdo->rollBack(); }
             throw $e;
         }
-        return ['ok' => true, 'message' => 'سند باطل شد.'];
+        if ($unbounce !== null) { return ['ok' => true, 'message' => 'برگشتیِ چک پس گرفته شد؛ چک دوباره در جریان است.']; }
+        return ['ok' => true, 'message' => $also ? 'سند و سندِ همراهش (حقوق و کسرِ مساعده) با هم باطل شدند.' : 'سند باطل شد.'];
     }
 
     /**
@@ -1391,10 +1446,11 @@ final class BizPay
      */
     public static function reallocateTx(PDO $pdo, int $userId, ?int $partyId, ?int $invoiceId = null): void
     {
+        $extra = self::pairReady() ? ', cheque_status, pair_id' : '';
         if ($partyId !== null) {
             $inv = $pdo->prepare("SELECT id, kind, total, paid, status, ref_invoice_id FROM biz_invoices WHERE user_id = :u AND party_id = :p ORDER BY inv_date, id FOR UPDATE");
             $inv->execute(['u' => $userId, 'p' => $partyId]);
-            $pay = $pdo->prepare("SELECT id, kind, amount, allocated, invoice_id, status FROM biz_payments
+            $pay = $pdo->prepare("SELECT id, kind, amount, allocated, invoice_id, status{$extra} FROM biz_payments
                                   WHERE user_id = :u AND party_id = :p AND kind IN ('receipt','payment') ORDER BY pay_date, id FOR UPDATE");
             $pay->execute(['u' => $userId, 'p' => $partyId]);
         } elseif ($invoiceId !== null) {
@@ -1444,8 +1500,14 @@ final class BizPay
         }
         $allocNew = [];
         $upP  = $pdo->prepare('UPDATE biz_payments SET allocated = :a WHERE id = :id AND user_id = :u');
+        // ⛔ چکِ برگشتی با سندِ معکوس (دوره‌ی بسته) هر دو «زنده»اند و هم را خنثی می‌کنند؛
+        //    هیچ‌کدام فاکتوری را تسویه نمی‌کند — وگرنه فاکتور «پرداخت‌شده» می‌ماند در حالی که
+        //    طرف دوباره بدهکار است (`BALANCE_SQL`).
+        $dead = [];
+        foreach ($payments as $p) { if (($p['cheque_status'] ?? null) === 'bounced') { $dead[(int)$p['id']] = true; } }
         foreach ($payments as $p) {
-            $left = $p['status'] === 'ok' ? (int)$p['amount'] : 0;
+            $left = $p['status'] === 'ok' && !isset($dead[(int)$p['id']])
+                 && !(($p['pair_id'] ?? null) !== null && isset($dead[(int)$p['pair_id']])) ? (int)$p['amount'] : 0;
             $kinds = self::SETTLES[$p['kind']] ?? [];
             $order = [];
             if ($p['invoice_id'] !== null && isset($invoices[(int)$p['invoice_id']])) { $order[] = (int)$p['invoice_id']; }
@@ -1915,7 +1977,31 @@ final class BizCheques
                     ? 'این چک واگذار شده؛ اول «برگشت از واگذاری» بزنید، بعد برگشتی.'
                     : 'فقط چکِ در جریان برگشت می‌خورد (چکِ وصول‌شده را اول برگردانید).'];
             }
-            // ⚠ برگشتی خودِ دریافت را باطل می‌کند، پس تاریخِ **دریافت** است که نباید بسته باشد
+            // ⚠ برگشتی خودِ دریافت را باطل می‌کند، پس تاریخِ **دریافت** است که نباید بسته باشد —
+            // ⛔ مگر با سندِ معکوس: دریافتِ دوره‌ی بسته دست نمی‌خورد و برگشتی یک سندِ تازه با
+            //    تاریخِ امروز است (صندوقِ چک ← طرف‌حساب). بازرسیِ مهر ۱۴۰۵: چکی که پیش از بستنِ
+            //    دوره گرفته شده و بعدش سررسید شده، هرگز «برگشتی» نمی‌شد جز با باز کردنِ سال.
+            if (Biz::lockError($userId, (string)$p['pay_date'], 'دریافتِ این چک') !== null && BizPay::pairReady()) {
+                $today = date('Y-m-d');
+                if (($e = Biz::lockError($userId, $today, 'برگشتیِ این چک')) !== null) { $pdo->rollBack(); return ['ok' => false, 'message' => $e]; }
+                $r = BizPay::createTx($pdo, $userId, [
+                    'kind' => $p['kind'] === 'receipt' ? 'payment' : 'receipt', 'party_id' => (int)$p['party_id'],
+                    'account_id' => (int)$p['account_id'], 'amount' => (string)(int)$p['amount'], 'method' => 'cheque',
+                    'pay_date' => $today, 'title' => mb_substr('برگشتیِ ' . self::label($p), 0, BizPay::TITLE_MAX),
+                    '_cheque_reverse' => 1,
+                ]);
+                if (!$r['ok']) { $pdo->rollBack(); return $r; }
+                $pdo->prepare('UPDATE biz_payments SET pair_id = :c WHERE id = :r AND user_id = :u')
+                    ->execute(['c' => $id, 'r' => (int)$r['id'], 'u' => $userId]);
+                $pdo->prepare("UPDATE biz_payments SET cheque_status = 'bounced' WHERE id = :id AND user_id = :u")
+                    ->execute(['id' => $id, 'u' => $userId]);
+                BizLog::add($pdo, $userId, 'payment', $id, 'cheque_bounce', (int)$p['amount']);
+                BizPay::reallocateTx($pdo, $userId, $p['party_id'] !== null ? (int)$p['party_id'] : null,
+                                     $p['invoice_id'] !== null ? (int)$p['invoice_id'] : null);
+                $pdo->commit();
+                return ['ok' => true, 'message' => self::label($p) . ' برگشتی ثبت شد. دریافتش در دوره‌ی بسته است، پس سندِ «برگشتی» با تاریخِ امروز ثبت شد'
+                    . ' و دوره‌ی بسته دست نخورد؛ مبلغ دوباره به حسابِ طرف‌حساب برگشت.'];
+            }
             if (($e = Biz::lockError($userId, (string)$p['pay_date'], 'دریافتِ این چک')) !== null) { $pdo->rollBack(); return ['ok' => false, 'message' => $e]; }
             $pdo->prepare("UPDATE biz_payments SET status = 'void', voided_at = NOW(), cheque_status = 'bounced' WHERE id = :id AND user_id = :u")
                 ->execute(['id' => $id, 'u' => $userId]);
@@ -2341,6 +2427,8 @@ final class BizLog
         'cheque_endorse'   => 'واگذاریِ چک',
         'cheque_unendorse' => 'برگشت از واگذاری',
         'cheque_bounce'    => 'برگشتِ چک',
+        // ⛔ سندِ معکوسِ برگشتی باطل شد (`migration_biz_pair`) — چک دوباره در جریان
+        'cheque_unbounce'  => 'پس گرفتنِ برگشتیِ چک',
         // ⛔ ردیفِ آزادِ خریدِ صادرشده به کالا وصل شد (`BizQuickBuy::linkLine()`) — بی‌مبلغ
         'stock_link'       => 'وصلِ ردیف به کالا (موجودی)',
     ];
