@@ -322,6 +322,75 @@ class Schedule
     }
 
     /**
+     * ⛔ سررسیدِ **باز**ِ یک قانون را با خودِ قانون هم‌تراز می‌کند — تنها جای این کار.
+     *
+     *    هر نوشتن روی تاریخ یا وضعیتِ یک قانون (ویرایشِ یادآور، «انجام شد»، تعویق،
+     *    جابه‌جاییِ تاریخِ چک/بدهی/دوره‌ای) باید از اینجا رد شود. بی‌این، سررسیدِ
+     *    ساخته‌شده برای تاریخِ قبلی باز می‌ماند و چون قانون «سررسیدِ باز» داشت تاریخِ
+     *    تازه هرگز ساخته نمی‌شد — گزارشِ مالکِ نصب (مهر ۱۴۰۵): «سرِ تاریخِ قبلی هنوز میاد».
+     *
+     * @param bool $closeEarlier سررسیدِ بازِ **پیش از** تاریخِ تازه انجام‌شده است (دوره‌ی
+     *                           پرداخت‌شده‌ی تکراری)، نه جابه‌جا‌شده.
+     */
+    public static function realign(int $userId, int $reminderId, bool $closeEarlier = false): void
+    {
+        if (!self::available()) { return; }
+        $pdo = Database::getConnection();
+        $st  = $pdo->prepare('SELECT * FROM reminders WHERE id = :r AND user_id = :u');
+        $st->execute(['r' => $reminderId, 'u' => $userId]);
+        $rule = $st->fetch();
+        if (!$rule) { return; }
+        $date = (string)$rule['remind_date'];
+        $dead = (int)$rule['is_done'] === 1 || ($rule['status'] ?? 'active') !== 'active';
+
+        // اعلان‌های تاریخِ قبلی: نگهبانِ پله‌ها و اعلانِ **نخوانده** در مرکزِ اعلان
+        $pdo->prepare("DELETE n FROM reminder_notifications n
+                         JOIN reminder_occurrences o ON o.id = n.occurrence_id
+                        WHERE o.reminder_id = :r AND o.user_id = :u AND o.status IN ('pending','overdue')")
+            ->execute(['r' => $reminderId, 'u' => $userId]);
+        self::dropUnreadNotices($pdo, $userId, $reminderId);
+
+        if ($dead) {
+            $pdo->prepare("UPDATE reminder_occurrences SET status = :s, done_at = NOW()
+                            WHERE reminder_id = :r AND user_id = :u AND status IN ('pending','overdue')")
+                ->execute(['s' => (int)$rule['is_done'] === 1 ? 'done' : 'skipped', 'r' => $reminderId, 'u' => $userId]);
+            return;
+        }
+        if ($closeEarlier) {
+            $pdo->prepare("UPDATE reminder_occurrences SET status = 'done', done_at = NOW()
+                            WHERE reminder_id = :r AND user_id = :u AND status IN ('pending','overdue') AND due_date < :d")
+                ->execute(['d' => $date, 'r' => $reminderId, 'u' => $userId]);
+        }
+        // ⚠ `IGNORE`: اگر سررسیدِ بسته‌ای همین حالا روی تاریخِ تازه هست، کلیدِ یکتا
+        //   جابه‌جایی را رد می‌کند و ردیفِ باز پایین‌تر پاک می‌شود.
+        $pdo->prepare("UPDATE IGNORE reminder_occurrences SET due_date = :d, status = 'pending'
+                        WHERE reminder_id = :r AND user_id = :u AND status IN ('pending','overdue')")
+            ->execute(['d' => $date, 'r' => $reminderId, 'u' => $userId]);
+        $pdo->prepare("DELETE FROM reminder_occurrences
+                        WHERE reminder_id = :r AND user_id = :u AND status IN ('pending','overdue') AND due_date <> :d")
+            ->execute(['d' => $date, 'r' => $reminderId, 'u' => $userId]);
+        self::materialize($userId, $rule);
+    }
+
+    /**
+     * اعلان‌های **نخوانده**ی یک قانون که دیگر درست نیستند: `reminder:{id}:…` (یادآورِ
+     * دلخواه) و `occ:{سررسیدِ باز}:…` (کرونِ سررسید). خوانده‌شده‌ها تاریخچه‌اند و می‌مانند.
+     */
+    private static function dropUnreadNotices(PDO $pdo, int $userId, int $reminderId): void
+    {
+        if (!tableExists('notifications')) { return; }
+        $pdo->prepare("DELETE FROM notifications
+                        WHERE user_id = :u AND read_at IS NULL AND dedup_key LIKE CONCAT('reminder:', :r, ':%')")
+            ->execute(['u' => $userId, 'r' => $reminderId]);
+        $pdo->prepare("DELETE nf FROM notifications nf
+                         JOIN reminder_occurrences o ON o.user_id = nf.user_id
+                          AND nf.dedup_key LIKE CONCAT('occ:', o.id, ':%')
+                        WHERE nf.user_id = :u AND nf.read_at IS NULL AND o.reminder_id = :r
+                          AND o.status IN ('pending','overdue')")
+            ->execute(['u' => $userId, 'r' => $reminderId]);
+    }
+
+    /**
      * بستنِ یک سررسید.
      *
      * ⚠ فقط وضعیتِ **همین** سررسید عوض می‌شود؛ پول را صاحبِ خودش ثبت
@@ -362,6 +431,17 @@ class Schedule
         }
 
         self::materialize($userId, $rule);
+        // ⛔ یادآورِ دلخواهِ تکراری: «یادآورهای من» و اعلانش `remind_date` را می‌خوانند،
+        //    پس با بستنِ سررسید از فهرست، آن هم به سررسیدِ بعدی می‌رود — بازرسیِ مهر ۱۴۰۵:
+        //    «بسته شد» در فهرست بود ولی «یادآورهای من» هنوز تاریخِ قبلی را نشان می‌داد.
+        if (in_array($rule['source_type'] ?? null, ['custom', null], true)) {
+            $pdo->prepare("UPDATE reminders r
+                              JOIN (SELECT MIN(due_date) AS d FROM reminder_occurrences
+                                     WHERE reminder_id = :r1 AND status IN ('pending','overdue')) o ON o.d IS NOT NULL
+                               SET r.remind_date = o.d, r.last_notified_on = NULL
+                             WHERE r.id = :r2 AND r.user_id = :u")
+                ->execute(['r1' => (int)$rule['id'], 'r2' => (int)$rule['id'], 'u' => $userId]);
+        }
         return true;
     }
 
@@ -450,6 +530,7 @@ function syncScheduleRules(int $userId): int
      *    آزمایشیِ کوچک نامرئی بود؛ اندازه‌گیری نشانش داد.
      */
     $buf = [];
+    $hasInst = tableHasColumn('debts', 'installment_count');
 
     $upsert = function (string $type, int $sid, string $title, ?string $date,
                         ?int $amount, ?int $walletId, string $rec = 'once', int $recN = 1)
@@ -502,14 +583,26 @@ function syncScheduleRules(int $userId): int
 
     // ---------- طلب و بدهیِ تسویه‌نشده ----------
     try {
-        $st = $pdo->prepare('SELECT id, direction, counterparty_name, amount, paid_amount, due_date
-                             FROM debts WHERE user_id = :u AND is_settled = 0');
+        // ⛔ وامِ قسطی: تاریخ و مبلغ از **قسطِ بعدیِ پرداخت‌نشده** (`nextDebtInstallment()`)،
+        //    نه سررسید و کلِ مانده — بازرسیِ مهر ۱۴۰۵: وامِ ۳ قسطی در فهرست یک ردیفِ ۳ میلیونی
+        //    روی قسطِ آخر بود، و وامِ قسطیِ بی‌سررسید اصلاً یادآوری نداشت.
+        $st = $pdo->prepare($hasInst
+            ? 'SELECT id, direction, counterparty_name, amount, paid_amount, due_date,
+                      installment_count, installment_every, first_installment_date
+                 FROM debts WHERE user_id = :u AND is_settled = 0'
+            : 'SELECT id, direction, counterparty_name, amount, paid_amount, due_date
+                 FROM debts WHERE user_id = :u AND is_settled = 0');
         $st->execute(['u' => $userId]);
         foreach ($st->fetchAll() as $d) {
             $remaining = max(0, (int)$d['amount'] - (int)$d['paid_amount']);
+            $date = $d['due_date'];
+            if ($hasInst && (int)$d['installment_count'] > 1 && ($next = nextDebtInstallment($d)) !== null) {
+                $date = $next['date'];
+                $remaining = (int)$next['remaining'];
+            }
             $upsert('debt', (int)$d['id'],
                 ($d['direction'] === 'receivable' ? 'طلب از ' : 'بدهی به ') . $d['counterparty_name'],
-                $d['due_date'], $remaining, null);
+                $date, $remaining, null);
         }
     } catch (Throwable $e) { /* جدول نیست */ }
 
@@ -535,40 +628,27 @@ function syncScheduleRules(int $userId): int
     //    خرابیِ گزارش‌شده‌ی مالکِ نصب (مهر ۱۴۰۵): `ON DUPLICATE KEY` فقط
     //    `remind_date` را عوض می‌کرد و سررسیدِ ساخته‌شده برای تاریخِ قبلی باز
     //    می‌ماند — و چون قانون سررسیدِ باز داشت، تاریخِ تازه هرگز ساخته نمی‌شد.
-    //    یعنی «سرِ تاریخِ قبلی هنوز می‌آمد». فقط چک و طلب/بدهی (یک‌باره‌اند؛
-    //    دوره‌ای تاریخش را موتورِ خودش جلو می‌برد) و فقط وقتی **منبع** جابه‌جا
-    //    شده، نه هر بار — وگرنه «بعداً یادم بنداز»ِ کاربر پس گرفته می‌شد.
+    //    یعنی «سرِ تاریخِ قبلی هنوز می‌آمد». فقط وقتی **منبع** جابه‌جا شده، نه هر
+    //    بار — وگرنه «بعداً یادم بنداز»ِ کاربر پس گرفته می‌شد.
     $moved = [];
     try {
         $was = $pdo->prepare("SELECT id, source_type, source_id, remind_date FROM reminders
-                               WHERE user_id = :u AND source_type IN ('cheque','debt') AND status <> 'finished'");
+                               WHERE user_id = :u AND source_type IN ('cheque','debt','recurring_tx') AND status <> 'finished'");
         $was->execute(['u' => $userId]);
         $old = [];
         foreach ($was->fetchAll() as $w) { $old[$w['source_type'] . ':' . $w['source_id']] = [(int)$w['id'], (string)$w['remind_date']]; }
         foreach ($buf as $b) {
             $k = $b[1] . ':' . $b[2];
-            if (isset($old[$k]) && $old[$k][1] !== (string)$b[4]) { $moved[$old[$k][0]] = (string)$b[4]; }
+            if (isset($old[$k]) && $old[$k][1] !== (string)$b[4]) { $moved[$old[$k][0]] = $b[1]; }
         }
     } catch (Throwable $e) { /* جدول نیست */ }
 
     // ⛔ **پیش از** سوییپِ پایین: آن یکی وضعیتِ همین ردیف‌ها را می‌سنجد.
     $flush();
 
-    foreach ($moved as $rid => $date) {
-        // اعلان‌های فرستاده‌شده برای تاریخِ قبلی پاک — پله‌های تاریخِ تازه از نو
-        $pdo->prepare("DELETE n FROM reminder_notifications n
-                         JOIN reminder_occurrences o ON o.id = n.occurrence_id
-                        WHERE o.reminder_id = :r AND o.user_id = :u AND o.status IN ('pending','overdue')")
-            ->execute(['r' => $rid, 'u' => $userId]);
-        // ⚠ `IGNORE`: اگر سررسیدِ بسته‌ای همین حالا روی تاریخِ تازه هست، کلیدِ یکتا
-        //   جابه‌جایی را رد می‌کند و ردیفِ باز پایین‌تر پاک می‌شود.
-        $pdo->prepare("UPDATE IGNORE reminder_occurrences SET due_date = :d, status = 'pending'
-                        WHERE reminder_id = :r AND user_id = :u AND status IN ('pending','overdue')")
-            ->execute(['d' => $date, 'r' => $rid, 'u' => $userId]);
-        $pdo->prepare("DELETE FROM reminder_occurrences
-                        WHERE reminder_id = :r AND user_id = :u AND status IN ('pending','overdue') AND due_date <> :d")
-            ->execute(['d' => $date, 'r' => $rid, 'u' => $userId]);
-    }
+    // ⛔ دوره‌ایِ جلورفته (تأیید/ثبتِ خودکار): سررسیدِ بازِ دوره‌ی قبلی انجام‌شده است،
+    //    نه «عقب‌افتاده» — بی‌این، قسطی که پرداخت شده بود فردا «سررسید گذشته» می‌شد.
+    foreach ($moved as $rid => $type) { Schedule::realign($userId, (int)$rid, $type === 'recurring_tx'); }
 
     // ⛔ قانونی که منبعش دیگر در جریان نیست باید بسته شود، وگرنه چکِ
     //    پاس‌شده تا ابد در فهرستِ سررسیدها می‌ماند.
@@ -577,7 +657,8 @@ function syncScheduleRules(int $userId): int
     //    می‌کرد ولی سوییپ هم آن را زنده می‌دید، پس قانون با تاریخِ قبلی فعال می‌ماند.
     foreach ([
         'cheque'       => 'SELECT id FROM cheques WHERE user_id = :u AND due_date IS NOT NULL AND ' . chequeActiveSql(),
-        'debt'         => 'SELECT id FROM debts WHERE user_id = :u AND is_settled = 0 AND due_date IS NOT NULL',
+        'debt'         => 'SELECT id FROM debts WHERE user_id = :u AND is_settled = 0 AND '
+                          . ($hasInst ? '(due_date IS NOT NULL OR installment_count > 1)' : 'due_date IS NOT NULL'),
         'recurring_tx' => 'SELECT id FROM recurring_transactions WHERE user_id = :u AND is_active = 1',
     ] as $type => $sql) {
         try {
@@ -594,6 +675,14 @@ function syncScheduleRules(int $userId): int
     //    اعلانِ روزانه فقط `o.status` را می‌خوانند، پس چکِ پاس‌شده یا بدهیِ
     //    بی‌تاریخ‌شده با سررسیدِ قبلی‌اش هنوز در فهرست بود و اعلان می‌داد.
     try {
+        if (tableExists('notifications')) {
+            $pdo->prepare("DELETE nf FROM notifications nf
+                             JOIN reminder_occurrences o ON o.user_id = nf.user_id AND nf.dedup_key LIKE CONCAT('occ:', o.id, ':%')
+                             JOIN reminders r ON r.id = o.reminder_id
+                            WHERE nf.user_id = :u AND nf.read_at IS NULL AND r.status = 'finished'
+                              AND r.source_type IN ('cheque','debt','recurring_tx') AND o.status IN ('pending','overdue')")
+                ->execute(['u' => $userId]);
+        }
         $pdo->prepare("UPDATE reminder_occurrences o
                          JOIN reminders r ON r.id = o.reminder_id AND r.user_id = o.user_id
                           SET o.status = 'skipped', o.done_at = NOW()

@@ -2869,7 +2869,14 @@ function customReminderEvents(int $userId, string $fromDate, string $toDate): ar
 {
     if (!tableExists('reminders')) { return []; }
     try {
-        $stmt = Database::getConnection()->prepare('
+        // ⛔ فقط یادآورِ دلخواهِ فعال — همان قاعده‌ی `Notify::generateReminders()`:
+        //    ردیفِ پیوندی از `financialEvents()` می‌آید و اینجا تکراری و کهنه بود.
+        $stmt = Database::getConnection()->prepare(tableHasColumn('reminders', 'source_type') ? "
+            SELECT title, remind_date, amount FROM reminders
+            WHERE user_id = :u AND is_done = 0 AND remind_date BETWEEN :f AND :t
+              AND (source_type = 'custom' OR source_type IS NULL) AND status = 'active'
+            ORDER BY remind_date ASC
+        " : '
             SELECT title, remind_date, amount FROM reminders
             WHERE user_id = :u AND is_done = 0 AND remind_date BETWEEN :f AND :t
             ORDER BY remind_date ASC

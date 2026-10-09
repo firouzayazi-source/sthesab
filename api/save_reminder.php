@@ -45,6 +45,7 @@ if (postParam('toggle_done') === '1' && $id > 0) {
     if ((int)$row['is_done'] === 1) {
         $pdo->prepare('UPDATE reminders SET is_done = 0 WHERE id = :i AND user_id = :u')
             ->execute(['i' => $id, 'u' => $userId]);
+        Schedule::realign($userId, $id);
         jsonResponse(['success' => true, 'message' => 'یادآور دوباره فعال شد.']);
     }
 
@@ -69,6 +70,7 @@ if (postParam('toggle_done') === '1' && $id > 0) {
                 UPDATE reminders SET is_done = 1, done_count = :c
                 WHERE id = :i AND user_id = :u
             ')->execute(['c' => $total, 'i' => $id, 'u' => $userId]);
+            Schedule::realign($userId, $id);
             jsonResponse(['success' => true, 'message' => 'قسط آخر هم انجام شد — این یادآور تمام شد.']);
         }
 
@@ -80,6 +82,7 @@ if (postParam('toggle_done') === '1' && $id > 0) {
         $args = ['d' => $next, 'i' => $id, 'u' => $userId];
         if ($total > 0) { $args['c'] = $done; }
         $pdo->prepare($sql)->execute($args);
+        Schedule::realign($userId, $id, true);   // ⛔ سررسیدِ این دوره «انجام شد»، بعدی روی تاریخِ تازه
 
         unset($_SESSION['notify_scan']);
         $msg = 'انجام شد — یادآور بعدی ' . toJalali($next);
@@ -102,11 +105,13 @@ if (postParam('toggle_done') === '1' && $id > 0) {
             UPDATE reminders SET remind_date = :d, last_notified_on = NULL
             WHERE id = :i AND user_id = :u
         ')->execute(['d' => $next, 'i' => $id, 'u' => $userId]);
+        Schedule::realign($userId, $id, true);
         jsonResponse(['success' => true, 'message' => 'انجام شد — یادآور بعدی ' . toJalali($next)]);
     }
 
     $pdo->prepare('UPDATE reminders SET is_done = 1 WHERE id = :i AND user_id = :u')
         ->execute(['i' => $id, 'u' => $userId]);
+    Schedule::realign($userId, $id);
     jsonResponse(['success' => true, 'message' => 'انجام شد.']);
 }
 
@@ -133,6 +138,7 @@ if ($id > 0 && postParam('snooze_days') !== '') {
         UPDATE reminders SET remind_date = :d, is_done = 0, last_notified_on = NULL
         WHERE id = :i AND user_id = :u
     ')->execute(['d' => $next, 'i' => $id, 'u' => $userId]);
+    Schedule::realign($userId, $id);
 
     unset($_SESSION['notify_scan']);
     jsonResponse(['success' => true, 'message' => 'به ' . toJalali($next) . ' موکول شد.']);
@@ -258,6 +264,10 @@ if ($id > 0) {
         $chk->execute(['i' => $id, 'u' => $userId]);
         if (!$chk->fetchColumn()) { jsonResponse(['success' => false, 'message' => 'یادآور پیدا نشد.'], 404); }
     }
+    // ⛔ تاریخِ ویرایش‌شده سررسیدِ باز و اعلان‌های تاریخِ قبلی را هم با خودش می‌برد
+    //    (`Schedule::realign()`) — بازرسیِ مهر ۱۴۰۵: فهرستِ «سررسیدها» و اعلانِ روزانه
+    //    هنوز سرِ تاریخِ قبلی می‌آمدند.
+    Schedule::realign($userId, $id);
     jsonResponse(['success' => true, 'message' => 'یادآور بروزرسانی شد.']);
 }
 

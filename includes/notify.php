@@ -316,7 +316,18 @@ class Notify
             $maxAhead = max(self::REMINDER_STEPS);
             $horizon  = date('Y-m-d', strtotime($today . ' +' . $maxAhead . ' day'));
 
-            $stmt = $pdo->prepare('
+            // ⛔ فقط یادآورِ **دلخواهِ فعال**. ردیف‌های پیوندی (چک، طلب/بدهی، دوره‌ای)
+            //    اعلانشان را از `generateDueEvents()` می‌گیرند که از خودِ منبع می‌خواند؛
+            //    اینجا خواندنشان یعنی اعلانِ دوم برای همان سررسید — و بدتر، با تاریخِ
+            //    کهنه: بدهیِ تسویه‌شده یا بی‌سررسیدشده `is_done = 0` می‌ماند و هنوز
+            //    «۱ روز مانده» می‌گرفت (بازرسیِ مهر ۱۴۰۵؛ گزارشِ مالکِ نصب).
+            $stmt = $pdo->prepare(Schedule::available() ? "
+                SELECT * FROM reminders
+                WHERE user_id = :u AND is_done = 0 AND remind_date <= :h
+                  AND (source_type = 'custom' OR source_type IS NULL) AND status = 'active'
+                  AND (last_notified_on IS NULL OR last_notified_on < :t2)
+                ORDER BY remind_date ASC LIMIT 50
+            " : '
                 SELECT * FROM reminders
                 WHERE user_id = :u AND is_done = 0 AND remind_date <= :h
                   AND (last_notified_on IS NULL OR last_notified_on < :t2)
@@ -384,29 +395,49 @@ class Notify
             //   تابعی که «آینده مالی» و ایمیلِ یادآوری از آن می‌خوانند.
             //   با کوئریِ دوم، اعلان و صفحه دیر یا زود دو چیزِ مختلف
             //   می‌گفتند.
-            foreach (financialEvents($userId, $today, $to) as $e) {
+            // ⛔ اعلانِ **نخوانده**ای که رویدادش دیگر نیست (بدهیِ تسویه‌شده یا بی‌سررسیدشده،
+            //    تاریخ یا مبلغِ عوض‌شده) پاک می‌شود — وگرنه همان اعلانِ کهنه در مرکزِ اعلان
+            //    می‌ماند و به گوشی هم می‌رفت (بازرسیِ مهر ۱۴۰۵؛ گزارشِ مالکِ نصب). مرجعِ
+            //    «هنوز درست» همان `financialEvents()` است، با ۶۰ روز عقب‌تر تا اعلانِ
+            //    سررسیدی که همین دیروز گذشت پاک نشود.
+            $since = date('Y-m-d', strtotime($today . ' -60 day'));
+            $valid = [];
+            foreach (financialEvents($userId, $since, $to) as $e) {
+                $k = self::dueKey($e);
+                $valid[$k] = true;
+                if ($e['date'] < $today) { continue; }
                 $body = !empty($e['is_overdue']) ? 'سررسید گذشته — ' . toJalali($e['date'])
                       : ($e['date'] === $today ? 'سررسید امروز' : 'سررسید ' . toJalali($e['date']));
                 if (!empty($e['amount'])) { $body .= ' · ' . formatMoney((int)$e['amount']); }
 
-                // ⛔ `financialEvents()` شناسه‌ی ردیف برنمی‌گرداند (رویدادِ
-                //    قسط و تراکنشِ دوره‌ای اصلاً ردیفِ ذخیره‌شده ندارند و
-                //    مجازی ساخته می‌شوند). پس کلیدِ یکتایی از خودِ
-                //    محتوای رویداد ساخته می‌شود: همان رویداد در اجرای
-                //    بعدی همان کلید را می‌دهد، و دو رویدادِ متفاوت هرگز
-                //    یک کلید نمی‌گیرند.
-                $key = 'due:' . substr(sha1(
-                    ($e['kind'] ?? '?') . '|' . $e['date'] . '|' .
-                    ($e['title'] ?? '') . '|' . ($e['amount'] ?? 0)
-                ), 0, 32);
-
                 if (self::push($userId, 'due', (string)($e['title'] ?? 'سررسید'), $body,
-                        (string)($e['url'] ?? 'due.php?t=list'), $key)) {
+                        (string)($e['url'] ?? 'due.php?t=list'), $k)) {
                     $made++;
                 }
             }
+            $pdo  = Database::getConnection();
+            $keys = array_keys($valid);
+            $not  = $keys ? ' AND dedup_key NOT IN (' . implode(',', array_fill(0, count($keys), '?')) . ')' : '';
+            $pdo->prepare("DELETE FROM notifications WHERE user_id = ? AND kind = 'due' AND read_at IS NULL
+                              AND dedup_key LIKE 'due:%' AND created_at >= ?" . $not)
+                ->execute(array_merge([$userId, $since], $keys));
         } catch (Throwable $e) { /* اعلان نباید صفحه را بشکند */ }
         return $made;
+    }
+
+    /**
+     * کلیدِ یکتاییِ اعلانِ یک رویدادِ سررسید.
+     *
+     * ⛔ `financialEvents()` شناسه‌ی ردیف برنمی‌گرداند (رویدادِ قسط و تراکنشِ دوره‌ای
+     *    اصلاً ردیفِ ذخیره‌شده ندارند)، پس کلید از خودِ محتوای رویداد ساخته می‌شود:
+     *    همان رویداد همان کلید را می‌دهد، و دو رویدادِ متفاوت هرگز یک کلید نمی‌گیرند.
+     */
+    private static function dueKey(array $e): string
+    {
+        return 'due:' . substr(sha1(
+            ($e['kind'] ?? '?') . '|' . $e['date'] . '|' .
+            ($e['title'] ?? '') . '|' . ($e['amount'] ?? 0)
+        ), 0, 32);
     }
 
     /** بازه‌ی «سررسیدِ نزدیک» از همان تنظیمی می‌آید که ایمیلِ یادآوری دارد. */

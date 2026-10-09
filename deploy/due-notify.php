@@ -85,10 +85,18 @@ foreach ($rows as $u) {
         if ($step === null) { continue; }
 
         // ⛔ نگهبانِ تکرار: کلیدِ یکتا کار را می‌کند، نه شرطِ زمانی.
-        $g = $pdo->prepare('INSERT IGNORE INTO reminder_notifications
-                            (occurrence_id, user_id, days_before) VALUES (:o, :u, :d)');
-        $g->execute(['o' => (int)$o['id'], 'u' => $uid, 'd' => $step]);
-        if ($g->rowCount() === 0) { continue; }
+        // ⛔ اجرای نمایشی نگهبان را نمی‌نویسد — بازرسیِ مهر ۱۴۰۵: یک اجرای بی‌`--send`
+        //    پله را «فرستاده» ثبت می‌کرد و اجرای واقعیِ بعدی هیچ اعلانی نمی‌ساخت.
+        if ($send) {
+            $g = $pdo->prepare('INSERT IGNORE INTO reminder_notifications
+                                (occurrence_id, user_id, days_before) VALUES (:o, :u, :d)');
+            $g->execute(['o' => (int)$o['id'], 'u' => $uid, 'd' => $step]);
+            if ($g->rowCount() === 0) { continue; }
+        } else {
+            $g = $pdo->prepare('SELECT 1 FROM reminder_notifications WHERE occurrence_id = :o AND days_before = :d');
+            $g->execute(['o' => (int)$o['id'], 'd' => $step]);
+            if ($g->fetchColumn()) { continue; }
+        }
 
         $when = $step > 0 ? toPersianDigits((string)$step) . ' روز مانده'
               : ($step === 0 ? 'سررسید امروز' : 'سررسید گذشته');
