@@ -1356,6 +1356,22 @@ final class BizStock
      * انبارگردانی — «موجودیِ واقعیِ شمارش‌شده این است»؛ تفاوت یک حرکت
      * می‌شود. ورودِ اضافه به میانگینِ جاری ارزش‌گذاری می‌شود.
      */
+    /**
+     * ⛔ موجودیِ «تا امروز» یک کالا (در یک انبار، اگر چندانباره) — تنها تعریفِ آن‌چه انبارگردانی با آن سنجیده
+     *    می‌شود (`adjustTo()` و مقایسه‌ی `BizCount`). سندِ تاریخِ آینده نه؛ `opening` همیشه.
+     */
+    public static function haveToday(PDO $pdo, int $userId, int $productId, ?int $warehouseId = null, ?bool $multi = null): float
+    {
+        $today = date('Y-m-d');
+        if ($multi ?? BizWarehouses::any($userId)) {
+            return (float)(BizWarehouses::walk($pdo, $userId, $productId, $today)['now'][$warehouseId ?? 0] ?? 0.0);
+        }
+        $q = $pdo->prepare("SELECT COALESCE(SUM(qty), 0) FROM biz_stock_moves
+                            WHERE user_id = :u AND product_id = :p AND (move_date <= :d OR kind = 'opening')");
+        $q->execute(['u' => $userId, 'p' => $productId, 'd' => $today]);
+        return (float)$q->fetchColumn();
+    }
+
     public static function adjustTo(int $userId, int $productId, float $actual, string $note = '', ?int $warehouseId = null): array
     {
         if ($actual < 0) { return ['ok' => false, 'message' => 'موجودیِ واقعی نمی‌تواند منفی باشد.']; }
@@ -1376,14 +1392,7 @@ final class BizStock
             //    `recalc()` آخرِ همان روز است، پس «تا امروز» = همه‌ی حرکت‌های تا امروز.
             // ⛔ فروشگاهِ چندانباره: شمارشِ **یک انبار** (پیش‌فرض اصلی) با موجودیِ همان انبار تا امروز
             $multi = BizWarehouses::any($userId);
-            if ($multi) {
-                $have = (float)(BizWarehouses::walk($pdo, $userId, $productId, $today)['now'][$warehouseId ?? 0] ?? 0.0);
-            } else {
-                $q = $pdo->prepare("SELECT COALESCE(SUM(qty), 0) FROM biz_stock_moves
-                                    WHERE user_id = :u AND product_id = :p AND (move_date <= :d OR kind = 'opening')");
-                $q->execute(['u' => $userId, 'p' => $productId, 'd' => $today]);
-                $have = (float)$q->fetchColumn();
-            }
+            $have = self::haveToday($pdo, $userId, $productId, $warehouseId, $multi);
             $delta = round($actual - $have, 3);
             if (abs($delta) < 0.0005) { return null; }
             $changed = true;
