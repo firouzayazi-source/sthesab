@@ -121,6 +121,7 @@ const EXPECT = [
     'admin/errors.php'      => 'page',
     'admin/store-share.php' => 'page',
     'admin/rates.php'       => 'page',
+    'admin/bot.php'         => 'page',
     'admin/store-billing.php' => 'page',
     'admin/support.php'     => 'page',
     'admin/support-content.php' => 'page',

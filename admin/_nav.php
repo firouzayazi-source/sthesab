@@ -50,6 +50,7 @@ $__adminTabs = [
     'errors.php'     => ['خطاها', 'admin'],
     'store-share.php' => ['سهامداران فروشگاه', 'admin'],
     'rates.php'      => ['نرخ ارز و طلا', 'admin'],
+    'bot.php'        => ['ربات بله و تلگرام', 'admin'],
 ];
 $__here = basename($_SERVER['SCRIPT_NAME'] ?? '');
 

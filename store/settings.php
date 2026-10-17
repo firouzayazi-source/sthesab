@@ -77,12 +77,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $res = BizComms::saveSettings($userId, $rot ? BizComms::settings($userId) : $_POST, $rot);
         redirectWithMessage(Biz::url('settings.php') . '#comms', $res['ok'] ? 'success' : 'error', $res['message']);
     }
-    // ⛔ خلاصه‌ی شبانه فقط به صاحب می‌رود (`BizDaily`)، پس فقط خودش روشن/خاموشش می‌کند
+    // ⛔ خلاصه‌ی شبانه فقط به صاحب می‌رود (`BizDaily`)، پس فقط خودش روشن/خاموشش می‌کند — همکار به این صفحه
+    //    راه ندارد («تنظیمات» فقط در نقشِ صاحب است؛ `Biz::PAGE_CAPS`)
     if (postParam('action') === 'daily_summary') {
-        if (Biz::isStaff()) { Biz::denied('settings'); }
         require_once __DIR__ . '/../includes/biz_daily.php';
         $res = BizDaily::setOn($userId, postParam('daily_on') === '1');
         redirectWithMessage(Biz::url('settings.php') . '#daily', $res['ok'] ? 'success' : 'error', $res['message']);
+    }
+    // ⛔ ربات بله/تلگرام (`Bot`) — فقط صاحب (همان دروازه‌ی صفحه)، همان که خلاصه را می‌گیرد؛ گفت‌وگو مالِ کاربرِ واردشده است
+    if (in_array(postParam('action'), ['bot_code', 'bot_check', 'bot_unlink'], true)) {
+        require_once __DIR__ . '/../includes/bot.php';
+        $me = Auth::userId();
+        if (postParam('action') === 'bot_code') { Bot::code($me); redirectWithMessage(Biz::url('settings.php') . '#bot', 'success', 'کد ساخته شد؛ آن را به ربات بفرستید و بعد «بررسیِ اتصال» را بزنید.'); }
+        if (postParam('action') === 'bot_unlink') { Bot::unlink($me); redirectWithMessage(Biz::url('settings.php') . '#bot', 'success', 'اتصالِ ربات قطع شد.'); }
+        $r = Bot::poll();
+        $ok = Bot::link($me)['linked'];
+        redirectWithMessage(Biz::url('settings.php') . '#bot', $ok ? 'success' : 'error', $ok ? 'ربات وصل است.' : $r['message']);
     }
     if (postParam('action') === 'invoice_prefs') {
         $res = Biz::saveInvoicePrefs($userId, $_POST);
@@ -294,6 +304,23 @@ require __DIR__ . '/../includes/biz_head.php';
     <button type="submit" class="st-btn">ذخیره</button>
 </form>
 <?php endif; ?>
+
+<?php if (!Biz::isStaff()): require_once __DIR__ . '/../includes/bot.php'; if (Bot::configured()): $__bl = Bot::link(Auth::userId()); ?>
+<h2 class="st-h2 st-section-title" id="bot">ربات <?= h(Bot::PROVIDERS[Bot::provider()]['label']) ?></h2>
+<section class="st-card st-form">
+    <?php if ($__bl['linked']): ?>
+        <p>وصل است — خلاصه‌ی شبانه و هشدارها در <?= h(Bot::PROVIDERS[Bot::provider()]['label']) ?> هم می‌رسد.</p>
+        <form method="post" action="<?= h(Biz::url('settings.php')) ?>"><?= Csrf::field() ?><input type="hidden" name="action" value="bot_unlink"><button type="submit" class="st-btn st-btn-ghost">قطعِ اتصال</button></form>
+    <?php elseif ($__bl['code'] !== null): ?>
+        <p>این کد را به ربات <a href="<?= h(Bot::chatUrl()) ?>" target="_blank" rel="noopener" dir="ltr">@<?= h(Bot::username()) ?></a> بفرستید (تا ۳۰ دقیقه معتبر است):</p>
+        <p class="st-bot-code st-num" dir="ltr"><?= h(toPersianDigits($__bl['code'])) ?></p>
+        <form method="post" action="<?= h(Biz::url('settings.php')) ?>"><?= Csrf::field() ?><input type="hidden" name="action" value="bot_check"><button type="submit" class="st-btn">فرستادم — بررسیِ اتصال</button></form>
+    <?php else: ?>
+        <p class="st-muted">خلاصه‌ی شبانه و هشدارها را در <?= h(Bot::PROVIDERS[Bot::provider()]['label']) ?> بگیرید (اعلانِ گوشی از ایران همیشه نمی‌رسد).</p>
+        <form method="post" action="<?= h(Biz::url('settings.php')) ?>"><?= Csrf::field() ?><input type="hidden" name="action" value="bot_code"><button type="submit" class="st-btn">ساختِ کدِ اتصال</button></form>
+    <?php endif; ?>
+</section>
+<?php endif; endif; ?>
 
 <?php if (BizComms::ready()): $cm = BizComms::settings($userId); $smsWhy = BizComms::smsBlocked($userId); ?>
 <h2 class="st-h2 st-section-title" id="comms">ارتباط با مشتری</h2>

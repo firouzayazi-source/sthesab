@@ -173,6 +173,7 @@ MIGRATIONS=(
     migration_biz_sayad.sql
     migration_biz_stock_count.sql
     migration_biz_bundles.sql
+    migration_bot.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -427,6 +428,7 @@ declare -A SENTINEL=(
     [migration_biz_sayad.sql]="biz_payments:idx_biz_pay_sayad"
     [migration_biz_stock_count.sql]="biz_stock_count_lines:idx_biz_count_lines"
     [migration_biz_bundles.sql]="biz_bundle_items:uq_biz_bundle_item"
+    [migration_bot.sql]="bot_links:uq_bot_code"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

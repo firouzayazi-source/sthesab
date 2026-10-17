@@ -59,8 +59,9 @@ function backupFileName(?string $gregorianDate = null): string
 
 // ⛔ `push_subscriptions` اعتبارنامه‌ی دستگاه است (کلیدِ رمزنگاریِ اعلانِ مرورگر)، نه دفتر.
 // ⛔ `sms_links`/`sms_posted` (ثبتِ پیامک در پس‌زمینه): جفت شدنِ گوشی و نگهبانِ تکرار، نه دفتر.
+// ⛔ `bot_links` (ربات بله/تلگرام): نشانیِ گفت‌وگوی کاربر در پیام‌رسان، نه دفتر.
 const USER_EXPORT_SKIP = ['api_tokens', 'password_resets', 'trusted_devices', 'push_subscriptions',
-                          'sms_links', 'sms_posted'];
+                          'sms_links', 'sms_posted', 'bot_links'];
 
 /** ستون‌هایی که هرگز نباید از `users` بیرون بروند. */
 const USER_SECRET_COLUMNS = ['password_hash'];

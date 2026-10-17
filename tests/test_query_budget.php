@@ -88,6 +88,7 @@ const BUDGET = [
     'admin/errors.php'      => 16,
     'admin/store-share.php' => 15,
     'admin/rates.php'       => 16,
+    'admin/bot.php'         => 14,  // پوسته‌ی مدیر (نوار و خطاها) + نقشه‌ی جدول + تنظیمات
     'admin/store-billing.php' => 16,  // پوسته‌ی مدیر + تنظیماتِ اشتراک + صاحبانِ فروشگاه + پرداخت‌ها
     'admin/support.php'     => 18,
     'admin/support-content.php' => 17,

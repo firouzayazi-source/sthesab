@@ -23,6 +23,7 @@ require_once __DIR__ . '/biz_docs.php';
 require_once __DIR__ . '/notify.php';
 require_once __DIR__ . '/mailer.php';
 require_once __DIR__ . '/store_plan.php';
+require_once __DIR__ . '/bot.php';
 
 final class BizDaily
 {
@@ -183,6 +184,8 @@ final class BizDaily
                     $out['log'][] = "× ایمیلِ {$u['username']} نرفت";
                 }
             }
+            // ⛔ کانالِ سوم: ربات بله/تلگرام (`Bot`) — فقط اگر صاحب خودش وصلش کرده
+            if (Bot::send($owner, $t['title'] . "\n\n" . implode("\n", $t['lines']))) { $out['log'][] = "✓ ربات {$u['username']}"; }
             $out['sent']++;
             $out['log'][] = "✓ {$u['username']}: {$t['title']}";
         }
