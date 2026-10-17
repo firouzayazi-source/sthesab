@@ -138,6 +138,12 @@ final class BizDocView
             $out .= '<option value="' . h((string)$p['name']) . '" label="' . h($label) . '"' . $attrs($p) . '></option>';
         }
         if ($units) {
+            // ⛔ بسته‌ها (`BizBundles`) فقط در فروش (همان `$units`) — با قیمتِ یک‌جا و بی‌شناسه‌ی کالا؛ سرور هنگامِ
+            //    ساختِ فاکتورِ فروش بازشان می‌کند
+            foreach (BizBundles::all($userId, true) as $b) {
+                $out .= '<option value="' . h((string)$b['name']) . '" label="' . h('بسته · ' . formatMoney(BizBundles::price($b))) . '" data-sell="'
+                      . BizBundles::price($b) . '" data-id="" data-track="0" data-serial="0" data-bundle="1"></option>';
+            }
             foreach (BizSerial::inStock($userId, 0, $cap)['rows'] as $u) {
                 $p = $byId[$u['product_id']] ?? null;
                 if ($p === null) { continue; }                       // کالای غیرفعال: از فهرستِ جست‌وجو بیرون

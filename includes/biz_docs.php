@@ -24,6 +24,7 @@
  */
 
 require_once __DIR__ . '/biz_catalog.php';
+require_once __DIR__ . '/biz_bundles.php';   // بسته‌ی فروش — فقط `expand()`ِ `saveDraft()`ِ فروش
 
 final class BizInvoices
 {
@@ -506,7 +507,11 @@ final class BizInvoices
         if (!$head['ok']) { return $head; }
         // پیش‌نویس اثری ندارد، ولی صدورش در دوره‌ی بسته رد می‌شد — همین‌جا بگو، نه بعد از تایپِ کلِ فاکتور
         if (($e = Biz::lockError($userId, $head['date'], 'فاکتور')) !== null) { return ['ok' => false, 'message' => $e]; }
-        $parsed = self::parseLines($userId, (array)($in['lines'] ?? []),
+        // ⛔ بسته‌ی فروش (`BizBundles`) فقط در فاکتورِ فروش و همین‌جا به ردیف‌های واقعیِ اجزا باز می‌شود —
+        //    همه‌ی درها (فروشِ سریع، ویرایشگر، فروشِ آفلاین) از همین مسیرند
+        $rawLines = (array)($in['lines'] ?? []);
+        if ($kind === 'sale') { $rawLines = BizBundles::expand($userId, $rawLines); }
+        $parsed = self::parseLines($userId, $rawLines,
             $kind === 'purchase' ? 'buy_price' : BizProducts::priceColFor($userId, (int)$head['party_id']));
         if ($parsed['errors']) {
             return ['ok' => false, 'message' => implode(' ', array_values($parsed['errors'])), 'errors' => $parsed['errors']];

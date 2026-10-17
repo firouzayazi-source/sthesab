@@ -141,6 +141,7 @@ final class Biz
         'payment.php'      => 'payments.php',
         'repair.php'       => 'repairs.php',
         'rma.php'          => 'repairs.php',
+        'bundles.php'      => 'products.php',
         // رمز و بکاپ — از منوی پروفایل (بالای صفحه)، زیرِ «تنظیمات»
         'account.php'      => 'settings.php',
         'cash-count.php'   => 'accounts.php',
@@ -768,6 +769,7 @@ final class Biz
         'rma.php' => 'repairs',
         // انبارگردانی — همان دسترسیِ کالا (اعمال از `adjustTo()`ِ همان)
         'count.php' => 'products',
+        'bundles.php' => 'products',
     ];
 
     /**
