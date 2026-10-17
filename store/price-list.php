@@ -10,6 +10,7 @@ require_once __DIR__ . '/../includes/functions.php';
 Auth::initSession();
 Biz::requirePage();
 require_once __DIR__ . '/../includes/biz_pricelist.php';
+require_once __DIR__ . '/../includes/biz_feed.php';
 if (!BizPriceList::ready()) { Biz::notFound(); }
 
 $userId = Biz::ownerId();
@@ -17,6 +18,11 @@ $self   = Biz::url('price-list.php');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Csrf::verifyOrFail(postParam('csrf_token'));
+    // ⛔ خروجیِ ترب (`BizFeed`) — تنظیمِ جدا با نمکِ جدا از لیستِ قیمت
+    if (in_array(postParam('action'), ['feed', 'feed_rotate'], true) && BizFeed::ready()) {
+        $r = BizFeed::save($userId, $_POST, postParam('feed_on') === '1' || postParam('action') === 'feed_rotate', postParam('action') === 'feed_rotate');
+        redirectWithMessage($self . '#feed', $r['ok'] ? 'success' : 'error', $r['message']);
+    }
     $r = BizPriceList::save($userId, $_POST, postParam('action') === 'rotate');
     redirectWithMessage($self, $r['ok'] ? 'success' : 'error', $r['message']);
 }
@@ -79,4 +85,28 @@ require __DIR__ . '/../includes/biz_head.php';
     <label class="st-check"><input type="checkbox" name="in_stock" value="1"<?= $cfg['in_stock'] ? ' checked' : '' ?>><span>فقط کالاهای موجود</span></label>
     <button type="submit" class="st-btn">ذخیره</button>
 </form>
+<?php if (BizFeed::ready()): $fc = BizFeed::config($userId); ?>
+<h2 class="st-h2 st-section-title" id="feed">خروجی برای ترب و سایت‌های مقایسه‌ی قیمت</h2>
+<form method="post" action="<?= h($self) ?>" class="st-card st-form">
+    <?= Csrf::field() ?><input type="hidden" name="action" value="feed">
+    <p class="st-muted">یک آدرسِ همیشه‌به‌روز از کالاها و قیمتِ فروش (JSON یا CSV) که به سایتِ مقایسه می‌دهید؛ هر کالا یک صفحه‌ی عمومیِ کوچک هم دارد که سایت به آن پیوند می‌دهد. فقط نام، دسته، قیمتِ فروش و «موجود/ناموجود» — هرگز قیمتِ خرید یا تعدادِ موجودی.</p>
+    <label class="st-check"><input type="checkbox" name="feed_on" value="1"<?= BizFeed::on($fc) ? ' checked' : '' ?>><span>روشن</span></label>
+    <div class="st-row3">
+        <label class="st-field"><span>دسته</span>
+            <select name="category"><option value="">همه</option><?php foreach ($cats as $c): ?><option value="<?= h($c) ?>"<?= $c === $fc['category'] ? ' selected' : '' ?>><?= h($c) ?></option><?php endforeach; ?></select></label>
+        <label class="st-field"><span>نوع</span>
+            <select name="type"><option value="">همه</option><option value="phone"<?= $fc['type'] === 'phone' ? ' selected' : '' ?>>فقط گوشی</option><option value="goods"<?= $fc['type'] === 'goods' ? ' selected' : '' ?>>کالا و لوازم</option></select></label>
+    </div>
+    <label class="st-check"><input type="checkbox" name="in_stock" value="1"<?= $fc['in_stock'] ? ' checked' : '' ?>><span>فقط کالاهای موجود</span></label>
+    <button type="submit" class="st-btn">ذخیره</button>
+</form>
+<?php if (BizFeed::on($fc)): ?>
+<section class="st-card">
+    <p>آدرسِ خروجی (JSON): <button type="button" class="st-btn st-btn-ghost st-btn-sm" data-share-url="<?= h(BizFeed::feedUrl($userId)) ?>" data-share-title="خروجیِ کالاها">کپی / اشتراک</button></p>
+    <p>آدرسِ خروجی (CSV): <button type="button" class="st-btn st-btn-ghost st-btn-sm" data-share-url="<?= h(BizFeed::feedUrl($userId, 'csv')) ?>" data-share-title="خروجیِ کالاها (CSV)">کپی / اشتراک</button></p>
+    <form method="post" action="<?= h($self) ?>" onsubmit="return confirm('آدرس‌های قبلی (خروجی و صفحه‌ی کالاها) باطل شوند؟');"><?= Csrf::field() ?><input type="hidden" name="action" value="feed_rotate">
+        <input type="hidden" name="category" value="<?= h($fc['category']) ?>"><input type="hidden" name="type" value="<?= h($fc['type']) ?>"><?= $fc['in_stock'] ? '<input type="hidden" name="in_stock" value="1">' : '' ?>
+        <button type="submit" class="st-link-btn st-link-danger">باطل کردنِ آدرس‌ها</button></form>
+</section>
+<?php endif; endif; ?>
 <?php require __DIR__ . '/../includes/biz_foot.php'; ?>

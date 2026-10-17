@@ -163,6 +163,8 @@ final class Biz
         'price-list.php'   => 'products.php',
         'prices.php'       => 'products.php',
         'track.php'        => 'repairs.php',
+        'feed.php'         => 'products.php',
+        'item.php'         => 'products.php',
         'used-buy.php'     => 'purchases.php',
     ];
 
@@ -760,7 +762,7 @@ final class Biz
         // تغییرِ گروهیِ قیمت — «کالا»
         'bulk-price.php' => 'products',
         // لیستِ قیمت — تنظیم با «کالا»؛ `prices.php` صفحه‌ی عمومیِ بی‌ورود است (امضا)
-        'price-list.php' => 'products', 'prices.php' => null, 'track.php' => null,
+        'price-list.php' => 'products', 'prices.php' => null, 'track.php' => null, 'feed.php' => null, 'item.php' => null,
         // رسیدِ خریدِ دست‌دوم — «خرید»
         'used-buy.php' => 'buy',
         // کالای خواب — مبلغ‌ها بهای خریدند
@@ -1199,6 +1201,8 @@ final class Biz
     public static array $setupHidden = [];
     /** تنظیمِ لیستِ قیمت (JSON) — از همان ردیف (`BizPriceList`)، صفر کوئریِ اضافه. */
     public static array $priceListRaw = [];
+    /** خروجیِ ترب (migration_biz_feed) از همان `SELECT *` — فقط `BizFeed`. */
+    public static array $feedRaw = [];
 
     public static function settings(int $userId): array
     {
@@ -1226,6 +1230,7 @@ final class Biz
         self::$rateRound[$userId]    = $row ? (int)($row['rate_round'] ?? 1000) : 1000;
         self::$setupHidden[$userId]  = $row ? (int)($row['setup_hidden'] ?? 0) === 1 : false;
         self::$priceListRaw[$userId] = $row ? (string)($row['price_list'] ?? '') : '';
+        self::$feedRaw[$userId]      = $row ? (string)($row['feed'] ?? '') : '';
         self::$dailyOn[$userId]      = $row && array_key_exists('daily_summary', $row) ? (int)$row['daily_summary'] === 1 : null;
         self::$accRow[$userId]       = $row ? [
             'vat_rate' => (float)($row['vat_rate'] ?? 0),

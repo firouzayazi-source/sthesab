@@ -112,7 +112,8 @@ const STORE_BUDGET = [
 // `pay-return.php`: برگشت از درگاه، بی‌صفحه — فقط ریدایرکت (سنجش در `test_store_plan`)
 // `prices.php`: لیستِ قیمتِ عمومی با امضا (بی‌ورود، مثلِ view.php) — بودجه در `test_store_pricelist`
 // `track.php`: پیگیریِ تعمیرِ عمومی با امضا (بی‌ورود) — بودجه در `test_store_track`
-const STORE_NO_BUDGET = ['store/login.php', 'store/logout.php', 'store/errors.php', 'store/view.php', 'store/pay-return.php', 'store/prices.php', 'store/track.php'];
+// `feed.php`/`item.php`: خروجیِ کالاها و صفحه‌ی کالا با امضا (بی‌ورود) — سنجش در `test_store_feed`
+const STORE_NO_BUDGET = ['store/login.php', 'store/logout.php', 'store/errors.php', 'store/view.php', 'store/pay-return.php', 'store/prices.php', 'store/track.php', 'store/feed.php', 'store/item.php'];
 
 try {
     $pdo = Database::getConnection();
