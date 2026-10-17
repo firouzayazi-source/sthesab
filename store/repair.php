@@ -100,6 +100,10 @@ require __DIR__ . '/../includes/biz_head.php';
         </form>
     <?php endforeach; ?>
     </div>
+    <?php if (BizComms::ready()): ?>
+    <p class="st-muted">لینکِ پیگیری برای مشتری (بی‌ورود؛ فقط مرحله‌ی همین قبض):
+        <button type="button" class="st-btn st-btn-ghost st-btn-sm" data-share-url="<?= h(BizShare::repairUrl($userId, $id)) ?>" data-share-title="<?= h('پیگیریِ تعمیر') ?>">اشتراک‌گذاری</button></p>
+    <?php endif; ?>
     <?php if ($rep['status'] === 'ready' && BizComms::ready()): ?>
     <form method="post" action="<?= h($self) ?>" class="st-inline"><?= Csrf::field() ?><input type="hidden" name="action" value="sms_ready">
         <button type="submit" class="st-btn st-btn-sm">پیامکِ «آماده‌ی تحویل» به مشتری</button></form>

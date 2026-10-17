@@ -226,6 +226,34 @@ final class BizShare
         if (BizComms::settings($userId)['share_salt'] === '') { return false; }
         return hash_equals(self::token($userId, $invoiceId), $token);
     }
+
+    /**
+     * ⛔ لینکِ پیگیریِ تعمیر (`store/track.php`) — همان نمکِ فروشگاه («باطل کردنِ همه‌ی لینک‌ها» این‌ها را
+     *    هم باطل می‌کند)، ولی پیشوندِ پیامِ امضا جداست (`rep:` در برابرِ `inv:`): امضای فاکتورِ ۵ هرگز قبضِ
+     *    تعمیرِ ۵ را باز نمی‌کند.
+     */
+    public static function repairToken(int $userId, int $repairId): string
+    {
+        $salt = BizComms::settings($userId)['share_salt'];
+        $key  = defined('APP_SECRET_KEY') ? (string)APP_SECRET_KEY : '';
+        return substr(rtrim(strtr(base64_encode(hash_hmac('sha256', "rep:{$userId}:{$repairId}:{$salt}", $key, true)), '+/', '-_'), '='), 0, 24);
+    }
+
+    public static function repairUrl(int $userId, int $repairId): string
+    {
+        if (BizComms::ready() && BizComms::settings($userId)['share_salt'] === '') {
+            BizComms::saveSettings($userId, BizComms::settings($userId));
+        }
+        $base = defined('APP_URL') ? rtrim((string)APP_URL, '/') : '';
+        return $base . Biz::url('track.php') . '?' . http_build_query(['s' => $userId, 'r' => $repairId, 't' => self::repairToken($userId, $repairId)]);
+    }
+
+    public static function verifyRepair(int $userId, int $repairId, string $token): bool
+    {
+        if ($userId <= 0 || $repairId <= 0 || $token === '' || !BizComms::ready()) { return false; }
+        if (BizComms::settings($userId)['share_salt'] === '') { return false; }
+        return hash_equals(self::repairToken($userId, $repairId), $token);
+    }
 }
 
 /* =================================================================

@@ -161,6 +161,7 @@ final class Biz
         'bulk-price.php'   => 'products.php',
         'price-list.php'   => 'products.php',
         'prices.php'       => 'products.php',
+        'track.php'        => 'repairs.php',
         'used-buy.php'     => 'purchases.php',
     ];
 
@@ -757,7 +758,7 @@ final class Biz
         // تغییرِ گروهیِ قیمت — «کالا»
         'bulk-price.php' => 'products',
         // لیستِ قیمت — تنظیم با «کالا»؛ `prices.php` صفحه‌ی عمومیِ بی‌ورود است (امضا)
-        'price-list.php' => 'products', 'prices.php' => null,
+        'price-list.php' => 'products', 'prices.php' => null, 'track.php' => null,
         // رسیدِ خریدِ دست‌دوم — «خرید»
         'used-buy.php' => 'buy',
         // کالای خواب — مبلغ‌ها بهای خریدند
