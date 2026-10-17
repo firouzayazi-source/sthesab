@@ -37,6 +37,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         case 'bounce':  $r = BizCheques::bounce($userId, $cid); break;
         case 'endorse': $r = BizCheques::endorse($userId, $cid, (int)postParam('party_id'), $cd['date']); break;
         case 'unendorse': $r = BizCheques::unendorse($userId, $cid); break;
+        case 'sayad':   $r = BizCheques::setSayad($userId, $cid, (string)postParam('sayad')); break;
+        case 'sayad_ok': $r = BizCheques::confirmSayad($userId, $cid, postParam('ok') !== '0'); break;
         default:        $r = ['ok' => false, 'message' => 'درخواست نامعتبر است.'];
     }
     redirectWithMessage($self, $r['ok'] ? 'success' : 'error', $r['message']);
@@ -104,6 +106,23 @@ require __DIR__ . '/../includes/biz_head.php';
             <?php if ($st === 'cleared' && $r['settle_date'] !== null): ?> در <?= h((string)$r['settle_account']) ?> · <span class="st-num"><?= h(toJalali((string)$r['settle_date'])) ?></span><?php endif; ?>
             <?php if ($st === 'endorsed' && $r['endorse_date'] !== null): ?> به <a href="<?= h(Biz::url('party.php?id=' . (int)$r['endorse_party_id'])) ?>"><?= h((string)$r['endorse_party']) ?></a> · <span class="st-num"><?= h(toJalali((string)$r['endorse_date'])) ?></span><?php endif; ?>
         </p>
+        <?php if (BizCheques::sayadReady()): $say = (string)($r['cheque_sayad'] ?? ''); ?>
+        <div class="st-cheque-meta st-cheque-sayad">
+            <?php if ($say !== ''): ?>صیاد <span dir="ltr" class="st-num"><?= h(toPersianDigits(trim(chunk_split($say, 4, ' ')))) ?></span>
+                <?php if ($st === 'pending'): ?>
+                    <?php if ((int)$r['cheque_sayad_ok'] === 1): ?><span class="st-badge">در صیاد <?= $in ? 'تأیید' : 'ثبت' ?> شده</span>
+                    <?php else: ?><span class="st-badge is-warn">در صیاد <?= $in ? 'تأیید' : 'ثبت' ?> نشده</span>
+                    <form method="post" action="<?= h($self) ?>" class="st-inline"><?= Csrf::field() ?><input type="hidden" name="action" value="sayad_ok"><input type="hidden" name="cheque_id" value="<?= (int)$r['id'] ?>">
+                        <button type="submit" class="st-link-btn"><?= $in ? 'تأیید کردم' : 'ثبت کردم' ?></button></form>
+                    <?php endif; ?>
+                <?php endif; ?>
+            <?php elseif ($st === 'pending'): ?>
+                <form method="post" action="<?= h($self) ?>" class="st-inline"><?= Csrf::field() ?><input type="hidden" name="action" value="sayad"><input type="hidden" name="cheque_id" value="<?= (int)$r['id'] ?>">
+                    <input type="text" name="sayad" dir="ltr" inputmode="numeric" maxlength="24" placeholder="شناسه‌ی صیاد (۱۶ رقم)" aria-label="شناسه‌ی صیاد" class="st-input-sm">
+                    <button type="submit" class="st-link-btn">ثبتِ شناسه</button></form>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
         <?php if ($st === 'pending'): ?>
         <div class="st-cheque-actions">
             <form method="post" action="<?= h($self) ?>" class="st-filters st-cheque-clear">

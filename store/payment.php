@@ -115,7 +115,7 @@ $form = [
     'to_account_id' => (int)($accounts[1]['id'] ?? 0),
     'method' => getParam('method') === 'cheque' && in_array($kind, ['receipt', 'payment'], true) ? 'cheque' : 'cash',
     'pay_date' => BizDocView::jDate(date('Y-m-d')), 'title' => '', 'note' => '', 'category_id' => (int)getParam('cat', '0'),
-    'cheque_no' => '', 'cheque_bank' => '', 'cheque_due' => '', 'fx_rate' => '', 'pos_txn' => '',
+    'cheque_no' => '', 'cheque_bank' => '', 'cheque_sayad' => '', 'cheque_due' => '', 'fx_rate' => '', 'pos_txn' => '',
 ];
 // ⛔ کارت‌خوان (`BizPos`) فقط برای «دریافت»: دکمه‌ی «ارسال به کارت‌خوان» و رزروِ تراکنشِ موفق
 require_once __DIR__ . '/../includes/biz_pos.php';
@@ -145,7 +145,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'kind' => $kind, 'party_id' => (int)$form['party_id'], 'invoice_id' => $invId, 'amount' => $form['amount'],
         'account_id' => (int)$form['account_id'], 'to_account_id' => (int)$form['to_account_id'], 'method' => $form['method'],
         'pay_date' => $pd['date'], 'title' => $form['title'], 'note' => $form['note'], 'category_id' => (int)$form['category_id'],
-        'cheque_no' => $form['cheque_no'], 'cheque_bank' => $form['cheque_bank'],
+        'cheque_no' => $form['cheque_no'], 'cheque_bank' => $form['cheque_bank'], 'cheque_sayad' => $form['cheque_sayad'],
         'cheque_due' => $cd['date'], 'fx_rate' => $form['fx_rate'],
     ]));
     if ($posClaimed) { BizPos::settle($userId, $posTxn, $r['ok'] ? (int)$r['id'] : null); }   // ساخته نشد ⇒ رزرو برمی‌گردد
@@ -243,6 +243,9 @@ require __DIR__ . '/../includes/biz_head.php';
             <label class="st-field"><span>شماره‌ی چک</span><input type="text" name="cheque_no" dir="ltr" inputmode="numeric" maxlength="30" value="<?= h((string)$form['cheque_no']) ?>"></label>
             <label class="st-field"><span>بانک</span><input type="text" name="cheque_bank" maxlength="60" value="<?= h((string)$form['cheque_bank']) ?>" placeholder="مثلاً ملت"></label>
         </div>
+        <?php if (BizCheques::sayadReady()): ?>
+        <label class="st-field"><span>شناسه‌ی صیاد <small class="st-muted">(۱۶ رقم، روی برگِ چک — اختیاری)</small></span><input type="text" name="cheque_sayad" dir="ltr" inputmode="numeric" maxlength="24" value="<?= h((string)$form['cheque_sayad']) ?>"></label>
+        <?php endif; ?>
         <p class="st-muted">چک تا وصول نشده در صندوقِ «<?= h(BizCash::KINDS[$kind === 'receipt' ? 'cheque_in' : 'cheque_out']) ?>» می‌ماند و در جمعِ نقدِ فروشگاه نیست؛ وصول و برگشت از صفحه‌ی <a href="<?= h(Biz::url('cheques.php')) ?>">چک‌ها</a>.</p>
     </fieldset>
     <?php endif; ?>

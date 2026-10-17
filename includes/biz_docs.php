@@ -1350,8 +1350,13 @@ final class BizPay
             if (!isValidDate($due)) { return ['ok' => false, 'message' => 'تاریخِ سررسیدِ چک را وارد کنید.']; }
             if (mb_strlen($cno) > 30)  { return ['ok' => false, 'message' => 'شماره‌ی چک بیش از ۳۰ نویسه است.']; }
             if (mb_strlen($cbnk) > 60) { return ['ok' => false, 'message' => 'نامِ بانک بیش از ۶۰ نویسه است.']; }
+            // ⛔ شناسه‌ی صیاد: اختیاری، ولی اگر هست دقیقاً ۱۶ رقم و تکراری‌نبودن در همین فروشگاه (یک چک دو بار
+            //    دریافت یا صادر نمی‌شود). برگشتی دوباره پذیرفته می‌شود.
+            $sc = BizCheques::sayadCheck($pdo, $userId, $kind, (string)($in['cheque_sayad'] ?? ''));
+            if (isset($sc['message'])) { return ['ok' => false, 'message' => $sc['message']]; }
+            $say = (string)$sc['value'];
             $acc = BizCash::chequeAccount($pdo, $userId, $kind === 'receipt' ? 'in' : 'out');
-            $chq = ['no' => $cno === '' ? null : $cno, 'bank' => $cbnk === '' ? null : $cbnk, 'due' => $due];
+            $chq = ['no' => $cno === '' ? null : $cno, 'bank' => $cbnk === '' ? null : $cbnk, 'due' => $due, 'sayad' => $say === '' ? null : $say];
         }
         $settle = !empty($in['_cheque_settle']);
 
@@ -1469,6 +1474,10 @@ final class BizPay
             $pdo->prepare("UPDATE biz_payments SET cheque_no = :no, cheque_bank = :b, cheque_due = :d, cheque_status = 'pending'
                            WHERE id = :id AND user_id = :u")
                 ->execute(['no' => $chq['no'], 'b' => $chq['bank'], 'd' => $chq['due'], 'id' => $id, 'u' => $userId]);
+            if ($chq['sayad'] !== null) {
+                $pdo->prepare('UPDATE biz_payments SET cheque_sayad = :s WHERE id = :id AND user_id = :u')
+                    ->execute(['s' => $chq['sayad'], 'id' => $id, 'u' => $userId]);
+            }
         }
         if (in_array($kind, ['receipt', 'payment'], true)) {
             self::reallocateTx($pdo, $userId, $party ?: null, $invId ?: null);
@@ -1856,6 +1865,76 @@ final class BizCheques
     public static function ready(): bool
     {
         return function_exists('tableHasColumn') && tableHasColumn('biz_payments', 'cheque_status');
+    }
+
+    /** شناسه‌ی صیاد (migration_biz_sayad). */
+    public static function sayadReady(): bool
+    {
+        return function_exists('tableHasColumn') && tableHasColumn('biz_payments', 'cheque_sayad');
+    }
+
+    /**
+     * ⛔ تنها سنجشِ شناسه‌ی صیاد: خالی = بی‌شناسه؛ وگرنه دقیقاً ۱۶ رقم (ارقامِ فارسی و فاصله فهمیده می‌شوند) و
+     *    تکراری‌نبودن در همین فروشگاه برای همان سو (یک چک دو بار دریافت یا صادر نمی‌شود؛ برگشتی دوباره پذیرفته).
+     * @return array{value:string}|array{message:string}
+     */
+    public static function sayadCheck(PDO $pdo, int $userId, string $kind, string $raw, int $exceptId = 0): array
+    {
+        $say = (string)preg_replace('/\D/', '', toLatinDigits($raw));
+        if ($say === '' || !self::sayadReady()) { return ['value' => '']; }
+        if (strlen($say) !== 16) { return ['message' => 'شناسه‌ی صیاد باید ۱۶ رقم باشد.']; }
+        $dup = $pdo->prepare("SELECT 1 FROM biz_payments WHERE user_id = :u AND cheque_sayad = :s AND kind = :k AND status = 'ok'
+                                AND cheque_status IN ('pending','cleared','endorsed') AND id <> :x LIMIT 1");
+        $dup->execute(['u' => $userId, 's' => $say, 'k' => $kind, 'x' => $exceptId]);
+        if ($dup->fetchColumn()) { return ['message' => 'چکی با همین شناسه‌ی صیاد قبلاً ثبت شده است.']; }
+        return ['value' => $say];
+    }
+
+    /** شناسه‌ی صیاد برای چکِ در جریانی که بی‌شناسه ثبت شده بود. @return array{ok:bool, message:string} */
+    public static function setSayad(int $userId, int $id, string $raw): array
+    {
+        $pdo = Database::getConnection();
+        $st = $pdo->prepare("SELECT kind FROM biz_payments WHERE id = :id AND user_id = :u AND status = 'ok' AND cheque_status = 'pending'");
+        $st->execute(['id' => $id, 'u' => $userId]);
+        $kind = $st->fetchColumn();
+        if ($kind === false) { return ['ok' => false, 'message' => 'چکِ در جریان پیدا نشد.']; }
+        $sc = self::sayadCheck($pdo, $userId, (string)$kind, $raw, $id);
+        if (isset($sc['message'])) { return ['ok' => false, 'message' => $sc['message']]; }
+        if ($sc['value'] === '') { return ['ok' => false, 'message' => 'شناسه‌ی صیاد را بنویسید.']; }
+        // ⛔ شناسه‌ی تازه = هنوز تأییدنشده
+        $pdo->prepare('UPDATE biz_payments SET cheque_sayad = :s, cheque_sayad_ok = 0 WHERE id = :id AND user_id = :u')
+            ->execute(['s' => $sc['value'], 'id' => $id, 'u' => $userId]);
+        return ['ok' => true, 'message' => 'شناسه‌ی صیاد ثبت شد.'];
+    }
+
+    /**
+     * ⛔ «در سامانه‌ی صیاد تأیید/ثبت شد» — فقط علامتِ دستیِ فروشنده؛ برنامه به صیاد وصل نمی‌شود.
+     *    فقط چکِ در جریانِ دارای شناسه.
+     * @return array{ok:bool, message:string}
+     */
+    public static function confirmSayad(int $userId, int $id, bool $ok = true): array
+    {
+        if (!self::sayadReady()) { return ['ok' => false, 'message' => 'این بخش هنوز راه نیفتاده است.']; }
+        $st = Database::getConnection()->prepare("UPDATE biz_payments SET cheque_sayad_ok = :ok
+            WHERE id = :id AND user_id = :u AND status = 'ok' AND cheque_status = 'pending' AND cheque_sayad IS NOT NULL");
+        $st->execute(['ok' => $ok ? 1 : 0, 'id' => $id, 'u' => $userId]);
+        return $st->rowCount() > 0 ? ['ok' => true, 'message' => $ok ? 'ثبت شد: در صیاد تأیید شده است.' : 'علامتِ صیاد برداشته شد.']
+                                   : ['ok' => false, 'message' => 'چکِ در جریانِ دارای شناسه‌ی صیاد پیدا نشد (یا تغییری نبود).'];
+    }
+
+    /**
+     * چک‌های در جریانِ دارای شناسه که هنوز در صیاد تأیید نشده‌اند.
+     * @return list<array>
+     */
+    public static function unconfirmed(int $userId, int $limit = 10): array
+    {
+        if (!self::sayadReady()) { return []; }
+        $st = Database::getConnection()->prepare("SELECT y.id, y.kind, y.amount, y.cheque_no, y.cheque_bank, y.cheque_sayad, y.cheque_due, p.name AS party_name
+            FROM biz_payments y LEFT JOIN biz_parties p ON p.id = y.party_id AND p.user_id = y.user_id
+            WHERE y.user_id = :u AND y.status = 'ok' AND y.cheque_status = 'pending' AND y.cheque_sayad IS NOT NULL AND y.cheque_sayad_ok = 0
+            ORDER BY y.cheque_due, y.id LIMIT " . max(1, min(100, $limit)));
+        $st->execute(['u' => $userId]);
+        return $st->fetchAll();
     }
 
     /** ⛔ تنها تعریفِ صافی‌ها — فهرست، چاپ و داشبورد همه از همین. */

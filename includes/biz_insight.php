@@ -311,6 +311,15 @@ final class BizAlerts
         }
         $out[] = ['key' => 'rma', 'title' => 'گارانتیِ پخشِ دیرکرده', 'tone' => 'warn', 'items' => $items];
 
+        // ۱۰. چکِ در جریانی که در صیاد تأیید/ثبت نشده — همان `BizCheques::unconfirmed()`
+        $items = [];
+        foreach (BizCheques::unconfirmed($userId, self::LIMIT) as $c) {
+            $items[] = ['text' => ($c['kind'] === 'receipt' ? 'چکِ دریافتی' : 'چکِ پرداختی') . ' ' . formatMoney((int)$c['amount']) . ' تومان'
+                . ($c['party_name'] ? ' — ' . $c['party_name'] : '') . ' · در صیاد ' . ($c['kind'] === 'receipt' ? 'تأیید' : 'ثبت') . ' نشده',
+                'href' => $u('cheques.php')];
+        }
+        $out[] = ['key' => 'sayad', 'title' => 'چکِ تأییدنشده در صیاد', 'tone' => 'warn', 'items' => $items];
+
         return $out;
     }
 

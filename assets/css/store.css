@@ -1603,3 +1603,7 @@ html.st-locked, html.st-locked body { overflow: hidden; }
 .st-offline-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13.5px; }
 .st-offline-list li > span { flex: 1 1 auto; }
 .st-offline-err { flex-basis: 100%; color: var(--st-neg, #c0392b); }
+
+/* ---------- شناسه‌ی صیاد روی کارتِ چک ---------- */
+.st-cheque-sayad { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.st-cheque-sayad form { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
