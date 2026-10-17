@@ -30,7 +30,7 @@ require __DIR__ . '/../includes/biz_head.php';
         <h1 class="st-h1">تعمیرات و گارانتی</h1>
         <p class="st-muted">قبضِ پذیرش با IMEI و وضعیت؛ هزینه‌ی تعمیر یک فاکتورِ فروشِ معمولی است (موجودیِ قطعه و مانده‌ی مشتری از همان‌جا).</p>
     </div>
-    <div class="st-head-actions"><a class="st-btn" href="<?= h(Biz::url('repair.php')) ?>">+ پذیرشِ تعمیر</a></div>
+    <div class="st-head-actions"><a class="st-btn st-btn-ghost" href="<?= h(Biz::url('rma.php')) ?>">گارانتیِ پخش</a><a class="st-btn" href="<?= h(Biz::url('repair.php')) ?>">+ پذیرشِ تعمیر</a></div>
 </div>
 
 <?php if (!BizRepairs::ready()): ?>

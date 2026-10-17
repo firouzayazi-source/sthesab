@@ -169,6 +169,7 @@ MIGRATIONS=(
     migration_biz_used_buy.sql
     migration_biz_daily.sql
     migration_biz_offline.sql
+    migration_biz_rma.sql
 )
 
 # migration هایی که پیش از راه‌اندازی ردیابی وجود داشتند.
@@ -419,6 +420,7 @@ declare -A SENTINEL=(
     [migration_biz_used_buy.sql]="biz_used_buys:idx_biz_used_buy_nid"
     [migration_biz_daily.sql]="biz_settings.daily_sent_on"
     [migration_biz_offline.sql]="biz_offline_sales:uq_biz_offline_ref"
+    [migration_biz_rma.sql]="biz_rma:idx_biz_rma_imei"
 )
 
 # آیا شاهد یک migration در دیتابیس هست؟

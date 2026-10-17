@@ -15,6 +15,7 @@
 
 require_once __DIR__ . '/biz_reports.php';
 require_once __DIR__ . '/biz_sales_ext.php';
+require_once __DIR__ . '/biz_rma.php';
 require_once __DIR__ . '/biz_quickbuy.php';   // `BizQuickBuy::suppliers()` — فهرستِ فروشنده‌های پیشنهادِ خرید
 
 final class BizReorder
@@ -298,6 +299,17 @@ final class BizAlerts
             }
         }
         $out[] = ['key' => 'consign', 'title' => 'امانیِ بیش از یک ماه', 'tone' => 'info', 'items' => $items];
+
+        // ۹. گوشیِ دیرکرده نزدِ گارانتیِ پخش — همان تعریفِ `BizRma::list('late')`
+        $items = [];
+        if (BizRma::ready()) {
+            foreach (BizRma::list($userId, 'late', '', 1, $today)['rows'] as $r) {
+                if (count($items) >= self::LIMIT) { break; }
+                $items[] = ['text' => $r['device'] . ($r['imei'] ? ' (' . $r['imei'] . ')' : '') . ' — نزدِ ' . $r['party_name'] . ' · '
+                    . toPersianDigits((string)BizRma::days($r, $today)) . ' روز', 'href' => $u('rma.php?f=late')];
+            }
+        }
+        $out[] = ['key' => 'rma', 'title' => 'گارانتیِ پخشِ دیرکرده', 'tone' => 'warn', 'items' => $items];
 
         return $out;
     }

@@ -82,6 +82,7 @@ require __DIR__ . '/../includes/biz_head.php';
     <div class="st-head-actions">
         <span class="st-pill is-rep-<?= h((string)$rep['status']) ?>"><?= h(BizRepairs::STATUSES[$rep['status']]) ?></span>
         <a class="st-btn st-btn-ghost" href="<?= h(Biz::url('print.php?doc=repair&id=' . $id)) ?>">چاپِ قبض</a>
+        <a class="st-btn st-btn-ghost" href="<?= h(Biz::url('rma.php?repair=' . $id)) ?>#new">ارسال به گارانتیِ پخش</a>
     </div>
     <?php endif; ?>
 </div>

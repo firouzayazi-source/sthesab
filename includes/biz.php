@@ -51,6 +51,8 @@ final class Biz
      */
     public const IMPORT_SOFT_LINKS = [
         'biz_repairs'           => ['party_id' => 'biz_parties', 'invoice_id' => 'biz_invoices'],
+        // گارانتیِ پخش: پیوند به قبضِ تعمیر کلیدِ خارجی ندارد (قبض‌ها بی‌کلیدند)
+        'biz_rma'               => ['repair_id' => 'biz_repairs'],
         'biz_installment_plans' => ['invoice_id' => 'biz_invoices'],
         'biz_installments'      => ['invoice_id' => 'biz_invoices'],
         'biz_journal_lines'     => ['journal_id' => 'biz_journals'],
@@ -138,6 +140,7 @@ final class Biz
         'return.php'       => 'sales.php',
         'payment.php'      => 'payments.php',
         'repair.php'       => 'repairs.php',
+        'rma.php'          => 'repairs.php',
         // رمز و بکاپ — از منوی پروفایل (بالای صفحه)، زیرِ «تنظیمات»
         'account.php'      => 'settings.php',
         'cash-count.php'   => 'accounts.php',
@@ -759,6 +762,8 @@ final class Biz
         'used-buy.php' => 'buy',
         // کالای خواب — مبلغ‌ها بهای خریدند
         'aging.php' => 'cost',
+        // گارانتیِ پخش — همان دسترسیِ تعمیرات
+        'rma.php' => 'repairs',
     ];
 
     /**
