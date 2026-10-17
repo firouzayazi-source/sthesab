@@ -149,6 +149,16 @@ if ($stock['low'] + $stock['out'] > 0) {
 if ($flags['drafts'] > 0) {
     $alerts[] = ['info', toPersianDigits((string)$flags['drafts']) . ' پیش‌نویسِ صادرنشده', 'تا صادر نشود در موجودی و حساب اثری ندارد', Biz::url('sales.php?f=draft'), 'تکمیل'];
 }
+// ⛔ سرمایه‌ی خوابیده — فقط با «بها و سود» (مبلغ بهای خرید است)؛ عدد فقط از `BizAging`
+if (Biz::can('cost')) {
+    require_once __DIR__ . '/../includes/biz_aging.php';
+    $__ag = BizAging::summary(BizAging::rows($userId, $today));
+    if ($__ag['idle'] > 0 || $__ag['risk'] > 0) {
+        $alerts[] = ['warn', 'سرمایه‌ی خوابیده: ' . formatMoney($__ag['idle']) . ' تومان',
+            'بیش از ' . toPersianDigits((string)BizAging::IDLE_DAYS) . ' روز در انبار' . ($__ag['risk'] > 0 ? ' · ریسکِ افتِ قیمت ' . formatMoney($__ag['risk']) . ' تومان' : ''),
+            Biz::url('aging.php'), 'بررسی'];
+    }
+}
 foreach ($accounts as $a) {
     if ((int)$a['is_active'] === 1 && !BizCash::isCheque($a) && (int)$a['balance'] < 0) {
         $alerts[] = ['err', 'موجودیِ «' . $a['name'] . '» منفی است', $signed((int)$a['balance']) . ' تومان — ثبتی جا افتاده؟', Biz::url('payments.php?acc=' . (int)$a['id']), 'بررسی'];

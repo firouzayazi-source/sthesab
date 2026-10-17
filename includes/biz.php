@@ -106,7 +106,7 @@ final class Biz
     public const NAV = [
         'اصلی'     => ['index.php' => 'داشبورد', 'insights.php' => 'هشدارها و پیش‌بینی', 'search.php' => 'جستجوی سریع'],
         'فروشگاه'  => ['quick-sale.php' => 'فروش سریع', 'sales.php' => 'فاکتورهای فروش', 'purchases.php' => 'فاکتورهای خرید',
-                       'products.php' => 'محصولات و موجودی', 'reorder.php' => 'پیشنهادِ خرید', 'consignments.php' => 'کالای امانی',
+                       'products.php' => 'محصولات و موجودی', 'reorder.php' => 'پیشنهادِ خرید', 'aging.php' => 'کالای خواب', 'consignments.php' => 'کالای امانی',
                        'warehouses.php' => 'انبارها', 'categories.php' => 'دسته‌بندی‌ها', 'parties.php' => 'مشتریان و تأمین‌کنندگان',
                        'repairs.php' => 'تعمیرات و گارانتی'],
         'مالی'     => ['payments.php' => 'دریافت و پرداخت', 'accounts.php' => 'صندوق و بانک', 'cheques.php' => 'چک‌ها',
@@ -363,6 +363,7 @@ final class Biz
             'warehouses.php'     => '<path d="M3 10l9-6 9 6v10H3z"/><path d="M7 20v-6h10v6"/><path d="M7 17h10"/>',
             'insights.php'       => '<path d="M12 3a6 6 0 0 0-6 6c0 4-2 5.5-2 5.5h16S18 13 18 9a6 6 0 0 0-6-6z"/><path d="M10 18.5a2 2 0 0 0 4 0"/>',
             'reorder.php'        => '<path d="M3 4h2l2.4 11h11L21 7H6.2"/><path d="M14 9v4M12 11h4"/>',
+            'aging.php'          => '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5"/><path d="M9 2h6"/>',
             'consignments.php'   => '<rect x="4" y="8" width="16" height="12" rx="2"/><path d="M8 8V6a4 4 0 0 1 8 0v2"/><path d="M12 13v3"/>',
             'recurring.php'      => '<path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 20v-4h-4"/>',
             'bank-rec.php'       => '<path d="M3 9l9-5 9 5"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8"/><path d="M3 20h18"/>',
@@ -756,6 +757,8 @@ final class Biz
         'price-list.php' => 'products', 'prices.php' => null,
         // رسیدِ خریدِ دست‌دوم — «خرید»
         'used-buy.php' => 'buy',
+        // کالای خواب — مبلغ‌ها بهای خریدند
+        'aging.php' => 'cost',
     ];
 
     /**

@@ -168,6 +168,7 @@ const EXPECT = [
     'store/bulk-price.php'      => 'blocked',
     'store/price-list.php'      => 'blocked',
     'store/used-buy.php'        => 'blocked',
+    'store/aging.php'           => 'blocked',
     'store/prices.php'          => 'blocked',   // بی‌امضا ۴۰۴ِ خنثی (`BizPriceList::verify()`)
     'store/repairs.php'         => 'blocked',
     'store/warehouses.php'      => 'blocked',
